@@ -335,7 +335,7 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     <a href="dashboard_admin.php"><i class="bi bi-speedometer2 me-2"></i> Dashboardi</a>
     <a href="users.php"><i class="bi bi-people me-2"></i> Administratorët</a>
     <a class="active" href="agencies.php"><i class="bi bi-building me-2"></i> Agjencitë</a>
-    <a href="#"><i class="bi bi-mortarboard me-2"></i> Studentët</a>
+    <a href="students.php"><i class="bi bi-mortarboard me-2"></i> Studentët</a>
     <a href="#"><i class="bi bi-bar-chart me-2"></i> Raportet</a>
     <a href="index.html"><i class="bi bi-house me-2"></i> Kryefaqja</a>
 </aside>
