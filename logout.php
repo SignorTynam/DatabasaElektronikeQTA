@@ -2,5 +2,5 @@
 session_start();
 $_SESSION = [];
 session_destroy();
-header('Location: selectProfile.html');
+header('Location: selectProfile.php');
 exit;
