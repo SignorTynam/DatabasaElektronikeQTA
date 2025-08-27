@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kontakt - Qendra e Trajnimeve të Avancuara</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        .contact-hero {
+            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400"><rect fill="%230d6efd" width="1200" height="400"/></svg>');
+            background-size: cover;
+            background-position: center;
+            color: white;
+            padding: 80px 0;
+        }
+        .contact-info-card {
+            transition: transform 0.3s;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .contact-info-card:hover {
+            transform: translateY(-5px);
+        }
+        .contact-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #0d6efd;
+        }
+        .form-control:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        .btn-primary {
+            background-color: #0d6efd;
+            border: none;
+            padding: 10px 25px;
+        }
+        .btn-primary:hover {
+            background-color: #0b5ed7;
+        }
+        .map-container {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        footer {
+            background-color: #343a40;
+            color: white;
+            padding: 20px 0;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <img src="image/logoPNG2.png" alt="Logo" height="30" class="d-inline-block align-text-top me-2">
+                Qendra e Trajnimeve të Avancuara (QTA)
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Kryefaqja</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Rreth nesh</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="contact.html">Kontakt</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="btn btn-primary ms-2" href="selectProfile.html" role="button">Hyr</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="contact-hero text-center">
+        <div class="container">
+            <h1 class="display-4 fw-bold">Na Kontaktoni</h1>
+            <p class="lead">Jemi të vendosur t'ju ndihmojmë në çdo kohë. Na kontaktoni për çdo pyetje ose nevojë.</p>
+        </div>
+    </section>
+
+    <!-- Contact Content -->
+    <section class="py-5">
+        <div class="container">
+            <div class="row g-5">
+                <!-- Contact Form -->
+                <div class="col-lg-7">
+                    <h2 class="mb-4">Dërgo një Mesazh</h2>
+                    <form>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="firstName" class="form-label">Emri</label>
+                                <input type="text" class="form-control" id="firstName" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="lastName" class="form-label">Mbiemri</label>
+                                <input type="text" class="form-control" id="lastName" required>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="subject" class="form-label">Subjekti</label>
+                            <select class="form-select" id="subject" required>
+                                <option value="" selected disabled>Zgjidhni një opsion</option>
+                                <option value="admission">Informacione për regjistrim</option>
+                                <option value="courses">Informacione për kurse</option>
+                                <option value="technical">Problem teknik</option>
+                                <option value="other">Tjetër</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="message" class="form-label">Mesazhi</label>
+                            <textarea class="form-control" id="message" rows="5" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Dërgo Mesazhin</button>
+                    </form>
+                </div>
+
+                <!-- Contact Information -->
+                <div class="col-lg-5">
+                    <h2 class="mb-4">Informacioni i Kontaktit</h2>
+                    
+                    <div class="card contact-info-card mb-4">
+                        <div class="card-body">
+                            <div class="d-flex">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-geo-alt-fill contact-icon"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h5>Adresa</h5>
+                                    <p>Rruga e Universitetit, Nr. 123<br>Tiranë, Shqipëri</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card contact-info-card mb-4">
+                        <div class="card-body">
+                            <div class="d-flex">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-telephone-fill contact-icon"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h5>Telefoni</h5>
+                                    <p>+355 4 123 4567<br>+355 67 123 4567 (WhatsApp)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card contact-info-card mb-4">
+                        <div class="card-body">
+                            <div class="d-flex">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-envelope-fill contact-icon"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h5>Email</h5>
+                                    <p>info@qendratrajnimeve.edu.al<br>support@qendratrajnimeve.edu.al</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card contact-info-card">
+                        <div class="card-body">
+                            <div class="d-flex">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-clock-fill contact-icon"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h5>Orari i Punës</h5>
+                                    <p>E Hënë - E Premte: 8:00 - 18:00<br>E Shtunë: 9:00 - 14:00<br>E Dielë: Mbyllur</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Map Section -->
+    <section class="py-5 bg-light">
+        <div class="container">
+            <h2 class="text-center mb-5">Ku Ndodhemi</h2>
+            <div class="map-container">
+                <iframe 
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d11975.486952909885!2d19.818733!3d41.327546!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNDHCsDE5JzM5LjIiTiAxOcKwNDknMDcuNCJF!5e0!3m2!1sen!2s!4v1644269999999!5m2!1sen!2s" 
+                    width="100%" 
+                    height="400" 
+                    style="border:0;" 
+                    allowfullscreen="" 
+                    loading="lazy">
+                </iframe>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">Pyetjet e Shpeshta (FAQ)</h2>
+            <div class="accordion" id="faqAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingOne">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                            Si mund të regjistrohem si student?
+                        </button>
+                    </h2>
+                    <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                        <div class="accordion-body">
+                            Për të regjistruar si student, ju duhet të plotësoni formularin e aplikimit në faqen tonë të internetit ose të vizitoni zyrat tona fizike. Do t'ju duhet të dërgoni dokumentet e nevojshme dhe të paguani tarifën e aplikimit.
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingTwo">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
+                            Cilat janë metodat e pagesës të pranuara?
+                        </button>
+                    </h2>
+                    <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                        <div class="accordion-body">
+                            Pranojmë pagesa në para, me kartë bankare, transferta bankare, si dhe nëpërmjent platformave të pagesave elektronike.
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingThree">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
+                            A ofroni kurse online?
+                        </button>
+                    </h2>
+                    <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                        <div class="accordion-body">
+                            Po, ofrojmë shumë kurse në modalitetin online përmes platformës sonë të mësimit elektronik. Këto kurse ofrojnë fleksibilitet të plotë për studentët që kanë angazhime të tjera.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-4 mb-4">
+                    <h5>Qendra e Trajnimeve të Avancuara</h5>
+                    <p>Ofrimi i edukimit me cilësi të lartë për profesionistët e të nesërmes.</p>
+                    <div class="d-flex">
+                        <a href="#" class="text-white me-3"><i class="bi bi-facebook"></i></a>
+                        <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
+                        <a href="#" class="text-white me-3"><i class="bi bi-linkedin"></i></a>
+                        <a href="#" class="text-white"><i class="bi bi-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="col-lg-4 mb-4">
+                    <h5>Lidhje të shpejta</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="index.html" class="text-white text-decoration-none">Kryefaqja</a></li>
+                        <li><a href="#" class="text-white text-decoration-none">Rreth Nesh</a></li>
+                        <li><a href="#" class="text-white text-decoration-none">Kurset</a></li>
+                        <li><a href="contact.html" class="text-white text-decoration-none">Kontakt</a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-4 mb-4">
+                    <h5>Na gjeni këtu</h5>
+                    <p><i class="bi bi-geo-alt me-2"></i> Rruga Bilal Konxholli, Tiranë</p>
+                    <p><i class="bi bi-telephone me-2"></i> +355 69 877 8837</p>
+                    <p><i class="bi bi-envelope me-2"></i> officialqta@gmail.com</p>
+                </div>
+            </div>
+            <hr class="my-4 bg-light">
+            <p class="text-center mb-0">&copy; 2025 Qendra e Trajnimeve të Avancuara. Të gjitha të drejtat e rezervuara.</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
