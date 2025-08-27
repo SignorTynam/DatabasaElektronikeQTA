@@ -416,7 +416,6 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal">
                 <i class="bi bi-person-plus me-1"></i> Shto Student
             </button>
-            <div class="text-muted small">Totali: <strong><?= number_format($total) ?></strong></div>
         </div>
     </div>
 
