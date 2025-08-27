@@ -131,15 +131,15 @@ $recentStudents = $studentsStmt->fetchAll();
 
 <!-- Sidebar -->
 <aside class="sidebar">
-    <a class="active" href="#"><i class="bi bi-speedometer2 me-2"></i> Paneli</a>
-    <a href="#"><i class="bi bi-people me-2"></i> Përdoruesit</a>
-    <a href="#"><i class="bi bi-building me-2"></i> Agjencitë</a>
+    <a class="active" href="dashboard_admin.php"><i class="bi bi-speedometer2 me-2"></i> Dashboardi</a>
+    <a href="users.php"><i class="bi bi-people me-2"></i> Administratorët</a>
+    <a href="agencies.php"><i class="bi bi-building me-2"></i> Agjencitë</a>
     <a href="#"><i class="bi bi-mortarboard me-2"></i> Studentët</a>
     <a href="#"><i class="bi bi-bar-chart me-2"></i> Raportet</a>
     <a href="index.html"><i class="bi bi-house me-2"></i> Kryefaqja</a>
 </aside>
 
-<main class="content">
+<main class="content" style="margin-top: 50px">
     <!-- Hero / Overview -->
     <div class="stat-hero p-4 p-md-5 mb-4">
         <div class="row align-items-center">
