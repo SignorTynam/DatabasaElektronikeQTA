@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
 
-            // 1) users: ruaj emrin e plotë për shfaqje
+            // 1) users
             $full = trim($first_name . ' ' . ($father_name ? $father_name.' ' : '') . $last_name);
             $insUser = $pdo->prepare("INSERT INTO users (role_id, full_name, email) VALUES (:rid, :fn, NULL)");
             $insUser->execute([':rid'=>$studentRoleId, ':fn'=>$full]);
@@ -264,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ------------------------------
-   Kërkim + Paginim (vetëm studentë) – renditje sipas nr_amze
+   Kërkim + Paginim (vetëm studentë) – renditje numerike sipas nr_amze
 ------------------------------- */
 $q      = trim($_GET['q'] ?? '');
 $edu    = trim($_GET['edu'] ?? ''); // mund të dërgohet code ose id
@@ -276,15 +276,26 @@ $where  = ["u.role_id = :studentRole"];
 $params = [':studentRole' => $studentRoleId];
 
 if ($q !== '') {
+    // Meqë emulation është OFF, duhet placeholderË unikë (kw1..kw7)
     $where[] = "(
-        s.first_name LIKE :kw OR s.father_name LIKE :kw OR s.last_name LIKE :kw
-        OR s.nr_amze LIKE :kw OR s.personal_number LIKE :kw OR s.phone LIKE :kw
-        OR s.birth_place LIKE :kw
+        s.first_name      LIKE :kw1 OR
+        s.father_name     LIKE :kw2 OR
+        s.last_name       LIKE :kw3 OR
+        s.nr_amze         LIKE :kw4 OR
+        s.personal_number LIKE :kw5 OR
+        s.phone           LIKE :kw6 OR
+        s.birth_place     LIKE :kw7
     )";
-    $params[':kw'] = '%'.$q.'%';
+    $kw = '%'.$q.'%';
+    $params[':kw1'] = $kw;
+    $params[':kw2'] = $kw;
+    $params[':kw3'] = $kw;
+    $params[':kw4'] = $kw;
+    $params[':kw5'] = $kw;
+    $params[':kw6'] = $kw;
+    $params[':kw7'] = $kw;
 }
 if ($edu !== '') {
-    // lejo si code ose id
     if (ctype_digit($edu)) {
         $where[] = "s.education_level_id = :eduid";
         $params[':eduid'] = (int)$edu;
@@ -307,7 +318,7 @@ $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
 
-/* Lista (renditur sipas nr_amze) */
+/* Lista – RENDITJE NUMERIKE sipas nr_amze */
 $listStmt = $pdo->prepare("
     SELECT
         s.id            AS student_id,
@@ -327,7 +338,7 @@ $listStmt = $pdo->prepare("
     JOIN users u ON u.id = s.user_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
     $whereSql
-    ORDER BY s.nr_amze ASC
+    ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
     LIMIT :lim OFFSET :off
 ");
 foreach ($params as $k => $v) {
@@ -460,10 +471,10 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
-    <!-- Tabela: renditur sipas nr_amze -->
+    <!-- Tabela: renditur sipas nr_amze (numeric) -->
     <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0"><i class="bi bi-mortarboard me-2"></i>Lista e studentëve (sipas Nr. Amzës)</h5>
+            <h5 class="mb-0"><i class="bi bi-mortarboard me-2"></i>Lista e studentëve</h5>
             <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
         </div>
         <div class="card-body">
@@ -497,7 +508,6 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td>
                                     <?php if ($s['edu_code']): ?>
                                         <span class="badge text-bg-info"><?= htmlspecialchars($s['edu_code']) ?></span>
-                                        <!-- <span class="text-muted small"><?= htmlspecialchars(' '.$s['edu_label']) ?></span> -->
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
                                     <?php endif; ?>
@@ -562,17 +572,17 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                     $next = min($totalPages, $page+1);
                     ?>
                     <li class="page-item <?= $page<=1?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=1">«</a>
+                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=1">«</a>
                     </li>
                     <li class="page-item <?= $page<=1?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $prev ?>">‹</a>
+                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $prev ?>">‹</a>
                     </li>
                     <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
                     <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $next ?>">›</a>
+                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
                     </li>
                     <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $totalPages ?>">»</a>
+                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
                     </li>
                 </ul>
             </nav>
@@ -585,9 +595,7 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </main>
 
-<!-- MODALS -->
-
-<!-- Modal: Shto Student -->
+<!-- MODALS (Shto / Modifiko / Reset) – identike si më parë -->
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl">
     <form class="modal-content" method="post">
@@ -667,7 +675,6 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
   </div>
 </div>
 
-<!-- Modal: Modifiko Student -->
 <div class="modal fade" id="editStudentModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl">
     <form class="modal-content" method="post">
@@ -735,7 +742,6 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
   </div>
 </div>
 
-<!-- Modal: Reset Password (Student) -->
 <div class="modal fade" id="resetPassModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form class="modal-content" method="post">
@@ -790,7 +796,6 @@ editModal?.addEventListener('show.bs.modal', (event) => {
 
     const eduCode = btn.getAttribute('data-edu-code') || '';
     const select = document.getElementById('edit_education_level_id');
-    // Përzgjedh id-në që ka këtë code (nëse ka)
     if (eduCode) {
         let matched = false;
         for (const opt of select.options) {
