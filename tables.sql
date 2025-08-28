@@ -191,3 +191,13 @@ CREATE TABLE IF NOT EXISTS agency_students (
   CONSTRAINT fk_agency_students_agency  FOREIGN KEY (agency_id)  REFERENCES agencies(id) ON DELETE CASCADE,
   CONSTRAINT fk_agency_students_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+USE qta_db;
+
+CREATE TABLE IF NOT EXISTS student_qr_tokens (
+  student_id INT NOT NULL PRIMARY KEY,
+  token      CHAR(32) NOT NULL UNIQUE,  -- p.sh. 32-hex nga random_bytes(16)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_qr_student FOREIGN KEY (student_id)
+    REFERENCES students(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

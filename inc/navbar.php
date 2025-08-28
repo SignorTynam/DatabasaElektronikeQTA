@@ -93,6 +93,8 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
                             <i class="bi bi-building me-2"></i>Agjencitë</a></li>
                         <li><a class="dropdown-item<?= $usersStudentsAct ? ' active' : '' ?>" <?= $usersStudentsAct ? 'aria-current="page"' : '' ?> href="students.php">
                             <i class="bi bi-mortarboard me-2"></i>Studentët</a></li>
+                        <li><a class="dropdown-item<?= $active === 'student_card' ? ' active' : '' ?>" <?= $active === 'student_card' ? 'aria-current="page"' : '' ?> href="student_card.php">
+                                <i class="bi bi-credit-card-2-front me-2"></i>Kartela studentit</a></li>
                     </ul>
                 </li>
 
