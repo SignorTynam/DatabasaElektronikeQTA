@@ -138,9 +138,25 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
   <div id="msgBox" class="mb-3" style="display:none;"></div>
 
   <div class="card">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
+    <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
       <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Regjistri</h5>
-      <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
+        <div class="btn-group" role="group" aria-label="Shkarkime">
+          <a class="btn btn-outline-success"
+            href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
+            <i class="bi bi-file-earmark-excel me-1"></i> Excel
+          </a>
+          <a class="btn btn-outline-danger"
+            href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
+            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+          </a>
+          <a class="btn btn-outline-primary"
+            href="register_export.php?f=docx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
+            <i class="bi bi-file-earmark-word me-1"></i> Word
+          </a>
+        </div>
+      </div>
     </div>
 
     <div class="card-body">
