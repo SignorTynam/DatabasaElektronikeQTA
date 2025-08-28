@@ -56,7 +56,7 @@ foreach ($roles as $r) if ($r['name'] === 'agjencia') { $agencyRoleId = (int)$r[
 if ($agencyRoleId === null) { exit('Konfigurim i mangët: roli "agjencia" mungon në tabelën roles.'); }
 
 /* ------------------------------
-   Veprime POST: create/update/reset/delete
+   Veprime POST: vetëm create (update/reset/delete bëhen inline via AJAX)
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
 
-            // 1) users
+            // 1) users (email = NULL)
             $insUser = $pdo->prepare("
                 INSERT INTO users (role_id, full_name, email)
                 VALUES (:rid, :fn, NULL)
@@ -114,108 +114,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
             flash('ok', 'Agjencia u shtua me sukses.');
-        }
-
-        elseif ($action === 'update_agency') {
-            $agency_id    = (int)($_POST['agency_id'] ?? 0);
-            $company_name = trim($_POST['company_name'] ?? '');
-            $nip_t        = trim($_POST['nip_t'] ?? '');
-            $phone        = trim($_POST['phone'] ?? '');
-            $address      = trim($_POST['address'] ?? '');
-
-            if ($agency_id <= 0) throw new RuntimeException('ID agjencie e pavlefshme.');
-            if ($company_name === '' || $nip_t === '') throw new RuntimeException('Emri i agjencisë dhe NIPT janë të detyrueshme.');
-
-            // Verifiko që agency_id i përket një user-i me rol agjencia
-            $chk = $pdo->prepare("
-                SELECT a.user_id
-                FROM agencies a
-                JOIN users u ON u.id = a.user_id
-                WHERE a.id = :aid AND u.role_id = :rid
-                LIMIT 1
-            ");
-            $chk->execute([':aid'=>$agency_id, ':rid'=>$agencyRoleId]);
-            $row = $chk->fetch();
-            if (!$row) throw new RuntimeException('Agjencia nuk u gjet ose nuk ka rolin e duhur.');
-            $userIdOfAgency = (int)$row['user_id'];
-
-            // Unik NIPT (për agjenci të tjera)
-            $exists = $pdo->prepare("SELECT COUNT(*) FROM agencies WHERE nip_t = :n AND id <> :aid");
-            $exists->execute([':n'=>$nip_t, ':aid'=>$agency_id]);
-            if ((int)$exists->fetchColumn() > 0) throw new RuntimeException('Ky NIPT ekziston për një agjenci tjetër.');
-
-            // Update agencies
-            $upd = $pdo->prepare("
-                UPDATE agencies
-                SET company_name = :cn, nip_t = :nip, phone = :ph, address = :ad
-                WHERE id = :aid
-            ");
-            $upd->execute([
-                ':cn'=>$company_name, ':nip'=>$nip_t, ':ph'=>$phone, ':ad'=>$address, ':aid'=>$agency_id
-            ]);
-
-            // Sinkronizo edhe users.full_name
-            $updUser = $pdo->prepare("UPDATE users SET full_name = :fn WHERE id = :uid");
-            $updUser->execute([':fn'=>$company_name, ':uid'=>$userIdOfAgency]);
-
-            flash('ok', 'Të dhënat e agjencisë u përditësuan me sukses.');
-        }
-
-        elseif ($action === 'reset_password') {
-            $user_id = (int)($_POST['user_id'] ?? 0);
-            $pass1   = $_POST['new_password'] ?? '';
-            $pass2   = $_POST['new_password2'] ?? '';
-
-            if ($user_id <= 0 || $pass1 === '' || $pass2 === '') throw new RuntimeException('Të dhëna të paplota.');
-            if ($pass1 !== $pass2) throw new RuntimeException('Fjalëkalimet nuk përputhen.');
-
-            // Lejo vetëm për user me rol agjencia
-            $roleQ = $pdo->prepare("SELECT role_id FROM users WHERE id = :uid");
-            $roleQ->execute([':uid'=>$user_id]);
-            $rid = $roleQ->fetchColumn();
-            if (!$rid || (int)$rid !== $agencyRoleId) throw new RuntimeException('Veprimi lejohet vetëm për agjenci.');
-
-            $hash = password_hash($pass1, PASSWORD_BCRYPT);
-
-            $exists = $pdo->prepare("SELECT COUNT(*) FROM credentials WHERE user_id = :uid");
-            $exists->execute([':uid'=>$user_id]);
-            if ((int)$exists->fetchColumn() > 0) {
-                $upd = $pdo->prepare("UPDATE credentials SET password_hash=:ph, last_password_change=NOW() WHERE user_id=:uid");
-                $upd->execute([':ph'=>$hash, ':uid'=>$user_id]);
-            } else {
-                $ins = $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid,:ph,NOW())");
-                $ins->execute([':uid'=>$user_id, ':ph'=>$hash]);
-            }
-            flash('ok', 'Fjalëkalimi u ndryshua me sukses.');
-        }
-
-        elseif ($action === 'delete_agency') {
-            $agency_id = (int)($_POST['agency_id'] ?? 0);
-            if ($agency_id <= 0) throw new RuntimeException('ID agjencie e pavlefshme.');
-
-            // Gjej user_id dhe konfirmo rolin
-            $q = $pdo->prepare("
-                SELECT a.user_id
-                FROM agencies a
-                JOIN users u ON u.id = a.user_id
-                WHERE a.id = :aid AND u.role_id = :rid
-                LIMIT 1
-            ");
-            $q->execute([':aid'=>$agency_id, ':rid'=>$agencyRoleId]);
-            $row = $q->fetch();
-            if (!$row) throw new RuntimeException('Agjencia nuk u gjet ose nuk ka rolin e duhur.');
-
-            $uid = (int)$row['user_id'];
-
-            if ($uid === (int)$currentUser['id']) {
-                throw new RuntimeException('Nuk mund të fshini llogarinë tuaj gjatë seancës.');
-            }
-
-            // Fshi user-in -> CASCADE fshin agencies
-            $del = $pdo->prepare("DELETE FROM users WHERE id = :uid");
-            $del->execute([':uid'=>$uid]);
-
-            flash('ok', 'Agjencia u fshi.');
         }
 
     } catch (Throwable $e) {
@@ -309,6 +207,26 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .pagination .page-link { border-radius:.5rem; }
         .truncate-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
         @media (max-width: 575.98px) { .navbar-text { display:none; } }
+
+        /* Inline-edit styles */
+        .editable {
+          display:inline-block; min-width:90px; padding:.35rem .5rem;
+          border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
+        }
+        .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
+        .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .cell-saving { position:relative; }
+        .cell-saving::after {
+          content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
+          border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%;
+          animation:spin .6s linear infinite; transform:translateY(-50%);
+        }
+        @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
+        .cell-ok { animation: flashOk 1.2s ease; }
+        @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
+        .cell-err { animation: flashErr 1.2s ease; }
+        @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
+        .nowrap { white-space:nowrap; }
     </style>
 </head>
 <body>
@@ -345,12 +263,10 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                     </ul>
                 </li>
 
-                <!-- Të tjera menu -->
                 <li class="nav-item">
-                    <a class="nav-link" href="#"><i class="bi bi-bar-chart me-1"></i>Raportet</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="index.php"><i class="bi bi-house me-1"></i>Kryefaqja</a>
+                    <a class="nav-link" aria-current="page" href="courses.php">
+                        <i class="bi bi-book me-1"></i>Modulet
+                    </a>
                 </li>
             </ul>
 
@@ -413,7 +329,7 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
-    <!-- Tabela e agjencive -->
+    <!-- Tabela e agjencive (inline-edit) -->
     <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
             <h5 class="mb-0"><i class="bi bi-building me-2"></i>Lista e agjencive</h5>
@@ -430,55 +346,35 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>Telefon</th>
                             <th>Adresë</th>
                             <th>Regjistruar</th>
-                            <th class="text-end">Veprime</th>
                         </tr>
                     </thead>
                     <tbody>
                     <?php if ($agencies): ?>
-                        <?php foreach ($agencies as $a): ?>
+                        <?php foreach ($agencies as $a): $aid=(int)$a['agency_id']; ?>
                             <tr>
-                                <td class="text-muted">#<?= (int)$a['agency_id'] ?></td>
-                                <td><?= htmlspecialchars($a['company_name'] ?: '—') ?></td>
-                                <td><span class="badge text-bg-success"><?= htmlspecialchars($a['nip_t']) ?></span></td>
-                                <td><?= htmlspecialchars($a['phone'] ?: '—') ?></td>
-                                <td>
-                                    <div class="truncate-2" title="<?= htmlspecialchars($a['address'] ?: '') ?>">
-                                        <?= htmlspecialchars($a['address'] ?: '—') ?>
-                                    </div>
+                                <td class="text-muted">#<?= $aid ?></td>
+
+                                <td class="cell" data-id="<?= $aid ?>" data-field="company_name">
+                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($a['company_name'] ?: '—') ?></span>
                                 </td>
+
+                                <td class="cell" data-id="<?= $aid ?>" data-field="nip_t">
+                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($a['nip_t']) ?></span>
+                                </td>
+
+                                <td class="cell nowrap" data-id="<?= $aid ?>" data-field="phone">
+                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($a['phone'] ?: '—') ?></span>
+                                </td>
+
+                                <td class="cell" data-id="<?= $aid ?>" data-field="address" title="Kliko për të modifikuar">
+                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($a['address'] ?: '—') ?></span>
+                                </td>
+
                                 <td class="text-muted"><?= htmlspecialchars($a['created_at']) ?></td>
-                                <td class="text-end">
-                                    <!-- Edit -->
-                                    <button class="btn btn-sm btn-outline-primary me-1"
-                                            data-bs-toggle="modal" data-bs-target="#editAgencyModal"
-                                            data-agency-id="<?= (int)$a['agency_id'] ?>"
-                                            data-company-name="<?= htmlspecialchars($a['company_name'] ?? '', ENT_QUOTES) ?>"
-                                            data-nip-t="<?= htmlspecialchars($a['nip_t'] ?? '', ENT_QUOTES) ?>"
-                                            data-phone="<?= htmlspecialchars($a['phone'] ?? '', ENT_QUOTES) ?>"
-                                            data-address="<?= htmlspecialchars($a['address'] ?? '', ENT_QUOTES) ?>">
-                                        <i class="bi bi-pencil-square me-1"></i>Modifiko
-                                    </button>
-                                    <!-- Reset Password -->
-                                    <button class="btn btn-sm btn-outline-secondary me-1"
-                                            data-bs-toggle="modal" data-bs-target="#resetPassModal"
-                                            data-user-id="<?= (int)$a['user_id'] ?>"
-                                            data-agency-name="<?= htmlspecialchars($a['company_name'] ?: 'Agjenci') ?>">
-                                        <i class="bi bi-key me-1"></i>Reset
-                                    </button>
-                                    <!-- Delete -->
-                                    <form class="d-inline" method="post" onsubmit="return confirm('Fshini këtë agjenci? Veprimi do të fshijë llogarinë dhe të dhënat e saj.');">
-                                        <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-                                        <input type="hidden" name="action" value="delete_agency">
-                                        <input type="hidden" name="agency_id" value="<?= (int)$a['agency_id'] ?>">
-                                        <button class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash me-1"></i>Fshi
-                                        </button>
-                                    </form>
-                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="7" class="text-center text-muted">Nuk u gjet asnjë agjenci.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">Nuk u gjet asnjë agjenci.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -518,8 +414,6 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
     </div>
 </main>
-
-<!-- MODALS -->
 
 <!-- Modal: Shto Agjenci -->
 <div class="modal fade" id="addAgencyModal" tabindex="-1" aria-hidden="true">
@@ -564,86 +458,10 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             Agjencitë hyjnë me <strong>NIPT + fjalëkalim</strong>.
         </div>
       </div>
-    <div class="modal-footer">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-    <button class="btn btn-primary" type="submit">Shto agjenci</button>
-    </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal: Modifiko Agjenci -->
-<div class="modal fade" id="editAgencyModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form class="modal-content" method="post">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-      <input type="hidden" name="action" value="update_agency">
-      <input type="hidden" name="agency_id" id="edit_agency_id">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pencil-square me-1"></i> Modifiko agjencinë</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label">Emri i agjencisë</label>
-                <input type="text" name="company_name" id="edit_company_name" class="form-control" required>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">NIPT</label>
-                <input type="text" name="nip_t" id="edit_nip_t" class="form-control" required>
-                <div class="form-text">Duhet të jetë unik.</div>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Telefon</label>
-                <input type="text" name="phone" id="edit_phone" class="form-control">
-            </div>
-            <div class="col-12">
-                <label class="form-label">Adresë</label>
-                <textarea name="address" id="edit_address" class="form-control" rows="3"></textarea>
-            </div>
-        </div>
-      </div>
-<div class="modal-footer">
-  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-  <button class="btn btn-primary" type="submit">Ruaj ndryshimet</button>
-</div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal: Reset Password (Agjenci) -->
-<div class="modal fade" id="resetPassModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" method="post">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-      <input type="hidden" name="action" value="reset_password">
-      <input type="hidden" name="user_id" id="reset_user_id">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-key me-1"></i> Ndrysho fjalëkalimin (Agjenci)</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-2">
-            <label class="form-label">Agjencia</label>
-            <input type="text" id="reset_agency_name" class="form-control" disabled>
-        </div>
-        <div class="row g-2">
-            <div class="col-md-6">
-                <label class="form-label">Fjalëkalimi i ri</label>
-                <input type="password" name="new_password" class="form-control" required>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Përsërit fjalëkalimin</label>
-                <input type="password" name="new_password2" class="form-control" required>
-            </div>
-        </div>
-        <div class="form-text">Fjalëkalimi ruhet i hash-uar me <code>PASSWORD_BCRYPT</code>.</div>
-      </div>
-        <div class="modal-footer">
+      <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Ruaj</button>
-        </div>
+        <button class="btn btn-primary" type="submit">Shto agjenci</button>
+      </div>
     </form>
   </div>
 </div>
@@ -651,23 +469,57 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 <!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Populate Edit Agency modal
-const editModal = document.getElementById('editAgencyModal');
-editModal?.addEventListener('show.bs.modal', (event) => {
-    const btn = event.relatedTarget;
-    document.getElementById('edit_agency_id').value   = btn.getAttribute('data-agency-id');
-    document.getElementById('edit_company_name').value= btn.getAttribute('data-company-name') || '';
-    document.getElementById('edit_nip_t').value       = btn.getAttribute('data-nip-t') || '';
-    document.getElementById('edit_phone').value       = btn.getAttribute('data-phone') || '';
-    document.getElementById('edit_address').value     = btn.getAttribute('data-address') || '';
-});
+const CSRF = <?= json_encode($CSRF) ?>;
+const ENDPOINT = 'agencies_inline_update.php';
 
-// Populate Reset Password modal
-const resetModal = document.getElementById('resetPassModal');
-resetModal?.addEventListener('show.bs.modal', (event) => {
-    const btn = event.relatedTarget;
-    document.getElementById('reset_user_id').value    = btn.getAttribute('data-user-id');
-    document.getElementById('reset_agency_name').value= btn.getAttribute('data-agency-name') || 'Agjenci';
+function cleanText(s) {
+  const v = (s || '').replace(/\s+/g,' ').trim();
+  return (v === '—' ? '' : v);
+}
+
+async function saveInline(agencyId, field, value, cell, displayEl) {
+  try {
+    cell.classList.add('cell-saving');
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+      body: JSON.stringify({ csrf: CSRF, agency_id: agencyId, field, value })
+    });
+    const json = await res.json();
+    cell.classList.remove('cell-saving');
+    if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
+
+    if (displayEl) {
+      displayEl.textContent = json.display ?? (value || '—');
+    }
+    cell.classList.add('cell-ok');
+    setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+  } catch (e) {
+    console.error(e);
+    cell.classList.remove('cell-saving');
+    cell.classList.add('cell-err');
+    setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+  }
+}
+
+/* Event për contenteditable (blur & Enter) */
+document.querySelectorAll('td.cell .editable').forEach(el => {
+  let oldVal = el.textContent;
+  el.addEventListener('focus', () => { oldVal = el.textContent; });
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      el.blur(); // trigger blur -> save
+    }
+  });
+  el.addEventListener('blur', () => {
+    const cell = el.closest('td.cell');
+    const field = cell.dataset.field;
+    const aid = parseInt(cell.dataset.id, 10);
+    const newVal = cleanText(el.textContent);
+    if (newVal === cleanText(oldVal)) return; // asgjë s'ka ndryshuar
+    saveInline(aid, field, newVal, cell, el);
+  });
 });
 </script>
 </body>
