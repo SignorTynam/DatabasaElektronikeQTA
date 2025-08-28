@@ -325,13 +325,13 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
         </li>
 
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle" href="#" id="registerDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="bi bi-file-earmark-text me-1"></i>Regjistri
-          </a>
-          <ul class="dropdown-menu" aria-labelledby="registerDropdown">
-            <li><a class="dropdown-item" href="register.php"><i class="bi bi-file-earmark-text me-2"></i>Regjistri i plotë</a></li>
-            <li><a class="dropdown-item active" href="groups.php"><i class="bi bi-collection me-2"></i>Grupe</a></li>
-          </ul>
+            <a class="nav-link dropdown-toggle" href="#" id="registerDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-journal-text me-1"></i>Regjistri
+            </a>
+            <ul class="dropdown-menu" aria-labelledby="registerDropdown">
+                <li><a class="dropdown-item" href="register.php"><i class="bi bi-journal-bookmark me-2"></i>Regjistri i plotë</a></li>
+                <li><a class="dropdown-item active" href="groups.php"><i class="bi bi-people-fill me-2"></i>Regjistri me grupe</a></li>
+            </ul>
         </li>
 
         <li class="nav-item"><a class="nav-link" href="courses.php"><i class="bi bi-book me-1"></i>Modulet</a></li>
