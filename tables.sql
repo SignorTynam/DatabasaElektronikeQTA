@@ -79,3 +79,15 @@ INSERT IGNORE INTO education_levels (code, label) VALUES
 
 -- Indeks për kërkim të shpejtë sipas emrit
 CREATE INDEX idx_students_name ON students (last_name, first_name);
+
+-- Modulet (3NF: entitet i vetëm, atribute atomike, pa varësi transitive)
+CREATE TABLE IF NOT EXISTS courses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code  VARCHAR(50)  NOT NULL UNIQUE,      -- KOD (unik, p.sh. QTA-ALGO)
+  name  VARCHAR(200) NOT NULL,             -- EMËR
+  hours SMALLINT UNSIGNED NOT NULL,        -- ORE (>=1)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Kërkime më të shpejta sipas emrit
+CREATE INDEX idx_courses_name ON courses (name);
