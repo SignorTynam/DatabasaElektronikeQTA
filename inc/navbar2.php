@@ -26,11 +26,6 @@ $active = fn(string $k) => isset($NAV_ACTIVE) && $NAV_ACTIVE === $k ? 'active' :
     <div class="collapse navbar-collapse" id="navAgency">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <li class="nav-item"><a class="nav-link <?= $active('dashboard') ?>" href="dashboard_agjencia.php"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link <?= $active('students') ?>"  href="students.php?scope=mine"><i class="bi bi-people me-1"></i>Studentët e mi</a></li>
-        <li class="nav-item"><a class="nav-link <?= $active('groups') ?>"    href="course_groups.php?scope=mine"><i class="bi bi-collection me-1"></i>Grupet</a></li>
-        <li class="nav-item"><a class="nav-link <?= $active('courses') ?>"   href="courses.php"><i class="bi bi-journal-text me-1"></i>Modulet</a></li>
-        <li class="nav-item"><a class="nav-link <?= $active('exams') ?>"     href="exams.php?scope=mine"><i class="bi bi-calendar2-event me-1"></i>Provimet</a></li>
-        <li class="nav-item"><a class="nav-link <?= $active('reports') ?>"   href="reports.php?scope=agency"><i class="bi bi-bar-chart-line me-1"></i>Raporte</a></li>
       </ul>
 
       <div class="d-flex align-items-center gap-3">
