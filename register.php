@@ -222,7 +222,7 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
 
               <td>
                 <div class="fw-semibold"><?= htmlspecialchars($full) ?></div>
-                <div class="text-muted small"><?= htmlspecialchars($r['personal_number']) ?></div>
+                <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '—') ?></div>
               </td>
 
               <!-- start_date (inline grup) -->
