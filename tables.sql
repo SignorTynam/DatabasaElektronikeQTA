@@ -178,3 +178,16 @@ ALTER TABLE students
   MODIFY father_name      VARCHAR(100) NULL,
   MODIFY last_name        VARCHAR(100) NULL,
   MODIFY personal_number  VARCHAR(100) NULL;
+
+USE qta_db;
+
+-- Studentët i përkasin një (ose asnjë) agjencie në një moment (One-to-Many)
+CREATE TABLE IF NOT EXISTS agency_students (
+  agency_id  INT NOT NULL,
+  student_id INT NOT NULL,
+  assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (student_id),                    -- çdo student maksimumi në 1 agjenci
+  KEY idx_agency_students_agency (agency_id),
+  CONSTRAINT fk_agency_students_agency  FOREIGN KEY (agency_id)  REFERENCES agencies(id) ON DELETE CASCADE,
+  CONSTRAINT fk_agency_students_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
