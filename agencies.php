@@ -564,10 +564,10 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             Agjencitë hyjnë me <strong>NIPT + fjalëkalim</strong>.
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Shto agjenci</button>
-      </div>
+    <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+    <button class="btn btn-primary" type="submit">Shto agjenci</button>
+    </div>
     </form>
   </div>
 </div>
@@ -604,10 +604,10 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Ruaj ndryshimet</button>
-      </div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+  <button class="btn btn-primary" type="submit">Ruaj ndryshimet</button>
+</div>
     </form>
   </div>
 </div>
@@ -640,10 +640,10 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
         <div class="form-text">Fjalëkalimi ruhet i hash-uar me <code>PASSWORD_BCRYPT</code>.</div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
         <button class="btn btn-primary" type="submit">Ruaj</button>
-      </div>
+        </div>
     </form>
   </div>
 </div>
