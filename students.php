@@ -301,13 +301,13 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="registerDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-file-earmark-text me-1"></i>Regjistri
+                        <i class="bi bi-journal-text me-1"></i>Regjistri
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="registerDropdown">
-                        <li><a class="dropdown-item" href="register.php"><i class="bi bi-file-earmark-text me-2"></i>Regjistri i plotë</a></li>
+                        <li><a class="dropdown-item" href="register.php"><i class="bi bi-journal-bookmark me-2"></i>Regjistri i plotë</a></li>
+                        <li><a class="dropdown-item" href="groups.php"><i class="bi bi-people-fill me-2"></i>Regjistri me grupe</a></li>
                     </ul>
                 </li>
-
 
                 <li class="nav-item">
                     <a class="nav-link" aria-current="page" href="courses.php">
