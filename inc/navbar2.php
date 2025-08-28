@@ -15,7 +15,7 @@ $active = fn(string $k) => isset($NAV_ACTIVE) && $NAV_ACTIVE === $k ? 'active' :
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top shadow-sm">
   <div class="container-fluid px-3 px-md-4">
         <a class="navbar-brand d-flex align-items-center" href="dashboard_admin.php">
-            <img src="image/logoPNG2.png" class="me-2" alt="QTA"> QTA – Paneli i Administratorit
+            <img src="image/logoPNG2.png" class="me-2" alt="QTA"> QTA – Paneli i Agjensive
         </a>
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navAgency"
