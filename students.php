@@ -685,10 +685,10 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             Studentët hyjnë me <strong>Numrin Personal + fjalëkalim</strong>.
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
         <button class="btn btn-primary" type="submit">Shto student</button>
-      </div>
+        </div>
     </form>
   </div>
 </div>
@@ -750,10 +750,10 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Ruaj ndryshimet</button>
-      </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+            <button class="btn btn-primary" type="submit">Ruaj ndryshimet</button>
+        </div>
     </form>
   </div>
 </div>
@@ -785,10 +785,10 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
         <div class="form-text">Fjalëkalimi ruhet i hash-uar me <code>PASSWORD_BCRYPT</code>.</div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Ruaj</button>
-      </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+            <button class="btn btn-primary" type="submit">Ruaj</button>
+        </div>
     </form>
   </div>
 </div>
