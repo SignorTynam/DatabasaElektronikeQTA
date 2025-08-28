@@ -299,12 +299,10 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                     </ul>
                 </li>
 
-                <!-- Të tjera menu -->
                 <li class="nav-item">
-                    <a class="nav-link" href="#"><i class="bi bi-bar-chart me-1"></i>Raportet</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="index.php"><i class="bi bi-house me-1"></i>Kryefaqja</a>
+                    <a class="nav-link" aria-current="page" href="courses.php">
+                        <i class="bi bi-book me-1"></i>Modulet
+                    </a>
                 </li>
             </ul>
 
