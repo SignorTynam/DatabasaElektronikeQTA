@@ -31,11 +31,7 @@ if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
 ------------------------------- */
 function flash(string $key, ?string $msg=null) {
     if ($msg === null) {
-        if (!empty($_SESSION['flash'][$key])) {
-            $m = $_SESSION['flash'][$key];
-            unset($_SESSION['flash'][$key]);
-            return $m;
-        }
+        if (!empty($_SESSION['flash'][$key])) { $m = $_SESSION['flash'][$key]; unset($_SESSION['flash'][$key]); return $m; }
         return null;
     }
     $_SESSION['flash'][$key] = $msg;
@@ -45,13 +41,11 @@ function require_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = $_POST['csrf'] ?? '';
         if (empty($token) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
-            http_response_code(400);
-            exit('CSRF token mismatch.');
+            http_response_code(400); exit('CSRF token mismatch.');
         }
     }
 }
 
-// CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(24));
 }
@@ -63,13 +57,10 @@ $CSRF = $_SESSION['csrf_token'];
 $roles = $pdo->query("SELECT id, name FROM roles ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 $adminRoleId = null;
 foreach ($roles as $r) if ($r['name'] === 'administrator') { $adminRoleId = (int)$r['id']; break; }
-if ($adminRoleId === null) {
-    exit('Konfigurim i mangët: roli "administrator" mungon në tabelën roles.');
-}
+if ($adminRoleId === null) { exit('Konfigurim i mangët: roli "administrator" mungon në tabelën roles.'); }
 
 /* ------------------------------
    Veprime POST (create/reset/delete)
-   (tani të lejuara vetëm mbi llogari me rol administrator)
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -138,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($uid <= 0 || $pass1==='' || $pass2==='') throw new RuntimeException('Të dhëna të paplota.');
             if ($pass1 !== $pass2) throw new RuntimeException('Fjalëkalimet nuk përputhen.');
 
-            // Lejo vetëm nëse target-i është administrator
+            // Vetëm për administratorë
             $roleQ = $pdo->prepare("SELECT role_id FROM users WHERE id = :uid");
             $roleQ->execute([':uid' => $uid]);
             $targetRole = $roleQ->fetchColumn();
@@ -147,8 +138,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $hash = password_hash($pass1, PASSWORD_BCRYPT);
-
-            // Update ose insert në credentials
             $exists = $pdo->prepare("SELECT COUNT(*) FROM credentials WHERE user_id = :uid");
             $exists->execute([':uid' => $uid]);
             if ((int)$exists->fetchColumn() > 0) {
@@ -170,12 +159,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif ($action === 'delete_user') {
             $uid = (int)($_POST['user_id'] ?? 0);
             if ($uid <= 0) throw new RuntimeException('ID e pavlefshme.');
+            if ($uid === (int)$currentUser['id']) throw new RuntimeException('Nuk mund të fshini llogarinë tuaj gjatë seancës.');
 
-            if ($uid === (int)$currentUser['id']) {
-                throw new RuntimeException('Nuk mund të fshini llogarinë tuaj gjatë seancës.');
-            }
-
-            // Lejo fshirje vetëm nëse target-i është administrator
+            // Vetëm nëse target-i është administrator
             $roleQ = $pdo->prepare("SELECT role_id FROM users WHERE id = :uid");
             $roleQ->execute([':uid' => $uid]);
             $targetRole = $roleQ->fetchColumn();
@@ -193,24 +179,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('err', $e->getMessage());
     }
 
-    // Redirect që të shmangim ri-submit
     header('Location: users.php'); exit;
 }
 
 /* ------------------------------
-   Filtrim vetëm për administratorë + paginim
+   Filtrim (vetëm admin) + paginim
 ------------------------------- */
 $q      = trim($_GET['q'] ?? '');
 $page   = max(1, (int)($_GET['page'] ?? 1));
 $limit  = 20;
 $offset = ($page - 1) * $limit;
 
-$where   = ["r.id = :adminRole"];    // Kusht i detyrueshëm: VETËM admin
+$where   = ["r.id = :adminRole"];
 $params  = [':adminRole' => $adminRoleId];
 
 if ($q !== '') {
-    $where[] = "(u.full_name LIKE :kw OR u.email LIKE :kw)";
-    $params[':kw'] = '%'.$q.'%';
+    // Placeholderë unikë për MySQL native prepares (HY093 fix)
+    $where[] = "(u.full_name LIKE :kw1 OR u.email LIKE :kw2)";
+    $kw = '%'.$q.'%';
+    $params[':kw1'] = $kw;
+    $params[':kw2'] = $kw;
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
@@ -252,58 +240,69 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
     <style>
-        body { background: #f5f7fb; }
-        .navbar-brand img { height: 28px; }
-        .sidebar {
-            position: fixed; top: 0; left: 0; width: 240px; height: 100vh;
-            background: #111827; color: #cbd5e1; padding-top: 64px; z-index: 1029;
-        }
-        .sidebar a {
-            display: block; padding: 12px 18px; color: #cbd5e1; text-decoration: none; border-radius: .5rem;
-            margin: 6px 10px; transition: .2s ease;
-        }
-        .sidebar a:hover, .sidebar a.active { background: #2563eb; color: #fff; }
-        .content { margin-left: 260px; padding: 24px; }
-        .card { border: none; border-radius: 1rem; box-shadow: 0 10px 25px rgba(2,6,23,.06); }
-        .mini-table thead { background: #f1f5f9; }
-        .kpi-icon {
-            width: 46px; height: 46px; border-radius: .75rem; display:flex; align-items:center; justify-content:center; background:#eef2ff;
-        }
+        body { background:#f5f7fb; padding-top:72px; }
+        .navbar-brand img { height:28px; }
+        .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
+        .mini-table thead { background:#f1f5f9; }
+        .kpi-icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#eef2ff; }
         .form-control::placeholder { color:#9ca3af; }
-        .pagination .page-link { border-radius: .5rem; }
+        .pagination .page-link { border-radius:.5rem; }
+        @media (max-width:575.98px){ .navbar-text{ display:none; } }
     </style>
 </head>
 <body>
 
-<!-- Navbar -->
-<nav class="navbar navbar-dark bg-dark fixed-top">
+<!-- NAVBAR (pa sidebar, me dropdown Përdorues) -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center" href="dashboard_admin.php">
             <img src="image/logoPNG2.png" class="me-2" alt="QTA"> QTA – Paneli i Administratorit
         </a>
-        <div class="d-flex align-items-center gap-3">
-            <span class="text-white-50 small d-none d-md-inline">Mirësevjen,</span>
-            <span class="text-white fw-semibold">
-                <i class="bi bi-person-circle me-1"></i>
-                <?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?>
-            </span>
-            <a href="logout.php" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right me-1"></i>Dil</a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="topNav">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <!-- Dashboard -->
+                <li class="nav-item">
+                    <a class="nav-link" href="dashboard_admin.php"><i class="bi bi-speedometer2 me-1"></i>Dashboardi</a>
+                </li>
+
+                <!-- Dropdown: Përdorues -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle active" href="#" id="usersDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-people me-1"></i>Përdorues
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="usersDropdown">
+                        <li><a class="dropdown-item active" href="users.php"><i class="bi bi-shield-lock me-2"></i>Administratorët</a></li>
+                        <li><a class="dropdown-item" href="agencies.php"><i class="bi bi-building me-2"></i>Agjencitë</a></li>
+                        <li><a class="dropdown-item" href="students.php"><i class="bi bi-mortarboard me-2"></i>Studentët</a></li>
+                    </ul>
+                </li>
+
+                <!-- Të tjera -->
+                <li class="nav-item"><a class="nav-link" href="#"><i class="bi bi-bar-chart me-1"></i>Raportet</a></li>
+                <li class="nav-item"><a class="nav-link" href="index.php"><i class="bi bi-house me-1"></i>Kryefaqja</a></li>
+            </ul>
+
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-white-50 small navbar-text">Mirësevjen,</span>
+                <span class="text-white fw-semibold navbar-text">
+                    <i class="bi bi-person-circle me-1"></i>
+                    <?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?>
+                </span>
+                <a href="logout.php" class="btn btn-outline-light btn-sm ms-1">
+                    <i class="bi bi-box-arrow-right me-1"></i>Dil
+                </a>
+            </div>
         </div>
     </div>
 </nav>
 
-<!-- Sidebar (etiketa e menusë ndryshon në “Administratorët”) -->
-<aside class="sidebar">
-    <a href="dashboard_admin.php"><i class="bi bi-speedometer2 me-2"></i> Dashboardi</a>
-    <a class="active" href="users.php"><i class="bi bi-people me-2"></i> Administratorët</a>
-    <a href="agencies.php"><i class="bi bi-building me-2"></i> Agjencitë</a>
-    <a href="students.php"><i class="bi bi-mortarboard me-2"></i> Studentët</a>
-    <a href="#"><i class="bi bi-bar-chart me-2"></i> Raportet</a>
-    <a href="index.html"><i class="bi bi-house me-2"></i> Kryefaqja</a>
-</aside>
-
-<main class="content" style="margin-top: 50px">
-    <div class="d-flex align-items-center justify-content-between mb-3">
+<main class="container-fluid px-3 px-md-4">
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Menaxhimi i administratorëve</h2>
         <div class="d-flex gap-2">
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAdminModal">
@@ -325,7 +324,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     <?php endif; ?>
 
-    <!-- Kërkim (vetëm tekst) -->
+    <!-- Kërkim -->
     <div class="card mb-3">
         <div class="card-body">
             <form class="row g-2 align-items-end" method="get" action="users.php">
@@ -338,15 +337,18 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                 </div>
                 <div class="col-md-3 text-end">
-                    <button class="btn btn-outline-secondary me-1" type="button"
-                            onclick="window.location='users.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-                    <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+                    <button class="btn btn-outline-secondary me-1" type="button" onclick="window.location='users.php'">
+                        <i class="bi bi-x-circle me-1"></i>Pastro
+                    </button>
+                    <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-funnel me-1"></i>Apliko
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Tabela (vetëm administratorë) -->
+    <!-- Tabela -->
     <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
             <h5 class="mb-0"><i class="bi bi-people me-2"></i>Lista e administratorëve</h5>
@@ -372,17 +374,14 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td class="text-muted">#<?= (int)$u['id'] ?></td>
                                 <td><?= htmlspecialchars($u['full_name'] ?: '—') ?></td>
                                 <td><?= htmlspecialchars($u['email'] ?: '—') ?></td>
-                                <td>
-                                    <span class="badge rounded-pill text-bg-danger">Administrator</span>
-                                </td>
+                                <td><span class="badge rounded-pill text-bg-danger">Administrator</span></td>
                                 <td class="text-muted"><?= htmlspecialchars($u['created_at']) ?></td>
                                 <td class="text-end">
                                     <!-- Reset Password -->
                                     <button class="btn btn-sm btn-outline-secondary me-1"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#resetPassModal"
+                                            data-bs-toggle="modal" data-bs-target="#resetPassModal"
                                             data-user-id="<?= (int)$u['id'] ?>"
-                                            data-user-name="<?= htmlspecialchars($u['full_name'] ?: ($u['email'] ?? 'Administrator')) ?>">
+                                            data-user-name="<?= htmlspecialchars($u['full_name'] ?: ($u['email'] ?? 'Administrator'), ENT_QUOTES) ?>">
                                         <i class="bi bi-key me-1"></i>Reset
                                     </button>
                                     <!-- Delete -->
@@ -411,10 +410,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             <nav aria-label="Page navigation">
                 <ul class="pagination mb-0 justify-content-end">
                     <?php
-                    // url bazë (vetëm q & page)
-                    $base = 'users.php?'.http_build_query(array_filter([
-                        'q' => $q !== '' ? $q : null,
-                    ]));
+                    $base = 'users.php?'.http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
                     $prev = max(1, $page-1);
                     $next = min($totalPages, $page+1);
                     ?>
@@ -428,7 +424,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                     <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
                         <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
                     </li>
-                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
+                    <li class="page-item <?= $page>>= $totalPages?'disabled':'' ?>">
                         <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
                     </li>
                 </ul>

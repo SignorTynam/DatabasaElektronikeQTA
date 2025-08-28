@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
 
-            // 1) users (email mund të jetë NULL për agjenci; ruajmë emrin e kompanisë në full_name për shfaqje)
+            // 1) users
             $insUser = $pdo->prepare("
                 INSERT INTO users (role_id, full_name, email)
                 VALUES (:rid, :fn, NULL)
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':cn'=>$company_name, ':nip'=>$nip_t, ':ph'=>$phone, ':ad'=>$address, ':aid'=>$agency_id
             ]);
 
-            // Sinkronizo edhe users.full_name (opsionale por ndihmon në listime të tjera)
+            // Sinkronizo edhe users.full_name
             $updUser = $pdo->prepare("UPDATE users SET full_name = :fn WHERE id = :uid");
             $updUser->execute([':fn'=>$company_name, ':uid'=>$userIdOfAgency]);
 
@@ -207,7 +207,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $uid = (int)$row['user_id'];
 
-            // Mos lejo fshirjen nëse është vetë user-i aktiv (për siguri)
             if ($uid === (int)$currentUser['id']) {
                 throw new RuntimeException('Nuk mund të fshini llogarinë tuaj gjatë seancës.');
             }
@@ -239,8 +238,18 @@ $where  = ["r.id = :agencyRole"];
 $params = [':agencyRole' => $agencyRoleId];
 
 if ($q !== '') {
-    $where[] = "(a.company_name LIKE :kw OR a.nip_t LIKE :kw OR a.phone LIKE :kw OR a.address LIKE :kw)";
-    $params[':kw'] = '%'.$q.'%';
+    // Placeholderë unikë për të shmangur HY093
+    $where[] = "(
+        a.company_name LIKE :kw1 OR
+        a.nip_t        LIKE :kw2 OR
+        a.phone        LIKE :kw3 OR
+        a.address      LIKE :kw4
+    )";
+    $kw = '%'.$q.'%';
+    $params[':kw1'] = $kw;
+    $params[':kw2'] = $kw;
+    $params[':kw3'] = $kw;
+    $params[':kw4'] = $kw;
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
@@ -292,56 +301,75 @@ $agencies = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
     <style>
-        body { background: #f5f7fb; }
-        .navbar-brand img { height: 28px; }
-        .sidebar {
-            position: fixed; top: 0; left: 0; width: 240px; height: 100vh;
-            background: #111827; color: #cbd5e1; padding-top: 64px; z-index: 1029;
-        }
-        .sidebar a {
-            display: block; padding: 12px 18px; color: #cbd5e1; text-decoration: none; border-radius: .5rem;
-            margin: 6px 10px; transition: .2s ease;
-        }
-        .sidebar a:hover, .sidebar a.active { background: #2563eb; color: #fff; }
-        .content { margin-left: 260px; padding: 24px; }
-        .card { border: none; border-radius: 1rem; box-shadow: 0 10px 25px rgba(2,6,23,.06); }
-        .mini-table thead { background: #f1f5f9; }
+        body { background:#f5f7fb; padding-top:72px; } /* hapësirë për navbar fixed-top */
+        .navbar-brand img { height:28px; }
+        .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
+        .mini-table thead { background:#f1f5f9; }
         .form-control::placeholder { color:#9ca3af; }
-        .pagination .page-link { border-radius: .5rem; }
-        .truncate-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .pagination .page-link { border-radius:.5rem; }
+        .truncate-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        @media (max-width: 575.98px) { .navbar-text { display:none; } }
     </style>
 </head>
 <body>
 
-<!-- Navbar (identik) -->
-<nav class="navbar navbar-dark bg-dark fixed-top">
+<!-- NAVBAR (pa sidebar, me dropdown Përdorues) -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center" href="dashboard_admin.php">
             <img src="image/logoPNG2.png" class="me-2" alt="QTA"> QTA – Paneli i Administratorit
         </a>
-        <div class="d-flex align-items-center gap-3">
-            <span class="text-white-50 small d-none d-md-inline">Mirësevjen,</span>
-            <span class="text-white fw-semibold">
-                <i class="bi bi-person-circle me-1"></i>
-                <?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?>
-            </span>
-            <a href="logout.php" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right me-1"></i>Dil</a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="topNav">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <!-- Dashboard -->
+                <li class="nav-item">
+                    <a class="nav-link" href="dashboard_admin.php">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboardi
+                    </a>
+                </li>
+
+                <!-- Dropdown: Përdorues -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle active" href="#" id="usersDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-people me-1"></i>Përdorues
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="usersDropdown">
+                        <li><a class="dropdown-item" href="users.php"><i class="bi bi-shield-lock me-2"></i>Administratorët</a></li>
+                        <li><a class="dropdown-item active" href="agencies.php"><i class="bi bi-building me-2"></i>Agjencitë</a></li>
+                        <li><a class="dropdown-item" href="students.php"><i class="bi bi-mortarboard me-2"></i>Studentët</a></li>
+                    </ul>
+                </li>
+
+                <!-- Të tjera menu -->
+                <li class="nav-item">
+                    <a class="nav-link" href="#"><i class="bi bi-bar-chart me-1"></i>Raportet</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="index.php"><i class="bi bi-house me-1"></i>Kryefaqja</a>
+                </li>
+            </ul>
+
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-white-50 small navbar-text">Mirësevjen,</span>
+                <span class="text-white fw-semibold navbar-text">
+                    <i class="bi bi-person-circle me-1"></i>
+                    <?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?>
+                </span>
+                <a href="logout.php" class="btn btn-outline-light btn-sm ms-1">
+                    <i class="bi bi-box-arrow-right me-1"></i>Dil
+                </a>
+            </div>
         </div>
     </div>
 </nav>
 
-<!-- Sidebar (Agjencitë aktive) -->
-<aside class="sidebar">
-    <a href="dashboard_admin.php"><i class="bi bi-speedometer2 me-2"></i> Dashboardi</a>
-    <a href="users.php"><i class="bi bi-people me-2"></i> Administratorët</a>
-    <a class="active" href="agencies.php"><i class="bi bi-building me-2"></i> Agjencitë</a>
-    <a href="students.php"><i class="bi bi-mortarboard me-2"></i> Studentët</a>
-    <a href="#"><i class="bi bi-bar-chart me-2"></i> Raportet</a>
-    <a href="index.html"><i class="bi bi-house me-2"></i> Kryefaqja</a>
-</aside>
-
-<main class="content" style="margin-top: 50px">
-    <div class="d-flex align-items-center justify-content-between mb-3">
+<main class="container-fluid px-3 px-md-4">
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Agjencitë e regjistruara</h2>
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAgencyModal">

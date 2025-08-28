@@ -5,12 +5,10 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
-// 1) Verifiko login & rolin administrator
+/* 1) Verifiko login & rolin administrator */
 if (!isset($_SESSION['user_id'])) {
-    header('Location: selectProfile.php');
-    exit;
+    header('Location: selectProfile.php'); exit;
 }
-
 $userStmt = $pdo->prepare("
     SELECT u.id, u.full_name, u.email, r.name AS role_name
     FROM users u
@@ -20,18 +18,14 @@ $userStmt = $pdo->prepare("
 ");
 $userStmt->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $userStmt->fetch();
-
 if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
-    // nëse s’është admin, kthehu tek login
-    header('Location: selectProfile.php');
-    exit;
+    header('Location: selectProfile.php'); exit;
 }
 
-// 2) Statistikat kryesore
+/* 2) Statistikat kryesore */
 function tableCount(PDO $pdo, string $table): int {
     return (int)$pdo->query("SELECT COUNT(*) FROM {$table}")->fetchColumn();
 }
-
 $stats = [
     'students' => tableCount($pdo, 'students'),
     'agencies' => tableCount($pdo, 'agencies'),
@@ -39,7 +33,7 @@ $stats = [
     'users'    => tableCount($pdo, 'users'),
 ];
 
-// 3) Aktivitetet e fundit (përdoruesit e fundit të shtuar)
+/* 3) Aktivitetet e fundit */
 $recentStmt = $pdo->query("
     SELECT u.full_name, u.email, u.created_at, r.name AS role_name
     FROM users u
@@ -49,7 +43,7 @@ $recentStmt = $pdo->query("
 ");
 $recentUsers = $recentStmt->fetchAll();
 
-// 4) Agjencitë e fundit (opsionale në “cards”)
+/* 4) Agjencitë e fundit */
 $agenciesStmt = $pdo->query("
     SELECT a.company_name, a.nip_t, a.phone
     FROM agencies a
@@ -59,7 +53,7 @@ $agenciesStmt = $pdo->query("
 ");
 $recentAgencies = $agenciesStmt->fetchAll();
 
-// 5) Studentët e fundit (opsionale)
+/* 5) Studentët e fundit */
 $studentsStmt = $pdo->query("
     SELECT s.personal_number, s.phone, u.full_name
     FROM students s
@@ -78,68 +72,86 @@ $recentStudents = $studentsStmt->fetchAll();
     <!-- Bootstrap & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-
     <style>
-        body { background: #f5f7fb; }
-        .navbar-brand img { height: 28px; }
-        .sidebar {
-            position: fixed; top: 0; left: 0; width: 240px; height: 100vh;
-            background: #111827; color: #cbd5e1; padding-top: 64px; z-index: 1029;
-        }
-        .sidebar a {
-            display: block; padding: 12px 18px; color: #cbd5e1; text-decoration: none; border-radius: .5rem;
-            margin: 6px 10px; transition: .2s ease;
-        }
-        .sidebar a:hover, .sidebar a.active { background: #2563eb; color: #fff; }
-        .content { margin-left: 260px; padding: 24px; }
-        .card {
-            border: none; border-radius: 1rem;
-            box-shadow: 0 10px 25px rgba(2, 6, 23, 0.06);
-        }
+        body { background:#f5f7fb; padding-top:72px; } /* hapësirë për navbar-in fixed-top */
+        .navbar-brand img { height:28px; }
+        .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
         .stat-hero {
             background: radial-gradient(1200px 400px at 10% -20%, rgba(37,99,235,.25), rgba(37,99,235,0) 60%),
                         radial-gradient(800px 300px at 90% -10%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
                         linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
-            color: #fff; border-radius: 1.25rem; overflow: hidden;
+            color:#fff; border-radius:1.25rem; overflow:hidden;
         }
-        .stat-hero .badge { background: rgba(255,255,255,.2); }
-        .mini-table thead { background: #f1f5f9; }
+        .stat-hero .badge { background:rgba(255,255,255,.2); }
+        .mini-table thead { background:#f1f5f9; }
         .kpi-icon {
-            width: 46px; height: 46px; border-radius: .75rem; display:flex; align-items:center; justify-content:center;
-            background: #eef2ff;
+            width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center;
+            background:#eef2ff;
+        }
+        @media (max-width: 575.98px) {
+            .navbar-text { display:none; }
         }
     </style>
 </head>
 <body>
 
-<!-- Navbar -->
-<nav class="navbar navbar-dark bg-dark fixed-top">
+<!-- NAVBAR (pa sidebar, me dropdown "Përdorues") -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center" href="#">
+        <a class="navbar-brand d-flex align-items-center" href="dashboard_admin.php">
             <img src="image/logoPNG2.png" class="me-2" alt="QTA"> QTA – Paneli i Administratorit
         </a>
-        <div class="d-flex align-items-center gap-3">
-            <span class="text-white-50 small d-none d-md-inline">Mirësevjen,</span>
-            <span class="text-white fw-semibold">
-                <i class="bi bi-person-circle me-1"></i>
-                <?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?>
-            </span>
-            <a href="logout.php" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right me-1"></i>Dil</a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="topNav">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <!-- Dashboard (aktiv) -->
+                <li class="nav-item">
+                    <a class="nav-link active" aria-current="page" href="dashboard_admin.php">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboardi
+                    </a>
+                </li>
+
+                <!-- Dropdown: Përdorues -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="usersDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-people me-1"></i>Përdorues
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="usersDropdown">
+                        <li><a class="dropdown-item" href="users.php"><i class="bi bi-shield-lock me-2"></i>Administratorët</a></li>
+                        <li><a class="dropdown-item" href="agencies.php"><i class="bi bi-building me-2"></i>Agjencitë</a></li>
+                        <li><a class="dropdown-item" href="students.php"><i class="bi bi-mortarboard me-2"></i>Studentët</a></li>
+                    </ul>
+                </li>
+
+                <!-- Të tjera menu -->
+                <li class="nav-item">
+                    <a class="nav-link" href="#"><i class="bi bi-bar-chart me-1"></i>Raportet</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="index.php"><i class="bi bi-house me-1"></i>Kryefaqja</a>
+                </li>
+            </ul>
+
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-white-50 small navbar-text">Mirësevjen,</span>
+                <span class="text-white fw-semibold navbar-text">
+                    <i class="bi bi-person-circle me-1"></i>
+                    <?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?>
+                </span>
+                <a href="logout.php" class="btn btn-outline-light btn-sm ms-1">
+                    <i class="bi bi-box-arrow-right me-1"></i>Dil
+                </a>
+            </div>
         </div>
     </div>
 </nav>
 
-<!-- Sidebar -->
-<aside class="sidebar">
-    <a class="active" href="dashboard_admin.php"><i class="bi bi-speedometer2 me-2"></i> Dashboardi</a>
-    <a href="users.php"><i class="bi bi-people me-2"></i> Administratorët</a>
-    <a href="agencies.php"><i class="bi bi-building me-2"></i> Agjencitë</a>
-    <a href="students.php"><i class="bi bi-mortarboard me-2"></i> Studentët</a>
-    <a href="#"><i class="bi bi-bar-chart me-2"></i> Raportet</a>
-    <a href="index.html"><i class="bi bi-house me-2"></i> Kryefaqja</a>
-</aside>
+<main class="container-fluid px-3 px-md-4">
 
-<main class="content" style="margin-top: 50px">
     <!-- Hero / Overview -->
     <div class="stat-hero p-4 p-md-5 mb-4">
         <div class="row align-items-center">
@@ -161,8 +173,7 @@ $recentStudents = $studentsStmt->fetchAll();
                                 <div class="h3 mb-0"><?= number_format($stats['users']) ?></div>
                             </div>
                         </div>
-                        <div class="progress mt-3" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-                             aria-valuenow="<?= $stats['users'] ? 100 : 0 ?>">
+                        <div class="progress mt-3" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $stats['users'] ? 100 : 0 ?>">
                             <div class="progress-bar" style="width: 100%"></div>
                         </div>
                         <div class="small text-muted mt-2">Aktiv deri tani</div>
@@ -175,7 +186,7 @@ $recentStudents = $studentsStmt->fetchAll();
     <!-- KPI Cards -->
     <div class="row g-4 mb-4">
         <div class="col-12 col-md-6 col-xl-3">
-            <div class="card p-3">
+            <div class="card p-3 h-100">
                 <div class="d-flex align-items-center">
                     <div class="kpi-icon me-3" style="background:#eff6ff;"><i class="bi bi-mortarboard fs-4 text-primary"></i></div>
                     <div>
@@ -187,7 +198,7 @@ $recentStudents = $studentsStmt->fetchAll();
             </div>
         </div>
         <div class="col-12 col-md-6 col-xl-3">
-            <div class="card p-3">
+            <div class="card p-3 h-100">
                 <div class="d-flex align-items-center">
                     <div class="kpi-icon me-3" style="background:#ecfdf5;"><i class="bi bi-building fs-4 text-success"></i></div>
                     <div>
@@ -199,7 +210,7 @@ $recentStudents = $studentsStmt->fetchAll();
             </div>
         </div>
         <div class="col-12 col-md-6 col-xl-3">
-            <div class="card p-3">
+            <div class="card p-3 h-100">
                 <div class="d-flex align-items-center">
                     <div class="kpi-icon me-3" style="background:#fff1f2;"><i class="bi bi-shield-lock fs-4 text-danger"></i></div>
                     <div>
@@ -211,9 +222,9 @@ $recentStudents = $studentsStmt->fetchAll();
             </div>
         </div>
         <div class="col-12 col-md-6 col-xl-3">
-            <div class="card p-3">
+            <div class="card p-3 h-100">
                 <div class="d-flex align-items-center">
-                    <div class="kpi-icon me-3" style="background:#eef2ff;"><i class="bi bi-people fs-4 text-indigo"></i></div>
+                    <div class="kpi-icon me-3" style="background:#eef2ff;"><i class="bi bi-people fs-4 text-primary"></i></div>
                     <div>
                         <div class="small text-muted text-uppercase">Përdorues</div>
                         <div class="h3 mb-0"><?= number_format($stats['users']) ?></div>
@@ -256,10 +267,9 @@ $recentStudents = $studentsStmt->fetchAll();
                                             <div class="text-muted small"><?= htmlspecialchars($ru['email'] ?: '-') ?></div>
                                         </td>
                                         <td>
-                                            <span class="badge rounded-pill text-bg-<?=
+                                            <span class="badge rounded-pill text-bg-<?= 
                                                 $ru['role_name']==='administrator' ? 'danger' :
-                                                ($ru['role_name']==='agjencia' ? 'success' : 'primary')
-                                            ?>">
+                                                ($ru['role_name']==='agjencia' ? 'success' : 'primary') ?>">
                                                 <?= htmlspecialchars(ucfirst($ru['role_name'])) ?>
                                             </span>
                                         </td>
