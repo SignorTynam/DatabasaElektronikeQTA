@@ -171,3 +171,10 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+
+ALTER TABLE students
+  MODIFY first_name       VARCHAR(100) NULL,
+  MODIFY father_name      VARCHAR(100) NULL,
+  MODIFY last_name        VARCHAR(100) NULL,
+  MODIFY personal_number  VARCHAR(100) NULL;

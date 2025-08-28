@@ -20,9 +20,13 @@ if (!$currentUser || $currentUser['role_name']!=='administrator') { header('Loca
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
 $CSRF = $_SESSION['csrf_token'];
 
-/* ===== Helpers për parsing AMZË ===== */
+/* Gjej rolin 'student' */
+$studentRoleId = (int)$pdo->query("SELECT id FROM roles WHERE name='student'")->fetchColumn();
+if (!$studentRoleId) { exit('Konfigurim i mangët: mungon roli "student" në tabelën roles.'); }
+
+/* ===== Helpers ===== */
+/** Kthen lista numrash (UNIQUE, renditur) nga input p.sh. "3400-3403, 3409" */
 function parseAmzeRanges(string $s): array {
-  // Kthen lista numrash (UNIQUE, të renditur) nga input p.sh. "3400-3403, 3409"
   $out = [];
   foreach (preg_split('/\s*,\s*/', trim($s)) as $tok) {
     if ($tok === '') continue;
@@ -32,8 +36,6 @@ function parseAmzeRanges(string $s): array {
       for ($i=$a; $i<=$b; $i++) $out[$i] = true;
     } elseif (preg_match('/^\d+$/', $tok)) {
       $out[(int)$tok] = true;
-    } else {
-      // injoro token jo-numerik
     }
   }
   $nums = array_keys($out);
@@ -41,7 +43,32 @@ function parseAmzeRanges(string $s): array {
   return $nums;
 }
 
-/* ===== POST: Krijo grup + cakto AMZË ===== */
+/** Kthen student_id për një AMZË numerike; nëse s’ekziston, krijon student “bosh” */
+function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $amzeNum): int {
+  // Gjej student me CAST(nr_amze AS UNSIGNED) = $amzeNum
+  $q = $pdo->prepare("SELECT id FROM students WHERE CAST(nr_amze AS UNSIGNED) = :n LIMIT 1");
+  $q->execute([':n'=>$amzeNum]);
+  $sid = $q->fetchColumn();
+  if ($sid) return (int)$sid;
+
+  // Krijo user “student” pa email, full_name NULL
+  $insU = $pdo->prepare("INSERT INTO users (role_id, full_name, email) VALUES (:r, NULL, NULL)");
+  $insU->execute([':r'=>$studentRoleId]);
+  $uid = (int)$pdo->lastInsertId();
+
+  // Krijo student me të dhëna bosh; vendos vetëm nr_amze (si string i numrit)
+  $nrAmzeStr = (string)$amzeNum;
+  $insS = $pdo->prepare("
+    INSERT INTO students
+      (user_id, first_name, father_name, last_name, birth_date, birth_place, nr_amze, personal_number, education_level_id)
+    VALUES
+      (:uid, NULL, NULL, NULL, NULL, NULL, :amz, NULL, NULL)
+  ");
+  $insS->execute([':uid'=>$uid, ':amz'=>$nrAmzeStr]);
+  return (int)$pdo->lastInsertId();
+}
+
+/* ===== POST: Krijo grup + cakto AMZË fillestare ===== */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $_POST['action'] ?? '';
   if ($action==='create_group') {
@@ -62,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if ($exam_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $exam_date)) throw new RuntimeException('Data e testit është e pavlefshme.');
       if ($exam_date !== '' && $exam_date < $end_date) throw new RuntimeException('Data e testit duhet të jetë ≥ datës së mbarimit.');
 
+      $pdo->beginTransaction();
       // Krijo grupin
       $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, exam_date) VALUES (:c,:s,:e,:x)");
       $st->execute([
@@ -71,35 +99,91 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $gid = (int)$pdo->lastInsertId();
 
       // Cakto AMZË (deri në 10)
-      $toAssign = [];
       if ($amze_spec !== '') {
-        $nums = parseAmzeRanges($amze_spec); // numrat e amzës (numeric)
+        $nums = parseAmzeRanges($amze_spec);
         if (count($nums) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup. Redukto listën e AMZË-ve.');
-        if ($nums) {
-          // Merr studentët me CAST(nr_amze AS UNSIGNED) IN (...)
-          // (kujdes për IN me shumë elementë — janë pak, OK)
-          $in  = implode(',', array_fill(0, count($nums), '?'));
-          $sql = "SELECT id FROM students WHERE CAST(nr_amze AS UNSIGNED) IN ($in)";
-          $q   = $pdo->prepare($sql);
-          foreach ($nums as $i=>$val) $q->bindValue($i+1, $val, PDO::PARAM_INT);
-          $q->execute();
-          $toAssign = array_map(fn($r)=> (int)$r['id'], $q->fetchAll(PDO::FETCH_ASSOC));
-        }
-      }
 
-      // Shkruaj lidhjet
-      if ($toAssign) {
-        // Sigurohu të mos kalojë 10 dhe pa dublikatë
-        $toAssign = array_values(array_unique($toAssign));
-        if (count($toAssign) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+        $ids = [];
+        foreach ($nums as $n) { $ids[] = ensureStudentByAmze($pdo, $studentRoleId, $n); }
+        $ids = array_values(array_unique($ids));
+        if (count($ids)>10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+
         $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
-        foreach ($toAssign as $sid) {
-          $ins->execute([':g'=>$gid, ':s'=>$sid]);
-        }
+        foreach ($ids as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
       }
+      $pdo->commit();
 
       $_SESSION['flash_ok'] = 'Grupi u krijua me sukses.';
     } catch (Throwable $e) {
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      $_SESSION['flash_err'] = $e->getMessage();
+    }
+    header('Location: groups.php'); exit;
+  }
+
+  /* ===== POST: Modifiko anëtarët e grupit (shtim/heqje) ===== */
+  if ($action==='edit_members') {
+    if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
+      http_response_code(400); exit('CSRF token mismatch.');
+    }
+    $group_id = (int)($_POST['group_id'] ?? 0);
+    $amze_spec_members = trim((string)($_POST['amze_spec_members'] ?? ''));
+    try {
+      if ($group_id<=0) throw new RuntimeException('Grup i pavlefshëm.');
+
+      // Lexo anëtarët ekzistues (amzë numerike => student_id)
+      $q = $pdo->prepare("
+        SELECT s.id AS student_id, CAST(s.nr_amze AS UNSIGNED) AS amznum
+        FROM course_group_students cgs
+        JOIN students s ON s.id = cgs.student_id
+        WHERE cgs.group_id = :gid
+        ORDER BY amznum
+      ");
+      $q->execute([':gid'=>$group_id]);
+      $existing = $q->fetchAll(PDO::FETCH_ASSOC);
+      $existMap = [];
+      foreach ($existing as $row) $existMap[(int)$row['amznum']] = (int)$row['student_id'];
+
+      // Target lista nga input
+      $targetNums = ($amze_spec_members === '') ? [] : parseAmzeRanges($amze_spec_members);
+      if (count($targetNums) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+
+      // Ktheji në student_id (krijo studentë nëse mungojnë)
+      $targetMap = []; // amznum => student_id
+      foreach ($targetNums as $n) {
+        $targetMap[$n] = ensureStudentByAmze($pdo, $studentRoleId, $n);
+      }
+
+      // Kapaciteti final
+      if (count($targetMap) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+
+      // Diferencat
+      $toRemove = [];
+      foreach ($existMap as $amz=>$sid) {
+        if (!array_key_exists($amz, $targetMap)) $toRemove[] = $sid;
+      }
+      $toAdd = [];
+      foreach ($targetMap as $amz=>$sid) {
+        if (!array_key_exists($amz, $existMap)) $toAdd[] = $sid;
+      }
+
+      $pdo->beginTransaction();
+      if ($toRemove) {
+        $del = $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g AND student_id=:s");
+        foreach ($toRemove as $sid) $del->execute([':g'=>$group_id, ':s'=>$sid]);
+      }
+      if ($toAdd) {
+        // Kontrolli paraprak i kapacitetit (edhe trigger-i do e mbrojë)
+        $cnt = (int)$pdo->query("SELECT COUNT(*) FROM course_group_students WHERE group_id=".$group_id)->fetchColumn();
+        if ($cnt + count($toAdd) > 10) throw new RuntimeException('Ky ndryshim tejkalon kufirin 10 për grup.');
+        $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
+        foreach ($toAdd as $sid) $ins->execute([':g'=>$group_id, ':s'=>$sid]);
+      }
+      $pdo->commit();
+
+      $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
+    } catch (Throwable $e) {
+      if ($pdo->inTransaction()) $pdo->rollBack();
       $_SESSION['flash_err'] = $e->getMessage();
     }
     header('Location: groups.php'); exit;
@@ -113,7 +197,7 @@ $courseFilter = trim($_GET['course_id'] ?? '');  // opsional
 /* Merr kurset për dropdown */
 $courses = $pdo->query("SELECT id, code, name FROM courses ORDER BY code")->fetchAll(PDO::FETCH_ASSOC);
 
-/* Query: të gjithë rreshtat (group + student) sipas filtrit */
+/* Query: rreshta (grup + student) sipas filtrit */
 $params = [];
 $w = ["1=1"];
 if ($q !== '') {
@@ -130,7 +214,6 @@ if ($courseFilter !== '' && ctype_digit($courseFilter)) {
 }
 $whereSql = 'WHERE '.implode(' AND ', $w);
 
-/* Rreshta për grupe me studentët e tyre */
 $sql = "
   SELECT
     cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.exam_date,
@@ -152,7 +235,7 @@ foreach ($params as $k=>$v) $st->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO
 $st->execute();
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-/* Nxirr edhe “Pa grup” (studentë që s’janë në asnjë grup) me të njëjtin filtër q */
+/* Studentë pa grup */
 $w2 = ["1=1"];
 $params2 = [];
 if ($q !== '') {
@@ -216,7 +299,7 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
 </head>
 <body>
 
-<!-- NAVBAR (shto linkun për Grupe) -->
+<!-- NAVBAR -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
   <div class="container-fluid">
     <a class="navbar-brand d-flex align-items-center" href="dashboard_admin.php">
@@ -291,24 +374,22 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
     </div>
   </div>
 
-  <?php if ($flash_ok): ?>
+  <?php if (!empty($_SESSION['flash_ok'])): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-      <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($flash_ok) ?>
+      <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($_SESSION['flash_ok']) ?>
       <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
-  <?php endif; ?>
-  <?php if ($flash_err): ?>
+    <?php unset($_SESSION['flash_ok']); endif; ?>
+  <?php if (!empty($_SESSION['flash_err'])): ?>
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-      <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($flash_err) ?>
+      <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($_SESSION['flash_err']) ?>
       <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
-  <?php endif; ?>
+    <?php unset($_SESSION['flash_err']); endif; ?>
 
-  <!-- Mesazhe runtime -->
   <div id="msgBox" class="mb-3" style="display:none;"></div>
 
   <?php
-  /* Render grupe: grupojmë $rows sipas group_id */
   $groups = [];
   foreach ($rows as $r) {
     $gid = (int)$r['group_id'];
@@ -331,6 +412,14 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
   ?>
 
   <?php if ($groups): foreach ($groups as $gid=>$g): ?>
+    <?php
+      // Prefill AMZË për modalin e këtij grupi
+      $prefillAmze = [];
+      foreach ($g['students'] as $stRow) {
+        $prefillAmze[] = (string)((int)$stRow['nr_amze']); // numerik, pa leading zeros
+      }
+      $prefillAmzeStr = implode(', ', $prefillAmze);
+    ?>
     <div class="card mb-4">
       <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div class="d-flex align-items-center gap-3">
@@ -339,22 +428,28 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
             Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_code'].' · '.$g['header']['course_name']) ?>
           </h5>
         </div>
-        <div class="text-muted small">
-          <span class="me-3">Fillimi:
-            <span class="editable cell-inline" contenteditable="true"
-                  data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                  title="YYYY-MM-DD"><?= htmlspecialchars($g['header']['start_date']) ?></span>
-          </span>
-          <span class="me-3">Mbarimi:
-            <span class="editable cell-inline" contenteditable="true"
-                  data-field="end_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                  title="YYYY-MM-DD (≥ data e fillimit)"><?= htmlspecialchars($g['header']['end_date']) ?></span>
-          </span>
-          <span>Testi:
-            <span class="editable cell-inline" contenteditable="true"
-                  data-field="exam_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                  title="YYYY-MM-DD (≥ data e mbarimit)"><?= htmlspecialchars($g['header']['exam_date'] ?: '—') ?></span>
-          </span>
+        <div class="d-flex align-items-center gap-3">
+          <div class="text-muted small">
+            <span class="me-3">Fillimi:
+              <span class="editable cell-inline" contenteditable="true"
+                    data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
+                    title="YYYY-MM-DD"><?= htmlspecialchars($g['header']['start_date']) ?></span>
+            </span>
+            <span class="me-3">Mbarimi:
+              <span class="editable cell-inline" contenteditable="true"
+                    data-field="end_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
+                    title="YYYY-MM-DD (≥ data e fillimit)"><?= htmlspecialchars($g['header']['end_date']) ?></span>
+            </span>
+            <span>Testi:
+              <span class="editable cell-inline" contenteditable="true"
+                    data-field="exam_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
+                    title="YYYY-MM-DD (≥ data e mbarimit)"><?= htmlspecialchars($g['header']['exam_date'] ?: '—') ?></span>
+            </span>
+          </div>
+          <button class="btn btn-outline-primary btn-sm"
+                  data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>">
+            <i class="bi bi-pencil-square me-1"></i>Modifiko anëtarët
+          </button>
         </div>
       </div>
       <div class="card-body">
@@ -393,6 +488,34 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Modifiko anëtarët e grupit -->
+    <div class="modal fade" id="editMembersModal_<?= (int)$gid ?>" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <form class="modal-content" method="post" action="groups.php">
+          <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+          <input type="hidden" name="action" value="edit_members">
+          <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi bi-people me-1"></i> Modifiko anëtarët — Grup #<?= (int)$gid ?></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">AMZË që duhet të jenë në këtë grup (deri në 10)</label>
+            <textarea name="amze_spec_members" class="form-control" rows="3"
+              placeholder="p.sh. 3400-3403, 3409"><?= htmlspecialchars($prefillAmzeStr) ?></textarea>
+            <div class="form-text">
+              Mund të shtosh ose heqësh AMZË. Nëse shkruan AMZË që s’ekziston, do të krijohet student i ri me të dhëna bosh.
+              Kapaciteti maksimal: 10 studentë.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+            <button class="btn btn-primary" type="submit">Ruaj ndryshimet</button>
+          </div>
+        </form>
       </div>
     </div>
   <?php endforeach; else: ?>
