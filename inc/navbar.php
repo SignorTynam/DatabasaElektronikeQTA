@@ -117,14 +117,32 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
                 </li>
             </ul>
 
-            <div class="d-flex align-items-center gap-2">
-                <span class="text-white-50 small navbar-text">Mirësevjen,</span>
-                <span class="text-white fw-semibold navbar-text">
-                    <i class="bi bi-person-circle me-1"></i><?= h($who) ?>
-                </span>
-                <a href="logout.php" class="btn btn-outline-light btn-sm ms-1">
-                    <i class="bi bi-box-arrow-right me-1"></i>Dil
-                </a>
+            <div class="d-flex align-items-center gap-3">
+                <div class="navbar-text text-white-50 d-none d-lg-block">
+                    <small>
+                        <i class="bi bi-shield-lock me-1"></i>Admin
+                        <span class="mx-1">•</span>
+                        <i class="bi bi-envelope-at me-1"></i><?= h($currentUser['email'] ?? '') ?>
+                    </small>
+                </div>
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-badge me-1"></i><?= h($currentUser['full_name'] ?: 'Profili') ?>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item<?= $active === 'profile' ? ' active' : '' ?>" href="/profile.php">
+                                <i class="bi bi-person-gear me-2"></i>Profili
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="/logout.php">
+                                <i class="bi bi-box-arrow-right me-2"></i>Dil
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
