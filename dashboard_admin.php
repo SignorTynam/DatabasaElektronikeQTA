@@ -332,7 +332,7 @@ $recentStudents = $studentsStmt->fetchAll();
                                 <li class="list-group-item d-flex justify-content-between align-items-start">
                                     <div>
                                         <div class="fw-semibold"><?= htmlspecialchars($s['full_name'] ?: '—') ?></div>
-                                        <div class="small text-muted">Numri personal: <?= htmlspecialchars($s['personal_number']) ?></div>
+                                        <div class="small text-muted">Numri personal: <?= htmlspecialchars($s['personal_number'] ?? '—') ?></div>
                                     </div>
                                     <span class="small text-muted"><?= htmlspecialchars($s['phone'] ?: '') ?></span>
                                 </li>
