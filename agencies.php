@@ -28,9 +28,12 @@ $roles = $pdo->query("SELECT id,name FROM roles ORDER BY name")->fetchAll(PDO::F
 $agencyRoleId=null; foreach($roles as $r) if($r['name']==='agjencia'){ $agencyRoleId=(int)$r['id']; break; }
 if($agencyRoleId===null) exit('Mungon roli "agjencia".');
 
-/* POST: create agency (si më parë) */
+/* POST: create/delete agency */
 if($_SERVER['REQUEST_METHOD']==='POST'){
-  $token=$_POST['csrf']??''; if(empty($token)||!hash_equals($_SESSION['csrf_token'],$token)){ http_response_code(400); exit('CSRF token mismatch.'); }
+  $token=$_POST['csrf']??''; 
+  if(empty($token)||!hash_equals($_SESSION['csrf_token'],$token)){
+    http_response_code(400); exit('CSRF token mismatch.');
+  }
   $action=$_POST['action']??'';
   try{
     if($action==='create_agency'){
@@ -43,17 +46,46 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       if($p1!==$p2) throw new RuntimeException('Fjalëkalimet nuk përputhen.');
       $ex=$pdo->prepare("SELECT COUNT(*) FROM agencies WHERE nip_t=:n"); $ex->execute([':n'=>$nip_t]);
       if((int)$ex->fetchColumn()>0) throw new RuntimeException('Ky NIPT ekziston.');
+
       $pdo->beginTransaction();
       $insU=$pdo->prepare("INSERT INTO users(role_id,full_name,email) VALUES(:r,:n,NULL)");
       $insU->execute([':r'=>$agencyRoleId, ':n'=>$company_name]);
       $uid=(int)$pdo->lastInsertId();
+
       $hash=password_hash($p1,PASSWORD_BCRYPT);
-      $pdo->prepare("INSERT INTO credentials(user_id,password_hash,last_password_change) VALUES(:u,:h,NOW())")->execute([':u'=>$uid,':h'=>$hash]);
+      $pdo->prepare("INSERT INTO credentials(user_id,password_hash,last_password_change) VALUES(:u,:h,NOW())")
+          ->execute([':u'=>$uid,':h'=>$hash]);
+
       $pdo->prepare("INSERT INTO agencies(user_id,nip_t,company_name,address,phone) VALUES(:u,:nip,:cn,:ad,:ph)")
           ->execute([':u'=>$uid,':nip'=>$nip_t,':cn'=>$company_name,':ad'=>$address,':ph'=>$phone]);
-      $pdo->commit(); flash('ok','Agjencia u shtua.');
+
+      $pdo->commit(); 
+      flash('ok','Agjencia u shtua.');
     }
-  }catch(Throwable $e){ if($pdo->inTransaction()) $pdo->rollBack(); flash('err',$e->getMessage()); }
+    elseif($action==='delete_agency'){
+      $agency_id = (int)($_POST['agency_id'] ?? 0);
+      if($agency_id<=0) throw new RuntimeException('ID agjencie i pavlefshëm.');
+
+      // gjej user_id e agjencisë
+      $st = $pdo->prepare("SELECT user_id FROM agencies WHERE id=:id LIMIT 1");
+      $st->execute([':id'=>$agency_id]);
+      $uid = (int)$st->fetchColumn();
+      if(!$uid) throw new RuntimeException('Agjencia nuk u gjet.');
+
+      /* FSHIRJE E SIGURT:
+         - Fshijmë user-in: do të fshihet automatikisht edhe rreshti te `agencies`
+           dhe kredencialet (`credentials`) falë ON DELETE CASCADE.
+         - `agency_students` gjithashtu fshihet (FK ON DELETE CASCADE te agencies.id). */
+      $pdo->beginTransaction();
+      $pdo->prepare("DELETE FROM users WHERE id=:uid")->execute([':uid'=>$uid]);
+      $pdo->commit();
+
+      flash('ok','Agjencia u fshi me sukses.');
+    }
+  }catch(Throwable $e){ 
+    if($pdo->inTransaction()) $pdo->rollBack(); 
+    flash('err',$e->getMessage()); 
+  }
   header('Location: agencies.php'); exit;
 }
 
@@ -186,6 +218,7 @@ require __DIR__ . '/inc/navbar.php';
               <th>Adresë</th>
               <th class="text-center">Studentë</th>
               <th>Regjistruar</th>
+              <th class="text-end">Veprime</th>
             </tr>
           </thead>
           <tbody>
@@ -211,13 +244,30 @@ require __DIR__ . '/inc/navbar.php';
 
               <td class="text-center">
                 <span class="badge rounded-pill badge-soft me-1"><i class="bi bi-people-fill me-1"></i><?= (int)$a['students_count'] ?></span>
-                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#manageStudentsModal"
-                        data-agency="<?= $aid ?>" data-agency-name="<?= htmlspecialchars($a['company_name'] ?: ('#'.$aid)) ?>">
-                  Menaxho
-                </button>
               </td>
 
               <td class="text-muted"><?= htmlspecialchars($a['created_at']) ?></td>
+              <td class="text-end">
+                <!-- Menaxho (egzistuese) -->
+                <button class="btn btn-sm btn-outline-primary me-2" 
+                        data-bs-toggle="modal" data-bs-target="#manageStudentsModal"
+                        data-agency="<?= $aid ?>" 
+                        data-agency-name="<?= htmlspecialchars($a['company_name'] ?: ('#'.$aid)) ?>">
+                  <i class="bi bi-people"></i> Menaxho
+                </button>
+
+                <!-- Fshi Agjencinë -->
+                <form method="post" class="d-inline"
+                      onsubmit="return confirm('Kujdes! Fshirja do të heqë edhe lidhjet me studentët dhe kredencialet e këtij llogari. Vazhdo?');">
+                  <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+                  <input type="hidden" name="action" value="delete_agency">
+                  <input type="hidden" name="agency_id" value="<?= $aid ?>">
+                  <button class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i> Fshi
+                  </button>
+                </form>
+              </td>
+
             </tr>
           <?php endforeach; else: ?>
             <tr><td colspan="7" class="text-center text-muted">Nuk u gjet asnjë agjenci.</td></tr>
