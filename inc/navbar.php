@@ -131,13 +131,13 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li>
-                            <a class="dropdown-item<?= $active === 'profile' ? ' active' : '' ?>" href="/profile.php">
+                            <a class="dropdown-item<?= $active === 'profile' ? ' active' : '' ?>" href="profile.php">
                                 <i class="bi bi-person-gear me-2"></i>Profili
                             </a>
                         </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <a class="dropdown-item text-danger" href="/logout.php">
+                            <a class="dropdown-item text-danger" href="logout.php">
                                 <i class="bi bi-box-arrow-right me-2"></i>Dil
                             </a>
                         </li>
