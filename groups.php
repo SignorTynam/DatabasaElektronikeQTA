@@ -74,7 +74,7 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $amzeNum): int {
 }
 
 /* ------------------------------
-   POST: create/edit/update
+   POST: create/edit/update/delete
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $_POST['action'] ?? '';
@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         if ($ids) {
           $ph = implode(',', array_fill(0, count($ids), '?'));
           $confQ = $pdo->prepare("
-            SELECT s.nr_amze, cg.id AS group_id, c.code AS course_code, c.name AS course_name
+            SELECT s.nr_amze, cg.id AS group_id, c.name AS course_name
             FROM course_group_students cgs
             JOIN course_groups cg ON cg.id = cgs.group_id
             JOIN courses c ON c.id = cg.course_id
@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           $confQ->execute([...$ids, $course_id]);
           $conf = $confQ->fetchAll(PDO::FETCH_ASSOC);
           if ($conf) {
-            $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_code'].')', $conf);
+            $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_name'].')', $conf);
             throw new RuntimeException('Këta studentë janë tashmë në kurse të tjera: '.implode(', ', $items));
           }
         }
@@ -170,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         // Mos lejo ndërrim kursi nëse ndonjëri është tashmë në një kurs tjetër
         $ph = implode(',', array_fill(0, count($toCheck), '?'));
         $confQ = $pdo->prepare("
-          SELECT s.nr_amze, cg.id AS other_group_id, c.code AS course_code, c.name AS course_name
+          SELECT s.nr_amze, cg.id AS other_group_id, c.name AS course_name
           FROM course_group_students cgs
           JOIN course_groups cg ON cg.id = cgs.group_id
           JOIN courses c ON c.id = cg.course_id
@@ -182,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $confQ->execute([...$toCheck, $group_id, $course_id]);
         $conf = $confQ->fetchAll(PDO::FETCH_ASSOC);
         if ($conf) {
-          $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_code'].')', $conf);
+          $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_name'].')', $conf);
           throw new RuntimeException('Ndërrimi i modulit s’lejohet: disa studentë janë në kurse të tjera: '.implode(', ', $items));
         }
       }
@@ -251,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         // Rregulli: një AMZË jo në kurse të tjera
         $ph = implode(',', array_fill(0, count($toAdd), '?'));
         $confQ = $pdo->prepare("
-          SELECT s.nr_amze, cg.id AS group_id, c.code AS course_code, c.name AS course_name
+          SELECT s.nr_amze, cg.id AS group_id, c.name AS course_name
           FROM course_group_students cgs
           JOIN course_groups cg ON cg.id = cgs.group_id
           JOIN courses c ON c.id = cg.course_id
@@ -263,7 +263,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $confQ->execute([...$toAdd, $group_id, $gidCourseId]);
         $conf = $confQ->fetchAll(PDO::FETCH_ASSOC);
         if ($conf) {
-          $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_code'].')', $conf);
+          $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_name'].')', $conf);
           throw new RuntimeException('Këta studentë janë tashmë në kurse të tjera: '.implode(', ', $items));
         }
 
@@ -277,6 +277,34 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
       $pdo->commit();
       $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
+    } catch (Throwable $e) {
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      $_SESSION['flash_err'] = $e->getMessage();
+    }
+    header('Location: groups.php'); exit;
+  }
+
+  /* ===== POST: Fshi grupin ===== */
+  if ($action==='delete_group') {
+    if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
+      http_response_code(400); exit('CSRF token mismatch.');
+    }
+    $group_id = (int)($_POST['group_id'] ?? 0);
+    try {
+      if ($group_id<=0) throw new RuntimeException('Grup i pavlefshëm.');
+      // ekziston?
+      $exists = $pdo->prepare("SELECT 1 FROM course_groups WHERE id=:g");
+      $exists->execute([':g'=>$group_id]);
+      if (!$exists->fetchColumn()) throw new RuntimeException('Grupi nuk u gjet.');
+
+      $pdo->beginTransaction();
+      // Fshi lidhjet student-grup
+      $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g")->execute([':g'=>$group_id]);
+      // Fshi grupin
+      $pdo->prepare("DELETE FROM course_groups WHERE id=:g")->execute([':g'=>$group_id]);
+      $pdo->commit();
+
+      $_SESSION['flash_ok'] = 'Grupi u fshi me sukses.';
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
       $_SESSION['flash_err'] = $e->getMessage();
@@ -475,8 +503,8 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
             Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_code'].' · '.$g['header']['course_name']) ?>
           </h5>
         </div>
-        <div class="d-flex align-items-center gap-3">
-          <div class="text-muted small">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="text-muted small me-2">
             <span class="me-3">Fillimi:
               <span class="editable cell-inline" contenteditable="true"
                     data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
@@ -496,6 +524,10 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
             <button class="btn btn-outline-secondary btn-sm"
                     data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>">
               <i class="bi bi-pencil me-1"></i>Ndrysho modul
+            </button>
+            <button class="btn btn-outline-danger btn-sm"
+                    data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>">
+              <i class="bi bi-trash me-1"></i>Fshi grupin
             </button>
           </div>
         </div>
@@ -604,6 +636,30 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
             <button class="btn btn-primary" type="submit">Ruaj</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: Fshi grupin -->
+    <div class="modal fade" id="deleteGroupModal_<?= (int)$gid ?>" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <form class="modal-content" method="post" action="groups.php">
+          <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+          <input type="hidden" name="action" value="delete_group">
+          <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
+          <div class="modal-header">
+            <h5 class="modal-title text-danger"><i class="bi bi-trash me-1"></i> Fshi grupin #<?= (int)$gid ?></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            Jeni i sigurt që doni të fshini këtë grup?<br/>
+            <strong>Kujdes:</strong> Kjo do të fshijë edhe lidhjet e studentëve me këtë grup (notat dhe datat e testit të ruajtura në këtë grup).
+            Studentët nuk fshihen nga sistemi.
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+            <button class="btn btn-danger" type="submit">Po, fshije</button>
           </div>
         </form>
       </div>
