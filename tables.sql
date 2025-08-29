@@ -201,3 +201,66 @@ CREATE TABLE IF NOT EXISTS student_qr_tokens (
   CONSTRAINT fk_qr_student FOREIGN KEY (student_id)
     REFERENCES students(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+USE qta_db;
+
+DELIMITER $$
+
+/* Hiq trigger-at e vjetër që mbështeteshin te cg.exam_date (nëse ekzistojnë) */
+DROP TRIGGER IF EXISTS trg_cgs_before_insert_grade $$
+DROP TRIGGER IF EXISTS trg_cgs_before_update_grade $$
+
+/* Për të qenë idempotent, hiq edhe versionet e mëparshme të këtyre dy triggers nëse i provove më parë */
+DROP TRIGGER IF EXISTS trg_cgs_examdate_before_insert $$
+DROP TRIGGER IF EXISTS trg_cgs_examdate_before_update $$
+
+/* INSERT: validon exam_date ≥ end_date të grupit dhe kërkon exam_date kur vendoset notë */
+CREATE TRIGGER trg_cgs_examdate_before_insert
+BEFORE INSERT ON course_group_students
+FOR EACH ROW
+BEGIN
+  DECLARE ed DATE;
+
+  /* Nëse po vendoset exam_date, sigurohu që është ≥ end_date e grupit */
+  IF NEW.exam_date IS NOT NULL THEN
+    SELECT end_date INTO ed FROM course_groups WHERE id = NEW.group_id;
+    IF ed IS NOT NULL AND NEW.exam_date < ed THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Data e testit duhet të jetë ≥ datës së mbarimit të grupit.';
+    END IF;
+  END IF;
+
+  /* Nëse po vendoset notë, kërko exam_date per-student */
+  IF NEW.final_score IS NOT NULL AND NEW.exam_date IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Nuk mund të vendoset nota pa datën e testit për studentin.';
+  END IF;
+END $$
+
+/* UPDATE: kur ndryshon exam_date → kontrollo ≥ end_date; kur vendoset notë → kërko exam_date */
+CREATE TRIGGER trg_cgs_examdate_before_update
+BEFORE UPDATE ON course_group_students
+FOR EACH ROW
+BEGIN
+  DECLARE ed2 DATE;
+
+  /* Kur ndryshon exam_date, verifiko kundrejt end_date të grupit */
+  IF (OLD.exam_date IS NULL AND NEW.exam_date IS NOT NULL)
+     OR (OLD.exam_date IS NOT NULL AND NEW.exam_date <> OLD.exam_date) THEN
+    SELECT end_date INTO ed2 FROM course_groups WHERE id = NEW.group_id;
+    IF ed2 IS NOT NULL AND NEW.exam_date < ed2 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Data e testit duhet të jetë ≥ datës së mbarimit të grupit.';
+    END IF;
+  END IF;
+
+  /* Nota → kërkon exam_date të vendosur */
+  IF NEW.final_score IS NOT NULL
+     AND (OLD.final_score IS NULL OR NEW.final_score <> OLD.final_score)
+     AND NEW.exam_date IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Nuk mund të vendoset nota pa datën e testit për studentin.';
+  END IF;
+END $$
+
+DELIMITER ;
