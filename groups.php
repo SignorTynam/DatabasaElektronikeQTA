@@ -2,7 +2,6 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
-require __DIR__ . '/inc/navbar.php';
 
 $pdo = getPDO();
 
@@ -113,6 +112,33 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
     header('Location: groups.php'); exit;
   }
+
+  /* ===== POST: Ndrysho modulin (course) të grupit ===== */
+if ($action==='update_group_course') {
+  if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
+    http_response_code(400); exit('CSRF token mismatch.');
+  }
+  $group_id  = (int)($_POST['group_id'] ?? 0);
+  $course_id = (int)($_POST['course_id'] ?? 0);
+  try {
+    if ($group_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+
+    // Verifiko që moduli ekziston
+    $q = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
+    $q->execute([':id'=>$course_id]);
+    if (!$q->fetchColumn()) throw new RuntimeException('Moduli i zgjedhur nuk ekziston.');
+
+    // Përditëso grupin
+    $st = $pdo->prepare("UPDATE course_groups SET course_id=:c WHERE id=:g");
+    $st->execute([':c'=>$course_id, ':g'=>$group_id]);
+
+    $_SESSION['flash_ok'] = 'Moduli i grupit u përditësua.';
+  } catch (Throwable $e) {
+    $_SESSION['flash_err'] = $e->getMessage();
+  }
+  header('Location: groups.php'); exit;
+}
+
 
   if ($action==='edit_members') {
     if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
@@ -279,6 +305,8 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
 </head>
 <body>
 
+<?php require __DIR__ . '/inc/navbar.php'; ?>
+
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Grupe</h2>
@@ -373,6 +401,11 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
                 data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>">
           <i class="bi bi-pencil-square me-1"></i>Modifiko anëtarët
         </button>
+        <button class="btn btn-outline-secondary btn-sm"
+                data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>">
+          <i class="bi bi-pencil me-1"></i>Ndrysho modul
+        </button>
+
       </div>
       <div class="card-body">
         <div class="table-responsive mini-table">
@@ -544,6 +577,41 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
     </form>
   </div>
 </div>
+
+<!-- MODAL: Ndrysho modulin e grupit -->
+<div class="modal fade" id="editCourseModal_<?= (int)$gid ?>" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post" action="groups.php">
+      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+      <input type="hidden" name="action" value="update_group_course">
+      <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
+
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-book me-1"></i> Ndrysho modulin — Grup #<?= (int)$gid ?></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <label class="form-label">Zgjidh modul</label>
+        <select name="course_id" class="form-select" required>
+          <?php foreach($courses as $c): ?>
+            <option value="<?= (int)$c['id'] ?>"
+              <?= ((int)$c['id'] === (int)$g['header']['course_id']) ? 'selected' : '' ?>>
+              <?= htmlspecialchars($c['code'].' — '.$c['name']) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+        <div class="form-text">Ndryshon modulin (kursin) me të cilin lidhet ky grup.</div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        <button class="btn btn-primary" type="submit">Ruaj</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
