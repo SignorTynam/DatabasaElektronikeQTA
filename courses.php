@@ -9,9 +9,7 @@ $pdo = getPDO();
 /* ------------------------------
    Guard: vetëm admin i loguar
 ------------------------------- */
-if (!isset($_SESSION['user_id'])) {
-    header('Location: selectProfile.php'); exit;
-}
+if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $userStmt = $pdo->prepare("
     SELECT u.id, u.full_name, u.email, r.name AS role_name
     FROM users u
@@ -47,7 +45,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
-   POST: Shto kurs
+   POST: Shto / Fshi kurs
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -77,6 +75,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st->execute([':c'=>$code, ':n'=>$name, ':h'=>(int)$hours]);
 
             flash('ok', 'Moduli u shtua me sukses.');
+        } catch (Throwable $e) {
+            flash('err', $e->getMessage());
+        }
+        header('Location: courses.php'); exit;
+    }
+
+    if ($action === 'delete_course') {
+        try {
+            $course_id = (int)($_POST['course_id'] ?? 0);
+            if ($course_id <= 0) throw new RuntimeException('Kurs i pavlefshëm.');
+
+            // Opsionale: lexo kodin për mesazh
+            $cinfo = $pdo->prepare("SELECT code, name FROM courses WHERE id=:id LIMIT 1");
+            $cinfo->execute([':id'=>$course_id]);
+            $ci = $cinfo->fetch(PDO::FETCH_ASSOC);
+            if (!$ci) throw new RuntimeException('Moduli nuk u gjet.');
+
+            // Fshi (ON DELETE CASCADE do të fshijë groupet e lidhura dhe anëtarësimet)
+            $del = $pdo->prepare("DELETE FROM courses WHERE id=:id");
+            $del->execute([':id'=>$course_id]);
+
+            flash('ok', 'Moduli "'.$ci['code'].' — '.$ci['name'].'" u fshi.');
         } catch (Throwable $e) {
             flash('err', $e->getMessage());
         }
@@ -116,13 +136,15 @@ $listStmt = $pdo->prepare("
     ORDER BY c.code ASC, c.id ASC
     LIMIT :lim OFFSET :off
 ");
-foreach ($params as $k=>$v) {
-    $listStmt->bindValue($k, $v, PDO::PARAM_STR);
-}
+foreach ($params as $k=>$v) { $listStmt->bindValue($k, $v, PDO::PARAM_STR); }
 $listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
 $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+
+/* Flash mesazhe */
+$ok  = flash('ok');
+$err = flash('err');
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -135,7 +157,7 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
     <style>
-        body { background:#f5f7fb; padding-top:72px; } /* hapësirë për navbar fixed-top */
+        body { background:#f5f7fb; padding-top:72px; }
         .navbar-brand img { height:28px; }
         .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
         .mini-table thead { background:#f1f5f9; }
@@ -145,7 +167,6 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .nowrap { white-space:nowrap; }
         @media (max-width: 575.98px) { .navbar-text { display:none; } }
 
-        /* Inline-edit styles (identike me students.php) */
         .editable {
           display:inline-block; min-width:72px; padding:.35rem .5rem;
           border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
@@ -177,15 +198,15 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
-    <?php if ($m = flash('ok')): ?>
+    <?php if ($ok): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($m) ?>
+            <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($ok) ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
-    <?php if ($m = flash('err')): ?>
+    <?php if ($err): ?>
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($m) ?>
+            <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($err) ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
@@ -214,7 +235,7 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
-    <!-- Tabela: inline-edit, pa kolonën “Veprimet” -->
+    <!-- Tabela -->
     <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
             <h5 class="mb-0"><i class="bi bi-book me-2"></i>Lista e moduleve</h5>
@@ -229,6 +250,7 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>Emër</th>
                             <th class="nowrap">Orë</th>
                             <th class="nowrap">Krijuar më</th>
+                            <th class="nowrap text-end">Veprime</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -251,10 +273,48 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td class="text-muted small nowrap">
                                     <?= htmlspecialchars($c['created_at']) ?>
                                 </td>
+                                <!-- actions -->
+                                <td class="text-end">
+                                    <button class="btn btn-outline-danger btn-sm"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#deleteCourseModal_<?= $cid ?>">
+                                        <i class="bi bi-trash me-1"></i> Fshi
+                                    </button>
+                                </td>
                             </tr>
+
+                            <!-- MODAL: Fshi modul -->
+                            <div class="modal fade" id="deleteCourseModal_<?= $cid ?>" tabindex="-1" aria-hidden="true">
+                              <div class="modal-dialog">
+                                <form class="modal-content" method="post" action="courses.php">
+                                  <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+                                  <input type="hidden" name="action" value="delete_course">
+                                  <input type="hidden" name="course_id" value="<?= $cid ?>">
+                                  <div class="modal-header">
+                                    <h5 class="modal-title"><i class="bi bi-trash me-1"></i> Fshi modul</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                  </div>
+                                  <div class="modal-body">
+                                    <p>Jeni i sigurt që dëshironi të fshini modulin:</p>
+                                    <ul class="mb-2">
+                                      <li><strong>Kod:</strong> <?= htmlspecialchars($c['code']) ?></li>
+                                      <li><strong>Emër:</strong> <?= htmlspecialchars($c['name']) ?></li>
+                                    </ul>
+                                    <div class="alert alert-warning small mb-0">
+                                      <i class="bi bi-exclamation-triangle me-1"></i>
+                                      <strong>Kujdes:</strong> Fshirja do të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul.
+                                    </div>
+                                  </div>
+                                  <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+                                    <button class="btn btn-danger" type="submit">Po, fshije</button>
+                                  </div>
+                                </form>
+                              </div>
+                            </div>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="4" class="text-center text-muted">Nuk u gjet asnjë modul.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted">Nuk u gjet asnjë modul.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -267,9 +327,7 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             <nav aria-label="Page navigation">
                 <ul class="pagination mb-0 justify-content-end">
                     <?php
-                    $base = 'courses.php?'.http_build_query(array_filter([
-                        'q' => $q !== '' ? $q : null,
-                    ]));
+                    $base = 'courses.php?'.http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
                     $prev = max(1, $page-1);
                     $next = min($totalPages, $page+1);
                     ?>
@@ -341,11 +399,9 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'courses_inline_update.php';
 
 /* Helper: trim & normalizim */
-function cleanText(s) {
-  return (s || '').replace(/\s+/g,' ').trim();
-}
+function cleanText(s) { return (s || '').replace(/\s+/g,' ').trim(); }
 
-/* Ruajtje AJAX */
+/* Ruajtje AJAX për inline-edit (code/name/hours) */
 async function saveInline(courseId, field, value, cell, displayEl) {
   try {
     cell.classList.add('cell-saving');
@@ -357,16 +413,11 @@ async function saveInline(courseId, field, value, cell, displayEl) {
     const json = await res.json();
     cell.classList.remove('cell-saving');
     if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
-
-    if (displayEl) {
-      displayEl.textContent = json.display ?? (value || '');
-    }
-    cell.classList.add('cell-ok');
-    setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    if (displayEl) { displayEl.textContent = json.display ?? (value || ''); }
+    cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
   } catch (e) {
     console.error(e);
-    cell.classList.remove('cell-saving');
-    cell.classList.add('cell-err');
+    cell.classList.remove('cell-saving'); cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
   }
 }
@@ -375,18 +426,17 @@ async function saveInline(courseId, field, value, cell, displayEl) {
 document.querySelectorAll('td.cell .editable').forEach(el => {
   let oldVal = el.textContent;
   el.addEventListener('focus', () => { oldVal = el.textContent; });
-  el.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      el.blur();
-    }
-  });
+  el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
   el.addEventListener('blur', () => {
     const cell = el.closest('td.cell');
     const field = cell.dataset.field;
     const cid = parseInt(cell.dataset.id, 10);
     const newVal = cleanText(el.textContent);
     if (newVal === cleanText(oldVal)) return;
+    if (field === 'hours' && (newVal === '' || isNaN(newVal) || parseInt(newVal,10) < 1)) {
+      el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+      return;
+    }
     saveInline(cid, field, newVal, cell, el);
   });
 });
