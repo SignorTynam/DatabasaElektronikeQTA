@@ -2,7 +2,6 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/navbarMain.php';
 $pdo = getPDO();
 
 /* 1) Nëse je i loguar, lexo përdoruesin aktual */
@@ -18,6 +17,9 @@ if (!empty($_SESSION['user_id'])) {
     $stmt->execute([':uid' => $_SESSION['user_id']]);
     $currentUser = $stmt->fetch() ?: null;
 }
+
+require_once __DIR__ . '/navbarMain.php';
+
 
 /* 2) Statistika për “Impaktin” */
 $counts = [

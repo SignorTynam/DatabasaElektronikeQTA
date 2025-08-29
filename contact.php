@@ -1,5 +1,23 @@
 
 <?php
+session_start();
+require_once __DIR__ . '/database.php';
+$pdo = getPDO();
+
+/* 1) Nëse je i loguar, lexo përdoruesin aktual */
+$currentUser = null;
+if (!empty($_SESSION['user_id'])) {
+    $stmt = $pdo->prepare("
+        SELECT u.id, u.full_name, u.email, r.name AS role_name
+        FROM users u
+        JOIN roles r ON r.id = u.role_id
+        WHERE u.id = :uid
+        LIMIT 1
+    ");
+    $stmt->execute([':uid' => $_SESSION['user_id']]);
+    $currentUser = $stmt->fetch() ?: null;
+}
+
 require_once __DIR__ . '/navbarMain.php';
 ?>
 
