@@ -50,11 +50,6 @@ function flash(string $k, ?string $m=null){
 function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 
 /* -------------------------------------------------
-   SQL: tabela për QR token (3NF) — shiko DDL më poshtë
-   Table: student_qr_tokens(student_id PK, token UNIQUE, created_at)
--------------------------------------------------- */
-
-/* -------------------------------------------------
    POST: gjenero_token (vetëm një herë)
 -------------------------------------------------- */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
@@ -80,8 +75,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $exists = $ex->fetchColumn();
       if ($exists) { flash('ok','Ky student e ka tashmë kodin QR.'); header("Location: student_card.php?sid=".$sid); exit; }
 
-      // Gjenero token të përhershëm (random 32-hex i unik)
-      $newToken = bin2hex(random_bytes(16)); // p.sh. 32 karaktere hex
+      // Gjenero token të përhershëm
+      $newToken = bin2hex(random_bytes(16)); // 32 hex
       $ins = $pdo->prepare("INSERT INTO student_qr_tokens(student_id, token, created_at) VALUES(:sid, :t, NOW())");
       $ins->execute([':sid'=>$sid, ':t'=>$newToken]);
 
@@ -135,11 +130,11 @@ if ($sid > 0) {
     LEFT JOIN agencies ag ON ag.id = ajs.agency_id
     WHERE (
            s.id = :idExact
-        OR s.nr_amze        LIKE :like1
+        OR s.nr_amze         LIKE :like1
         OR s.personal_number LIKE :like2
-        OR s.first_name     LIKE :like3
-        OR s.last_name      LIKE :like4
-        OR u.email          LIKE :like5
+        OR s.first_name      LIKE :like3
+        OR s.last_name       LIKE :like4
+        OR u.email           LIKE :like5
     )
   ";
 
@@ -167,7 +162,7 @@ if ($sid > 0) {
 /* -------------------------------------------------
    Nëse kemi një student të zgjedhur: llogarit statistikat
 -------------------------------------------------- */
-$stats = $groups = $upcoming = $scores = []; $qrToken = null;
+$stats = $groups = $upcoming = $scores = []; $qrToken = null; $qrCreatedAt = null; $verifyURL = null;
 if ($selected) {
   $SID = (int)$selected['id'];
 
@@ -177,6 +172,13 @@ if ($selected) {
   $qrRow = $t->fetch(PDO::FETCH_ASSOC);
   $qrToken = $qrRow['token'] ?? null;
   $qrCreatedAt = $qrRow['created_at'] ?? null;
+  if ($qrToken) {
+    // Link publik verifikimi
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+    $verifyURL = $scheme.$host.$base.'/verify.php?sid='.$SID.'&t='.$qrToken;
+  }
 
   // # grupe
   $st = $pdo->prepare("SELECT COUNT(DISTINCT group_id) FROM course_group_students WHERE student_id=:sid");
@@ -243,7 +245,7 @@ if ($selected) {
   ");
   $st->execute([':sid'=>$SID]); $upcoming = $st->fetchAll(PDO::FETCH_ASSOC);
 
-  // Sery notash për grafik (10 të fundit sipas datës së testit)
+  // Sery notash për grafik
   $st = $pdo->prepare("
     SELECT DATE_FORMAT(COALESCE(cg.exam_date, cg.end_date), '%Y-%m-%d') AS d, cgs.final_score AS s
     FROM course_group_students cgs
@@ -259,7 +261,7 @@ if ($selected) {
 /* -------------------------------------------------
    View
 -------------------------------------------------- */
-$NAV_ACTIVE = 'profile'; // thjesht për highlight; s'ka meny specifike këtu
+$NAV_ACTIVE = 'profile';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -272,27 +274,41 @@ $NAV_ACTIVE = 'profile'; // thjesht për highlight; s'ka meny specifike këtu
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
+    :root{
+      --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;
+      --glass: rgba(255,255,255,.78);
+      --glass-b: rgba(255,255,255,.55);
+      --shadow: 0 18px 40px rgba(2,6,23,.12);
+    }
     body { background:#f5f7fb; padding-top:72px; }
     .navbar-brand img { height:28px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
+    .card { border:none; border-radius:1rem; box-shadow:var(--shadow); }
     .hero {
       background:
         radial-gradient(1200px 420px at 10% -20%, rgba(37,99,235,.25), rgba(37,99,235,0) 60%),
         radial-gradient(900px 320px at 90% -10%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
-        linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
+        linear-gradient(135deg, var(--g1) 0%, var(--g2) 55%, var(--g3) 100%);
       color:#fff; border-radius:1.25rem; overflow:hidden;
     }
-    .hero .chip { background:rgba(255,255,255,.17); border:1px solid rgba(255,255,255,.26); }
+    .chip { background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35); }
     .mini-table thead { background:#f1f5f9; }
     .nowrap{ white-space:nowrap; }
     .kpi .icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#eef2ff; }
+    .glass {
+      background:var(--glass); border:1px solid var(--glass-b); backdrop-filter: blur(10px);
+    }
+    .avatar{
+      width:58px;height:58px;border-radius:1rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;
+      font-weight:700;color:#4338ca; letter-spacing:.5px;
+    }
+    .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
   </style>
 </head>
 <body>
 
 <?php
-if ($ROLE==='administrator')      require __DIR__.'/inc/navbar.php';
-elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
+if ($ROLE==='administrator') require __DIR__.'/inc/navbar.php';
+elseif ($ROLE==='agjencia')  require __DIR__.'/inc/navbar2.php';
 ?>
 
 <main class="container-fluid px-3 px-md-4">
@@ -320,16 +336,16 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
   <?php endif; ?>
 
   <!-- FORM KËRKIMI -->
-  <div class="card mb-3">
+  <div class="card glass mb-3">
     <div class="card-body">
       <form class="row g-2 align-items-end" method="get" action="student_card.php">
         <div class="col-md-9">
           <label class="form-label">Kërko studentin</label>
           <div class="input-group">
             <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-            <input type="text" name="q" class="form-control border-0" placeholder="p.sh. Ana, 3401, ID, ose email"
-                   value="<?= h($q) ?>">
+            <input type="text" name="q" class="form-control border-0" placeholder="p.sh. Ana, 3401, ID, ose email" value="<?= h($q) ?>">
           </div>
+          <div class="form-text">Shkruaj çfarëdolloj detaji – sistemi filtron automatikisht.</div>
         </div>
         <div class="col-md-3 text-end">
           <button class="btn btn-outline-secondary me-1" type="button" onclick="window.location='student_card.php'">
@@ -342,7 +358,7 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
   </div>
 
   <?php if ($q!=='' && !$selected): ?>
-    <!-- Rezultatet (nqs ka) -->
+    <!-- Rezultatet -->
     <div class="card mb-4">
       <div class="card-header bg-white d-flex align-items-center justify-content-between">
         <h5 class="mb-0"><i class="bi bi-people me-2"></i>Rezultatet e kërkimit</h5>
@@ -363,11 +379,19 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($students as $s): 
+                <?php foreach ($students as $s):
                   $full = trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??'')); ?>
                   <tr>
                     <td class="text-muted">#<?= (int)$s['id'] ?></td>
-                    <td><?= h($full ?: '—') ?><br><small class="text-muted"><?= h($s['email'] ?? '') ?></small></td>
+                    <td>
+                      <div class="d-flex align-items-center">
+                        <div class="avatar me-2"><?= strtoupper(substr($s['first_name']??'?',0,1).substr($s['last_name']??'?',0,1)) ?></div>
+                        <div>
+                          <div class="fw-semibold"><?= h($full ?: '—') ?></div>
+                          <div class="small text-muted"><?= h($s['email'] ?? '') ?></div>
+                        </div>
+                      </div>
+                    </td>
                     <td class="nowrap"><?= h($s['nr_amze'] ?? '—') ?></td>
                     <td class="nowrap"><?= h($s['personal_number'] ?? '—') ?></td>
                     <td><?= h($s['agency_name'] ?? '—') ?></td>
@@ -388,37 +412,54 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
     </div>
   <?php endif; ?>
 
-  <?php if ($selected): 
+  <?php if ($selected):
     $full = trim(($selected['first_name']??'').' '.(($selected['father_name']??'')?($selected['father_name'].' '):'').($selected['last_name']??'')); ?>
 
-    <!-- HEADER i Kartelës -->
-    <section class="row g-4 mb-4">
-      <div class="col-12 col-xl-8">
-        <div class="card">
+    <!-- LAYOUT: Sidebar left (Profile & QR) + right (Analytics) -->
+    <section class="row g-4">
+      <!-- Left: Profile & QR -->
+      <div class="col-12 col-xl-4">
+        <!-- Profile -->
+        <div class="card mb-4">
           <div class="card-body">
-            <div class="d-flex align-items-center">
-              <div class="kpi icon me-3"><i class="bi bi-person-circle fs-4 text-primary"></i></div>
+            <div class="d-flex align-items-center mb-2">
+              <div class="avatar me-3"><?= strtoupper(substr($selected['first_name']??'?',0,1).substr($selected['last_name']??'?',0,1)) ?></div>
               <div>
                 <div class="h4 mb-1"><?= h($full ?: '—') ?></div>
                 <div class="small text-muted">
                   AMZË: <strong><?= h($selected['nr_amze'] ?? '—') ?></strong>
                   <span class="mx-2">•</span>
                   ID: <strong>#<?= (int)$selected['id'] ?></strong>
-                  <span class="mx-2">•</span>
-                  Edukimi: <?= h($selected['edu_label'] ?? '—') ?>
-                </div>
-                <div class="small text-muted mt-1">
-                  Agjencia: <strong><?= h($selected['agency_name'] ?? '—') ?></strong>
-                  <?php if (!empty($selected['assigned_at'])): ?> (që prej <?= h($selected['assigned_at']) ?>)<?php endif; ?>
                 </div>
               </div>
             </div>
+            <hr>
+            <div class="row g-3">
+              <div class="col-6">
+                <div class="p-3 rounded" style="background:#f8fafc;">
+                  <div class="small text-muted">Edukimi</div>
+                  <div class="fw-semibold mb-0"><?= h($selected['edu_label'] ?? '—') ?></div>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="p-3 rounded" style="background:#f8fafc;">
+                  <div class="small text-muted">Agjencia</div>
+                  <div class="fw-semibold mb-0"><?= h($selected['agency_name'] ?? '—') ?></div>
+                </div>
+              </div>
+              <?php if (!empty($selected['assigned_at'])): ?>
+              <div class="col-12">
+                <div class="p-3 rounded" style="background:#eef2ff;">
+                  <div class="small text-muted">Në këtë agjenci prej</div>
+                  <div class="fw-semibold mb-0"><?= h($selected['assigned_at']) ?></div>
+                </div>
+              </div>
+              <?php endif; ?>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- QR -->
-      <div class="col-12 col-xl-4">
+        <!-- QR -->
         <div class="card">
           <div class="card-header bg-white d-flex align-items-center justify-content-between">
             <h6 class="mb-0"><i class="bi bi-qr-code me-2"></i>Kodi QR i studentit</h6>
@@ -429,8 +470,19 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
           <div class="card-body text-center">
             <?php if ($qrToken): ?>
               <div id="qrBox" class="d-inline-block p-2 rounded" style="background:#fff;border:1px dashed #e5e7eb;"></div>
-              <div class="small text-muted mt-2">Ky QR është i përhershëm (token i ruajtur).</div>
-              <button id="btnDownloadQR" class="btn btn-sm btn-outline-secondary mt-2"><i class="bi bi-download me-1"></i>Shkarko PNG</button>
+              <div class="small text-muted mt-2">Ky QR është i përhershëm.</div>
+              <div class="d-grid gap-2 mt-3">
+                <button id="btnDownloadQR" class="btn btn-soft"><i class="bi bi-download me-1"></i>Shkarko PNG</button>
+                <?php if ($verifyURL): ?>
+                  <div class="input-group">
+                    <span class="input-group-text bg-light border-0"><i class="bi bi-link-45deg"></i></span>
+                    <input id="verifyLink" type="text" class="form-control border-0" readonly value="<?= h($verifyURL) ?>">
+                    <button id="btnCopyLink" class="btn btn-outline-secondary" type="button"><i class="bi bi-clipboard"></i></button>
+                    <a class="btn btn-outline-primary" href="<?= h($verifyURL) ?>" target="_blank"><i class="bi bi-box-arrow-up-right"></i></a>
+                  </div>
+                  <div class="form-text">Link publik verifikimi (verify.php).</div>
+                <?php endif; ?>
+              </div>
             <?php else: ?>
               <div class="alert alert-info">Ky student nuk ka ende kod QR.</div>
               <form method="post" onsubmit="return confirm('Gjenero kodin e përhershëm për këtë student?');">
@@ -443,102 +495,101 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- KPI Kartela -->
-    <section class="row g-4 mb-4">
-      <div class="col-12 col-md-6 col-xxl-3">
-        <div class="card p-3 h-100 kpi">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3" style="background:#eff6ff;"><i class="bi bi-journal-text fs-4 text-primary"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Modulet</div>
-              <div class="h4 mb-1"><?= number_format($stats['courses'] ?? 0) ?></div>
-              <span class="small text-muted">Unike</span>
+      <!-- Right: Analytics & Tables -->
+      <div class="col-12 col-xl-8">
+        <!-- KPIs -->
+        <section class="row g-4 mb-4">
+          <div class="col-12 col-sm-6 col-xxl-3">
+            <div class="card p-3 h-100 kpi">
+              <div class="d-flex align-items-center">
+                <div class="icon me-3" style="background:#eff6ff;"><i class="bi bi-journal-text fs-4 text-primary"></i></div>
+                <div>
+                  <div class="small text-muted text-uppercase">Modulet</div>
+                  <div class="h4 mb-1"><?= number_format($stats['courses'] ?? 0) ?></div>
+                  <span class="small text-muted">Unike</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6 col-xxl-3">
-        <div class="card p-3 h-100 kpi">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3" style="background:#ecfdf5;"><i class="bi bi-collection fs-4 text-success"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Grupe</div>
-              <div class="h4 mb-1"><?= number_format($stats['groups'] ?? 0) ?></div>
-              <span class="small text-muted">Gjithsej</span>
+          <div class="col-12 col-sm-6 col-xxl-3">
+            <div class="card p-3 h-100 kpi">
+              <div class="d-flex align-items-center">
+                <div class="icon me-3" style="background:#ecfdf5;"><i class="bi bi-collection fs-4 text-success"></i></div>
+                <div>
+                  <div class="small text-muted text-uppercase">Grupe</div>
+                  <div class="h4 mb-1"><?= number_format($stats['groups'] ?? 0) ?></div>
+                  <span class="small text-muted">Gjithsej</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6 col-xxl-3">
-        <div class="card p-3 h-100 kpi">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3" style="background:#fff1f2;"><i class="bi bi-bar-chart-line fs-4 text-danger"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Mes. Pikë</div>
-              <div class="h4 mb-1"><?= $stats['avg_score']!==null ? $stats['avg_score'] : '—' ?></div>
-              <span class="small text-muted">Kalueshmëria: <?= $stats['pass_rate']!==null ? ($stats['pass_rate'].'%') : '—' ?></span>
+          <div class="col-12 col-sm-6 col-xxl-3">
+            <div class="card p-3 h-100 kpi">
+              <div class="d-flex align-items-center">
+                <div class="icon me-3" style="background:#fff1f2;"><i class="bi bi-bar-chart-line fs-4 text-danger"></i></div>
+                <div>
+                  <div class="small text-muted text-uppercase">Mes. Pikë</div>
+                  <div class="h4 mb-1"><?= $stats['avg_score']!==null ? $stats['avg_score'] : '—' ?></div>
+                  <span class="small text-muted">Kalueshmëria: <?= $stats['pass_rate']!==null ? ($stats['pass_rate'].'%') : '—' ?></span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6 col-xxl-3">
-        <div class="card p-3 h-100 kpi">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3" style="background:#eef2ff;"><i class="bi bi-clock-history fs-4 text-primary"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Orë studimi</div>
-              <div class="h4 mb-1"><?= number_format($stats['hours'] ?? 0) ?></div>
-              <span class="small text-muted">Sipas silabusit të moduleve</span>
+          <div class="col-12 col-sm-6 col-xxl-3">
+            <div class="card p-3 h-100 kpi">
+              <div class="d-flex align-items-center">
+                <div class="icon me-3" style="background:#eef2ff;"><i class="bi bi-clock-history fs-4 text-primary"></i></div>
+                <div>
+                  <div class="small text-muted text-uppercase">Orë studimi</div>
+                  <div class="h4 mb-1"><?= number_format($stats['hours'] ?? 0) ?></div>
+                  <span class="small text-muted">Sipas silabusit</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <!-- Grafiku i notave + provime -->
-    <section class="row g-4 mb-4">
-      <div class="col-12 col-xl-7">
-        <div class="card h-100">
-          <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Ecuria e pikëve</h5>
+        <!-- Chart & Upcoming -->
+        <section class="row g-4 mb-4">
+          <div class="col-12 col-lg-7">
+            <div class="card h-100">
+              <div class="card-header bg-white d-flex align-items-center justify-content-between">
+                <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Ecuria e pikëve</h5>
+              </div>
+              <div class="card-body">
+                <canvas id="chartScores" height="120"></canvas>
+              </div>
+            </div>
           </div>
-          <div class="card-body">
-            <canvas id="chartScores" height="120"></canvas>
+          <div class="col-12 col-lg-5">
+            <div class="card h-100">
+              <div class="card-header bg-white d-flex align-items-center justify-content-between">
+                <h5 class="mb-0"><i class="bi bi-calendar2-event me-2"></i>Provimet e afërta</h5>
+                <span class="text-muted small">30 ditët në vijim</span>
+              </div>
+              <div class="card-body">
+                <?php if ($upcoming): ?>
+                  <ul class="list-group list-group-flush">
+                    <?php foreach ($upcoming as $e): ?>
+                      <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div>
+                          <div class="fw-semibold"><?= h(($e['code'] ?? '').' · '.($e['name'] ?? '')) ?></div>
+                          <div class="small text-muted">Data: <?= h($e['exam_date']) ?></div>
+                        </div>
+                        <span class="badge rounded-pill text-bg-primary">Test</span>
+                      </li>
+                    <?php endforeach; ?>
+                  </ul>
+                <?php else: ?>
+                  <div class="text-muted">Asnjë provim i afërt.</div>
+                <?php endif; ?>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      <div class="col-12 col-xl-5">
-        <div class="card h-100">
-          <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0"><i class="bi bi-calendar2-event me-2"></i>Provimet e afërta</h5>
-            <span class="text-muted small">30 ditët në vijim</span>
-          </div>
-          <div class="card-body">
-            <?php if ($upcoming): ?>
-              <ul class="list-group list-group-flush">
-                <?php foreach ($upcoming as $e): ?>
-                  <li class="list-group-item d-flex justify-content-between align-items-start">
-                    <div>
-                      <div class="fw-semibold"><?= h(($e['code'] ?? '').' · '.($e['name'] ?? '')) ?></div>
-                      <div class="small text-muted">Data: <?= h($e['exam_date']) ?></div>
-                    </div>
-                    <span class="badge rounded-pill text-bg-primary">Test</span>
-                  </li>
-                <?php endforeach; ?>
-              </ul>
-            <?php else: ?>
-              <div class="text-muted">Asnjë provim i afërt.</div>
-            <?php endif; ?>
-          </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <!-- Tabela e grupeve -->
-    <section class="row g-4">
-      <div class="col-12">
+        <!-- Groups table -->
         <div class="card">
           <div class="card-header bg-white d-flex align-items-center justify-content-between">
             <h5 class="mb-0"><i class="bi bi-collection me-2"></i>Grupet e fundit</h5>
@@ -569,9 +620,9 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
             </div>
           </div>
         </div>
+
       </div>
     </section>
-
   <?php endif; ?>
 
   <div class="text-center text-muted small my-4">
@@ -582,7 +633,7 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <?php if ($selected): ?>
 <script>
-  // Chart: Scores
+  // Chart: Scores (soft area)
   const scoreLabels = <?= json_encode(array_column($scores,'d')) ?>;
   const scoreData   = <?= json_encode(array_map(fn($r)=> $r['s']!==null?(float)$r['s']:null, $scores)) ?>;
   (() => {
@@ -592,9 +643,19 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
       type: 'line',
       data: {
         labels: scoreLabels,
-        datasets: [{ label:'Pikë', data: scoreData, tension:.35, fill:true, borderWidth:2 }]
+        datasets: [{
+          label:'Pikë',
+          data: scoreData,
+          tension:.35,
+          fill:true,
+          borderWidth:2
+        }]
       },
-      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ x:{ grid:{display:false}}, y:{ beginAtZero:true, suggestedMax:100 } } }
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false } },
+        scales:{ x:{ grid:{display:false}}, y:{ beginAtZero:true, suggestedMax:100 } }
+      }
     });
   })();
 </script>
@@ -602,7 +663,7 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
 
 <?php if ($selected && $qrToken): ?>
 <script>
-  // QR payload (i qëndrueshëm): mund të jetë URL verifikimi ose string i nënshkruar
+  // QR payload i qëndrueshëm (string i shënuar)
   const payload = <?= json_encode('QTA|SID:'.$selected['id'].'|AMZE:'.($selected['nr_amze']??'').'|TOKEN:'.$qrToken) ?>;
   const qrBox = document.getElementById('qrBox');
   if (qrBox) {
@@ -617,6 +678,16 @@ elseif ($ROLE==='agjencia')       require __DIR__.'/inc/navbar2.php';
     else dataURL = img.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = dataURL; a.download = 'student_qr_<?= (int)$selected['id'] ?>.png'; a.click();
+  });
+  // Copy verify link
+  document.getElementById('btnCopyLink')?.addEventListener('click', async ()=>{
+    const inp = document.getElementById('verifyLink');
+    if (!inp) return;
+    try { await navigator.clipboard.writeText(inp.value); 
+      const old = document.getElementById('btnCopyLink').innerHTML;
+      document.getElementById('btnCopyLink').innerHTML = '<i class="bi bi-check2"></i>';
+      setTimeout(()=>document.getElementById('btnCopyLink').innerHTML = old, 900);
+    } catch(e){ inp.select(); document.execCommand('copy'); }
   });
 </script>
 <?php endif; ?>
