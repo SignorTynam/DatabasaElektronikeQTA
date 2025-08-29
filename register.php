@@ -76,7 +76,8 @@ $list = $pdo->prepare("
     TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) AS age,
     el.code AS edu_code, el.label AS edu_label,
     lastg.group_id,
-    cg.start_date, cg.end_date, cg.exam_date,
+    cg.start_date, cg.end_date,
+    cgs.exam_date AS exam_date,
     cgs.final_score
   ".$sqlBase."
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
@@ -200,7 +201,7 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
                 <span class="editable" contenteditable="true"><?= htmlspecialchars($r['end_date'] ?: '—') ?></span>
               </td>
 
-              <!-- exam_date (inline grup) -->
+              <!-- exam_date (inline student-në-grup) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date"
                   title="YYYY-MM-DD (≥ data e mbarimit)">
                 <span class="editable" contenteditable="true"><?= htmlspecialchars($r['exam_date'] ?: '—') ?></span>
@@ -237,7 +238,7 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
             <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $prev ?>">‹</a></li>
             <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
             <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $next ?>">›</a></li>
-            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $totalPages ?>">»</a></li>
+            <li class="page-item <?= $page>>= $totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $totalPages ?>">»</a></li>
           </ul>
         </nav>
       </div>
@@ -324,6 +325,7 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
         return;
       }
     }
+
     if(field==='final_score'){
       if(newVal===''){
         saveInline({action:'update_final_score', student_id:studentId, group_id:groupId, final_score:null}, cell, el, oldVal);
@@ -342,15 +344,18 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
 
     // Dërgim sipas fushës
     if(field==='start_date'){
+      if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
       saveInline({action:'update_group_start', student_id:studentId, group_id:groupId, start_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
     if(field==='end_date'){
+      if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
       saveInline({action:'update_group_end', student_id:studentId, group_id:groupId, end_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
     if(field==='exam_date'){
-      saveInline({action:'update_exam_date', student_id:studentId, group_id:groupId, exam_date:(newVal===''?null:newVal)}, cell, el, oldVal);
+      if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
+      saveInline({action:'update_student_exam_date', student_id:studentId, group_id:groupId, exam_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
   });
