@@ -54,7 +54,7 @@ function role_badge_color(?string $role): string {
 function role_panel_href(?string $role): string {
   return match ($role) {
     'administrator' => 'dashboard_admin.php',
-    'agjencia'      => 'dashboard_agency.php',
+    'agjencia'      => 'dashboard_agjencia.php',
     'student'       => 'dashboard_student.php',
     default         => 'selectProfile.php'
   };
