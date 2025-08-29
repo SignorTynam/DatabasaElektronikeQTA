@@ -67,27 +67,84 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Databaza e Regjistrave të Studentëve</title>
+    <title>QTA – Databaza e Regjistrave të Studentëve</title>
     <link rel="icon" type="image/svg+xml" href="image/logoPNG - Copy.png">
     <!-- Bootstrap CSS & Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
-    <!-- Custom CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <!-- Styles -->
     <style>
-        .hero-section { background-color: #f8f9fa; padding: 60px 0; }
-        .feature-card { transition: transform 0.3s; height: 100%; }
-        .feature-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        .stat-number { font-size: 2.5rem; font-weight: bold; color: #0d6efd; }
-        .admin-quick .card { transition: .2s ease; }
-        .admin-quick .card:hover { transform: translateY(-4px); }
+        :root{
+            --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;
+            --bg:#f5f7fb; --muted:#667085; --glass:rgba(255,255,255,.85); --glass-b:rgba(255,255,255,.55);
+            --shadow:0 18px 40px rgba(2,6,23,.12); --ring:#e6efff;
+        }
+        html,body{height:100%;}
+        body { background:var(--bg); }
+
+        /* Navbar */
+        .navbar-brand img{height:30px;}
+        .navbar-dark .nav-link.active { font-weight:600; }
+
+        /* Hero */
+        .hero {
+            position: relative;
+            background:
+                radial-gradient(1200px 420px at 10% -20%, rgba(37,99,235,.25), rgba(37,99,235,0) 60%),
+                radial-gradient(900px 320px at 90% -10%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
+                linear-gradient(135deg, var(--g1) 0%, var(--g2) 55%, var(--g3) 100%);
+            color:#fff; padding:72px 0 68px;
+            overflow:hidden;
+        }
+        .hero .chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); }
+        .hero-blob{
+            position:absolute; inset:auto -120px -160px auto;
+            width:440px; height:440px; border-radius:50%;
+            background:radial-gradient(circle at 40% 40%, rgba(255,255,255,.32), transparent 60%);
+            filter:blur(30px); opacity:.8;
+        }
+        .hero-card{
+            background:var(black); border:1px solid var(--glass-b);
+            border-radius:1rem; box-shadow:var(--shadow);
+        }
+
+        /* Cards & sections */
+        .card { border:none; border-radius:1rem; box-shadow:var(--shadow); }
+        .feature-card{ transition:transform .2s ease; height:100%; }
+        .feature-card:hover{ transform:translateY(-6px); }
+        .kpi-number{ font-size:2.35rem; font-weight:800; letter-spacing:.5px; color:#1d4ed8; }
+        .kpi-tile{ background:#fff; border:1px solid #eef2ff; border-radius:1rem; padding:18px; }
+        .kpi-icon{ width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#eef2ff; }
+
+        /* Login */
+        .role-card .btn{ padding:.65rem 1rem; }
+        .role-card .icon{
+            width:56px;height:56px;border-radius:1rem;display:flex;align-items:center;justify-content:center;
+            background:#f1f5ff;color:#3355ff;
+        }
+
+        /* Admin shortcuts */
+        .admin-quick .mini-card { transition:.2s ease; border:1px solid #eef2ff; }
+        .admin-quick .mini-card:hover{ transform:translateY(-4px); }
+
+        /* Footer */
+        footer{ background:#0b1220; color:#e5e7eb; }
+        footer a{ color:#e5e7eb; }
+
+        /* Utilities */
+        .small-muted{ color:var(--muted); }
+        .ring { box-shadow:0 0 0 8px var(--ring); border-radius:12px; }
+        @media (max-width: 991px){
+            .hero{ padding:56px 0 54px; }
+        }
     </style>
 </head>
 <body>
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center" href="index.php">
-                <img src="image/logoPNG2.png" alt="Logo" height="30" class="d-inline-block align-text-top me-2">
+                <img src="image/logoPNG2.png" alt="Logo" class="me-2">
                 Qendra e Trajnimeve të Avancuara (QTA)
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -102,7 +159,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                         <?php if ($currentUser['role_name'] === 'administrator'): ?>
                             <li class="nav-item me-2"><a class="btn btn-outline-light btn-sm" href="dashboard_admin.php"><i class="bi bi-speedometer2 me-1"></i>Paneli</a></li>
                         <?php endif; ?>
-                        <li class="nav-item">
+                        <li class="nav-item d-flex align-items-center">
                             <span class="text-white-50 small me-2 d-none d-sm-inline">
                                 <i class="bi bi-person-circle me-1"></i><?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Përdorues')) ?>
                             </span>
@@ -118,116 +175,153 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="hero-section">
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-blob"></div>
         <div class="container">
             <div class="row align-items-center g-4">
-                <div class="col-md-6">
-                    <h1 class="display-4 fw-bold">Databaza elektronike e kurseve profesionale</h1>
-                    <p class="lead">Sistemi i centralizuar për menaxhimin e të dhënave të studentëve në Qendrën e Trajnimeve të Avancuara.</p>
-                    <a href="selectProfile.php" class="btn btn-primary btn-lg me-2">Hyr në sistem</a>
-                    <a href="#" class="btn btn-outline-secondary btn-lg">Mëso më shumë</a>
+                <div class="col-lg-6">
+                    <span class="badge chip rounded-pill mb-2">Databaza elektronike e kurseve profesionale</span>
+                    <h1 class="display-5 fw-bold mb-3">Menaxhim i centralizuar i studentëve dhe certifikatave</h1>
+                    <p class="lead mb-4">QTA ofron një platformë moderne për regjistrim, ndjekje, raporte — dhe verifikim publik të certifikatave me QR.</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="selectProfile.php" class="btn btn-light text-primary fw-semibold">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Hyr në sistem
+                        </a>
+                        <a href="verify.php" class="btn btn-outline-light">
+                            <i class="bi bi-qr-code-scan me-1"></i> Verifiko certifikatën
+                        </a>
+                    </div>
                 </div>
-                <div class="col-md-6">
-                    <!-- Ilustrim i thjeshtë SVG inline -->
-                    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MDAiIGhlaWdodD0iNTAwIiB2aWV3Qm94PSIwIDAgNTAwIDUwMCI+PHJlY3QgeD0iMTAwIiB5PSIxMDAiIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZTdlZmYzIiBzdHJva2U9IiMwZDZlZmQiIHN0cm9rZS13aWR0aD0iMiIvPjxjaXJjbGUgY3g9IjE1MCIgY3k9IjE1MCIgcj0iMjAiIGZpbGw9IiMwZDZlZmQiLz48Y2lyY2xlIGN4PSIyNTAiIGN5PSIxNTAiIHI9IjIwIiBmaWxsPSIjNmZjYWU2Ii8+PGNpcmNsZSBjeD0iMzUwIiBjeT0iMTUwIiByPSIyMCIgZmlsbD0iI2Y0NzQ1NiIvPjxsaW5lIHgxPSIxNTAiIHkxPSIyMDAiIHgyPSIzNTAiIHkyPSIyMDAiIHN0cm9rZT0iIzZkN2U4ZCIgc3Ryb2tlLXdpZHRoPSIyIi8+PGxpbmUgeDE9IjE1MCIgeTE9IjI1MCIgeDI9IjM1MCIgeTI9IjI1MCIgc3Ryb2tlPSIjNmQ3ZThkIiBzdHJva2Utd2lkdGg9IjIiLz48bGluZSB4MT0iMTUwIiB5MT0iMzAwIiB4Mj0iMzUwIiB5Mj0iMzAwIiBzdHJva2U9IiM2ZDdlOGQiIHN0cm9rZS13aWR0aD0iMiIvPjxsaW5lIHgxPSIxNTAiIHkxPSIzNTAiIHgyPSIzNTAiIHkyPSIzNTAiIHN0cm9rZT0iIzZkN2U4ZCIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+" class="img-fluid" alt="Student Database Illustration">
+                <div class="col-lg-6">
+                    <div class="hero-card p-3 p-md-4 ring">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="kpi-icon me-3"><i class="bi bi-shield-check text-primary fs-5"></i></div>
+                            <div>
+                                <div class="fw-semibold">Verifikim i shpejtë dhe i sigurt</div>
+                                <div class="small text-white-50">Skanoni QR dhe shihni të dhënat bazike të kursantit në sekonda.</div>
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <div class="kpi-tile">
+                                    <div class="small text-muted">Studentë</div>
+                                    <div class="kpi-number" data-kpi="<?= (int)$counts['students'] ?>">0</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="kpi-tile">
+                                    <div class="small text-muted">Agjenci</div>
+                                    <div class="kpi-number" data-kpi="<?= (int)$counts['agencies'] ?>">0</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="kpi-tile">
+                                    <div class="small text-muted">Administratorë</div>
+                                    <div class="kpi-number" data-kpi="<?= (int)$counts['admins'] ?>">0</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="kpi-tile">
+                                    <div class="small text-muted">Përdorues</div>
+                                    <div class="kpi-number" data-kpi="<?= (int)$counts['users'] ?>">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="small text-white-50 mt-3"><i class="bi bi-info-circle me-1"></i>Numrat përditësohen automatikisht nga databaza.</div>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Features Section -->
+    <!-- Features -->
     <section class="py-5">
         <div class="container">
-            <h2 class="text-center mb-5">Karakteristikat kryesore</h2>
+            <h2 class="text-center fw-bold mb-4">Çfarë përfitoni me QTA</h2>
+            <p class="text-center small-muted mb-5">Proces i thjeshtuar, transparencë dhe siguri për të gjithë aktorët.</p>
             <div class="row g-4">
                 <div class="col-md-4">
-                    <div class="card feature-card">
-                        <div class="card-body text-center">
-                            <i class="bi bi-people display-6 text-primary mb-3"></i>
-                            <h5 class="card-title">Menaxhimi i studentëve</h5>
-                            <p class="card-text">Regjistroni, modifikoni dhe menaxhoni të dhënat e studentëve në mënyrë efikase.</p>
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <div class="kpi-icon mx-auto mb-3"><i class="bi bi-people fs-4 text-primary"></i></div>
+                            <h5 class="card-title">Menaxhim i studentëve</h5>
+                            <p class="card-text small-muted">Regjistrim i saktë, azhornime të shpejta dhe historik i plotë akademik.</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card feature-card">
-                        <div class="card-body text-center">
-                            <i class="bi bi-graph-up display-6 text-primary mb-3"></i>
-                            <h5 class="card-title">Raporte dhe statistika</h5>
-                            <p class="card-text">Gjeneroni raporte të detajuara dhe statistika për performancën e studentëve.</p>
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <div class="kpi-icon mx-auto mb-3" style="background:#ecfdf5;"><i class="bi bi-graph-up-arrow fs-4 text-success"></i></div>
+                            <h5 class="card-title">Raporte & statistika</h5>
+                            <p class="card-text small-muted">Analiza të qarta mbi ecurinë dhe performancën, gati për eksportim.</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card feature-card">
-                        <div class="card-body text-center">
-                            <i class="bi bi-chat-dots display-6 text-primary mb-3"></i>
-                            <h5 class="card-title">Komunikim i lehtë</h5>
-                            <p class="card-text">Komunikoni me studentët dhe stafin nëpërmjet sistemit të integruar.</p>
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <div class="kpi-icon mx-auto mb-3" style="background:#fff1f2;"><i class="bi bi-shield-lock fs-4 text-danger"></i></div>
+                            <h5 class="card-title">Verifikim me QR</h5>
+                            <p class="card-text small-muted">Çdo certifikatë lidhet me një token unik — identifikon shpejt çdo abuzim.</p>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Steps -->
+            <div class="row align-items-center g-4 mt-5">
+                <div class="col-lg-6">
+                    <img src="image/logoPNG2.png" class="img-fluid" alt="QTA" style="max-width:360px; opacity:.9;">
+                </div>
+                <div class="col-lg-6">
+                    <h4 class="fw-bold mb-3">Si funksionon verifikimi?</h4>
+                    <ol class="small-muted ps-3">
+                        <li>Skanoni kodin QR në certifikatë ose ngarkoni një foto të tij.</li>
+                        <li>Sistemi krahason <em>tokenin unik</em> me databazën.</li>
+                        <li>Shfaqen të dhënat bazike: emër, mbiemër, modulet kryesore…</li>
+                        <li>Nëse të dhënat <u>nuk</u> përputhen me certifikatën fizike, lajmëroni menjëherë QTA.</li>
+                    </ol>
+                    <a href="verify.php" class="btn btn-primary mt-2"><i class="bi bi-qr-code-scan me-1"></i> Provo verifikimin</a>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Stats Section (dinamike) -->
-    <section class="py-5 bg-light">
+    <!-- Login options -->
+    <section class="py-5 bg-white">
         <div class="container">
-            <div class="row text-center g-4">
-                <div class="col-md-3">
-                    <p class="stat-number" id="studentCount" data-target="<?= (int)$counts['students'] ?>">0</p>
-                    <p>Studentë të regjistruar</p>
-                </div>
-                <div class="col-md-3">
-                    <p class="stat-number" id="agencyCount" data-target="<?= (int)$counts['agencies'] ?>">0</p>
-                    <p>Agjenci</p>
-                </div>
-                <div class="col-md-3">
-                    <p class="stat-number" id="adminCount" data-target="<?= (int)$counts['admins'] ?>">0</p>
-                    <p>Administratorë</p>
-                </div>
-                <div class="col-md-3">
-                    <p class="stat-number" id="usersCount" data-target="<?= (int)$counts['users'] ?>">0</p>
-                    <p>Përdorues gjithsej</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Login Options -->
-    <section class="py-5">
-        <div class="container">
-            <h2 class="text-center mb-5">Hyr në sistem</h2>
+            <h2 class="text-center fw-bold mb-4">Hyr në sistem</h2>
+            <p class="text-center small-muted mb-5">Zgjidhni profilin sipas rolit tuaj.</p>
             <div class="row justify-content-center g-4">
                 <div class="col-md-4">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-person-gear display-6 text-primary mb-3"></i>
+                    <div class="card role-card text-center h-100">
+                        <div class="card-body p-4">
+                            <div class="icon mx-auto mb-3"><i class="bi bi-person-gear fs-4"></i></div>
                             <h5 class="card-title">Administrator</h5>
-                            <p class="card-text">Qasje e plotë në të gjitha funksionet e sistemit.</p>
-                            <a href="selectProfile.php" class="btn btn-primary">Hyr si administrator</a>
+                            <p class="card-text small-muted">Qasje e plotë në të gjitha funksionet e sistemit.</p>
+                            <a href="selectProfile.php" class="btn btn-primary w-100"><i class="bi bi-box-arrow-in-right me-1"></i> Hyr si administrator</a>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-building display-6 text-primary mb-3"></i>
-                            <h5 class="card-title">Agjenci</h5>
-                            <p class="card-text">Menaxhoni studentët që dërgohen nga ju.</p>
-                            <a href="selectProfile.php" class="btn btn-primary">Hyr si agjenci</a>
+                    <div class="card role-card text-center h-100">
+                        <div class="card-body p-4">
+                            <div class="icon mx-auto mb-3" style="background:#ecfdf5;color:#12b981;"><i class="bi bi-building fs-4"></i></div>
+                            <h5 class="card-title">Agjencia</h5>
+                            <p class="card-text small-muted">Menaxhoni studentët që dërgohen nga ju.</p>
+                            <a href="selectProfile.php" class="btn btn-success w-100"><i class="bi bi-box-arrow-in-right me-1"></i> Hyr si agjenci</a>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-mortarboard display-6 text-primary mb-3"></i>
+                    <div class="card role-card text-center h-100">
+                        <div class="card-body p-4">
+                            <div class="icon mx-auto mb-3" style="background:#f0f9ff;color:#0ea5e9;"><i class="bi bi-mortarboard fs-4"></i></div>
                             <h5 class="card-title">Student</h5>
-                            <p class="card-text">Qasje në të dhënat personale dhe performancën.</p>
-                            <a href="selectProfile.php" class="btn btn-primary">Hyr si student</a>
+                            <p class="card-text small-muted">Qasje në të dhënat personale dhe performancën.</p>
+                            <a href="selectProfile.php" class="btn btn-info w-100 text-white"><i class="bi bi-box-arrow-in-right me-1"></i> Hyr si student</a>
                         </div>
                     </div>
                 </div>
@@ -246,7 +340,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                                 <div class="row g-3">
                                     <div class="col-md-3">
                                         <a class="text-decoration-none" href="dashboard_admin.php">
-                                            <div class="card text-center">
+                                            <div class="card text-center mini-card">
                                                 <div class="card-body">
                                                     <i class="bi bi-speedometer2 fs-2 text-primary"></i>
                                                     <div class="mt-2">Dashboard</div>
@@ -256,7 +350,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                                     </div>
                                     <div class="col-md-3">
                                         <a class="text-decoration-none" href="users.php">
-                                            <div class="card text-center">
+                                            <div class="card text-center mini-card">
                                                 <div class="card-body">
                                                     <i class="bi bi-people fs-2 text-primary"></i>
                                                     <div class="mt-2">Administratorët</div>
@@ -266,7 +360,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                                     </div>
                                     <div class="col-md-3">
                                         <a class="text-decoration-none" href="agencies.php">
-                                            <div class="card text-center">
+                                            <div class="card text-center mini-card">
                                                 <div class="card-body">
                                                     <i class="bi bi-building fs-2 text-primary"></i>
                                                     <div class="mt-2">Agjencitë</div>
@@ -276,7 +370,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                                     </div>
                                     <div class="col-md-3">
                                         <a class="text-decoration-none" href="students.php">
-                                            <div class="card text-center">
+                                            <div class="card text-center mini-card">
                                                 <div class="card-body">
                                                     <i class="bi bi-mortarboard fs-2 text-primary"></i>
                                                     <div class="mt-2">Studentët</div>
@@ -342,74 +436,64 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
     </section>
 
     <!-- Footer -->
-    <footer class="bg-dark text-white py-5">
+    <footer class="py-5">
         <div class="container">
-            <div class="row">
-                <div class="col-lg-4 mb-4">
+            <div class="row gy-4">
+                <div class="col-lg-4">
                     <h5>Qendra e Trajnimeve të Avancuara</h5>
-                    <p>Ofrimi i edukimit me cilësi të lartë për profesionistët e të nesërmes.</p>
-                    <div class="d-flex">
-                        <a href="#" class="text-white me-3"><i class="bi bi-facebook"></i></a>
-                        <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
-                        <a href="#" class="text-white me-3"><i class="bi bi-linkedin"></i></a>
-                        <a href="#" class="text-white"><i class="bi bi-instagram"></i></a>
+                    <p class="small">Ofrimi i edukimit me cilësi të lartë për profesionistët e të nesërmes.</p>
+                    <div class="d-flex gap-3">
+                        <a href="#" aria-label="Facebook"><i class="bi bi-facebook"></i></a>
+                        <a href="#" aria-label="Twitter"><i class="bi bi-twitter"></i></a>
+                        <a href="#" aria-label="LinkedIn"><i class="bi bi-linkedin"></i></a>
+                        <a href="#" aria-label="Instagram"><i class="bi bi-instagram"></i></a>
                     </div>
                 </div>
-                <div class="col-lg-4 mb-4">
+                <div class="col-lg-4">
                     <h5>Lidhje të shpejta</h5>
-                    <ul class="list-unstyled">
-                        <li><a href="index.php" class="text-white text-decoration-none">Kryefaqja</a></li>
-                        <li><a href="#" class="text-white text-decoration-none">Rreth Nesh</a></li>
-                        <li><a href="#" class="text-white text-decoration-none">Kurset</a></li>
-                        <li><a href="contact.html" class="text-white text-decoration-none">Kontakt</a></li>
+                    <ul class="list-unstyled small">
+                        <li><a href="index.php" class="text-decoration-none">Kryefaqja</a></li>
+                        <li><a href="#" class="text-decoration-none">Rreth Nesh</a></li>
+                        <li><a href="#" class="text-decoration-none">Kurset</a></li>
+                        <li><a href="contact.html" class="text-decoration-none">Kontakt</a></li>
+                        <li><a href="verify.php" class="text-decoration-none">Verifiko Certifikatën</a></li>
                     </ul>
                 </div>
-                <div class="col-lg-4 mb-4">
+                <div class="col-lg-4">
                     <h5>Na gjeni këtu</h5>
-                    <p><i class="bi bi-geo-alt me-2"></i> Rruga Bilal Konxholli, Tiranë</p>
-                    <p><i class="bi bi-telephone me-2"></i> +355 69 877 8837</p>
-                    <p><i class="bi bi-envelope me-2"></i> officialqta@gmail.com</p>
+                    <p class="small mb-1"><i class="bi bi-geo-alt me-2"></i>Rruga Bilal Konxholli, Tiranë</p>
+                    <p class="small mb-1"><i class="bi bi-telephone me-2"></i>+355 69 877 8837</p>
+                    <p class="small mb-0"><i class="bi bi-envelope me-2"></i>officialqta@gmail.com</p>
                 </div>
             </div>
-            <hr class="my-4 bg-light">
-            <p class="text-center mb-0">&copy; <?= date('Y') ?> Qendra e Trajnimeve të Avancuara. Të gjitha të drejtat e rezervuara.</p>
+            <hr class="my-4" style="opacity:.2;">
+            <p class="text-center small mb-0">&copy; <?= date('Y') ?> Qendra e Trajnimeve të Avancuara. Të gjitha të drejtat e rezervuara.</p>
         </div>
     </footer>
 
-    <!-- Bootstrap JS with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Custom JS -->
+    <!-- JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Animim i numrave në statistikat – lexon target nga data-target
-        function animateValue(el, end, duration) {
-            let start = 0;
-            const range = end - start;
-            const stepTime = range > 0 ? Math.max(Math.floor(duration / range), 10) : 10;
-            const timer = setInterval(function() {
-                start += 1;
-                el.textContent = start.toLocaleString('sq-AL');
-                if (start >= end) clearInterval(timer);
-            }, stepTime);
-        }
-
-        function isInViewport(element) {
-            const rect = element.getBoundingClientRect();
-            return rect.top < (window.innerHeight || document.documentElement.clientHeight) && rect.bottom >= 0;
-        }
-
-        let statsAnimated = false;
-        function tryAnimateStats() {
-            const statsSection = document.querySelector('.bg-light');
-            if (!statsAnimated && statsSection && isInViewport(statsSection)) {
-                document.querySelectorAll('.stat-number').forEach(el => {
-                    const target = parseInt(el.getAttribute('data-target') || '0', 10);
-                    animateValue(el, target, 1200);
-                });
-                statsAnimated = true;
-            }
-        }
-        window.addEventListener('scroll', tryAnimateStats);
-        window.addEventListener('load', tryAnimateStats);
+        // KPI animation using IntersectionObserver for smoothness
+        const els = document.querySelectorAll('[data-kpi]');
+        const animate = (el) => {
+            const end = parseInt(el.getAttribute('data-kpi')||'0',10);
+            const dur = 900, start = 0;
+            const t0 = performance.now();
+            const step = (t) => {
+                const p = Math.min(1, (t - t0) / dur);
+                const val = Math.floor(start + (end - start) * (p * (2 - p))); // easeOutQuad
+                el.textContent = val.toLocaleString('sq-AL');
+                if (p < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        };
+        const io = new IntersectionObserver((entries, obs)=>{
+            entries.forEach(e=>{
+                if(e.isIntersecting){ animate(e.target); obs.unobserve(e.target); }
+            });
+        }, {threshold:.4});
+        els.forEach(el=>io.observe(el));
     </script>
 </body>
 </html>
