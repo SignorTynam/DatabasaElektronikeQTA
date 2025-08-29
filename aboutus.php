@@ -3,7 +3,6 @@ declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/navbarMain.php';
-
 $pdo = getPDO();
 
 /* 1) Nëse je i loguar, lexo përdoruesin aktual */
@@ -116,11 +115,7 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
       background:linear-gradient(90deg, #e0e7ff, #eff6ff);
       border:1px solid #e5e7eb; border-radius:1rem;
     }
-
-    /* Footer */
-    footer{ background:#0b1220; color:#e5e7eb; }
-    footer a{ color:#e5e7eb; }
-  </style>
+   </style>
 </head>
 <body>
 
@@ -361,42 +356,6 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
   </div>
 </section>
 
-<!-- Footer -->
-<footer class="py-5 mt-4">
-  <div class="container">
-    <div class="row gy-4">
-      <div class="col-lg-4">
-        <h5>Qendra e Trajnimeve të Avancuara</h5>
-        <p class="small">Edukimi cilësor për profesionistët e së nesërmes.</p>
-        <div class="d-flex gap-3">
-          <a href="#" aria-label="Facebook"><i class="bi bi-facebook"></i></a>
-          <a href="#" aria-label="Twitter"><i class="bi bi-twitter"></i></a>
-          <a href="#" aria-label="LinkedIn"><i class="bi bi-linkedin"></i></a>
-          <a href="#" aria-label="Instagram"><i class="bi bi-instagram"></i></a>
-        </div>
-      </div>
-      <div class="col-lg-4">
-        <h5>Lidhje të shpejta</h5>
-        <ul class="list-unstyled small">
-          <li><a class="text-decoration-none" href="index.php">Kryefaqja</a></li>
-          <li><a class="text-decoration-none" href="aboutus.php">Rreth Nesh</a></li>
-          <li><a class="text-decoration-none" href="contact.html">Kontakt</a></li>
-          <li><a class="text-decoration-none" href="verify.php">Verifiko Certifikatën</a></li>
-          <li><a class="text-decoration-none" href="selectProfile.php">Hyr në sistem</a></li>
-        </ul>
-      </div>
-      <div class="col-lg-4">
-        <h5>Na gjeni këtu</h5>
-        <p class="small mb-1"><i class="bi bi-geo-alt me-2"></i>Rruga Bilal Konxholli, Tiranë</p>
-        <p class="small mb-1"><i class="bi bi-telephone me-2"></i>+355 69 877 8837</p>
-        <p class="small mb-0"><i class="bi bi-envelope me-2"></i>officialqta@gmail.com</p>
-      </div>
-    </div>
-    <hr class="my-4" style="opacity:.2;">
-    <p class="text-center small mb-0">&copy; <?= date('Y') ?> Qendra e Trajnimeve të Avancuara. Të gjitha të drejtat e rezervuara.</p>
-  </div>
-</footer>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   // Animimi i numrave (si te index.php)
@@ -430,5 +389,8 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
   window.addEventListener('scroll', tryAnimateStats);
   window.addEventListener('load', tryAnimateStats);
 </script>
+
+<?php require_once __DIR__ . '/footer.php'; ?>
+
 </body>
 </html>

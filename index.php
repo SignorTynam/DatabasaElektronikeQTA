@@ -105,8 +105,8 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
             filter:blur(30px); opacity:.8;
         }
         .hero-card{
-            background:var(black); border:1px solid var(--glass-b);
-            border-radius:1rem; box-shadow:var(--shadow);
+            background:var(black); border:0.5px solid var(--glass-b);
+            border-radius:.5rem; box-shadow:var(--shadow);
         }
 
         /* Cards & sections */
@@ -402,42 +402,6 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
         </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="py-5">
-        <div class="container">
-            <div class="row gy-4">
-                <div class="col-lg-4">
-                    <h5>Qendra e Trajnimeve të Avancuara</h5>
-                    <p class="small">Ofrimi i edukimit me cilësi të lartë për profesionistët e të nesërmes.</p>
-                    <div class="d-flex gap-3">
-                        <a href="#" aria-label="Facebook"><i class="bi bi-facebook"></i></a>
-                        <a href="#" aria-label="Twitter"><i class="bi bi-twitter"></i></a>
-                        <a href="#" aria-label="LinkedIn"><i class="bi bi-linkedin"></i></a>
-                        <a href="#" aria-label="Instagram"><i class="bi bi-instagram"></i></a>
-                    </div>
-                </div>
-                <div class="col-lg-4">
-                    <h5>Lidhje të shpejta</h5>
-                    <ul class="list-unstyled small">
-                        <li><a href="index.php" class="text-decoration-none">Kryefaqja</a></li>
-                        <li><a href="#" class="text-decoration-none">Rreth Nesh</a></li>
-                        <li><a href="#" class="text-decoration-none">Kurset</a></li>
-                        <li><a href="contact.html" class="text-decoration-none">Kontakt</a></li>
-                        <li><a href="verify.php" class="text-decoration-none">Verifiko Certifikatën</a></li>
-                    </ul>
-                </div>
-                <div class="col-lg-4">
-                    <h5>Na gjeni këtu</h5>
-                    <p class="small mb-1"><i class="bi bi-geo-alt me-2"></i>Rruga Bilal Konxholli, Tiranë</p>
-                    <p class="small mb-1"><i class="bi bi-telephone me-2"></i>+355 69 877 8837</p>
-                    <p class="small mb-0"><i class="bi bi-envelope me-2"></i>officialqta@gmail.com</p>
-                </div>
-            </div>
-            <hr class="my-4" style="opacity:.2;">
-            <p class="text-center small mb-0">&copy; <?= date('Y') ?> Qendra e Trajnimeve të Avancuara. Të gjitha të drejtat e rezervuara.</p>
-        </div>
-    </footer>
-
     <!-- JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -462,5 +426,8 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
         }, {threshold:.4});
         els.forEach(el=>io.observe(el));
     </script>
+
+    <?php require_once __DIR__ . '/footer.php'; ?>
+
 </body>
 </html>
