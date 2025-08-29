@@ -84,6 +84,25 @@ $roleLabel  = ($role === 'agjencia' || $role === 'agency') ? 'Agjenci' : ucfirst
             <i class="bi bi-speedometer2 me-1"></i>Dashboard
           </a>
         </li>
+
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle<?= ($active === 'students' || $active === 'groups') ? ' active' : '' ?>" href="#" id="navUsersDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-people me-1"></i>Përdoruesit
+          </a>
+          <ul class="dropdown-menu" aria-labelledby="navUsersDropdown">
+            <li>
+              <a class="dropdown-item<?= $active === 'students' ? ' active' : '' ?>" href="register_agjencia.php">
+                <i class="bi bi-person-lines-fill me-2"></i>Të gjithë studentët
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item<?= $active === 'groups' ? ' active' : '' ?>" href="groups_agjencia.php">
+                <i class="bi bi-people-fill me-2"></i>Grupet studentët
+              </a>
+            </li>
+          </ul>
+        </li>
+
         <?php /* Shembull për zgjerim në të ardhmen:
         <li class="nav-item">
           <a class="nav-link<?= $active==='students' ? ' active' : '' ?>" href="students_agjencia.php">
