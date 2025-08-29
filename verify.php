@@ -173,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $json['action'] ?? '';
   if ($action==='verify') {
     $payload = trim((string)($json['payload'] ?? ''));
-    $sid = (int)($_GET['sid'] ?? 0); // lejo override via URL nëse dikush thërret direkt
+    $sid = (int)($_GET['sid'] ?? 0); // lejo override via URL
     $token = trim((string)($_GET['t'] ?? ($json['token'] ?? '')));
 
     if (!$sid || !$token) {
@@ -208,26 +208,39 @@ if (isset($_GET['sid'], $_GET['t'])) {
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
-    body { background:#f5f7fb; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
+    :root{
+      --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;
+      --bg:#f5f7fb; --glass:rgba(255,255,255,.82); --glass-b:rgba(255,255,255,.55);
+      --muted:#64748b; --shadow:0 18px 40px rgba(2,6,23,.12);
+    }
+    body { background:var(--bg); }
+    .card { border:none; border-radius:1rem; box-shadow:var(--shadow); }
     .hero {
       background:
         radial-gradient(1200px 420px at 10% -20%, rgba(37,99,235,.25), rgba(37,99,235,0) 60%),
         radial-gradient(900px 320px at 90% -10%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
-        linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
+        linear-gradient(135deg, var(--g1) 0%, var(--g2) 55%, var(--g3) 100%);
       color:#fff; border-radius:0 0 1.25rem 1.25rem; padding:42px 0;
     }
     .chip { background:rgba(255,255,255,.17); border:1px solid rgba(255,255,255,.26); }
-    .result-valid { border-left:6px solid #22c55e; }
-    .result-invalid { border-left:6px solid #ef4444; }
     .qrbox { background:#fff; border:1px dashed #e5e7eb; border-radius:.75rem; }
-    .small-muted { color:#6b7280; font-size:.95rem; }
-    .dropzone {
-      border:2px dashed #cbd5e1; border-radius:.75rem; background:#fff; padding:18px; text-align:center;
-      transition: .2s ease;
-    }
+    .small-muted { color:var(--muted); font-size:.95rem; }
+    .dropzone { border:2px dashed #cbd5e1; border-radius:.75rem; background:#fff; padding:18px; text-align:center; transition:.2s ease; }
     .dropzone.dragover { background:#f8fafc; border-color:#94a3b8; }
     .nav-pills .nav-link { border-radius:.75rem; }
+    .status-banner{
+      background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px);
+      border-radius:1rem; padding:10px 14px; display:flex; align-items:center; gap:.5rem;
+    }
+    .status-icon{ width:34px; height:34px; border-radius:.6rem; display:flex; align-items:center; justify-content:center; }
+    .status-valid{ border-left:6px solid #22c55e; }
+    .status-invalid{ border-left:6px solid #ef4444; }
+    .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
+    @media print {
+      .navbar, .nav, .btn, .dropzone, .hero, footer { display:none !important; }
+      .card { box-shadow:none !important; border:1px solid #e5e7eb; }
+      body { background:white !important; }
+    }
   </style>
 </head>
 <body>
@@ -308,13 +321,15 @@ if (isset($_GET['sid'], $_GET['t'])) {
               <div id="scanRegion" class="qrbox p-2 mb-3">
                 <div id="reader" style="width:100%;"></div>
               </div>
-              <div class="small-muted mb-2">Lejo aksesin e kamerës. Përdor kamerën e pasme në telefon (nëse ofrohet).</div>
-              <button class="btn btn-outline-secondary btn-sm" id="btnRestartCam"><i class="bi bi-arrow-clockwise me-1"></i>Rinis skanimin</button>
+              <div class="d-flex align-items-center justify-content-between">
+                <div class="small-muted">Lejo aksesin e kamerës. Përdor kamerën e pasme në telefon (nëse ofrohet).</div>
+                <button class="btn btn-outline-secondary btn-sm" id="btnRestartCam"><i class="bi bi-arrow-clockwise me-1"></i>Rinis</button>
+              </div>
             </div>
 
             <!-- Pane: Upload foto -->
             <div class="tab-pane fade" id="pane-upload" role="tabpanel" aria-labelledby="tab-upload">
-              <div id="file-reader" class="d-none"></div> <!-- nevojitet nga html5-qrcode për preview -->
+              <div id="file-reader" class="d-none"></div>
               <div id="dropzone" class="dropzone mb-2">
                 <i class="bi bi-image fs-4 d-block mb-2"></i>
                 Zvarrit një foto me QR këtu ose
@@ -324,25 +339,31 @@ if (isset($_GET['sid'], $_GET['t'])) {
                 </label>
                 <div class="small-muted mt-2">Mbështetur: JPG, PNG, WEBP…</div>
               </div>
-              <div id="uploadMsg" class="small text-muted"></div>
+              <div class="d-flex gap-2">
+                <button id="btnPasteImage" class="btn btn-soft btn-sm"><i class="bi bi-clipboard2-check me-1"></i>Ngjit nga Clipboard</button>
+                <div id="uploadMsg" class="small text-muted ms-auto"></div>
+              </div>
             </div>
 
             <!-- Pane: Manual -->
             <div class="tab-pane fade" id="pane-manual" role="tabpanel" aria-labelledby="tab-manual">
-              <div class="input-group mb-3">
+              <div class="input-group mb-2">
                 <span class="input-group-text bg-light border-0"><i class="bi bi-clipboard-check"></i></span>
                 <input id="manualPayload" type="text" class="form-control border-0" placeholder="Ngjit këtu stringun ose URL-në e QR">
               </div>
-              <div class="d-grid gap-2">
-                <button id="btnVerify" class="btn btn-primary"><i class="bi bi-shield-check me-1"></i>Verifiko</button>
+              <div class="d-flex gap-2 mb-3">
+                <button id="btnVerify" class="btn btn-primary flex-fill"><i class="bi bi-shield-check me-1"></i>Verifiko</button>
+                <button id="btnPaste" class="btn btn-soft"><i class="bi bi-clipboard2"></i></button>
                 <button id="btnClear" class="btn btn-outline-secondary">Pastro</button>
               </div>
+              <div class="small-muted">Këshillë: formatet e pranuara janë URL me ?sid=&t=, <code>QTA|SID:..|TOKEN:..</code>, JSON {"sid","token"} ose <code>SID|TOKEN</code>.</div>
             </div>
           </div>
 
           <hr>
           <div class="alert alert-warning mb-0">
-            <strong>E rëndësishme:</strong> Nëse **emri** në ekran <u>NUK</u> përputhet me emrin në **certifikatën fizike**, ka dyshim për **certifikatë të vjedhur/kopjuar**. Njoftoni menjëherë QTA te
+            <strong>E rëndësishme:</strong> Nëse <u>emri</u> në ekran <b>NUK</b> përputhet me emrin në certifikatën fizike,
+            mund të jetë <b>certifikatë e vjedhur/kopjuar</b>. Njoftoni menjëherë QTA te
             <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose <a href="tel:+355698778837">+355 69 877 8837</a>.
           </div>
         </div>
@@ -351,14 +372,26 @@ if (isset($_GET['sid'], $_GET['t'])) {
 
     <!-- Kolona: rezultati -->
     <div class="col-lg-7">
-      <div id="resultCard" class="card <?= $prefillResult ? ($prefillResult['valid']?'result-valid':'result-invalid') : '' ?>">
+      <div class="status-banner mb-3 <?= $prefillResult ? ($prefillResult['valid']?'status-valid':'status-invalid') : '' ?>">
+        <div class="status-icon <?= $prefillResult ? ($prefillResult['valid']?'bg-success-subtle text-success':'bg-danger-subtle text-danger') : 'bg-secondary-subtle text-secondary' ?>">
+          <i class="bi <?= $prefillResult ? ($prefillResult['valid']?'bi-check2-circle':'bi-x-circle') : 'bi-shield-lock' ?>"></i>
+        </div>
+        <div class="fw-semibold">Statusi:</div>
+        <div id="statusText"><?= $prefillResult ? ($prefillResult['valid']?'VALID':'INVALID') : 'Gati për verifikim' ?></div>
+        <div class="ms-auto d-none d-lg-flex gap-2">
+          <button class="btn btn-soft btn-sm" id="btnShare" title="Krijo link verifikimi"><i class="bi bi-link-45deg"></i></button>
+          <button class="btn btn-soft btn-sm" id="btnPrint" title="Printo rezultatin"><i class="bi bi-printer"></i></button>
+        </div>
+      </div>
+
+      <div id="resultCard" class="card <?= $prefillResult ? ($prefillResult['valid']?'status-valid':'status-invalid') : '' ?>">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
           <strong><i class="bi bi-patch-check me-1"></i>Rezultati i verifikimit</strong>
           <span id="statusChip" class="badge <?= $prefillResult ? ($prefillResult['valid']?'text-bg-success':'text-bg-danger') : 'text-bg-secondary' ?>">
             <?= $prefillResult ? ($prefillResult['valid']?'VALID':'INVALID') : '—' ?>
           </span>
         </div>
-        <div class="card-body" id="resultBody">
+        <div class="card-body" id="resultBody" aria-live="polite">
           <?php if ($prefillResult): ?>
             <?php if ($prefillResult['valid']): 
               $st = $prefillResult['student']; 
@@ -374,42 +407,20 @@ if (isset($_GET['sid'], $_GET['t'])) {
               </div>
 
               <div class="row g-3">
-                <div class="col-6 col-md-3">
-                  <div class="p-3 rounded" style="background:#f8fafc;">
-                    <div class="small text-muted">Modulet</div>
-                    <div class="h5 mb-0"><?= (int)$st['stats']['courses'] ?></div>
-                  </div>
-                </div>
-                <div class="col-6 col-md-3">
-                  <div class="p-3 rounded" style="background:#f8fafc;">
-                    <div class="small text-muted">Grupe</div>
-                    <div class="h5 mb-0"><?= (int)$st['stats']['groups'] ?></div>
-                  </div>
-                </div>
-                <div class="col-6 col-md-3">
-                  <div class="p-3 rounded" style="background:#f8fafc;">
-                    <div class="small text-muted">Mes. pikë</div>
-                    <div class="h5 mb-0"><?= $st['stats']['avg_score']!==null ? $st['stats']['avg_score'] : '—' ?></div>
-                  </div>
-                </div>
-                <div class="col-6 col-md-3">
-                  <div class="p-3 rounded" style="background:#f8fafc;">
-                    <div class="small text-muted">Kalueshmëria</div>
-                    <div class="h5 mb-0"><?= $st['stats']['pass_rate']!==null ? ($st['stats']['pass_rate'].'%') : '—' ?></div>
-                  </div>
-                </div>
+                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
+                  <div class="small text-muted">Modulet</div><div class="h5 mb-0"><?= (int)$st['stats']['courses'] ?></div></div></div>
+                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
+                  <div class="small text-muted">Grupe</div><div class="h5 mb-0"><?= (int)$st['stats']['groups'] ?></div></div></div>
+                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
+                  <div class="small text-muted">Mes. pikë</div><div class="h5 mb-0"><?= $st['stats']['avg_score']!==null ? $st['stats']['avg_score'] : '—' ?></div></div></div>
+                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
+                  <div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0"><?= $st['stats']['pass_rate']!==null ? ($st['stats']['pass_rate'].'%') : '—' ?></div></div></div>
               </div>
 
               <hr>
               <div class="row">
-                <div class="col-md-6">
-                  <div class="small text-muted">Edukimi</div>
-                  <div class="fw-semibold mb-3"><?= h($st['edu_label'] ?? '—') ?></div>
-                </div>
-                <div class="col-md-6">
-                  <div class="small text-muted">Agjencia</div>
-                  <div class="fw-semibold mb-3"><?= h($st['agency'] ?? '—') ?></div>
-                </div>
+                <div class="col-md-6"><div class="small text-muted">Edukimi</div><div class="fw-semibold mb-3"><?= h($st['edu_label'] ?? '—') ?></div></div>
+                <div class="col-md-6"><div class="small text-muted">Agjencia</div><div class="fw-semibold mb-3"><?= h($st['agency'] ?? '—') ?></div></div>
               </div>
 
               <div class="small text-muted">Kurset (max 5):</div>
@@ -422,7 +433,7 @@ if (isset($_GET['sid'], $_GET['t'])) {
               </ul>
 
               <div class="alert alert-info mt-3">
-                <strong>Kujtesë sigurie:</strong> Nëse emri në ekran <u>nuk</u> përputhet me emrin në certifikatën fizike,
+                <strong>Kujdes:</strong> Nëse emri në ekran <u>nuk</u> përputhet me emrin në certifikatën fizike,
                 raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose <a href="tel:+355698778837">+355 69 877 8837</a>.
               </div>
             <?php else: ?>
@@ -452,11 +463,27 @@ if (isset($_GET['sid'], $_GET['t'])) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* ====== Skanimi me kamerë (html5-qrcode) ====== */
-let html5QrcodeScanner;
+/* ====== Global helpers ====== */
+let html5QrcodeScanner, fileQr;
+let lastPayload = ''; // ruajmë payload për share link
+const statusBanner = document.querySelector('.status-banner');
+const statusText = document.getElementById('statusText');
 
+function setStatus(label, variant){
+  const chip = document.getElementById('statusChip');
+  chip.className = 'badge text-bg-'+variant;
+  chip.textContent = label;
+  if (statusText) statusText.textContent = (label === '—' ? 'Gati për verifikim' : label);
+  statusBanner?.classList.remove('status-valid','status-invalid');
+  if (variant==='success') statusBanner?.classList.add('status-valid');
+  if (variant==='danger')  statusBanner?.classList.add('status-invalid');
+}
+
+function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
+
+/* ====== Skanimi me kamerë (html5-qrcode) ====== */
 function onScanSuccess(decodedText) {
-  // Kur lexon me kamerë, verifiko direkt
+  lastPayload = decodedText;
   document.querySelector('#tab-manual').click();
   const inp = document.getElementById('manualPayload');
   inp.value = decodedText;
@@ -470,7 +497,7 @@ function startScanner(){
       "reader",
       { fps: 10, qrbox: Math.floor(w*0.8), aspectRatio: 1.0, rememberLastUsedCamera: true,
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
-      /* verbose= */ false
+      false
     );
     html5QrcodeScanner.render(onScanSuccess, (err)=>{ /* silent */ });
   }catch(e){
@@ -478,18 +505,14 @@ function startScanner(){
   }
 }
 
-/* ====== Ngarko foto / Drag & Drop ====== */
-let fileQr; // instance për scanFile
+/* ====== Ngarko foto / Drag & Drop / Paste ====== */
 function initFileScanner(){
-  try{
-    fileQr = new Html5Qrcode('file-reader');
-  }catch(e){
-    // në shumicën e rasteve krijohet OK
-  }
+  try{ fileQr = new Html5Qrcode('file-reader'); }catch(e){}
 }
 function setUploadMsg(text, good=false){
   const m = document.getElementById('uploadMsg');
-  m.className = good ? 'small text-success' : 'small text-danger';
+  if (!m) return;
+  m.className = good ? 'small text-success ms-auto' : 'small text-danger ms-auto';
   m.textContent = text || '';
 }
 async function handleFile(file){
@@ -497,7 +520,8 @@ async function handleFile(file){
   if(!fileQr) initFileScanner();
   try{
     setUploadMsg('Duke lexuar QR nga imazhi…', true);
-    const decodedText = await fileQr.scanFile(file, true); // showImage=true
+    const decodedText = await fileQr.scanFile(file, true);
+    lastPayload = decodedText;
     document.querySelector('#tab-manual').click();
     const inp = document.getElementById('manualPayload');
     inp.value = decodedText;
@@ -509,16 +533,29 @@ async function handleFile(file){
   }
 }
 document.getElementById('fileInput')?.addEventListener('change', (ev)=>{
-  const f = ev.target.files?.[0];
-  handleFile(f);
+  const f = ev.target.files?.[0]; handleFile(f);
 });
 const dz = document.getElementById('dropzone');
-dz.addEventListener('dragover', (e)=>{ e.preventDefault(); dz.classList.add('dragover'); });
-dz.addEventListener('dragleave', ()=> dz.classList.remove('dragover'));
-dz.addEventListener('drop', (e)=>{
+dz?.addEventListener('dragover', (e)=>{ e.preventDefault(); dz.classList.add('dragover'); });
+dz?.addEventListener('dragleave', ()=> dz.classList.remove('dragover'));
+dz?.addEventListener('drop', (e)=>{
   e.preventDefault(); dz.classList.remove('dragover');
-  const f = e.dataTransfer.files?.[0];
-  handleFile(f);
+  const f = e.dataTransfer.files?.[0]; handleFile(f);
+});
+document.getElementById('btnPasteImage')?.addEventListener('click', async ()=>{
+  try{
+    const items = await navigator.clipboard.read();
+    for (const item of items){
+      for (const type of item.types){
+        if (type.startsWith('image/')){
+          const blob = await item.getType(type);
+          const file = new File([blob], 'clipboard.'+type.split('/')[1], {type});
+          return handleFile(file);
+        }
+      }
+    }
+    setUploadMsg('Clipboard nuk përmban imazh.');
+  }catch(e){ setUploadMsg('Shfletuesi nuk lejon leximin e imazhit nga clipboard.'); }
 });
 
 /* ====== Manual verify ====== */
@@ -530,29 +567,26 @@ async function doVerify(payload){
     body: JSON.stringify({action:'verify', payload})
   });
   const json = await res.json();
-  renderResult(json);
+  renderResult(json, payload);
 }
 
-function setStatus(label, variant){
-  const chip = document.getElementById('statusChip');
-  chip.className = 'badge text-bg-'+variant;
-  chip.textContent = label;
-}
-
-function renderResult(json){
+function renderResult(json, payloadUsed=''){
   const card = document.getElementById('resultCard');
   const body = document.getElementById('resultBody');
 
   if(!json || json.ok!==true){
     setStatus('Gabim', 'danger');
-    card.classList.remove('result-valid','result-invalid');
+    card.classList.remove('status-valid','status-invalid');
     body.innerHTML = `<div class="alert alert-danger">Gabim gjatë verifikimit. Provo përsëri.</div>`;
     return;
   }
 
+  // ruaj payload për share
+  if (payloadUsed) lastPayload = payloadUsed;
+
   if(json.valid){
     setStatus('VALID', 'success');
-    card.classList.add('result-valid'); card.classList.remove('result-invalid');
+    card.classList.add('status-valid'); card.classList.remove('status-invalid');
 
     const st = json.student || {};
     const full = [st.first_name||'', st.father_name? (st.father_name+' ') : '', st.last_name||''].join('').trim();
@@ -586,7 +620,7 @@ function renderResult(json){
         <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
           <div class="small text-muted">Mes. pikë</div><div class="h5 mb-0">${st.stats?.avg_score ?? '—'}</div></div></div>
         <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-          <div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0">${st.stats?.pass_rate!==undefined && st.stats?.pass_rate!==null ? st.stats.pass_rate+'%' : '—'}</div></div></div>
+          <div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0">${(st.stats?.pass_rate ?? null) !== null ? st.stats.pass_rate+'%' : '—'}</div></div></div>
       </div>
 
       <hr>
@@ -606,7 +640,7 @@ function renderResult(json){
     `;
   } else {
     setStatus('INVALID', 'danger');
-    card.classList.add('result-invalid'); card.classList.remove('result-valid');
+    card.classList.add('status-invalid'); card.classList.remove('status-valid');
     const reason = json.reason || 'Token i pavlefshëm.';
     body.innerHTML = `
       <div class="alert alert-danger">
@@ -617,29 +651,67 @@ function renderResult(json){
   }
 }
 
-function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
-
-/* Butonat manual */
+/* ====== Butona & Shërbime ====== */
+// Manual buttons
 document.getElementById('btnVerify')?.addEventListener('click', ()=>{
   const v = document.getElementById('manualPayload').value.trim();
   if (!v){ document.getElementById('manualPayload').focus(); return; }
+  lastPayload = v;
   doVerify(v);
+});
+document.getElementById('btnPaste')?.addEventListener('click', async ()=>{
+  try{
+    const t = await navigator.clipboard.readText();
+    if (t){ document.getElementById('manualPayload').value = t; lastPayload = t; }
+  }catch(e){}
 });
 document.getElementById('btnClear')?.addEventListener('click', ()=>{
   document.getElementById('manualPayload').value = '';
   setStatus('—','secondary');
   document.getElementById('resultBody').innerHTML = '<div class="text-muted">Skanoni QR, ngarkoni foto ose ngjisni vlerën për verifikim. Rezultati do të shfaqet këtu.</div>';
-  document.getElementById('resultCard').classList.remove('result-valid','result-invalid');
+  document.getElementById('resultCard').classList.remove('status-valid','status-invalid');
 });
 
-/* Rinis kamerën nëse ngec */
+// Restart camera
 document.getElementById('btnRestartCam')?.addEventListener('click', ()=>{
-  try{
-    html5QrcodeScanner?.clear();
-  }catch(e){}
+  try{ html5QrcodeScanner?.clear(); }catch(e){}
   document.querySelector('#tab-camera').click();
   startScanner();
 });
+
+// Share link (ndërto nga payload nëse ka SID/TOKEN)
+function buildShareFromPayload(raw){
+  const s = String(raw||'');
+  // përpiqu të gjesh sid & token
+  let sid = 0, token = '';
+  if (s.startsWith('http')){
+    try{
+      const url = new URL(s);
+      sid = parseInt(url.searchParams.get('sid')||'0', 10) || 0;
+      token = (url.searchParams.get('t') || url.searchParams.get('token') || '').trim();
+    }catch(e){}
+  }
+  if (!sid || !token){
+    const mSid = s.match(/SID\s*:\s*(\d+)/i); if (mSid) sid = parseInt(mSid[1],10)||0;
+    const mTok = s.match(/TOKEN\s*:\s*([a-f0-9]{32,})/i); if (mTok) token = mTok[1].toLowerCase();
+  }
+  if (!sid || !token){
+    const m = s.split('|'); if (m.length===2 && /^\d+$/.test(m[0])) { sid = parseInt(m[0],10); token = m[1].trim(); }
+  }
+  if (sid && token){
+    const base = location.origin + location.pathname;
+    return `${base}?sid=${sid}&t=${encodeURIComponent(token)}`;
+  }
+  return '';
+}
+document.getElementById('btnShare')?.addEventListener('click', async ()=>{
+  const link = buildShareFromPayload(lastPayload);
+  if (!link){ alert('S’ka të dhëna të mjaftueshme për link. Skanoni ose ngjisni QR fillimisht.'); return; }
+  try{ await navigator.clipboard.writeText(link); }catch(e){}
+  const btn = document.getElementById('btnShare');
+  const old = btn.innerHTML; btn.innerHTML = '<i class="bi bi-check2"></i>'; setTimeout(()=>btn.innerHTML=old, 900);
+});
+document.getElementById('btnPrint')?.addEventListener('click', ()=> window.print());
 
 /* Start */
 window.addEventListener('load', ()=>{
