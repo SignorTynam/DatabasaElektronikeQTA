@@ -5,9 +5,7 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
-/* =========================================================
-   Helpers
-========================================================= */
+/* ========================= Helpers ========================= */
 function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 function json_out(array $x){ header('Content-Type: application/json; charset=utf-8'); echo json_encode($x); exit; }
 
@@ -136,9 +134,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   ];
 }
 
-/* =========================================================
-   API JSON (POST) – përgjigju dhe EXIT
-========================================================= */
+/* ==================== API JSON (POST) ==================== */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $ct = $_SERVER['CONTENT_TYPE'] ?? '';
   $raw = file_get_contents('php://input');
@@ -158,9 +154,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   json_out(['ok'=>false, 'error'=>'Veprim i panjohur.']);
 }
 
-/* =========================================================
-   GET: Render (navbar & UI)
-========================================================= */
+/* ==================== GET: Render ==================== */
 $currentUser = null;
 if (!empty($_SESSION['user_id'])) {
   $stmt = $pdo->prepare("
@@ -195,21 +189,14 @@ $NAV_ACTIVE = 'verify';
   <style>
     :root{
       --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;     /* Ocean (default) */
-      --bg:#f6f8fc;
-      --text:#0f172a;
-      --muted:#64748b;
+      --bg:#f6f8fc; --text:#0f172a; --muted:#64748b;
       --glass:rgba(255,255,255,.82); --glass-b:rgba(255,255,255,.55);
       --shadow:0 18px 40px rgba(2,6,23,.12);
       --chip:rgba(255,255,255,.17); --chip-b:rgba(255,255,255,.26);
       --accent:#0ea5e9;
     }
-    /* Themes */
-    [data-theme="emerald"]{
-      --g1:#10b981; --g2:#059669; --g3:#047857; --accent:#10b981;
-    }
-    [data-theme="sunset"]{
-      --g1:#f97316; --g2:#ef4444; --g3:#db2777; --accent:#f97316;
-    }
+    [data-theme="emerald"]{ --g1:#10b981; --g2:#059669; --g3:#047857; --accent:#10b981; }
+    [data-theme="sunset"]{ --g1:#f97316; --g2:#ef4444; --g3:#db2777; --accent:#f97316; }
 
     body { background:var(--bg); color:var(--text); }
     .card { border:none; border-radius:1rem; box-shadow:var(--shadow); }
@@ -241,6 +228,13 @@ $NAV_ACTIVE = 'verify';
     .status-icon{ width:34px; height:34px; border-radius:.6rem; display:flex; align-items:center; justify-content:center; }
     .status-valid{ border-left:6px solid #22c55e; }
     .status-invalid{ border-left:6px solid #ef4444; }
+
+    /* --- Stabiletet layout-i (anti-jump) --- */
+    #reader{ width:100%; height:320px; }               /* lartësi fikse që të mos "hidhet" layout-i */
+    #reader > div{ border-radius:.75rem !important; overflow:hidden; }
+    #reader video{ width:100% !important; height:100% !important; object-fit:cover; border-radius:.75rem; }
+    .qrbox > *{ border-radius:.75rem; overflow:hidden; }
+    .tab-content{ min-height:380px; }                  /* lartësi min që të mos rrëzohet karta */
 
     /* How it works */
     .how-step { display:flex; gap:.75rem; align-items:flex-start; }
@@ -285,26 +279,10 @@ $NAV_ACTIVE = 'verify';
         <h1 class="display-6 fw-bold mb-2">Skanoni QR dhe verifikoni certifikatën në QTA</h1>
         <p class="mb-4">Konfirmoni shpejt nëse të dhënat në certifikatën fizike përputhen me regjistrat zyrtarë.</p>
 
-        <!-- How it works -->
         <div class="row g-3">
-          <div class="col-md-4">
-            <div class="how-step">
-              <div class="how-bullet"><i class="bi bi-camera-video"></i></div>
-              <div><strong>1. Zgjidhni</strong><br><span class="small">Kamerë, foto ose URL.</span></div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="how-step">
-              <div class="how-bullet"><i class="bi bi-upc-scan"></i></div>
-              <div><strong>2. Skanoni</strong><br><span class="small">Lexoni QR ose ngjisni të dhënat.</span></div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="how-step">
-              <div class="how-bullet"><i class="bi bi-shield-check"></i></div>
-              <div><strong>3. Verifikoni</strong><br><span class="small">Shfaqet statusi dhe detajet.</span></div>
-            </div>
-          </div>
+          <div class="col-md-4"><div class="how-step"><div class="how-bullet"><i class="bi bi-camera-video"></i></div><div><strong>1. Zgjidhni</strong><br><span class="small">Kamerë, foto ose URL.</span></div></div></div>
+          <div class="col-md-4"><div class="how-step"><div class="how-bullet"><i class="bi bi-upc-scan"></i></div><div><strong>2. Skanoni</strong><br><span class="small">Lexoni QR ose ngjisni të dhënat.</span></div></div></div>
+          <div class="col-md-4"><div class="how-step"><div class="how-bullet"><i class="bi bi-shield-check"></i></div><div><strong>3. Verifikoni</strong><br><span class="small">Shfaqet statusi dhe detajet.</span></div></div></div>
         </div>
       </div>
 
@@ -347,11 +325,14 @@ $NAV_ACTIVE = 'verify';
             <!-- Kamera -->
             <div class="tab-pane fade show active" id="pane-camera" role="tabpanel" aria-labelledby="tab-camera">
               <div id="scanRegion" class="qrbox p-2 mb-3">
-                <div id="reader" style="width:100%;"></div>
+                <div id="reader" aria-live="polite"></div>
               </div>
               <div class="d-flex align-items-center justify-content-between">
                 <div class="small-muted">Lejo aksesin e kamerës. Përdor kamerën e pasme në telefon (nëse ofrohet).</div>
-                <button class="btn btn-outline-secondary btn-sm" id="btnRestartCam"><i class="bi bi-arrow-clockwise me-1"></i>Rinis</button>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-outline-secondary btn-sm" id="btnRestartCam"><i class="bi bi-arrow-clockwise me-1"></i>Rinis</button>
+                  <button class="btn btn-outline-secondary btn-sm" id="btnStopCam"><i class="bi bi-stop-circle me-1"></i>Ndalo</button>
+                </div>
               </div>
             </div>
 
@@ -402,7 +383,7 @@ $NAV_ACTIVE = 'verify';
     <div class="col-lg-7">
       <div class="status-banner mb-3 <?= $prefillResult ? ($prefillResult['valid']?'status-valid':'status-invalid') : '' ?>">
         <div class="status-icon <?= $prefillResult ? ($prefillResult['valid']?'bg-success-subtle text-success':'bg-danger-subtle text-danger') : 'bg-secondary-subtle text-secondary' ?>">
-          <i class="bi <?= $prefillResult ? ($prefillResult['valid']?'bi-check2-circle':'bi-x-circle') : 'bi-shield-lock' ?>"></i>
+          <i id="statusIcon" class="bi <?= $prefillResult ? ($prefillResult['valid']?'bi-check2-circle':'bi-x-circle') : 'bi-shield-lock' ?>"></i>
         </div>
         <div class="fw-semibold">Statusi:</div>
         <div id="statusText"><?= $prefillResult ? ($prefillResult['valid']?'VALID':'INVALID') : 'Gati për verifikim' ?></div>
@@ -476,7 +457,7 @@ $NAV_ACTIVE = 'verify';
         </div>
       </div>
 
-      <!-- FAQ e shpejtë për konsistencë me About/Index -->
+      <!-- FAQ -->
       <div class="card mt-4">
         <div class="card-header bg-white"><strong><i class="bi bi-question-circle me-1"></i>Pyetjet e shpeshta</strong></div>
         <div class="card-body">
@@ -521,7 +502,7 @@ $NAV_ACTIVE = 'verify';
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* ====== Tema (Ocean/Emerald/Sunset) ====== */
+/* ========= Tema ========= */
 (function(){
   const saved = localStorage.getItem('qta-theme') || 'ocean';
   if (saved && saved !== 'ocean') document.body.setAttribute('data-theme', saved);
@@ -535,11 +516,16 @@ $NAV_ACTIVE = 'verify';
   });
 })();
 
-/* ====== Helpers ====== */
-let html5QrcodeScanner, fileQr;
+/* ========= State ========= */
+let camQr = null;           // Html5Qrcode instance for camera
+let fileQr = null;          // Html5Qrcode instance for images
+let isCamRunning = false;
+let isBusy = false;         // debounce verification
 let lastPayload = '';
+
 const statusBanner = document.querySelector('.status-banner');
-const statusText = document.getElementById('statusText');
+const statusText   = document.getElementById('statusText');
+const statusIcon   = document.getElementById('statusIcon');
 
 function setStatus(label, variant){
   const chip = document.getElementById('statusChip');
@@ -547,37 +533,66 @@ function setStatus(label, variant){
   chip.textContent = label;
   if (statusText) statusText.textContent = (label === '—' ? 'Gati për verifikim' : label);
   statusBanner?.classList.remove('status-valid','status-invalid');
-  if (variant==='success') statusBanner?.classList.add('status-valid');
-  if (variant==='danger')  statusBanner?.classList.add('status-invalid');
+  statusIcon?.classList.remove('bi-check2-circle','bi-x-circle','bi-shield-lock');
+  if (variant==='success'){ statusBanner?.classList.add('status-valid');  statusIcon?.classList.add('bi-check2-circle'); }
+  else if (variant==='danger'){ statusBanner?.classList.add('status-invalid'); statusIcon?.classList.add('bi-x-circle'); }
+  else { statusIcon?.classList.add('bi-shield-lock'); }
 }
-function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
 
-/* ====== Kamera (html5-qrcode) ====== */
-function onScanSuccess(decodedText) {
-  lastPayload = decodedText;
-  document.querySelector('#tab-manual').click();
-  const inp = document.getElementById('manualPayload');
-  inp.value = decodedText;
-  doVerify(decodedText);
-}
-function startScanner(){
-  try{
-    const w = Math.min(500, document.getElementById('reader').clientWidth || 500);
-    html5QrcodeScanner = new Html5QrcodeScanner(
-      "reader",
-      { fps: 10, qrbox: Math.floor(w*0.8), aspectRatio: 1.0, rememberLastUsedCamera: true,
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
-      false
-    );
-    html5QrcodeScanner.render(onScanSuccess, ()=>{});
-  }catch(e){
-    const r = document.getElementById('reader');
-    if (r) r.innerHTML = '<div class="text-muted p-3">Kamera nuk është në dispozicion ose nuk u lejua.</div>';
+/* ========= Kamera (Html5Qrcode low-level API) ========= */
+async function startCamera(){
+  if (isCamRunning) return;
+  const readerEl = document.getElementById('reader');
+  if (!readerEl) return;
+
+  try {
+    if (!camQr) camQr = new Html5Qrcode('reader');
+
+    const config = {
+      fps: 10,
+      qrbox: function(viewfinderWidth, viewfinderHeight) {
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const size = Math.max(220, Math.min(320, Math.floor(minEdge * 0.8)));
+        return { width: size, height: size };
+      },
+      aspectRatio: 1.0,
+      rememberLastUsedCamera: true
+    };
+
+    isBusy = false;
+    await camQr.start({ facingMode: "environment" }, config, onDecode, onDecodeError);
+    isCamRunning = true;
+  } catch (err){
+    readerEl.innerHTML = '<div class="text-muted p-3">Kamera nuk është në dispozicion ose nuk u lejua.</div>';
+    isCamRunning = false;
   }
 }
 
-/* ====== Foto / Drag & Drop / Paste ====== */
-function initFileScanner(){ try{ fileQr = new Html5Qrcode('file-reader'); }catch(e){} }
+async function stopCamera(){
+  if (camQr && isCamRunning){
+    try { await camQr.stop(); } catch(e){}
+    try { await camQr.clear(); } catch(e){}
+  }
+  isCamRunning = false;
+}
+
+function onDecode(decodedText){
+  if (isBusy) return;              // debounce
+  isBusy = true;
+  lastPayload = decodedText;
+  stopCamera();                    // mbyll kamerën që të mos dërgojë skanime të tjera
+  setStatus('Duke verifikuar...', 'secondary');
+  doVerify(decodedText).finally(()=>{ isBusy = false; });
+}
+
+function onDecodeError(_err){ /* silent */ }
+
+/* ========= Upload / DragDrop / Paste ========= */
+function ensureFileReader(){
+  if (!fileQr){
+    try{ fileQr = new Html5Qrcode('file-reader'); }catch(e){}
+  }
+}
 function setUploadMsg(text, good=false){
   const m = document.getElementById('uploadMsg'); if (!m) return;
   m.className = good ? 'small text-success ms-auto' : 'small text-danger ms-auto';
@@ -585,25 +600,27 @@ function setUploadMsg(text, good=false){
 }
 async function handleFile(file){
   if(!file){ setUploadMsg('Asnjë skedar.'); return; }
-  if(!fileQr) initFileScanner();
+  ensureFileReader();
   try{
     setUploadMsg('Duke lexuar QR nga imazhi…', true);
     const decodedText = await fileQr.scanFile(file, true);
     lastPayload = decodedText;
-    document.querySelector('#tab-manual').click();
     document.getElementById('manualPayload').value = decodedText;
-    doVerify(decodedText);
+    setStatus('Duke verifikuar...', 'secondary');
+    await doVerify(decodedText);
     setUploadMsg('U lexua me sukses.', true);
   } catch(err){
     console.error(err);
     setUploadMsg('Nuk u gjet QR në këtë imazh. Provo me foto më të qartë.');
   }
 }
+
 document.getElementById('fileInput')?.addEventListener('change', (ev)=>{ handleFile(ev.target.files?.[0]); });
 const dz = document.getElementById('dropzone');
 dz?.addEventListener('dragover', (e)=>{ e.preventDefault(); dz.classList.add('dragover'); });
 dz?.addEventListener('dragleave', ()=> dz.classList.remove('dragover'));
 dz?.addEventListener('drop', (e)=>{ e.preventDefault(); dz.classList.remove('dragover'); handleFile(e.dataTransfer.files?.[0]); });
+
 document.getElementById('btnPasteImage')?.addEventListener('click', async ()=>{
   try{
     const items = await navigator.clipboard.read();
@@ -620,17 +637,25 @@ document.getElementById('btnPasteImage')?.addEventListener('click', async ()=>{
   }catch(e){ setUploadMsg('Shfletuesi nuk lejon leximin e imazhit nga clipboard.'); }
 });
 
-/* ====== Manual verify ====== */
+/* ========= Manual verify ========= */
 async function doVerify(payload){
-  setStatus('Duke verifikuar...', 'secondary');
-  const res = await fetch('verify.php', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','Accept':'application/json'},
-    body: JSON.stringify({action:'verify', payload})
-  });
-  const json = await res.json();
-  renderResult(json, payload);
+  try{
+    const res = await fetch('verify.php', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body: JSON.stringify({action:'verify', payload})
+    });
+    const json = await res.json();
+    renderResult(json, payload);
+  }catch(e){
+    setStatus('Gabim', 'danger');
+    const body = document.getElementById('resultBody');
+    body.innerHTML = `<div class="alert alert-danger">Gabim gjatë verifikimit. Provo përsëri.</div>`;
+  }
 }
+
+function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
+
 function renderResult(json, payloadUsed=''){
   const card = document.getElementById('resultCard');
   const body = document.getElementById('resultBody');
@@ -709,25 +734,35 @@ function renderResult(json, payloadUsed=''){
   }
 }
 
-/* ====== Butonat ====== */
+/* ========= Butonat ========= */
 document.getElementById('btnVerify')?.addEventListener('click', ()=>{
   const v = document.getElementById('manualPayload').value.trim();
   if (!v){ document.getElementById('manualPayload').focus(); return; }
-  lastPayload = v; doVerify(v);
+  lastPayload = v;
+  setStatus('Duke verifikuar...', 'secondary');
+  doVerify(v);
 });
+
 document.getElementById('btnPaste')?.addEventListener('click', async ()=>{
-  try{ const t = await navigator.clipboard.readText(); if (t){ document.getElementById('manualPayload').value = t; lastPayload = t; } }catch(e){}
+  try{
+    const t = await navigator.clipboard.readText();
+    if (t){ document.getElementById('manualPayload').value = t; lastPayload = t; }
+  }catch(e){}
 });
-document.getElementById('btnClear')?.addEventListener('click', ()=>{
+
+document.getElementById('btnClear')?.addEventListener('click', async ()=>{
   document.getElementById('manualPayload').value = '';
+  lastPayload = '';
   setStatus('—','secondary');
   document.getElementById('resultBody').innerHTML = '<div class="text-muted">Skanoni QR, ngarkoni foto ose ngjisni vlerën për verifikim. Rezultati do të shfaqet këtu.</div>';
   document.getElementById('resultCard').classList.remove('status-valid','status-invalid');
+  const activePane = document.querySelector('.tab-pane.active')?.id;
+  if (activePane === 'pane-camera'){ await stopCamera(); startCamera(); }
 });
-document.getElementById('btnRestartCam')?.addEventListener('click', ()=>{
-  try{ html5QrcodeScanner?.clear(); }catch(e){}
-  document.querySelector('#tab-camera').click(); startScanner();
-});
+
+/* Restart / Stop camera */
+document.getElementById('btnRestartCam')?.addEventListener('click', async ()=>{ await stopCamera(); startCamera(); });
+document.getElementById('btnStopCam')?.addEventListener('click', async ()=>{ await stopCamera(); });
 
 /* Share link */
 function buildShareFromPayload(raw){
@@ -762,8 +797,24 @@ document.getElementById('btnShare')?.addEventListener('click', async ()=>{
 });
 document.getElementById('btnPrint')?.addEventListener('click', ()=> window.print());
 
-/* Start */
-window.addEventListener('load', ()=>{ startScanner(); initFileScanner(); });
+/* ========= Tab events: start/stop camera sipas tab-it ========= */
+/* përdor listener në dokument (ngjarja "shown.bs.tab" bubblohet) që të funksionojë kudo */
+document.addEventListener('shown.bs.tab', async (e)=>{
+  const target = e.target?.getAttribute('data-bs-target');
+  if (target === '#pane-camera'){ await stopCamera(); startCamera(); }
+  else { await stopCamera(); }
+});
+
+/* Mbyll kamerën kur del nga faqa / ose tab-i bëhet i padukshëm */
+window.addEventListener('beforeunload', ()=>{ try{ camQr?.stop(); camQr?.clear(); }catch(e){} });
+document.addEventListener('visibilitychange', async ()=>{ if (document.hidden) await stopCamera(); });
+
+/* ========= Start ========= */
+window.addEventListener('load', ()=>{
+  // nis kamerën vetëm nëse pamja default është “Kamerë”
+  const active = document.querySelector('#pane-camera');
+  if (active && active.classList.contains('active')) startCamera();
+});
 </script>
 
 <?php require_once __DIR__ . '/footer.php'; ?>
