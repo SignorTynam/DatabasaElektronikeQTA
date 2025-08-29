@@ -2,6 +2,9 @@
 declare(strict_types=1);
 session_start();
 
+require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/navbarMain.php';
+
 // (Optional) prefokusimi i tab-it me ?role=administrator|agjencia|student
 $activeRole = $_GET['role'] ?? 'administrator';
 $validRoles = ['administrator','agjencia','student'];
@@ -42,8 +45,6 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
         radial-gradient(900px 320px at 90% -5%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
         linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
     }
-    .navbar { backdrop-filter: blur(6px); background: rgba(0,0,0,.35)!important; }
-    .navbar .nav-link, .navbar-brand { color:#fff!important; }
     .btn-primary { background:#2563eb; border-color:#2563eb; }
     .btn-success { background:#16a34a; border-color:#16a34a; }
     .btn-info { background:#0ea5e9; border-color:#0ea5e9; }
@@ -82,26 +83,6 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
   </style>
 </head>
 <body>
-
-<!-- Navbar (si index.php – look & feel i errët mbi gradient) -->
-<nav class="navbar navbar-expand-lg navbar-dark">
-  <div class="container">
-    <a class="navbar-brand d-flex align-items-center" href="index.php">
-      <img src="image/logoPNG2.png" alt="Logo" height="30" class="me-2"> Qendra e Trajnimeve të Avancuara (QTA)
-    </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nv">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div id="nv" class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-auto align-items-lg-center">
-        <li class="nav-item"><a class="nav-link" href="index.php">Kryefaqja</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Rreth nesh</a></li>
-        <li class="nav-item"><a class="nav-link" href="contact.html">Kontakt</a></li>
-        <li class="nav-item ms-lg-2"><a class="btn btn-primary" href="selectProfile.php">Hyr</a></li>
-      </ul>
-    </div>
-  </div>
-</nav>
 
 <!-- HERO -->
 <section class="hero text-center">

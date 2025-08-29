@@ -2,6 +2,7 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/navbarMain.php';
 
 $pdo = getPDO();
 
@@ -140,40 +141,6 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
     </style>
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
-        <div class="container">
-            <a class="navbar-brand d-flex align-items-center" href="index.php">
-                <img src="image/logoPNG2.png" alt="Logo" class="me-2">
-                Qendra e Trajnimeve të Avancuara (QTA)
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-lg-center">
-                    <li class="nav-item"><a class="nav-link active" href="index.php">Kryefaqja</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#">Rreth nesh</a></li>
-                    <li class="nav-item"><a class="nav-link" href="contact.html">Kontakt</a></li>
-                    <?php if ($currentUser): ?>
-                        <?php if ($currentUser['role_name'] === 'administrator'): ?>
-                            <li class="nav-item me-2"><a class="btn btn-outline-light btn-sm" href="dashboard_admin.php"><i class="bi bi-speedometer2 me-1"></i>Paneli</a></li>
-                        <?php endif; ?>
-                        <li class="nav-item d-flex align-items-center">
-                            <span class="text-white-50 small me-2 d-none d-sm-inline">
-                                <i class="bi bi-person-circle me-1"></i><?= htmlspecialchars($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Përdorues')) ?>
-                            </span>
-                            <a class="btn btn-primary ms-2" href="logout.php" role="button">Dil</a>
-                        </li>
-                    <?php else: ?>
-                        <li class="nav-item">
-                            <a class="btn btn-primary ms-2" href="selectProfile.php" role="button">Hyr</a>
-                        </li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-        </div>
-    </nav>
 
     <!-- Hero -->
     <section class="hero">

@@ -1,3 +1,8 @@
+
+<?php
+require_once __DIR__ . '/navbarMain.php';
+?>
+
 <!DOCTYPE html>
 <html lang="sq">
 <head>
@@ -70,26 +75,6 @@
   </style>
 </head>
 <body>
-
-<!-- Navbar (si index.php) -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <div class="container">
-    <a class="navbar-brand d-flex align-items-center" href="index.php">
-      <img src="image/logoPNG2.png" alt="QTA" class="me-2"> Qendra e Trajnimeve të Avancuara (QTA)
-    </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nv">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="nv">
-      <ul class="navbar-nav ms-auto align-items-lg-center">
-        <li class="nav-item"><a class="nav-link" href="index.php">Kryefaqja</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Rreth nesh</a></li>
-        <li class="nav-item"><a class="nav-link active" href="contact.html">Kontakt</a></li>
-        <li class="nav-item"><a class="btn btn-primary ms-2" href="selectProfile.php">Hyr</a></li>
-      </ul>
-    </div>
-  </div>
-</nav>
 
 <!-- Hero -->
 <section class="hero">

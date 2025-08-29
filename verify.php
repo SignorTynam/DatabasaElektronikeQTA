@@ -6,28 +6,12 @@ require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 
 /* =========================================================
-   (Si index.php) – nëse është i loguar, lexo përdoruesin
-========================================================= */
-$currentUser = null;
-if (!empty($_SESSION['user_id'])) {
-    $stmt = $pdo->prepare("
-        SELECT u.id, u.full_name, u.email, r.name AS role_name
-        FROM users u
-        JOIN roles r ON r.id = u.role_id
-        WHERE u.id = :uid
-        LIMIT 1
-    ");
-    $stmt->execute([':uid' => $_SESSION['user_id']]);
-    $currentUser = $stmt->fetch() ?: null;
-}
-
-/* =========================================================
    Helpers
 ========================================================= */
 function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-function json_out(array $x){ header('Content-Type: application/json'); echo json_encode($x); exit; }
+function json_out(array $x){ header('Content-Type: application/json; charset=utf-8'); echo json_encode($x); exit; }
 
-/* Masko ID personale për publikun (p.sh. ****123) */
+/* Masko ID personale (p.sh. ****123) */
 function mask_id(?string $s): string {
   if(!$s) return '—';
   $len = strlen($s);
@@ -35,11 +19,11 @@ function mask_id(?string $s): string {
   return str_repeat('*', $len-3).substr($s, -3);
 }
 
-/* Nxirr {sid, token} nga payload i skanuar */
+/* Parser payload-i nga QR */
 function parse_payload(string $raw): array {
   $raw = trim($raw);
 
-  // 1) URL me query ?sid=...&t=... ose &token=
+  // 1) URL ?sid=...&t=...
   if (filter_var($raw, FILTER_VALIDATE_URL)) {
     $q = parse_url($raw, PHP_URL_QUERY);
     parse_str($q ?? '', $arr);
@@ -49,7 +33,7 @@ function parse_payload(string $raw): array {
     return ['sid'=>$sid, 'token'=>$token];
   }
 
-  // 2) Formati “QTA|SID:...|AMZE:...|TOKEN:...”
+  // 2) “QTA|SID:...|TOKEN:...”
   if (stripos($raw, 'QTA|') === 0 || str_contains($raw, 'SID:') || str_contains($raw, 'TOKEN:')) {
     $sid = 0; $token = '';
     if (preg_match('/SID\s*:\s*(\d+)/i', $raw, $m)) $sid = (int)$m[1];
@@ -67,7 +51,7 @@ function parse_payload(string $raw): array {
     }
   }
 
-  // 4) Si fund fare: “SID|TOKEN” i ndarë me |
+  // 4) “SID|TOKEN”
   if (str_contains($raw,'|')) {
     [$a,$b] = array_map('trim', explode('|',$raw,2));
     $sid = ctype_digit($a) ? (int)$a : 0;
@@ -78,20 +62,14 @@ function parse_payload(string $raw): array {
   return ['sid'=>0, 'token'=>''];
 }
 
-/* Kthe info publike të studentit, nëse (sid, token) përputhen */
+/* Verifikimi në DB */
 function verify_student(PDO $pdo, int $sid, string $token): array {
   if ($sid<=0 || $token==='') return ['valid'=>false, 'reason'=>'Mungon SID ose token.'];
 
-  // Kontrollo token
-  $chk = $pdo->prepare("
-    SELECT 1 FROM student_qr_tokens WHERE student_id=:sid AND token=:t LIMIT 1
-  ");
+  $chk = $pdo->prepare("SELECT 1 FROM student_qr_tokens WHERE student_id=:sid AND token=:t LIMIT 1");
   $chk->execute([':sid'=>$sid, ':t'=>$token]);
-  if (!$chk->fetchColumn()) {
-    return ['valid'=>false, 'reason'=>'Token i pavlefshëm ose nuk përputhet me këtë student.'];
-  }
+  if (!$chk->fetchColumn()) return ['valid'=>false, 'reason'=>'Token i pavlefshëm ose nuk përputhet me këtë student.'];
 
-  // Info bazike publike (pa të dhëna sensitive)
   $sql = "
     SELECT s.id, s.nr_amze, s.first_name, s.father_name, s.last_name, s.personal_number,
            u.created_at, el.label AS edu_label,
@@ -108,7 +86,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $S = $st->fetch(PDO::FETCH_ASSOC);
   if (!$S) return ['valid'=>false, 'reason'=>'Studenti nuk u gjet.'];
 
-  // Statistika të lehta publike
+  // Stats publike
   $q1 = $pdo->prepare("SELECT COUNT(DISTINCT cg.course_id) FROM course_group_students cgs JOIN course_groups cg ON cg.id=cgs.group_id WHERE cgs.student_id=:sid");
   $q1->execute([':sid'=>$sid]); $courses = (int)$q1->fetchColumn();
 
@@ -119,14 +97,10 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $q3->execute([':sid'=>$sid]); $avg = $q3->fetchColumn();
   $avgScore = $avg!==null ? round((float)$avg,1) : null;
 
-  $q4 = $pdo->prepare("
-    SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100
-    FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL
-  ");
+  $q4 = $pdo->prepare("SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100 FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL");
   $q4->execute([':sid'=>$sid]); $pr = $q4->fetchColumn();
   $passRate = $pr!==null ? round((float)$pr,1) : null;
 
-  // Listë e shkurtër kursesh (max 5 publikisht)
   $q5 = $pdo->prepare("
     SELECT DISTINCT c.code, c.name
     FROM course_group_students cgs
@@ -163,7 +137,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
 }
 
 /* =========================================================
-   API e vogël AJAX: POST JSON {action:"verify", payload:"..."} 
+   API JSON (POST) – përgjigju dhe EXIT
 ========================================================= */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $ct = $_SERVER['CONTENT_TYPE'] ?? '';
@@ -173,14 +147,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $json['action'] ?? '';
   if ($action==='verify') {
     $payload = trim((string)($json['payload'] ?? ''));
-    $sid = (int)($_GET['sid'] ?? 0); // lejo override via URL
+    $sid = (int)($_GET['sid'] ?? 0);
     $token = trim((string)($_GET['t'] ?? ($json['token'] ?? '')));
 
-    if (!$sid || !$token) {
-      $p = parse_payload($payload);
-      $sid = $sid ?: (int)$p['sid'];
-      $token = $token ?: (string)$p['token'];
-    }
+    if (!$sid || !$token) { $p = parse_payload($payload); $sid = $sid ?: (int)$p['sid']; $token = $token ?: (string)$p['token']; }
 
     $res = verify_student($pdo, (int)$sid, (string)$token);
     json_out(['ok'=>true] + $res);
@@ -189,14 +159,29 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 /* =========================================================
-   Nëse vjen si GET me ?sid=...&t=..., bëj verifikim server-side
+   GET: Render (navbar & UI)
 ========================================================= */
+$currentUser = null;
+if (!empty($_SESSION['user_id'])) {
+  $stmt = $pdo->prepare("
+      SELECT u.id, u.full_name, u.email, r.name AS role_name
+      FROM users u
+      JOIN roles r ON r.id = u.role_id
+      WHERE u.id = :uid
+      LIMIT 1
+  ");
+  $stmt->execute([':uid' => $_SESSION['user_id']]);
+  $currentUser = $stmt->fetch() ?: null;
+}
+
 $prefillResult = null;
 if (isset($_GET['sid'], $_GET['t'])) {
   $sid = ctype_digit((string)$_GET['sid']) ? (int)$_GET['sid'] : 0;
   $token = trim((string)$_GET['t']);
   $prefillResult = verify_student($pdo, $sid, $token);
 }
+
+$NAV_ACTIVE = 'verify';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -209,25 +194,46 @@ if (isset($_GET['sid'], $_GET['t'])) {
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     :root{
-      --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;
-      --bg:#f5f7fb; --glass:rgba(255,255,255,.82); --glass-b:rgba(255,255,255,.55);
-      --muted:#64748b; --shadow:0 18px 40px rgba(2,6,23,.12);
+      --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;     /* Ocean (default) */
+      --bg:#f6f8fc;
+      --text:#0f172a;
+      --muted:#64748b;
+      --glass:rgba(255,255,255,.82); --glass-b:rgba(255,255,255,.55);
+      --shadow:0 18px 40px rgba(2,6,23,.12);
+      --chip:rgba(255,255,255,.17); --chip-b:rgba(255,255,255,.26);
+      --accent:#0ea5e9;
     }
-    body { background:var(--bg); }
+    /* Themes */
+    [data-theme="emerald"]{
+      --g1:#10b981; --g2:#059669; --g3:#047857; --accent:#10b981;
+    }
+    [data-theme="sunset"]{
+      --g1:#f97316; --g2:#ef4444; --g3:#db2777; --accent:#f97316;
+    }
+
+    body { background:var(--bg); color:var(--text); }
     .card { border:none; border-radius:1rem; box-shadow:var(--shadow); }
     .hero {
       background:
         radial-gradient(1200px 420px at 10% -20%, rgba(37,99,235,.25), rgba(37,99,235,0) 60%),
         radial-gradient(900px 320px at 90% -10%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
         linear-gradient(135deg, var(--g1) 0%, var(--g2) 55%, var(--g3) 100%);
-      color:#fff; border-radius:0 0 1.25rem 1.25rem; padding:42px 0;
+      color:#fff; border-radius:0 0 1.25rem 1.25rem; padding:48px 0;
+      position:relative; overflow:hidden;
     }
-    .chip { background:rgba(255,255,255,.17); border:1px solid rgba(255,255,255,.26); }
+    .hero .chip { background:var(--chip); border:1px solid var(--chip-b); }
+    .hero .shape { position:absolute; filter:blur(60px); opacity:.35; }
+    .hero .shape.s1{ width:240px; height:240px; background:#fff; top:-40px; left:-40px; border-radius:50%; }
+    .hero .shape.s2{ width:300px; height:300px; background:#fff; bottom:-100px; right:-80px; border-radius:40% 60% 50% 50%/50% 40% 60% 50%; }
+
     .qrbox { background:#fff; border:1px dashed #e5e7eb; border-radius:.75rem; }
     .small-muted { color:var(--muted); font-size:.95rem; }
     .dropzone { border:2px dashed #cbd5e1; border-radius:.75rem; background:#fff; padding:18px; text-align:center; transition:.2s ease; }
     .dropzone.dragover { background:#f8fafc; border-color:#94a3b8; }
     .nav-pills .nav-link { border-radius:.75rem; }
+    .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
+    .btn-accent { background:var(--accent); border:none; }
+    .btn-accent:hover { filter:brightness(.95); }
     .status-banner{
       background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px);
       border-radius:1rem; padding:10px 14px; display:flex; align-items:center; gap:.5rem;
@@ -235,9 +241,20 @@ if (isset($_GET['sid'], $_GET['t'])) {
     .status-icon{ width:34px; height:34px; border-radius:.6rem; display:flex; align-items:center; justify-content:center; }
     .status-valid{ border-left:6px solid #22c55e; }
     .status-invalid{ border-left:6px solid #ef4444; }
-    .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
+
+    /* How it works */
+    .how-step { display:flex; gap:.75rem; align-items:flex-start; }
+    .how-bullet {
+      width:36px; height:36px; border-radius:.8rem; display:flex; align-items:center; justify-content:center;
+      background:#fff; box-shadow:var(--shadow); color:var(--g2); flex:0 0 36px;
+    }
+
+    /* FAQ */
+    .accordion-button:focus { box-shadow:none; }
+    .accordion-button:not(.collapsed){ background:#f8fafc; color:var(--text); }
+
     @media print {
-      .navbar, .nav, .btn, .dropzone, .hero, footer { display:none !important; }
+      .navbar, .nav, .btn, .dropzone, .hero, footer, .theme-switch { display:none !important; }
       .card { box-shadow:none !important; border:1px solid #e5e7eb; }
       body { background:white !important; }
     }
@@ -245,56 +262,67 @@ if (isset($_GET['sid'], $_GET['t'])) {
 </head>
 <body>
 
-<!-- Navbar identik me index.php -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <div class="container">
-    <a class="navbar-brand d-flex align-items-center" href="index.php">
-      <img src="image/logoPNG2.png" alt="Logo" height="30" class="d-inline-block align-text-top me-2">
-      Qendra e Trajnimeve të Avancuara (QTA)
-    </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarNav">
-      <ul class="navbar-nav ms-auto align-items-lg-center">
-        <li class="nav-item"><a class="nav-link" href="index.php">Kryefaqja</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Rreth nesh</a></li>
-        <li class="nav-item"><a class="nav-link" href="contact.html">Kontakt</a></li>
-        <?php if ($currentUser): ?>
-          <?php if ($currentUser['role_name'] === 'administrator'): ?>
-            <li class="nav-item me-2"><a class="btn btn-outline-light btn-sm" href="dashboard_admin.php"><i class="bi bi-speedometer2 me-1"></i>Paneli</a></li>
-          <?php endif; ?>
-          <li class="nav-item">
-            <span class="text-white-50 small me-2 d-none d-sm-inline">
-              <i class="bi bi-person-circle me-1"></i><?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Përdorues')) ?>
-            </span>
-            <a class="btn btn-primary ms-2" href="logout.php" role="button">Dil</a>
-          </li>
-        <?php else: ?>
-          <li class="nav-item">
-            <a class="btn btn-primary ms-2" href="selectProfile.php" role="button">Hyr</a>
-          </li>
-        <?php endif; ?>
-      </ul>
-    </div>
-  </div>
-</nav>
+<?php require __DIR__ . '/navbarMain.php'; ?>
 
+<!-- HERO -->
 <section class="hero mb-4">
-  <div class="container">
-    <span class="badge chip rounded-pill mb-2">Verifikim publik i certifikatës</span>
-    <h1 class="display-6 fw-bold mb-2">Skanon kodin QR dhe verifiko kursantin</h1>
-    <p class="mb-0">Kjo faqe ju ndihmon të kontrolloni nëse një certifikatë përputhet me të dhënat reale të studentit në QTA.</p>
+  <div class="shape s1"></div><div class="shape s2"></div>
+  <div class="container position-relative">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+      <span class="badge chip rounded-pill">Verifikim publik i certifikatës</span>
+
+      <!-- Theme switch -->
+      <div class="theme-switch d-flex align-items-center gap-2">
+        <span class="small">Tema:</span>
+        <button class="btn btn-sm btn-light border" data-theme="ocean"   title="Ocean"   style="width:28px;height:28px;border-radius:7px;background:linear-gradient(45deg,#0ea5e9,#2563eb,#4f46e5)"></button>
+        <button class="btn btn-sm btn-light border" data-theme="emerald" title="Emerald" style="width:28px;height:28px;border-radius:7px;background:linear-gradient(45deg,#10b981,#059669,#047857)"></button>
+        <button class="btn btn-sm btn-light border" data-theme="sunset"  title="Sunset"  style="width:28px;height:28px;border-radius:7px;background:linear-gradient(45deg,#f97316,#ef4444,#db2777)"></button>
+      </div>
+    </div>
+
+    <div class="row align-items-center g-4">
+      <div class="col-lg-7 text-white">
+        <h1 class="display-6 fw-bold mb-2">Skanoni QR dhe verifikoni certifikatën në QTA</h1>
+        <p class="mb-4">Konfirmoni shpejt nëse të dhënat në certifikatën fizike përputhen me regjistrat zyrtarë.</p>
+
+        <!-- How it works -->
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="how-step">
+              <div class="how-bullet"><i class="bi bi-camera-video"></i></div>
+              <div><strong>1. Zgjidhni</strong><br><span class="small">Kamerë, foto ose URL.</span></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="how-step">
+              <div class="how-bullet"><i class="bi bi-upc-scan"></i></div>
+              <div><strong>2. Skanoni</strong><br><span class="small">Lexoni QR ose ngjisni të dhënat.</span></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="how-step">
+              <div class="how-bullet"><i class="bi bi-shield-check"></i></div>
+              <div><strong>3. Verifikoni</strong><br><span class="small">Shfaqet statusi dhe detajet.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-5 text-end">
+        <a href="selectProfile.php" class="btn btn-accent btn-lg shadow-sm"><i class="bi bi-box-arrow-in-right me-1"></i> Hyr në sistem</a>
+      </div>
+    </div>
   </div>
 </section>
 
 <div class="container mb-5">
   <div class="row g-4">
-    <!-- Kolona: mënyrat e verifikimit (me tab-a) -->
+    <!-- Tabs & Inputs -->
     <div class="col-lg-5">
       <div class="card h-100">
-        <div class="card-header bg-white">
-          <strong><i class="bi bi-shield-check me-1"></i>Zgjidh mënyrën e verifikimit</strong>
+        <div class="card-header bg-white d-flex align-items-center justify-content-between">
+          <strong><i class="bi bi-shield-check me-1"></i>Metodat e verifikimit</strong>
+          <span class="small text-muted">Zgjidhni një mënyrë</span>
         </div>
         <div class="card-body">
           <ul class="nav nav-pills mb-3" id="verifyTabs" role="tablist">
@@ -316,7 +344,7 @@ if (isset($_GET['sid'], $_GET['t'])) {
           </ul>
 
           <div class="tab-content">
-            <!-- Pane: Kamera -->
+            <!-- Kamera -->
             <div class="tab-pane fade show active" id="pane-camera" role="tabpanel" aria-labelledby="tab-camera">
               <div id="scanRegion" class="qrbox p-2 mb-3">
                 <div id="reader" style="width:100%;"></div>
@@ -327,13 +355,13 @@ if (isset($_GET['sid'], $_GET['t'])) {
               </div>
             </div>
 
-            <!-- Pane: Upload foto -->
+            <!-- Upload foto -->
             <div class="tab-pane fade" id="pane-upload" role="tabpanel" aria-labelledby="tab-upload">
               <div id="file-reader" class="d-none"></div>
               <div id="dropzone" class="dropzone mb-2">
                 <i class="bi bi-image fs-4 d-block mb-2"></i>
                 Zvarrit një foto me QR këtu ose
-                <label class="btn btn-sm btn-primary ms-1 mb-1">
+                <label class="btn btn-sm btn-accent text-white ms-1 mb-1">
                   Zgjidh skedar
                   <input id="fileInput" type="file" accept="image/*" hidden>
                 </label>
@@ -345,32 +373,32 @@ if (isset($_GET['sid'], $_GET['t'])) {
               </div>
             </div>
 
-            <!-- Pane: Manual -->
+            <!-- Manual -->
             <div class="tab-pane fade" id="pane-manual" role="tabpanel" aria-labelledby="tab-manual">
               <div class="input-group mb-2">
                 <span class="input-group-text bg-light border-0"><i class="bi bi-clipboard-check"></i></span>
-                <input id="manualPayload" type="text" class="form-control border-0" placeholder="Ngjit këtu stringun ose URL-në e QR">
+                <input id="manualPayload" type="text" class="form-control border-0" placeholder="Ngjit këtu stringun ose URL-në e QR" aria-label="Vlera e QR">
               </div>
               <div class="d-flex gap-2 mb-3">
-                <button id="btnVerify" class="btn btn-primary flex-fill"><i class="bi bi-shield-check me-1"></i>Verifiko</button>
-                <button id="btnPaste" class="btn btn-soft"><i class="bi bi-clipboard2"></i></button>
+                <button id="btnVerify" class="btn btn-accent text-white flex-fill"><i class="bi bi-shield-check me-1"></i>Verifiko</button>
+                <button id="btnPaste" class="btn btn-soft" title="Ngjit tekst"><i class="bi bi-clipboard2"></i></button>
                 <button id="btnClear" class="btn btn-outline-secondary">Pastro</button>
               </div>
-              <div class="small-muted">Këshillë: formatet e pranuara janë URL me ?sid=&t=, <code>QTA|SID:..|TOKEN:..</code>, JSON {"sid","token"} ose <code>SID|TOKEN</code>.</div>
+              <div class="small-muted">Pranohet: URL me ?sid=&t=, <code>QTA|SID:..|TOKEN:..</code>, JSON {"sid","token"} ose <code>SID|TOKEN</code>.</div>
             </div>
           </div>
 
           <hr>
           <div class="alert alert-warning mb-0">
             <strong>E rëndësishme:</strong> Nëse <u>emri</u> në ekran <b>NUK</b> përputhet me emrin në certifikatën fizike,
-            mund të jetë <b>certifikatë e vjedhur/kopjuar</b>. Njoftoni menjëherë QTA te
+            mund të jetë <b>certifikatë e vjedhur/kopjuar</b>. Njoftoni menjëherë te
             <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose <a href="tel:+355698778837">+355 69 877 8837</a>.
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Kolona: rezultati -->
+    <!-- Rezultati -->
     <div class="col-lg-7">
       <div class="status-banner mb-3 <?= $prefillResult ? ($prefillResult['valid']?'status-valid':'status-invalid') : '' ?>">
         <div class="status-icon <?= $prefillResult ? ($prefillResult['valid']?'bg-success-subtle text-success':'bg-danger-subtle text-danger') : 'bg-secondary-subtle text-secondary' ?>">
@@ -393,8 +421,8 @@ if (isset($_GET['sid'], $_GET['t'])) {
         </div>
         <div class="card-body" id="resultBody" aria-live="polite">
           <?php if ($prefillResult): ?>
-            <?php if ($prefillResult['valid']): 
-              $st = $prefillResult['student']; 
+            <?php if ($prefillResult['valid']):
+              $st = $prefillResult['student'];
               $full = trim(($st['first_name']??'').' '.(($st['father_name']??'')?($st['father_name'].' '):'').($st['last_name']??'')); ?>
               <div class="d-flex align-items-center mb-3">
                 <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
@@ -447,6 +475,46 @@ if (isset($_GET['sid'], $_GET['t'])) {
           <?php endif; ?>
         </div>
       </div>
+
+      <!-- FAQ e shpejtë për konsistencë me About/Index -->
+      <div class="card mt-4">
+        <div class="card-header bg-white"><strong><i class="bi bi-question-circle me-1"></i>Pyetjet e shpeshta</strong></div>
+        <div class="card-body">
+          <div class="accordion" id="faqVerify">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="fq1">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#fc1">QR nuk lexohet – çfarë të bëj?</button>
+              </h2>
+              <div id="fc1" class="accordion-collapse collapse show" data-bs-parent="#faqVerify">
+                <div class="accordion-body small">
+                  Sigurohuni që fotoja të jetë e qartë dhe me kontrast të mirë. Provoni kamerën e pasme ose ngarkoni një foto me rezolucion më të lartë.
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="fq2">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#fc2">A ruhen të dhënat e mia?</button>
+              </h2>
+              <div id="fc2" class="accordion-collapse collapse" data-bs-parent="#faqVerify">
+                <div class="accordion-body small">
+                  Verifikimi kryen vetëm një pyetje të sigurt në bazën e të dhënave dhe shfaq rezultatet publike. Nuk ruajmë fotot e ngarkuara.
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="fq3">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#fc3">Si krijohet linku i verifikimit?</button>
+              </h2>
+              <div id="fc3" class="accordion-collapse collapse" data-bs-parent="#faqVerify">
+                <div class="accordion-body small">
+                  Nëse QR përmban <code>sid</code> dhe <code>token</code>, butoni “Link” krijon automatikisht një URL të ndarë që mund ta ndani.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -463,9 +531,23 @@ if (isset($_GET['sid'], $_GET['t'])) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* ====== Global helpers ====== */
+/* ====== Tema (Ocean/Emerald/Sunset) ====== */
+(function(){
+  const saved = localStorage.getItem('qta-theme') || 'ocean';
+  if (saved && saved !== 'ocean') document.body.setAttribute('data-theme', saved);
+  document.querySelectorAll('.theme-switch [data-theme]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const t = btn.getAttribute('data-theme');
+      if (t==='ocean') document.body.removeAttribute('data-theme');
+      else document.body.setAttribute('data-theme', t);
+      localStorage.setItem('qta-theme', t);
+    });
+  });
+})();
+
+/* ====== Helpers ====== */
 let html5QrcodeScanner, fileQr;
-let lastPayload = ''; // ruajmë payload për share link
+let lastPayload = '';
 const statusBanner = document.querySelector('.status-banner');
 const statusText = document.getElementById('statusText');
 
@@ -478,10 +560,9 @@ function setStatus(label, variant){
   if (variant==='success') statusBanner?.classList.add('status-valid');
   if (variant==='danger')  statusBanner?.classList.add('status-invalid');
 }
-
 function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
 
-/* ====== Skanimi me kamerë (html5-qrcode) ====== */
+/* ====== Kamera (html5-qrcode) ====== */
 function onScanSuccess(decodedText) {
   lastPayload = decodedText;
   document.querySelector('#tab-manual').click();
@@ -489,7 +570,6 @@ function onScanSuccess(decodedText) {
   inp.value = decodedText;
   doVerify(decodedText);
 }
-
 function startScanner(){
   try{
     const w = Math.min(500, document.getElementById('reader').clientWidth || 500);
@@ -499,19 +579,17 @@ function startScanner(){
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
       false
     );
-    html5QrcodeScanner.render(onScanSuccess, (err)=>{ /* silent */ });
+    html5QrcodeScanner.render(onScanSuccess, ()=>{});
   }catch(e){
-    document.getElementById('reader').innerHTML = '<div class="text-muted p-3">Kamera nuk është në dispozicion ose nuk u lejua.</div>';
+    const r = document.getElementById('reader');
+    if (r) r.innerHTML = '<div class="text-muted p-3">Kamera nuk është në dispozicion ose nuk u lejua.</div>';
   }
 }
 
-/* ====== Ngarko foto / Drag & Drop / Paste ====== */
-function initFileScanner(){
-  try{ fileQr = new Html5Qrcode('file-reader'); }catch(e){}
-}
+/* ====== Foto / Drag & Drop / Paste ====== */
+function initFileScanner(){ try{ fileQr = new Html5Qrcode('file-reader'); }catch(e){} }
 function setUploadMsg(text, good=false){
-  const m = document.getElementById('uploadMsg');
-  if (!m) return;
+  const m = document.getElementById('uploadMsg'); if (!m) return;
   m.className = good ? 'small text-success ms-auto' : 'small text-danger ms-auto';
   m.textContent = text || '';
 }
@@ -523,8 +601,7 @@ async function handleFile(file){
     const decodedText = await fileQr.scanFile(file, true);
     lastPayload = decodedText;
     document.querySelector('#tab-manual').click();
-    const inp = document.getElementById('manualPayload');
-    inp.value = decodedText;
+    document.getElementById('manualPayload').value = decodedText;
     doVerify(decodedText);
     setUploadMsg('U lexua me sukses.', true);
   } catch(err){
@@ -532,16 +609,11 @@ async function handleFile(file){
     setUploadMsg('Nuk u gjet QR në këtë imazh. Provo me foto më të qartë.');
   }
 }
-document.getElementById('fileInput')?.addEventListener('change', (ev)=>{
-  const f = ev.target.files?.[0]; handleFile(f);
-});
+document.getElementById('fileInput')?.addEventListener('change', (ev)=>{ handleFile(ev.target.files?.[0]); });
 const dz = document.getElementById('dropzone');
 dz?.addEventListener('dragover', (e)=>{ e.preventDefault(); dz.classList.add('dragover'); });
 dz?.addEventListener('dragleave', ()=> dz.classList.remove('dragover'));
-dz?.addEventListener('drop', (e)=>{
-  e.preventDefault(); dz.classList.remove('dragover');
-  const f = e.dataTransfer.files?.[0]; handleFile(f);
-});
+dz?.addEventListener('drop', (e)=>{ e.preventDefault(); dz.classList.remove('dragover'); handleFile(e.dataTransfer.files?.[0]); });
 document.getElementById('btnPasteImage')?.addEventListener('click', async ()=>{
   try{
     const items = await navigator.clipboard.read();
@@ -569,19 +641,15 @@ async function doVerify(payload){
   const json = await res.json();
   renderResult(json, payload);
 }
-
 function renderResult(json, payloadUsed=''){
   const card = document.getElementById('resultCard');
   const body = document.getElementById('resultBody');
-
   if(!json || json.ok!==true){
     setStatus('Gabim', 'danger');
     card.classList.remove('status-valid','status-invalid');
     body.innerHTML = `<div class="alert alert-danger">Gabim gjatë verifikimit. Provo përsëri.</div>`;
     return;
   }
-
-  // ruaj payload për share
   if (payloadUsed) lastPayload = payloadUsed;
 
   if(json.valid){
@@ -651,19 +719,14 @@ function renderResult(json, payloadUsed=''){
   }
 }
 
-/* ====== Butona & Shërbime ====== */
-// Manual buttons
+/* ====== Butonat ====== */
 document.getElementById('btnVerify')?.addEventListener('click', ()=>{
   const v = document.getElementById('manualPayload').value.trim();
   if (!v){ document.getElementById('manualPayload').focus(); return; }
-  lastPayload = v;
-  doVerify(v);
+  lastPayload = v; doVerify(v);
 });
 document.getElementById('btnPaste')?.addEventListener('click', async ()=>{
-  try{
-    const t = await navigator.clipboard.readText();
-    if (t){ document.getElementById('manualPayload').value = t; lastPayload = t; }
-  }catch(e){}
+  try{ const t = await navigator.clipboard.readText(); if (t){ document.getElementById('manualPayload').value = t; lastPayload = t; } }catch(e){}
 });
 document.getElementById('btnClear')?.addEventListener('click', ()=>{
   document.getElementById('manualPayload').value = '';
@@ -671,18 +734,14 @@ document.getElementById('btnClear')?.addEventListener('click', ()=>{
   document.getElementById('resultBody').innerHTML = '<div class="text-muted">Skanoni QR, ngarkoni foto ose ngjisni vlerën për verifikim. Rezultati do të shfaqet këtu.</div>';
   document.getElementById('resultCard').classList.remove('status-valid','status-invalid');
 });
-
-// Restart camera
 document.getElementById('btnRestartCam')?.addEventListener('click', ()=>{
   try{ html5QrcodeScanner?.clear(); }catch(e){}
-  document.querySelector('#tab-camera').click();
-  startScanner();
+  document.querySelector('#tab-camera').click(); startScanner();
 });
 
-// Share link (ndërto nga payload nëse ka SID/TOKEN)
+/* Share link */
 function buildShareFromPayload(raw){
   const s = String(raw||'');
-  // përpiqu të gjesh sid & token
   let sid = 0, token = '';
   if (s.startsWith('http')){
     try{
@@ -714,10 +773,7 @@ document.getElementById('btnShare')?.addEventListener('click', async ()=>{
 document.getElementById('btnPrint')?.addEventListener('click', ()=> window.print());
 
 /* Start */
-window.addEventListener('load', ()=>{
-  startScanner();
-  initFileScanner();
-});
+window.addEventListener('load', ()=>{ startScanner(); initFileScanner(); });
 </script>
 </body>
 </html>
