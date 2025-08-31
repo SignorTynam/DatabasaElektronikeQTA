@@ -39,6 +39,7 @@ if ($active === null) {
     $map = [
         'dashboard_student.php' => 'dashboard',
         'profile.php'           => 'profile',
+        'groups_student.php'    => 'groups',
     ];
     $active = $map[$script] ?? '';
 }
@@ -46,6 +47,7 @@ if ($active === null) {
 /* Flage për active states */
 $isDash    = $active === 'dashboard';
 $isProfile = $active === 'profile';
+$isGroups  = $active === 'groups';
 
 /* Emri/roli */
 $role = strtolower((string)($currentUser['role_name'] ?? 'student')) ?: 'student';
@@ -100,8 +102,11 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Student');
             <i class="bi bi-speedometer2 me-1"></i>Dashboard
           </a>
         </li>
-        <!-- (Opsionale) Lidhje te tjera të studentit mund të shtohen këtu
-             p.sh. "Dokumentet", "Orari", etj. -->
+        <li class="nav-item">
+          <a class="nav-link<?= $isGroups ? ' active' : '' ?>" <?= $isGroups ? 'aria-current="page"' : '' ?> href="groups_student.php">
+            <i class="bi bi-person me-1"></i>Certifikimet
+          </a>
+        </li>
       </ul>
 
       <!-- Right: aksione + profili -->
