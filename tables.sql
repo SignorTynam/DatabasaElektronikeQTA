@@ -264,3 +264,35 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+USE qta_db;
+
+-- 1) Domain table për gjininë (3NF)
+CREATE TABLE IF NOT EXISTS genders (
+  id    TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code  CHAR(1)      NOT NULL UNIQUE,      -- 'M', 'F', 'N', 'U'
+  label VARCHAR(50)  NOT NULL UNIQUE       -- 'Mashkull', 'Femër', ...
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+INSERT INTO genders (code, label) VALUES
+  ('M','Mashkull'),
+  ('F','Femër')
+ON DUPLICATE KEY UPDATE label = VALUES(label);
+
+-- 2) Shto kolonën referuese në students (pa default fillimisht)
+ALTER TABLE students
+  ADD COLUMN gender_id TINYINT UNSIGNED NULL,
+  ADD CONSTRAINT fk_students_gender FOREIGN KEY (gender_id) REFERENCES genders(id);
+
+-- 3) Vendos default-in: Mashkull
+SET @male := (SELECT id FROM genders WHERE code='M');
+
+-- Për studentët ekzistues pa vlerë: cakto Mashkull
+UPDATE students SET gender_id = @male WHERE gender_id IS NULL;
+
+-- Tani bëje NOT NULL me default Mashkull
+ALTER TABLE students
+  MODIFY gender_id TINYINT UNSIGNED NOT NULL DEFAULT @male;
+
+-- (opsionale) indeks
+CREATE INDEX idx_students_gender ON students(gender_id);

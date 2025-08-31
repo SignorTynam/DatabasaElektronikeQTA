@@ -59,7 +59,8 @@ if (!$row) { echo json_encode(['ok'=>false,'error'=>'Studenti nuk u gjet.']); ex
 $allowed = [
     'first_name','father_name','last_name',
     'birth_date','birth_place','nr_amze',
-    'personal_number','phone','education_level_id'
+    'personal_number','phone','education_level_id',
+    'gender_id'
 ];
 if (!in_array($field, $allowed, true)) {
     echo json_encode(['ok'=>false,'error'=>'Fusha nuk lejohet për redaktim.']); exit;
@@ -70,7 +71,34 @@ $dispValue = null; // vlera që do kthehet për shfaqje
 $params = [':sid'=>$student_id];
 
 try {
-    if ($field === 'education_level_id') {
+    if ($field === 'gender_id') {
+        // në UI nuk pritet bosh, por nëse vjen bosh -> default Mashkull
+        $gid = null;
+        if ($value === '' || $value === null) {
+            $maleId = (int)$pdo->query("SELECT id FROM genders WHERE code='M' LIMIT 1")->fetchColumn();
+            if (!$maleId) {
+                $anyId = (int)$pdo->query("SELECT id FROM genders ORDER BY id LIMIT 1")->fetchColumn();
+                if (!$anyId) { throw new RuntimeException('Konfigurimi i gjinisë mungon.'); }
+                $gid = $anyId;
+            } else {
+                $gid = $maleId;
+            }
+        } else {
+            $gid = (int)$value;
+        }
+
+        // verifiko ekzistencën dhe lexo code/label për display
+        $gchk = $pdo->prepare("SELECT id, code, label FROM genders WHERE id=:id");
+        $gchk->execute([':id'=>$gid]);
+        $g = $gchk->fetch();
+        if (!$g) throw new RuntimeException('Gjinia e zgjedhur nuk ekziston.');
+
+        $st = $pdo->prepare("UPDATE students SET gender_id=:g WHERE id=:sid");
+        $st->execute([':g'=>(int)$g['id'], ':sid'=>$student_id]);
+
+        $dispValue = ['id'=>(int)$g['id'], 'code'=>$g['code'], 'label'=>$g['label']];
+
+    } elseif ($field === 'education_level_id') {
         // lejo bosh -> NULL
         if ($value === '' || $value === null) {
             $sql = "UPDATE students SET education_level_id = NULL WHERE id = :sid";
@@ -78,7 +106,7 @@ try {
             $dispValue = ['id'=>null,'code'=>null,'label'=>null];
         } else {
             $eduid = (int)$value;
-            // opsionale: verifiko që ekziston
+            // verifiko që ekziston
             $chk = $pdo->prepare("SELECT id, code, label FROM education_levels WHERE id = :id");
             $chk->execute([':id'=>$eduid]);
             $ed = $chk->fetch();
@@ -88,6 +116,7 @@ try {
             $st->execute([':ed'=>$eduid, ':sid'=>$student_id]);
             $dispValue = ['id'=>(int)$ed['id'],'code'=>$ed['code'],'label'=>$ed['label']];
         }
+
     } elseif ($field === 'birth_date') {
         $v = trim((string)$value);
         if ($v === '') {
@@ -100,6 +129,7 @@ try {
             $pdo->prepare("UPDATE students SET birth_date=:v WHERE id=:sid")->execute([':v'=>$v,':sid'=>$student_id]);
             $dispValue = $v;
         }
+
     } elseif ($field === 'nr_amze') {
         $v = trim((string)$value);
         if ($v === '') throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
@@ -108,6 +138,7 @@ try {
         if ((int)$c->fetchColumn() > 0) throw new RuntimeException('Nr. i amzës përdoret nga student tjetër.');
         $pdo->prepare("UPDATE students SET nr_amze=:v WHERE id=:sid")->execute([':v'=>$v,':sid'=>$student_id]);
         $dispValue = $v;
+
     } elseif ($field === 'personal_number') {
         $v = trim((string)$value);
         if ($v === '') throw new RuntimeException('Numri Personal është i detyrueshëm.');
@@ -116,10 +147,11 @@ try {
         if ((int)$c->fetchColumn() > 0) throw new RuntimeException('Numri Personal përdoret nga student tjetër.');
         $pdo->prepare("UPDATE students SET personal_number=:v WHERE id=:sid")->execute([':v'=>$v,':sid'=>$student_id]);
         $dispValue = $v;
+
     } else {
         // fusha tekstuale të tjera (lejo bosh -> NULL)
         $v = trim((string)$value);
-        $col = $field;
+        $col = $field; // safe sepse vjen vetëm nga $allowed
         $pdo->prepare("UPDATE students SET $col = :v WHERE id=:sid")->execute([':v'=>($v===''?null:$v),':sid'=>$student_id]);
         $dispValue = ($v===''?'—':$v);
     }

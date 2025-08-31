@@ -59,6 +59,9 @@ if ($studentRoleId === null) { exit('Konfigurim i mangët: roli "student" mungon
 /* education_levels për select */
 $eduLevels = $pdo->query("SELECT id, code, label FROM education_levels ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 
+$genders = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (int)$g['id']; break; } }
+
 /* ------------------------------
    Veprime POST: vetëm create (inline update bëhet me AJAX te students_inline_update.php)
 ------------------------------- */
@@ -79,11 +82,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $phone            = trim($_POST['phone'] ?? '');
             $pass1            = $_POST['password'] ?? '';
             $pass2            = $_POST['password2'] ?? '';
+            $gender_id = (int)($_POST['gender_id'] ?? 0);
+
 
             if ($first_name==='' || $last_name==='' || $nr_amze==='' || $personal_number==='' || $pass1==='' || $pass2==='') {
                 throw new RuntimeException('Plotësoni fushat e detyrueshme: Emër, Mbiemër, Nr. Amzës, Nr. Personal, Fjalëkalim.');
             }
             if ($pass1 !== $pass2) throw new RuntimeException('Fjalëkalimet nuk përputhen.');
+
+            if ($gender_id <= 0) { $gender_id = $maleId; } // default M
+            // verifiko që ekziston
+            $gchk = $pdo->prepare("SELECT 1 FROM genders WHERE id=:gid");
+            $gchk->execute([':gid'=>$gender_id]);
+            if (!$gchk->fetchColumn()) { throw new RuntimeException('Gjinia e zgjedhur nuk ekziston.'); }
 
             // Unike: nr_amze + personal_number
             $q1 = $pdo->prepare("SELECT COUNT(*) FROM students WHERE nr_amze = :x");
@@ -113,9 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 3) students
             $insStud = $pdo->prepare("
                 INSERT INTO students
-                (user_id, first_name, father_name, last_name, birth_date, birth_place, nr_amze, personal_number, education_level_id, phone)
+                (user_id, first_name, father_name, last_name, birth_date, birth_place, nr_amze, personal_number, education_level_id, phone, gender_id)
                 VALUES
-                (:uid, :fn, :fat, :ln, :bd, :bp, :amz, :pn, :edu, :ph)
+                (:uid, :fn, :fat, :ln, :bd, :bp, :amz, :pn, :edu, :ph, :gender)
             ");
             $insStud->execute([
                 ':uid'=>$newUserId, ':fn'=>$first_name, ':fat'=>$father_name, ':ln'=>$last_name,
@@ -123,7 +134,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':bp'=>($birth_place !== '' ? $birth_place : null),
                 ':amz'=>$nr_amze, ':pn'=>$personal_number,
                 ':edu'=>($education_level_id > 0 ? $education_level_id : null),
-                ':ph'=>($phone !== '' ? $phone : null)
+                ':ph'=>($phone !== '' ? $phone : null),
+                ':gender'=>$gender_id
             ]);
 
             $pdo->commit();
@@ -208,10 +220,14 @@ $listStmt = $pdo->prepare("
         s.education_level_id AS edu_id,
         el.code         AS edu_code,
         el.label        AS edu_label,
+        s.gender_id,
+        g.code          AS gender_code,
+        g.label         AS gender_label,
         u.created_at
     FROM students s
     JOIN users u ON u.id = s.user_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
+    LEFT JOIN genders g ON g.id = s.gender_id
     $whereSql
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
     LIMIT :lim OFFSET :off
@@ -348,6 +364,7 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                             <th class="nowrap">Datëlindja</th>
                             <th>Vendlindja</th>
                             <th>Arsimi</th>
+                            <th class="nowrap">Gjinia</th>
                             <th>Tel.</th>
                         </tr>
                     </thead>
@@ -393,6 +410,16 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
+                                </td>
+                                <!-- gender_id -->
+                                <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
+                                <select class="form-select form-select-sm inline-select">
+                                    <?php foreach ($genders as $g): ?>
+                                    <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($g['label']) ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
                                 </td>
                                 <!-- phone -->
                                 <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
@@ -481,6 +508,16 @@ $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="col-md-4">
                 <label class="form-label">Tel.</label>
                 <input type="text" name="phone" class="form-control" placeholder="+355 ...">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Gjinia *</label>
+                <select name="gender_id" class="form-select" required>
+                <?php foreach ($genders as $g): ?>
+                    <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>>
+                    <?= htmlspecialchars($g['label']) ?>
+                    </option>
+                <?php endforeach; ?>
+                </select>
             </div>
 
             <div class="col-md-4">
@@ -583,16 +620,15 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
 });
 
 /* Event për select (education_level_id) */
-document.querySelectorAll('td.cell[data-field="education_level_id"] select.inline-select')
-  .forEach(sel => {
-    sel.addEventListener('change', () => {
-      const cell = sel.closest('td.cell');
-      const sid = parseInt(cell.dataset.id, 10);
-      const field = 'education_level_id';
-      const val = sel.value; // '' ose id
-      saveInline(sid, field, val, cell, null);
-    });
+document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
+  sel.addEventListener('change', () => {
+    const cell  = sel.closest('td.cell');
+    const sid   = parseInt(cell.dataset.id, 10);
+    const field = cell.dataset.field; // 'education_level_id' ose 'gender_id'
+    const val   = sel.value; // '' ose id
+    saveInline(sid, field, val, cell, null);
   });
+});
 </script>
 </body>
 </html>
