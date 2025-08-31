@@ -249,6 +249,26 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .form-control::placeholder { color:#9ca3af; }
         .pagination .page-link { border-radius:.5rem; }
         @media (max-width:575.98px){ .navbar-text{ display:none; } }
+
+        /* Inline-edit styles */
+        .editable {
+          display:inline-block; min-width:120px; padding:.35rem .5rem;
+          border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
+        }
+        .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
+        .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .cell-saving { position:relative; }
+        .cell-saving::after {
+          content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
+          border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%;
+          animation:spin .6s linear infinite; transform:translateY(-50%);
+        }
+        @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
+        .cell-ok { animation: flashOk 1.2s ease; }
+        @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
+        .cell-err { animation: flashErr 1.2s ease; }
+        @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
+        .nowrap { white-space:nowrap; }
     </style>
 </head>
 <body>
@@ -262,6 +282,8 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             </button>
         </div>
     </div>
+
+    <div id="msgBox" class="mb-3" style="display:none;"></div>
 
     <?php if ($m = flash('ok')): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -300,7 +322,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
-    <!-- Tabela -->
+    <!-- Tabela (me inline-edit për Emri & Email) -->
     <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
             <h5 class="mb-0"><i class="bi bi-people me-2"></i>Lista e administratorëve</h5>
@@ -324,8 +346,17 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                         <?php foreach ($users as $u): ?>
                             <tr>
                                 <td class="text-muted">#<?= (int)$u['id'] ?></td>
-                                <td><?= htmlspecialchars($u['full_name'] ?: '—') ?></td>
-                                <td><?= htmlspecialchars($u['email'] ?: '—') ?></td>
+
+                                <!-- full_name (inline) -->
+                                <td class="cell" data-id="<?= (int)$u['id'] ?>" data-field="full_name">
+                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($u['full_name'] ?: '—') ?></span>
+                                </td>
+
+                                <!-- email (inline) -->
+                                <td class="cell nowrap" data-id="<?= (int)$u['id'] ?>" data-field="email">
+                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($u['email'] ?: '—') ?></span>
+                                </td>
+
                                 <td><span class="badge rounded-pill text-bg-danger">Administrator</span></td>
                                 <td class="text-muted"><?= htmlspecialchars($u['created_at']) ?></td>
                                 <td class="text-end">
@@ -472,6 +503,79 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 <!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+const CSRF = <?= json_encode($CSRF) ?>;
+const ENDPOINT = 'user_inline.php';
+
+function cleanText(s) {
+  const v = (s || '').replace(/\s+/g,' ').trim();
+  return (v === '—' ? '' : v);
+}
+
+function showMsg(type, text){
+  const box = document.getElementById('msgBox');
+  box.innerHTML = `
+    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+      ${text}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>`;
+  box.style.display = '';
+}
+
+async function saveInline(userId, field, value, cell, displayEl) {
+  try {
+    cell.classList.add('cell-saving');
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+      body: JSON.stringify({ csrf: CSRF, user_id: userId, field, value })
+    });
+    const json = await res.json();
+    cell.classList.remove('cell-saving');
+    if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
+    if (displayEl) {
+      // email/emer kthehen si string ose '—'
+      displayEl.textContent = json.display ?? (value || '—');
+    }
+    cell.classList.add('cell-ok');
+    setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+  } catch (e) {
+    console.error(e);
+    if (displayEl) displayEl.textContent = displayEl.dataset.old || displayEl.textContent;
+    cell.classList.remove('cell-saving');
+    cell.classList.add('cell-err');
+    setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+    showMsg('danger', e.message);
+  }
+}
+
+/* Inline për contenteditable (Emër & Email) */
+document.querySelectorAll('td.cell .editable').forEach(el => {
+  let oldVal = el.textContent;
+  el.dataset.old = oldVal;
+  el.addEventListener('focus', () => { oldVal = el.textContent; el.dataset.old = oldVal; });
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
+  });
+  el.addEventListener('blur', () => {
+    const cell = el.closest('td.cell');
+    const field = cell.dataset.field;
+    const uid = parseInt(cell.dataset.id, 10);
+    const newVal = cleanText(el.textContent);
+
+    if (newVal === cleanText(oldVal)) return;
+
+    // Validime të thjeshta në front
+    if (field === 'email') {
+      if (newVal === '') { showMsg('danger','Email-i është i detyrueshëm.'); el.textContent = oldVal; return; }
+      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!re.test(newVal)) { showMsg('danger','Email i pavlefshëm.'); el.textContent = oldVal; return; }
+    }
+
+    saveInline(uid, field, newVal, cell, el);
+  });
+});
+
+/* Reset Password modal fill */
 const resetModal = document.getElementById('resetPassModal');
 resetModal?.addEventListener('show.bs.modal', event => {
     const btn = event.relatedTarget;
