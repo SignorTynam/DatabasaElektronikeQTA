@@ -91,7 +91,6 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
     <!-- Brand -->
     <a class="navbar-brand d-flex align-items-center gap-2" href="dashboard_admin.php">
       <img src="image/logoPNG2.png" alt="QTA">
-      <span class="d-none d-sm-inline">QTA – Paneli</span>
       <span class="nav-role-badge ms-1 d-none d-md-inline"><i class="bi bi-shield-lock me-1"></i><?= h($roleLabel) ?></span>
     </a>
 
@@ -197,13 +196,6 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
           <a href="index.php" class="btn btn-outline-light btn-sm" title="Faqja publike">
             <i class="bi bi-globe2"></i>
           </a>
-        </div>
-
-        <!-- Info e shpejtë (desktop) -->
-        <div class="navbar-text text-white-50 d-none d-xl-block">
-          <small>
-            <i class="bi bi-envelope-at me-1"></i><?= h($currentUser['email'] ?? '') ?>
-          </small>
         </div>
 
         <!-- Profili -->

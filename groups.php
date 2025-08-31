@@ -468,7 +468,7 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
       <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#form1Modal">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1
       </button>
-      <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#form2Modal">
+      <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#form2Modal">
         <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
       </button>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
