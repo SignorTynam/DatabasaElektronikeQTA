@@ -58,7 +58,6 @@ $roleLabel  = ($role === 'agjencia' || $role === 'agency') ? 'Agjenci' : ucfirst
     <!-- Brand + badge roli -->
     <a class="navbar-brand d-flex align-items-center gap-2" href="dashboard_agjencia.php">
       <img src="image/logoPNG2.png" alt="QTA">
-      <span class="d-none d-sm-inline">QTA – Paneli i Agjencive</span>
       <span class="nav-role-badge ms-1 d-none d-md-inline"><i class="bi bi-building me-1"></i><?= h($roleLabel) ?></span>
     </a>
 
@@ -113,15 +112,6 @@ $roleLabel  = ($role === 'agjencia' || $role === 'agency') ? 'Agjenci' : ucfirst
 
       <!-- Djathtas: info shpejt + quick actions + profili -->
       <div class="d-flex align-items-center gap-3">
-
-        <!-- Info e shpejtë (desktop) -->
-        <div class="navbar-text text-white-50 d-none d-lg-block">
-          <small>
-            <i class="bi bi-buildings me-1"></i><?= h($agencyName) ?>
-            <span class="mx-1">•</span>
-            <i class="bi bi-envelope-at me-1"></i><?= h($currentUser['email'] ?? '') ?>
-          </small>
-        </div>
 
         <div class="vr d-none d-lg-block"></div>
 
