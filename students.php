@@ -2,7 +2,6 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
-require __DIR__ . '/inc/navbar.php';
 
 $pdo = getPDO();
 
@@ -239,6 +238,9 @@ $listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
 $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$NAV_ACTIVE = 'students';
+require __DIR__ . '/inc/navbar.php';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
