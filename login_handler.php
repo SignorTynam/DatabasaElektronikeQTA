@@ -4,7 +4,7 @@ session_start();
 require 'database.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: selectProfile.html');
+    header('Location: selectProfile.php');
     exit;
 }
 
@@ -14,7 +14,7 @@ $password = $_POST['password'] ?? '';
 
 if (empty($role) || empty($identifier) || empty($password)) {
     $_SESSION['login_error'] = 'Plotësoni të gjitha fushat.';
-    header('Location: selectProfile.html');
+    header('Location: selectProfile.php');
     exit;
 }
 
@@ -52,7 +52,7 @@ try {
         $stmt->execute([':identifier' => $identifier]);
     } else {
         $_SESSION['login_error'] = 'Roli i papërcaktuar.';
-        header('Location: selectProfile.html');
+        header('Location: selectProfile.php');
         exit;
     }
 
@@ -60,13 +60,13 @@ try {
 
     if (!$user) {
         $_SESSION['login_error'] = 'Kombinim i gabuar i të dhënave.';
-        header('Location: selectProfile.html');
+        header('Location: selectProfile.php');
         exit;
     }
 
     if (!password_verify($password, $user['password_hash'])) {
         $_SESSION['login_error'] = 'Kombinim i gabuar i të dhënave.';
-        header('Location: selectProfile.html');
+        header('Location: selectProfile.php');
         exit;
     }
 
@@ -88,12 +88,12 @@ try {
         exit;
     } else {
         // fallback
-        header('Location: selectProfile.html');
+        header('Location: selectProfile.php');
         exit;
     }
 } catch (Exception $e) {
     // log error in production
     $_SESSION['login_error'] = 'Ndodhi një gabim gjatë hyrjes.';
-    header('Location: selectProfile.html');
+    header('Location: selectProfile.php');
     exit;
 }
