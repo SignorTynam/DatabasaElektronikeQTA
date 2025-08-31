@@ -153,12 +153,24 @@ if ($type === 'form1') {
       c.code AS course_code, c.name AS course_name,
       cg.start_date, cg.end_date,
       COUNT(s.id) AS total,
-      /* Femra: aktualisht s'ka gjini -> 0/blank. Kur të shtohet kolona p.sh. s.gender='F', zëvendëso me SUM(CASE WHEN s.gender='F' THEN 1 ELSE 0 END) */
-      NULL AS females,
-      SUM(CASE WHEN s.birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) BETWEEN 16 AND 24 THEN 1 ELSE 0 END) AS age_16_24,
-      SUM(CASE WHEN s.birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) BETWEEN 25 AND 34 THEN 1 ELSE 0 END) AS age_25_34,
+      /* Femra: llogaritet nga tabela genders (code='F') */
+      SUM(CASE WHEN g.code='F' THEN 1 ELSE 0 END) AS females,
+      SUM(
+        CASE WHEN s.birth_date IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) BETWEEN 16 AND 24
+        THEN 1 ELSE 0 END
+      ) AS age_16_24,
+      SUM(
+        CASE WHEN s.birth_date IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) BETWEEN 25 AND 34
+        THEN 1 ELSE 0 END
+      ) AS age_25_34,
       /* Interpretim i '34+': përdorim >=35 që të mos mbivendoset me 25–34 */
-      SUM(CASE WHEN s.birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) >= 35 THEN 1 ELSE 0 END) AS age_35_plus,
+      SUM(
+        CASE WHEN s.birth_date IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) >= 35
+        THEN 1 ELSE 0 END
+      ) AS age_35_plus,
       SUM(CASE WHEN el.code='AU' THEN 1 ELSE 0 END) AS cnt_AU,
       SUM(CASE WHEN el.code='AM' THEN 1 ELSE 0 END) AS cnt_AM,
       SUM(CASE WHEN el.code='AL' THEN 1 ELSE 0 END) AS cnt_AL,
@@ -168,6 +180,7 @@ if ($type === 'form1') {
     JOIN courses c ON c.id = cg.course_id
     LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
     LEFT JOIN students s ON s.id = cgs.student_id
+    LEFT JOIN genders g ON g.id = s.gender_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
     WHERE cg.id BETWEEN :gs AND :ge
     GROUP BY cg.id
@@ -191,7 +204,7 @@ if ($type === 'form1') {
       $r['start_date'] ?? '',
       $r['end_date'] ?? '',
       (int)$r['total'],
-      '', // Femra (mbushet sapo të ketë gjini)
+      (int)$r['females'],
       (int)$r['age_16_24'],
       (int)$r['age_25_34'],
       (int)$r['age_35_plus'],
