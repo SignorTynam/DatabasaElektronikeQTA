@@ -390,6 +390,25 @@ foreach ($params2 as $k=>$v) $ng->bindValue($k,$v,PDO::PARAM_STR);
 $ng->execute();
 $noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
 
+/* ------------------------------
+   Info për dropdown-et e Form 1
+------------------------------- */
+$groupInfo = $pdo->query("
+  SELECT
+    cg.id,
+    cg.start_date, cg.end_date,
+    c.code AS course_code, c.name AS course_name,
+    MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
+    MAX(CAST(s.nr_amze AS UNSIGNED)) AS amze_max
+  FROM course_groups cg
+  JOIN courses c ON c.id = cg.course_id
+  LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
+  LEFT JOIN students s ON s.id = cgs.student_id
+  GROUP BY cg.id
+  ORDER BY cg.id ASC
+")->fetchAll(PDO::FETCH_ASSOC);
+
+
 /* Flash mesazhe (tërhiq dhe fshij) */
 $flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
 $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
@@ -446,6 +465,12 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
           <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
         </div>
       </form>
+      <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#form1Modal">
+        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1
+      </button>
+      <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#form2Modal">
+        <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
+      </button>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
         <i class="bi bi-plus-circle me-1"></i> Krijo grup
       </button>
@@ -711,6 +736,97 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
   </div>
 </main>
 
+<!-- MODAL: Formulari nr. 1 -->
+<div class="modal fade" id="form1Modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="form1Export" method="get" action="groups_export.php">
+      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+      <input type="hidden" name="type" value="form1">
+      <input type="hidden" name="f" value="xlsx" id="form1Format">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Grupi i fillimit</label>
+          <select name="gstart" id="gstart" class="form-select" required>
+            <option value="">— Zgjidh —</option>
+            <?php foreach($groupInfo as $gi): ?>
+              <option value="<?= (int)$gi['id'] ?>">
+                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_code'].' · '.$gi['course_name']) ?> (<?= htmlspecialchars($gi['start_date'].' → '.$gi['end_date']) ?>)
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <div class="form-text" id="gstartHint">(AMZË: —)</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Grupi i mbarimit</label>
+          <select name="gend" id="gend" class="form-select" required>
+            <option value="">— Zgjidh —</option>
+            <?php foreach($groupInfo as $gi): ?>
+              <option value="<?= (int)$gi['id'] ?>">
+                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_code'].' · '.$gi['course_name']) ?> (<?= htmlspecialchars($gi['start_date'].' → '.$gi['end_date']) ?>)
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <div class="form-text" id="gendHint">(AMZË: —)</div>
+        </div>
+        <div class="small text-muted">
+          Për çdo grup në intervalin [fillim…mbarim] shkarkohet: Emri i kursit, Fillimi, Mbarimi, Totale,
+          <em>Femra</em> (shtohet kur të kemi gjininë), moshat 16–24, 25–34, 35+, si dhe AU/AM/AL.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn-group me-auto">
+          <button type="button" class="btn btn-outline-success" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+          <button type="button" class="btn btn-outline-danger" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
+          <button type="button" class="btn btn-outline-primary" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
+        </div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Formulari nr. 2 -->
+<div class="modal fade" id="form2Modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="form2Export" method="get" action="groups_export.php">
+      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+      <input type="hidden" name="type" value="form2">
+      <input type="hidden" name="f" value="xlsx" id="form2Format">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">AMZË e fillimit</label>
+            <input type="number" name="amze_start" class="form-control" placeholder="p.sh. 3400" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">AMZË e mbarimit</label>
+            <input type="number" name="amze_end" class="form-control" placeholder="p.sh. 3499" required>
+          </div>
+        </div>
+        <div class="small text-muted mt-2">
+          Shkarkohet: AMZË, Emër-Atësi-Mbiemër, vendlindja, dhe emri i kursit (nga grupi më i fundit të studentit).
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn-group me-auto">
+          <button type="button" class="btn btn-outline-success" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+          <button type="button" class="btn btn-outline-danger" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
+          <button type="button" class="btn btn-outline-primary" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
+        </div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- MODAL: Krijo grup -->
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -864,6 +980,43 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
       saveInline({action:'update_final_score', student_id:sid, group_id:gid, final_score:n}, cell, el, oldVal);
       return;
     }
+  });
+});
+
+/* Mapping: groupId -> {min, max} */
+const GROUP_AMZE = <?= json_encode(array_column($groupInfo, null, 'id'), JSON_UNESCAPED_UNICODE) ?>;
+
+function updateHint(selId, hintId) {
+  const v = document.getElementById(selId).value;
+  const h = document.getElementById(hintId);
+  if (!v || !GROUP_AMZE[v]) { h.textContent = '(AMZË: —)'; return; }
+  const mi = GROUP_AMZE[v]['amze_min'];
+  const ma = GROUP_AMZE[v]['amze_max'];
+  if (mi === null || ma === null) h.textContent = '(AMZË: —)';
+  else h.textContent = `(AMZË: ${mi} – ${ma})`;
+}
+
+['gstart','gend'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', ()=>{
+    updateHint('gstart','gstartHint');
+    updateHint('gend','gendHint');
+  });
+});
+updateHint('gstart','gstartHint');
+updateHint('gend','gendHint');
+
+/* Tre butonat e download-it për secilin formular */
+document.querySelectorAll('#form1Modal [data-dl]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.getElementById('form1Format').value = btn.dataset.dl;
+    document.getElementById('form1Export').submit();
+  });
+});
+document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.getElementById('form2Format').value = btn.dataset.dl;
+    document.getElementById('form2Export').submit();
   });
 });
 </script>
