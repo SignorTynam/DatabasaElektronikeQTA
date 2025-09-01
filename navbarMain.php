@@ -55,6 +55,7 @@ function role_panel_href(?string $role): string {
   return match ($role) {
     'administrator' => 'dashboard_admin.php',
     'agjencia'      => 'dashboard_agjencia.php',
+    'editor'       => 'dashboard_editor.php',
     'student'       => 'dashboard_student.php',
     default         => 'selectProfile.php'
   };
@@ -64,6 +65,7 @@ function role_panel_label(?string $role): string {
     'administrator' => 'Paneli i Administrimit',
     'agjencia'      => 'Paneli i Agjencisë',
     'student'       => 'Paneli i Studentit',
+    'editor'       => 'Paneli i Editorit',
     default         => 'Zgjidh rolin'
   };
 }
