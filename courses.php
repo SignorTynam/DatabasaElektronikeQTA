@@ -190,8 +190,12 @@ $NAV_ACTIVE = 'courses';
 <body>
 
 <?php
-  // Navbar sipas rolit
-  require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
+    // Navbar sipas rolit
+    if ($isAdmin) {
+        require __DIR__ . '/inc/navbar.php';
+    } elseif ($roleName === 'editor') {
+        require __DIR__ . '/inc/navbar4.php';
+    }
 ?>
 
 <main class="container-fluid px-3 px-md-4">
@@ -274,43 +278,19 @@ $NAV_ACTIVE = 'courses';
                                 </td>
                                 <td class="text-muted small nowrap"><?= htmlspecialchars($c['created_at']) ?></td>
                                 <td class="text-end">
-                                    <button class="btn btn-outline-danger btn-sm"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#deleteCourseModal_<?= $cid ?>">
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-danger btn-sm"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#deleteCourseModal"
+                                        data-course-id="<?= $cid ?>"
+                                        data-course-code="<?= htmlspecialchars($c['code'], ENT_QUOTES) ?>"
+                                        data-course-name="<?= htmlspecialchars($c['name'], ENT_QUOTES) ?>"
+                                    >
                                         <i class="bi bi-trash me-1"></i> Fshi
                                     </button>
                                 </td>
                             </tr>
-
-                            <!-- MODAL: Fshi modul -->
-                            <div class="modal fade" id="deleteCourseModal_<?= $cid ?>" tabindex="-1" aria-hidden="true">
-                              <div class="modal-dialog">
-                                <form class="modal-content" method="post" action="courses.php">
-                                  <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-                                  <input type="hidden" name="action" value="delete_course">
-                                  <input type="hidden" name="course_id" value="<?= $cid ?>">
-                                  <div class="modal-header">
-                                    <h5 class="modal-title"><i class="bi bi-trash me-1"></i> Fshi modul</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                  </div>
-                                  <div class="modal-body">
-                                    <p>Jeni i sigurt që dëshironi të fshini modulin:</p>
-                                    <ul class="mb-2">
-                                      <li><strong>Kod:</strong> <?= htmlspecialchars($c['code']) ?></li>
-                                      <li><strong>Emër:</strong> <?= htmlspecialchars($c['name']) ?></li>
-                                    </ul>
-                                    <div class="alert alert-warning small mb-0">
-                                      <i class="bi bi-exclamation-triangle me-1"></i>
-                                      <strong>Kujdes:</strong> Fshirja do të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul.
-                                    </div>
-                                  </div>
-                                  <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-                                    <button class="btn btn-danger" type="submit">Po, fshije</button>
-                                  </div>
-                                </form>
-                              </div>
-                            </div>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr><td colspan="5" class="text-center text-muted">Nuk u gjet asnjë modul.</td></tr>
@@ -390,6 +370,39 @@ $NAV_ACTIVE = 'courses';
   </div>
 </div>
 
+<!-- MODAL: Fshi modul (i ripërdorshëm, JASHTË tabelës) -->
+<div class="modal fade" id="deleteCourseModal" tabindex="-1" aria-labelledby="deleteCourseLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post" action="courses.php">
+      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+      <input type="hidden" name="action" value="delete_course">
+      <input type="hidden" name="course_id" id="deleteCourseId" value="">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteCourseLabel"><i class="bi bi-trash me-1"></i> Fshi modul</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+
+      <div class="modal-body">
+        <p>Jeni i sigurt që dëshironi të fshini modulin:</p>
+        <ul class="mb-2">
+          <li><strong>Kod:</strong> <span id="delCode"></span></li>
+          <li><strong>Emër:</strong> <span id="delName"></span></li>
+        </ul>
+        <div class="alert alert-warning small mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          <strong>Kujdes:</strong> Fshirja do të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul.
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-danger" type="submit">Po, fshije</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -435,6 +448,23 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
     saveInline(cid, field, newVal, cell, el);
   });
 });
+
+/* Modal fshirjeje i ripërdorshëm */
+const deleteModal = document.getElementById('deleteCourseModal');
+if (deleteModal) {
+  deleteModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    if (!button) return;
+    const id   = button.getAttribute('data-course-id');
+    const code = button.getAttribute('data-course-code') || '';
+    const name = button.getAttribute('data-course-name') || '';
+
+    // Vendos vlerat në modal
+    document.getElementById('deleteCourseId').value = id;
+    document.getElementById('delCode').textContent  = code;
+    document.getElementById('delName').textContent  = name;
+  });
+}
 </script>
 </body>
 </html>
