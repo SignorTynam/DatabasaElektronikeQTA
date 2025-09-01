@@ -64,7 +64,7 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, in
   $sid = $q->fetchColumn();
   if ($sid) return (int)$sid;
 
-  // 1) person
+  // 1) person (lejon NULL për emra/ID personale sipas patch-it të skemës)
   $insP = $pdo->prepare("
     INSERT INTO persons (first_name, father_name, last_name, birth_date, birth_place, personal_number, phone, gender_id)
     VALUES (NULL, NULL, NULL, NULL, NULL, NULL, NULL, :g)
@@ -103,21 +103,18 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $course_id = (int)($_POST['course_id'] ?? 0);
       $start_date = trim((string)($_POST['start_date'] ?? ''));
       $end_date   = trim((string)($_POST['end_date'] ?? ''));
-      $exam_date  = trim((string)($_POST['exam_date'] ?? '')); // datë testi në nivel grupi
       $amze_spec  = trim((string)($_POST['amze_spec'] ?? ''));
 
       if ($course_id<=0) throw new RuntimeException('Zgjidh një modul.');
       if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) throw new RuntimeException('Data e fillimit është e pavlefshme.');
       if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) throw new RuntimeException('Data e mbarimit është e pavlefshme.');
       if ($end_date < $start_date) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
-      if ($exam_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $exam_date)) throw new RuntimeException('Data e testit është e pavlefshme.');
-      if ($exam_date !== '' && $exam_date < $end_date) throw new RuntimeException('Data e testit duhet të jetë ≥ datës së mbarimit.');
 
       $pdo->beginTransaction();
 
-      // Krijo grupin – exam_date ruhet në course_groups
-      $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, exam_date) VALUES (:c,:s,:e,:x)");
-      $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':x'=>($exam_date!==''?$exam_date:null)]);
+      // Krijo grupin – NUK ka exam_date në nivel grupi
+      $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date) VALUES (:c,:s,:e)");
+      $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date]);
       $gid = (int)$pdo->lastInsertId();
 
       // Anëtarët (deri në 10) + rregull: personi s’mund ta ndjekë dy herë të njëjtin modul
@@ -183,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           }
         }
 
-        // Shto anëtarët
+        // Shto anëtarët (exam_date dhe final_score = NULL fillimisht)
         $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
         foreach ($ids as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
       }
@@ -323,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       // Heqjet
       if ($toRemove) {
         $del = $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g AND student_id=:s");
-        foreach ($toRemove as $sid) $del->execute([':g'=>$group_id, ':s'=>$sid]);
+        foreach ($toRemove as $sid) { $del->execute([':g'=>$group_id, ':s'=>$sid]); }
       }
 
       // Shtimet
@@ -453,7 +450,7 @@ $whereSql = 'WHERE '.implode(' AND ', $w);
 
 $sql = "
   SELECT
-    cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.exam_date,
+    cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date,
     c.code AS course_code, c.name AS course_name,
 
     s.id AS student_id, s.nr_amze,
@@ -463,6 +460,7 @@ $sql = "
 
     el.code AS edu_code, el.label AS edu_label,
 
+    cgs.exam_date,            -- EXAM PER-STUDENT
     cgs.final_score
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
@@ -627,7 +625,6 @@ require __DIR__ . '/inc/navbar.php';
           'course_name'=>$r['course_name'],
           'start_date'=>$r['start_date'],
           'end_date'=>$r['end_date'],
-          'exam_date'=>$r['exam_date'],
         ],
         'students' => []
       ];
@@ -662,9 +659,6 @@ require __DIR__ . '/inc/navbar.php';
                     data-field="end_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
                     title="YYYY-MM-DD (≥ data e fillimit)"><?= htmlspecialchars($g['header']['end_date']) ?></span>
             </span>
-            <span>Testi:
-              <span class="nowrap"><?= htmlspecialchars($g['header']['exam_date'] ?: '—') ?></span>
-            </span>
           </div>
           <div class="d-flex align-items-center gap-2">
             <button class="btn btn-outline-primary btn-sm"
@@ -689,6 +683,7 @@ require __DIR__ . '/inc/navbar.php';
               <tr>
                 <th class="nowrap">AMZË</th>
                 <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
+                <th class="nowrap">Datë testimi (student)</th>
                 <th class="nowrap">Pikët përfundimtare</th>
                 <th class="nowrap">Mosha</th>
                 <th class="nowrap">Arsimi</th>
@@ -705,6 +700,14 @@ require __DIR__ . '/inc/navbar.php';
                   <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
                 </td>
 
+                <!-- exam_date per student -->
+                <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
+                    title="YYYY-MM-DD (≥ data e mbarimit të grupit)">
+                  <span class="editable" contenteditable="true">
+                    <?= htmlspecialchars($r['exam_date'] ?: '—') ?>
+                  </span>
+                </td>
+
                 <!-- final_score per student -->
                 <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
                   <span class="editable" contenteditable="true">
@@ -716,7 +719,7 @@ require __DIR__ . '/inc/navbar.php';
                 <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
               </tr>
             <?php endforeach; else: ?>
-              <tr><td colspan="5" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
+              <tr><td colspan="6" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
             <?php endif; ?>
             </tbody>
           </table>
@@ -985,12 +988,6 @@ require __DIR__ . '/inc/navbar.php';
             <input type="date" name="end_date" class="form-control" required>
           </div>
 
-          <div class="col-md-3">
-            <label class="form-label">Datë testimi (opsionale)</label>
-            <input type="date" name="exam_date" class="form-control" placeholder="opsionale">
-            <div class="form-text">Ruhet në nivel grupi (duhet të jetë ≥ datës së mbarimit).</div>
-          </div>
-
           <div class="col-md-9">
             <label class="form-label">AMZË për këtë grup (deri në 10)</label>
             <textarea name="amze_spec" class="form-control" rows="2" placeholder="p.sh. 3400-3403, 3409"></textarea>
@@ -1078,7 +1075,7 @@ document.querySelectorAll('.cell-inline.editable').forEach(el=>{
   });
 });
 
-/* Inline per student: vetem final_score */
+/* Inline per student: exam_date & final_score */
 document.querySelectorAll('td.cell .editable').forEach(el=>{
   let oldVal = el.textContent;
   el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
@@ -1090,6 +1087,15 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
     const gid = parseInt(cell.dataset.group,10);
     const newVal = clean(el.textContent);
     if(newVal===clean(oldVal)) return;
+
+    if(field==='exam_date'){
+      if(newVal!=='' && !/^\d{4}-\d{2}-\d{2}$/.test(newVal)){
+        el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
+        showMsg('danger','Data e testit duhet në formatin YYYY-MM-DD.'); return;
+      }
+      saveInline({action:'update_student_exam_date', student_id:sid, group_id:gid, exam_date:(newVal===''?null:newVal)}, cell, el, oldVal);
+      return;
+    }
 
     if(field==='final_score'){
       if(newVal===''){
@@ -1107,7 +1113,7 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
   });
 });
 
-/* Mapping: groupId -> {min, max} */
+/* Mapping: groupId -> {min, max} për hint-et në modalin e Form. 1 */
 const GROUP_AMZE = <?= json_encode(array_column($groupInfo, null, 'id'), JSON_UNESCAPED_UNICODE) ?>;
 
 function updateHint(selId, hintId) {

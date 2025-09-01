@@ -82,7 +82,7 @@ try {
     $start = $G['start_date'];
     if (!empty($start) && $end < $start) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
 
-    // Kontrollo që asnjë student në këtë grup të mos ketë exam_date < end
+    // Mos lejo end_date nëse ekziston ndonjë exam_date < end_date e re
     $q = $pdo->prepare("
       SELECT COUNT(*) FROM course_group_students
       WHERE group_id = :gid AND exam_date IS NOT NULL AND exam_date < :end
@@ -119,7 +119,7 @@ try {
     $row = $chk->fetch(PDO::FETCH_ASSOC);
     if (!$row) throw new RuntimeException('Ky student nuk i përket këtij grupi.');
 
-    $exam = $data['exam_date'] ?? null; // mund të vijë '' / null / 'YYYY-MM-DD'
+    $exam = $data['exam_date'] ?? null; // '' / null / 'YYYY-MM-DD'
 
     if ($exam === '' || $exam === null) {
       // nëse ka notë, nuk lejojmë heqjen e datës së testit
@@ -137,7 +137,7 @@ try {
     $exam = trim((string)$exam);
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $exam)) throw new RuntimeException('Formati i datës së testit është i pavlefshëm (YYYY-MM-DD).');
 
-    // exam_date duhet të jetë ≥ end_date, nëse end_date ekziston
+    // exam_date ≥ end_date (nëse end_date ekziston)
     if (!empty($G['end_date']) && $exam < $G['end_date']) {
       throw new RuntimeException('Data e testit duhet të jetë ≥ datës së mbarimit të grupit.');
     }

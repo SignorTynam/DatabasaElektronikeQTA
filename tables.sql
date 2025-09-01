@@ -350,3 +350,27 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+ALTER TABLE persons
+  MODIFY personal_number VARCHAR(100) NULL,
+  MODIFY first_name      VARCHAR(100) NULL,
+  MODIFY last_name       VARCHAR(100) NULL;
+-- (gender_id mund të mbetet NOT NULL; kodi e vendos një vlerë të vlefshme)
+
+DROP TRIGGER IF EXISTS trg_cg_dates_before_update;
+DELIMITER $$
+CREATE TRIGGER trg_cg_dates_before_update
+BEFORE UPDATE ON course_groups
+FOR EACH ROW
+BEGIN
+  IF NEW.end_date < NEW.start_date THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Data e mbarimit duhet të jetë ≥ datës së fillimit.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM course_group_students
+    WHERE group_id = NEW.id AND exam_date IS NOT NULL AND exam_date < NEW.end_date
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ka studentë me datë testi para datës së re të mbarimit të grupit.';
+  END IF;
+END$$
+DELIMITER ;

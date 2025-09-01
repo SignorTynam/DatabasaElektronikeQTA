@@ -153,34 +153,40 @@ if ($type === 'form1') {
       c.code AS course_code, c.name AS course_name,
       cg.start_date, cg.end_date,
       COUNT(s.id) AS total,
-      /* Femra: llogaritet nga tabela genders (code='F') */
+
+      /* Femra nga persons.gender_id -> genders.code = 'F' */
       SUM(CASE WHEN g.code='F' THEN 1 ELSE 0 END) AS females,
+
+      /* Grupmoshat nga persons.birth_date */
       SUM(
-        CASE WHEN s.birth_date IS NOT NULL
-          AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) BETWEEN 16 AND 24
+        CASE WHEN p.birth_date IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) BETWEEN 16 AND 24
         THEN 1 ELSE 0 END
       ) AS age_16_24,
       SUM(
-        CASE WHEN s.birth_date IS NOT NULL
-          AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) BETWEEN 25 AND 34
+        CASE WHEN p.birth_date IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) BETWEEN 25 AND 34
         THEN 1 ELSE 0 END
       ) AS age_25_34,
-      /* Interpretim i '34+': përdorim >=35 që të mos mbivendoset me 25–34 */
       SUM(
-        CASE WHEN s.birth_date IS NOT NULL
-          AND TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) >= 35
+        CASE WHEN p.birth_date IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) >= 35
         THEN 1 ELSE 0 END
       ) AS age_35_plus,
+
+      /* Arsimi nga students.education_level_id */
       SUM(CASE WHEN el.code='AU' THEN 1 ELSE 0 END) AS cnt_AU,
       SUM(CASE WHEN el.code='AM' THEN 1 ELSE 0 END) AS cnt_AM,
       SUM(CASE WHEN el.code='AL' THEN 1 ELSE 0 END) AS cnt_AL,
+
       MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
       MAX(CAST(s.nr_amze AS UNSIGNED)) AS amze_max
     FROM course_groups cg
     JOIN courses c ON c.id = cg.course_id
     LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
     LEFT JOIN students s ON s.id = cgs.student_id
-    LEFT JOIN genders g ON g.id = s.gender_id
+    LEFT JOIN persons  p ON p.id = s.person_id
+    LEFT JOIN genders  g ON g.id = p.gender_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
     WHERE cg.id BETWEEN :gs AND :ge
     GROUP BY cg.id
@@ -230,10 +236,12 @@ if ($type === 'form2') {
   $sql = "
     SELECT
       s.nr_amze,
-      s.first_name, s.father_name, s.last_name,
-      s.birth_place,
+      p.first_name, p.father_name, p.last_name,
+      p.birth_place,
       c.name AS course_name
     FROM students s
+    JOIN persons p ON p.id = s.person_id
+
     /* Grupi i fundit i studentit sipas start_date DESC (MySQL 8+) */
     LEFT JOIN (
       SELECT t.student_id, t.course_id
@@ -245,7 +253,9 @@ if ($type === 'form2') {
       ) t
       WHERE t.rn = 1
     ) lastg ON lastg.student_id = s.id
+
     LEFT JOIN courses c ON c.id = lastg.course_id
+
     WHERE CAST(s.nr_amze AS UNSIGNED) BETWEEN :a1 AND :a2
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC
   ";
