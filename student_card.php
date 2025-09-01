@@ -22,7 +22,7 @@ $currentUser = $usr->fetch(PDO::FETCH_ASSOC);
 if (!$currentUser) { header('Location: selectProfile.php'); exit; }
 
 $ROLE = $currentUser['role_name'];
-if (!in_array($ROLE, ['administrator','agjencia'], true)) {
+if (!in_array($ROLE, ['administrator','editor','agjencia'], true)) {
   http_response_code(403); exit('Akses i ndaluar.');
 }
 
@@ -216,14 +216,14 @@ if ($selected) {
     FROM course_group_students cgs
     JOIN course_groups cg ON cg.id = cgs.group_id
     WHERE cgs.student_id=:sid AND cgs.final_score IS NOT NULL
-    ORDER BY COALESCE(cg.exam_date, cg.end_date) DESC, cgs.group_id DESC
+    ORDER BY COALESCE(cgs.exam_date, cg.end_date) DESC, cgs.group_id DESC
     LIMIT 1
   ");
   $st->execute([':sid'=>$SID]); $stats['last'] = $st->fetchColumn();
 
   // Listë grupe (5 të fundit)
   $st = $pdo->prepare("
-    SELECT cg.id AS group_id, c.code, c.name, cg.start_date, cg.end_date, cg.exam_date, cgs.final_score
+    SELECT cg.id AS group_id, c.code, c.name, cg.start_date, cg.end_date, cgs.exam_date, cgs.final_score
     FROM course_group_students cgs
     JOIN course_groups cg ON cg.id = cgs.group_id
     JOIN courses c ON c.id = cg.course_id
@@ -235,33 +235,28 @@ if ($selected) {
 
   // Provime të afërta (30 ditë)
   $st = $pdo->prepare("
-    SELECT DISTINCT c.code, c.name, cg.exam_date
+    SELECT DISTINCT c.code, c.name, cgs.exam_date
     FROM course_group_students cgs
     JOIN course_groups cg ON cg.id = cgs.group_id
     JOIN courses c ON c.id = cg.course_id
-    WHERE cgs.student_id=:sid AND cg.exam_date IS NOT NULL AND cg.exam_date >= CURDATE()
-    ORDER BY cg.exam_date ASC
+    WHERE cgs.student_id=:sid AND cgs.exam_date IS NOT NULL AND cgs.exam_date >= CURDATE()
+    ORDER BY cgs.exam_date ASC
     LIMIT 6
   ");
   $st->execute([':sid'=>$SID]); $upcoming = $st->fetchAll(PDO::FETCH_ASSOC);
 
   // Sery notash për grafik
   $st = $pdo->prepare("
-    SELECT DATE_FORMAT(COALESCE(cg.exam_date, cg.end_date), '%Y-%m-%d') AS d, cgs.final_score AS s
+    SELECT DATE_FORMAT(COALESCE(cgs.exam_date, cg.end_date), '%Y-%m-%d') AS d, cgs.final_score AS s
     FROM course_group_students cgs
     JOIN course_groups cg ON cg.id = cgs.group_id
     WHERE cgs.student_id=:sid AND cgs.final_score IS NOT NULL
-    ORDER BY COALESCE(cg.exam_date, cg.end_date) ASC, cgs.group_id ASC
+    ORDER BY COALESCE(cgs.exam_date, cg.end_date) ASC, cgs.group_id ASC
     LIMIT 50
   ");
   $st->execute([':sid'=>$SID]);
   $scores = $st->fetchAll(PDO::FETCH_ASSOC);
 }
-
-/* -------------------------------------------------
-   View
--------------------------------------------------- */
-$NAV_ACTIVE = 'profile';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -307,8 +302,13 @@ $NAV_ACTIVE = 'profile';
 <body>
 
 <?php
-if ($ROLE==='administrator') require __DIR__.'/inc/navbar.php';
-elseif ($ROLE==='agjencia')  require __DIR__.'/inc/navbar2.php';
+if ($ROLE === 'administrator') {
+  require __DIR__.'/inc/navbar.php';
+} elseif ($ROLE === 'editor') {
+  require __DIR__.'/inc/navbar4.php';
+} elseif ($ROLE === 'agjencia') {
+  require __DIR__.'/inc/navbar2.php';
+}
 ?>
 
 <main class="container-fluid px-3 px-md-4">

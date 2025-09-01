@@ -19,10 +19,12 @@ $userStmt = $pdo->prepare("
     WHERE u.id = :uid LIMIT 1
 ");
 $userStmt->execute([':uid'=>$_SESSION['user_id']]);
-$me = $userStmt->fetch();
-if (!$me || $me['role_name'] !== 'administrator') {
+$me = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+$role = strtolower((string)($me['role_name'] ?? ''));
+if (!$me || !in_array($role, ['administrator','editor'], true)) {
     http_response_code(403);
-    echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']); exit;
 }
 
 /* Lexo input (JSON ose form) */

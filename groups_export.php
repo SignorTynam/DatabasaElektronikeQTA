@@ -22,7 +22,7 @@ if (!$autoloadLoaded) {
   exit;
 }
 
-/* Guard admin + CSRF */
+/* Guard: admin OSE editor + CSRF */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
   SELECT u.id, r.name AS role_name
@@ -30,8 +30,12 @@ $u = $pdo->prepare("
   WHERE u.id=:id LIMIT 1
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
-$me = $u->fetch();
-if (!$me || $me['role_name']!=='administrator') { header('Location: selectProfile.php'); exit; }
+$me = $u->fetch(PDO::FETCH_ASSOC);
+
+$role = strtolower((string)($me['role_name'] ?? ''));
+if (!$me || !in_array($role, ['administrator','editor'], true)) {
+  header('Location: selectProfile.php'); exit;
+}
 
 $csrfSession = $_SESSION['csrf_token'] ?? '';
 $csrfQuery   = $_GET['csrf'] ?? '';

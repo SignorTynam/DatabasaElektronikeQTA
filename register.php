@@ -2,11 +2,10 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
-require __DIR__ . '/inc/navbar.php';
 
 $pdo = getPDO();
 
-/* Guard admin */
+/* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
@@ -14,8 +13,20 @@ $u = $pdo->prepare("
   WHERE u.id=:id LIMIT 1
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
-$currentUser = $u->fetch();
-if (!$currentUser || $currentUser['role_name']!=='administrator') { header('Location: selectProfile.php'); exit; }
+$currentUser = $u->fetch(PDO::FETCH_ASSOC);
+
+$role = strtolower((string)($currentUser['role_name'] ?? ''));
+if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
+  header('Location: selectProfile.php'); exit;
+}
+
+/* Navbar sipas rolit (opsionale) */
+$NAV_ACTIVE = 'register';
+if ($role === 'editor') {
+  require __DIR__ . '/inc/navbar4.php';   // navbar i editorit
+} else {
+  require __DIR__ . '/inc/navbar.php';    // navbar i administratorit
+}
 
 /* CSRF */
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }

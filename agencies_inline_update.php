@@ -20,7 +20,7 @@ try {
     $data = json_decode($raw, true);
     if (!is_array($data)) jerr('Kërkesë e pavlefshme.');
 
-    // Guard: vetëm admin i loguar
+    // Guard: admin OSE editor i loguar
     if (empty($_SESSION['user_id'])) jerr('Seanca ka skaduar. Hyni sërish.', 401);
 
     $pdo = getPDO();
@@ -34,7 +34,11 @@ try {
     ");
     $uStmt->execute([':uid' => $_SESSION['user_id']]);
     $me = $uStmt->fetch();
-    if (!$me || $me['role_name'] !== 'administrator') jerr('Leje e pamjaftueshme.', 403);
+
+    $role = strtolower((string)($me['role_name'] ?? ''));
+    if (!$me || !in_array($role, ['administrator','editor'], true)) {
+        jerr('Leje e pamjaftueshme.', 403);
+    }
 
     // CSRF
     $csrf = (string)($data['csrf'] ?? '');

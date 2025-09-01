@@ -23,7 +23,7 @@ if (!$autoloadLoaded) {
     exit;
 }
 
-/* Guard admin */
+/* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
@@ -34,8 +34,10 @@ $u = $pdo->prepare("
 ");
 $u->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $u->fetch();
-if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
-    header('Location: selectProfile.php'); exit;
+
+$role = strtolower((string)($currentUser['role_name'] ?? ''));
+if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
+  header('Location: selectProfile.php'); exit;
 }
 
 /* CSRF */

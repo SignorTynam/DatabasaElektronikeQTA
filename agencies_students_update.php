@@ -7,7 +7,11 @@ header('Content-Type: application/json; charset=UTF-8');
 $pdo = getPDO();
 
 /* Guard admin */
-if (!isset($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit; }
+/* Guard: admin OSE editor */
+if (!isset($_SESSION['user_id'])) {
+  http_response_code(401);
+  echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit;
+}
 $me = $pdo->prepare("
   SELECT u.id, r.name AS role_name
   FROM users u JOIN roles r ON r.id=u.role_id
@@ -15,7 +19,12 @@ $me = $pdo->prepare("
 ");
 $me->execute([':id'=>$_SESSION['user_id']]);
 $u = $me->fetch();
-if (!$u || $u['role_name']!=='administrator') { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator.']); exit; }
+
+$role = strtolower((string)($u['role_name'] ?? ''));
+if (!$u || !in_array($role, ['administrator','editor'], true)) {
+  http_response_code(403);
+  echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']); exit;
+}
 
 /* CSRF + leximi i input */
 $raw = file_get_contents('php://input');

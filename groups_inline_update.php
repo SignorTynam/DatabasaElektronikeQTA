@@ -7,7 +7,7 @@ header('Content-Type: application/json; charset=UTF-8');
 
 $pdo = getPDO();
 
-/* Guard admin */
+/* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
   http_response_code(401);
   echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']);
@@ -20,9 +20,11 @@ $u = $pdo->prepare("
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $me = $u->fetch(PDO::FETCH_ASSOC);
-if (!$me || $me['role_name']!=='administrator') {
+
+$role = strtolower((string)($me['role_name'] ?? ''));
+if (!$me || !in_array($role, ['administrator','editor'], true)) {
   http_response_code(403);
-  echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator.']);
+  echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']);
   exit;
 }
 

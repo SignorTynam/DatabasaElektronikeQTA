@@ -16,7 +16,10 @@ $u = $pdo->prepare("
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $currentUser = $u->fetch();
-if (!$currentUser || $currentUser['role_name']!=='administrator') { header('Location: selectProfile.php'); exit; }
+$role = strtolower((string)($currentUser['role_name'] ?? ''));
+if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
+  header('Location: selectProfile.php'); exit;
+}
 
 /* ------------------------------
    CSRF
@@ -532,13 +535,17 @@ $flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
 $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
 
 $NAV_ACTIVE = 'groups';
-require __DIR__ . '/inc/navbar.php';
+if ($role === 'administrator') {
+  require __DIR__ . '/inc/navbar.php';    // navbar i adminëve
+} else {
+  require __DIR__ . '/inc/navbar4.php';   // navbar i editorëve
+}
 ?>
 <!DOCTYPE html>
 <html lang="sq">
 <head>
   <meta charset="UTF-8" />
-  <title>Grupe – QTA Admin</title>
+  <title>Grupe – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>

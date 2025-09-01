@@ -6,7 +6,7 @@ require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 
 /* ------------------------------
-   Guard: vetëm admin i loguar
+   Guard: admin OSE editor i loguar
 ------------------------------- */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $userStmt = $pdo->prepare("
@@ -18,7 +18,12 @@ $userStmt = $pdo->prepare("
 ");
 $userStmt->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $userStmt->fetch();
-if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
+
+$roleName  = strtolower((string)($currentUser['role_name'] ?? ''));
+$isAdmin   = ($roleName === 'administrator');
+$isEditor  = ($roleName === 'editor');
+
+if (!$currentUser || (!$isAdmin && !$isEditor)) {
     header('Location: selectProfile.php'); exit;
 }
 
@@ -45,6 +50,7 @@ $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
    POST: Shto / Fshi kurs
+   (Lejuar si për admin, ashtu edhe për editor)
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -63,7 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('“Orë” duhet të jetë numër i plotë ≥ 1.');
             }
 
-            // Unik: code
             $q = $pdo->prepare("SELECT COUNT(*) FROM courses WHERE code = :c");
             $q->execute([':c'=>$code]);
             if ((int)$q->fetchColumn() > 0) {
@@ -85,13 +90,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $course_id = (int)($_POST['course_id'] ?? 0);
             if ($course_id <= 0) throw new RuntimeException('Kurs i pavlefshëm.');
 
-            // Opsionale: lexo kodin për mesazh
             $cinfo = $pdo->prepare("SELECT code, name FROM courses WHERE id=:id LIMIT 1");
             $cinfo->execute([':id'=>$course_id]);
             $ci = $cinfo->fetch(PDO::FETCH_ASSOC);
             if (!$ci) throw new RuntimeException('Moduli nuk u gjet.');
 
-            // Fshi (ON DELETE CASCADE do të fshijë groupet e lidhura dhe anëtarësimet)
             $del = $pdo->prepare("DELETE FROM courses WHERE id=:id");
             $del->execute([':id'=>$course_id]);
 
@@ -121,13 +124,11 @@ if ($q !== '') {
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
-/* Numri total */
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM courses c $whereSql");
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
 
-/* Lista – rendit sipas code (leksikografik) pastaj id */
 $listStmt = $pdo->prepare("
     SELECT c.id AS course_id, c.code, c.name, c.hours, c.created_at
     FROM courses c
@@ -141,18 +142,16 @@ $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* Flash mesazhe */
 $ok  = flash('ok');
 $err = flash('err');
 
-/* Trego që jemi tek faqja e moduleve */
 $NAV_ACTIVE = 'courses';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
 <head>
     <meta charset="UTF-8" />
-    <title>Modulet – QTA Admin</title>
+    <title>Modulet – QTA <?= $isAdmin ? 'Admin' : 'Editor' ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- Bootstrap & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
@@ -190,7 +189,10 @@ $NAV_ACTIVE = 'courses';
 </head>
 <body>
 
-<?php require __DIR__ . '/inc/navbar.php'; ?>
+<?php
+  // Navbar sipas rolit
+  require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
+?>
 
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
@@ -261,23 +263,16 @@ $NAV_ACTIVE = 'courses';
                     <?php if ($courses): ?>
                         <?php foreach ($courses as $c): $cid=(int)$c['course_id']; ?>
                             <tr>
-                                <!-- code -->
                                 <td class="cell" data-id="<?= $cid ?>" data-field="code">
                                     <span class="editable" contenteditable="true"><?= htmlspecialchars($c['code']) ?></span>
                                 </td>
-                                <!-- name -->
                                 <td class="cell" data-id="<?= $cid ?>" data-field="name">
                                     <span class="editable" contenteditable="true"><?= htmlspecialchars($c['name']) ?></span>
                                 </td>
-                                <!-- hours -->
                                 <td class="cell nowrap" data-id="<?= $cid ?>" data-field="hours" title="Numër i plotë ≥ 1">
                                     <span class="editable" contenteditable="true"><?= (int)$c['hours'] ?></span>
                                 </td>
-                                <!-- created_at (read-only) -->
-                                <td class="text-muted small nowrap">
-                                    <?= htmlspecialchars($c['created_at']) ?>
-                                </td>
-                                <!-- actions -->
+                                <td class="text-muted small nowrap"><?= htmlspecialchars($c['created_at']) ?></td>
                                 <td class="text-end">
                                     <button class="btn btn-outline-danger btn-sm"
                                             data-bs-toggle="modal"
@@ -325,7 +320,6 @@ $NAV_ACTIVE = 'courses';
             </div>
         </div>
 
-        <!-- Paginim -->
         <?php if ($totalPages > 1): ?>
         <div class="card-footer bg-white">
             <nav aria-label="Page navigation">
@@ -402,10 +396,8 @@ $NAV_ACTIVE = 'courses';
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'courses_inline_update.php';
 
-/* Helper: trim & normalizim */
 function cleanText(s) { return (s || '').replace(/\s+/g,' ').trim(); }
 
-/* Ruajtje AJAX për inline-edit (code/name/hours) */
 async function saveInline(courseId, field, value, cell, displayEl) {
   try {
     cell.classList.add('cell-saving');
@@ -426,7 +418,6 @@ async function saveInline(courseId, field, value, cell, displayEl) {
   }
 }
 
-/* Event për contenteditable (blur & Enter) */
 document.querySelectorAll('td.cell .editable').forEach(el => {
   let oldVal = el.textContent;
   el.addEventListener('focus', () => { oldVal = el.textContent; });

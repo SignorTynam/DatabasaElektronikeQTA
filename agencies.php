@@ -5,7 +5,7 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
-/* Guard admin */
+/* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
@@ -14,7 +14,14 @@ $u = $pdo->prepare("
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $currentUser = $u->fetch();
-if (!$currentUser || $currentUser['role_name']!=='administrator') { header('Location: selectProfile.php'); exit; }
+
+$roleName = strtolower((string)($currentUser['role_name'] ?? ''));
+$isAdmin  = ($roleName === 'administrator');
+$isEditor = ($roleName === 'editor');
+
+if (!$currentUser || (!$isAdmin && !$isEditor)) {
+  header('Location: selectProfile.php'); exit;
+}
 
 /* CSRF */
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
@@ -124,13 +131,13 @@ $st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
 
 /* Active nav */
 $NAV_ACTIVE='agencies';
-require __DIR__ . '/inc/navbar.php';
+require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
 ?>
 <!DOCTYPE html>
 <html lang="sq">
 <head>
   <meta charset="UTF-8" />
-  <title>Agjencitë – QTA Admin</title>
+  <title>Agjencitë – QTA <?= $isAdmin ? 'Admin' : 'Editor' ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>

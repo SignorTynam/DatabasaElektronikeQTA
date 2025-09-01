@@ -6,7 +6,7 @@ require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 
 /* ------------------------------
-   Guard: vetëm admin i loguar
+   Guard: admin OSE editor i loguar
 ------------------------------- */
 if (!isset($_SESSION['user_id'])) {
     header('Location: selectProfile.php'); exit;
@@ -22,7 +22,8 @@ $userStmt = $pdo->prepare("
 $userStmt->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $userStmt->fetch();
 
-if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
+$role = strtolower((string)($currentUser['role_name'] ?? ''));
+if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
     header('Location: selectProfile.php'); exit;
 }
 
@@ -348,7 +349,8 @@ $listStmt->execute();
 $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $NAV_ACTIVE = 'students';
-require __DIR__ . '/inc/navbar.php';
+if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
+elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
