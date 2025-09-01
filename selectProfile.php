@@ -5,9 +5,9 @@ session_start();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/navbarMain.php';
 
-// (Optional) prefokusimi i tab-it me ?role=administrator|agjencia|student
+// (Optional) prefokusimi i tab-it me ?role=administrator|editor|agjencia|student
 $activeRole = $_GET['role'] ?? 'administrator';
-$validRoles = ['administrator','agjencia','student'];
+$validRoles = ['administrator','editor','agjencia','student'];
 if (!in_array($activeRole, $validRoles, true)) $activeRole = 'administrator';
 
 // Merr mesazhin e gabimit (nëse ka) nga login_handler.php
@@ -46,12 +46,11 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
         linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
     }
     .btn-primary { background:#2563eb; border-color:#2563eb; }
+    .btn-warning { background:#f59e0b; border-color:#f59e0b; color:#111827; }
     .btn-success { background:#16a34a; border-color:#16a34a; }
     .btn-info { background:#0ea5e9; border-color:#0ea5e9; }
 
-    .hero{
-      color:#fff; padding:56px 0 24px;
-    }
+    .hero{ color:#fff; padding:56px 0 24px; }
     .hero h1{ font-weight:800; letter-spacing:.2px; }
     .chip{
       background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35);
@@ -74,8 +73,6 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
     .form-control:focus{ border-color:#2563eb; box-shadow: 0 0 0 .25rem rgba(37,99,235,.15); }
 
     .hint{ color:#334155; font-size:.92rem; }
-
-    /* micro-anim */
     .lift:hover{ transform: translateY(-4px); transition:.2s ease; }
   </style>
 </head>
@@ -87,7 +84,7 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
     <span class="chip mb-2">Hyrje në portal</span>
     <h1 class="display-5 mb-2">Zgjidh rolin dhe hyr në QTA</h1>
     <p class="lead" style="opacity:.95">
-      Qasja & funksionalitetet përcaktohen nga roli juaj: Administrator, Agjenci ose Student.
+      Qasja & funksionalitetet përcaktohen nga roli juaj: Administrator, Editor, Agjenci ose Student.
     </p>
   </div>
 </section>
@@ -102,6 +99,11 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
           <li class="nav-item me-1">
             <button class="nav-link <?= $activeRole==='administrator'?'active':'' ?>" id="tab-admin" data-bs-toggle="pill" data-bs-target="#pane-admin" type="button" role="tab">
               <span class="tab-icon me-2"><i class="bi bi-person-gear"></i></span> Administrator
+            </button>
+          </li>
+          <li class="nav-item me-1">
+            <button class="nav-link <?= $activeRole==='editor'?'active':'' ?>" id="tab-editor" data-bs-toggle="pill" data-bs-target="#pane-editor" type="button" role="tab">
+              <span class="tab-icon me-2" style="background:#fff7ed"><i class="bi bi-pencil-square text-warning"></i></span> Editor
             </button>
           </li>
           <li class="nav-item me-1">
@@ -162,6 +164,50 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
                     <li>Menaxhimi i të gjithë përdoruesve dhe roleve</li>
                     <li>Krijim/ndryshim modulësh dhe grupeve</li>
                     <li>Raporte & statistika të avancuara</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- EDITOR -->
+          <div class="tab-pane fade <?= $activeRole==='editor'?'show active':'' ?>" id="pane-editor" role="tabpanel" aria-labelledby="tab-editor">
+            <div class="row g-4 align-items-center">
+              <div class="col-lg-6">
+                <form action="login_handler.php" method="post" autocomplete="off" class="needs-validation" novalidate>
+                  <input type="hidden" name="role" value="editor">
+                  <div class="mb-3">
+                    <label class="form-label">Email (editor)</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                      <input type="email" name="identifier" class="form-control" placeholder="editor@email.com" required>
+                      <div class="invalid-feedback">Shkruani email të vlefshëm.</div>
+                    </div>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Fjalëkalimi</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                      <input type="password" id="editorPass" name="password" class="form-control" placeholder="********" required>
+                      <button class="btn btn-outline-secondary" type="button" onclick="togglePwd('editorPass', this)"><i class="bi bi-eye"></i></button>
+                      <div class="invalid-feedback">Shkruani fjalëkalimin.</div>
+                    </div>
+                  </div>
+                  <div class="d-grid">
+                    <button class="btn btn-warning btn-lg" type="submit"><i class="bi bi-box-arrow-in-right me-1"></i>Hyr si Editor</button>
+                  </div>
+                  <div class="d-flex justify-content-between mt-2">
+                    <span class="small text-muted">Leje të plota për të dhënat, përveç adminëve</span>
+                  </div>
+                </form>
+              </div>
+              <div class="col-lg-6">
+                <div class="p-3 p-md-4 rounded-4" style="background:#fff7ed;border:1px dashed #fcd34d;">
+                  <div class="h6 mb-2"><i class="bi bi-pencil-square me-1 text-warning"></i> Për editorët</div>
+                  <ul class="mb-0 text-muted">
+                    <li>Menaxho kurse, grupe dhe studentë</li>
+                    <li>Eksporto formularë dhe raporte</li>
+                    <li><em>Nuk</em> mund të modifikojë administratorët</li>
                   </ul>
                 </div>
               </div>
@@ -271,7 +317,7 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
     const params = new URLSearchParams(location.search);
     const role = params.get('role');
     if(!role) return;
-    const map = {administrator:'tab-admin', agjencia:'tab-agency', student:'tab-student'};
+    const map = {administrator:'tab-admin', editor:'tab-editor', agjencia:'tab-agency', student:'tab-student'};
     const id = map[role];
     if(id){ document.getElementById(id)?.click(); }
   })();

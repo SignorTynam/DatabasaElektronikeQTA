@@ -14,7 +14,7 @@ $password = $_POST['password'] ?? '';
 
 if (empty($role) || empty($identifier) || empty($password)) {
     $_SESSION['login_error'] = 'Plotësoni të gjitha fushat.';
-    header('Location: selectProfile.php');
+    header('Location: selectProfile.php?role=' . urlencode($role ?: 'administrator'));
     exit;
 }
 
@@ -30,6 +30,17 @@ try {
                 LIMIT 1";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':identifier' => $identifier]);
+
+    } elseif ($role === 'editor') {
+        $sql = "SELECT u.id AS user_id, r.name AS role_name, c.password_hash, u.full_name
+                FROM users u
+                JOIN roles r ON u.role_id = r.id
+                JOIN credentials c ON c.user_id = u.id
+                WHERE u.email = :identifier AND r.name = 'editor'
+                LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([':identifier' => $identifier]);
+
     } elseif ($role === 'agjencia') {
         $sql = "SELECT u.id AS user_id, r.name AS role_name, c.password_hash, u.full_name, a.nip_t
                 FROM users u
@@ -40,60 +51,58 @@ try {
                 LIMIT 1";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':identifier' => $identifier]);
+
     } elseif ($role === 'student') {
-        $sql = "SELECT u.id AS user_id, r.name AS role_name, c.password_hash, u.full_name, s.personal_number
+        /* Përshtatur me skemën ku personal_number është te persons:
+           users -> students (user_id) -> persons (personal_number) */
+        $sql = "SELECT u.id AS user_id, r.name AS role_name, c.password_hash, u.full_name, p.personal_number
                 FROM users u
-                JOIN roles r ON u.role_id = r.id
+                JOIN roles r      ON u.role_id = r.id
                 JOIN credentials c ON c.user_id = u.id
-                JOIN students s ON s.user_id = u.id
-                WHERE s.personal_number = :identifier AND r.name = 'student'
+                JOIN students s    ON s.user_id = u.id
+                JOIN persons  p    ON p.id = s.person_id
+                WHERE p.personal_number = :identifier AND r.name = 'student'
                 LIMIT 1";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':identifier' => $identifier]);
+
     } else {
         $_SESSION['login_error'] = 'Roli i papërcaktuar.';
-        header('Location: selectProfile.php');
+        header('Location: selectProfile.php?role=' . urlencode($role));
         exit;
     }
 
     $user = $stmt->fetch();
 
-    if (!$user) {
+    if (!$user || !password_verify($password, $user['password_hash'])) {
         $_SESSION['login_error'] = 'Kombinim i gabuar i të dhënave.';
-        header('Location: selectProfile.php');
-        exit;
-    }
-
-    if (!password_verify($password, $user['password_hash'])) {
-        $_SESSION['login_error'] = 'Kombinim i gabuar i të dhënave.';
-        header('Location: selectProfile.php');
+        header('Location: selectProfile.php?role=' . urlencode($role));
         exit;
     }
 
     // Login sukses
     session_regenerate_id(true);
-    $_SESSION['user_id'] = (int)$user['user_id'];
-    $_SESSION['role'] = $user['role_name'];
+    $_SESSION['user_id']   = (int)$user['user_id'];
+    $_SESSION['role']      = $user['role_name'];
     $_SESSION['full_name'] = $user['full_name'] ?? '';
 
-    // Redirect sipas role
-    if ($user['role_name'] === 'administrator') {
-        header('Location: dashboard_admin.php');
-        exit;
-    } elseif ($user['role_name'] === 'agjencia') {
-        header('Location: dashboard_agjencia.php');
-        exit;
-    } elseif ($user['role_name'] === 'student') {
-        header('Location: dashboard_student.php');
-        exit;
-    } else {
-        // fallback
-        header('Location: selectProfile.php');
-        exit;
+    // Redirect sipas rolit
+    switch ($user['role_name']) {
+        case 'administrator':
+            header('Location: dashboard_admin.php'); exit;
+        case 'editor':
+            header('Location: dashboard_editor.php'); exit;
+        case 'agjencia':
+            header('Location: dashboard_agjencia.php'); exit;
+        case 'student':
+            header('Location: dashboard_student.php'); exit;
+        default:
+            header('Location: selectProfile.php'); exit;
     }
+
 } catch (Exception $e) {
-    // log error in production
+    // log error në prod
     $_SESSION['login_error'] = 'Ndodhi një gabim gjatë hyrjes.';
-    header('Location: selectProfile.php');
+    header('Location: selectProfile.php?role=' . urlencode($role));
     exit;
 }
