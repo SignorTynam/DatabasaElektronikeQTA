@@ -374,3 +374,6 @@ BEGIN
   END IF;
 END$$
 DELIMITER ;
+
+INSERT INTO roles (name) VALUES ('editor')
+ON DUPLICATE KEY UPDATE name = VALUES(name);
