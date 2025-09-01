@@ -109,10 +109,17 @@ $weekly = $pdo->query("
 
 /* Studentë pa grup - lista e shkurtër */
 $noGroupList = $pdo->query("
-  SELECT s.id, s.nr_amze, s.first_name, s.father_name, s.last_name, s.personal_number
+  SELECT s.id,
+         s.nr_amze,
+         p.first_name,
+         p.father_name,
+         p.last_name,
+         p.personal_number
   FROM students s
-  LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
-  WHERE cgs.group_id IS NULL
+  JOIN persons p ON p.id = s.person_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM course_group_students c WHERE c.student_id = s.id
+  )
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT 6
 ")->fetchAll(PDO::FETCH_ASSOC);

@@ -55,14 +55,50 @@ $studentRoleId = null;
 foreach ($roles as $r) if ($r['name'] === 'student') { $studentRoleId = (int)$r['id']; break; }
 if ($studentRoleId === null) { exit('Konfigurim i mangët: roli "student" mungon në tabelën roles.'); }
 
-/* education_levels për select */
 $eduLevels = $pdo->query("SELECT id, code, label FROM education_levels ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
-
-$genders = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$genders   = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (int)$g['id']; break; } }
 
 /* ------------------------------
-   Veprime POST: vetëm create (inline update bëhet me AJAX te students_inline_update.php)
+   AJAX: Autoplotësim sipas Numrit Personal
+------------------------------- */
+if (($_SERVER['REQUEST_METHOD'] === 'GET') && isset($_GET['action']) && $_GET['action']==='lookup_person') {
+    header('Content-Type: application/json; charset=UTF-8');
+    $pn = trim((string)($_GET['personal_number'] ?? ''));
+    if ($pn === '') { echo json_encode(['ok'=>false,'error'=>'Numri personal mungon.']); exit; }
+
+    $p = $pdo->prepare("
+        SELECT p.id, p.first_name, p.father_name, p.last_name, p.birth_date, p.birth_place, p.phone, p.gender_id
+        FROM persons p
+        WHERE p.personal_number = :pn
+        LIMIT 1
+    ");
+    $p->execute([':pn'=>$pn]);
+    $row = $p->fetch(PDO::FETCH_ASSOC);
+
+    $edu_id = null;
+    if ($row) {
+        $q = $pdo->prepare("SELECT education_level_id FROM students WHERE person_id=:pid ORDER BY id DESC LIMIT 1");
+        $q->execute([':pid'=>$row['id']]);
+        $edu_id = $q->fetchColumn() ?: null;
+    }
+    echo json_encode(['ok'=>true,'person'=>$row,'education_level_id'=>$edu_id]);
+    exit;
+}
+
+/* ------------------------------
+   Helpers për fjalëkalimin
+------------------------------- */
+function make_initial_password(string $first_name, ?string $birth_date): string {
+    $fname = trim($first_name);
+    $fname = preg_replace('/\s+/', '', $fname); // hiq hapësirat
+    $year  = '0000';
+    if ($birth_date && preg_match('/^(\d{4})-/', $birth_date, $m)) { $year = $m[1]; }
+    return ($fname === '' ? 'User' : $fname) . '.' . $year;
+}
+
+/* ------------------------------
+   Veprime POST: create student
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -70,76 +106,141 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($action === 'create_student') {
-            $first_name       = trim($_POST['first_name'] ?? '');
-            $father_name      = trim($_POST['father_name'] ?? '');
-            $last_name        = trim($_POST['last_name'] ?? '');
-            $birth_date       = trim($_POST['birth_date'] ?? '');
-            $birth_place      = trim($_POST['birth_place'] ?? '');
-            $nr_amze          = trim($_POST['nr_amze'] ?? '');
-            $personal_number  = trim($_POST['personal_number'] ?? '');
-            $education_level_id = (int)($_POST['education_level_id'] ?? 0);
-            $phone            = trim($_POST['phone'] ?? '');
-            $pass1            = $_POST['password'] ?? '';
-            $pass2            = $_POST['password2'] ?? '';
-            $gender_id = (int)($_POST['gender_id'] ?? 0);
+            $personal_number   = trim($_POST['personal_number'] ?? '');
+            $nr_amze           = trim($_POST['nr_amze'] ?? '');
+            $first_name        = trim($_POST['first_name'] ?? '');
+            $father_name       = trim($_POST['father_name'] ?? '');
+            $last_name         = trim($_POST['last_name'] ?? '');
+            $birth_date        = trim($_POST['birth_date'] ?? '');
+            $birth_place       = trim($_POST['birth_place'] ?? '');
+            $phone             = trim($_POST['phone'] ?? '');
+            $gender_id         = (int)($_POST['gender_id'] ?? 0);
+            $education_level_id= (int)($_POST['education_level_id'] ?? 0);
 
-
-            if ($first_name==='' || $last_name==='' || $nr_amze==='' || $personal_number==='' || $pass1==='' || $pass2==='') {
-                throw new RuntimeException('Plotësoni fushat e detyrueshme: Emër, Mbiemër, Nr. Amzës, Nr. Personal, Fjalëkalim.');
+            if ($personal_number === '') {
+                throw new RuntimeException('Numri Personal është i detyrueshëm.');
             }
-            if ($pass1 !== $pass2) throw new RuntimeException('Fjalëkalimet nuk përputhen.');
+            if ($nr_amze === '') {
+                throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
+            }
 
-            if ($gender_id <= 0) { $gender_id = $maleId; } // default M
-            // verifiko që ekziston
-            $gchk = $pdo->prepare("SELECT 1 FROM genders WHERE id=:gid");
-            $gchk->execute([':gid'=>$gender_id]);
-            if (!$gchk->fetchColumn()) { throw new RuntimeException('Gjinia e zgjedhur nuk ekziston.'); }
-
-            // Unike: nr_amze + personal_number
+            // nr_amze unik në students
             $q1 = $pdo->prepare("SELECT COUNT(*) FROM students WHERE nr_amze = :x");
             $q1->execute([':x'=>$nr_amze]);
             if ((int)$q1->fetchColumn() > 0) throw new RuntimeException('Nr. i amzës ekziston tashmë.');
 
-            $q2 = $pdo->prepare("SELECT COUNT(*) FROM students WHERE personal_number = :p");
-            $q2->execute([':p'=>$personal_number]);
-            if ((int)$q2->fetchColumn() > 0) throw new RuntimeException('Numri personal ekziston tashmë.');
+            // Nëse gjinia s'është dërguar → default M (nëse ekziston)
+            if ($gender_id <= 0 && $maleId) { $gender_id = $maleId; }
 
             $pdo->beginTransaction();
 
-            // 1) users
-            $full = trim($first_name . ' ' . ($father_name ? $father_name.' ' : '') . $last_name);
-            $insUser = $pdo->prepare("INSERT INTO users (role_id, full_name, email) VALUES (:rid, :fn, NULL)");
-            $insUser->execute([':rid'=>$studentRoleId, ':fn'=>$full]);
-            $newUserId = (int)$pdo->lastInsertId();
+            /* 1) PERSON: gjej ose krijo sipas personal_number */
+            $pSel = $pdo->prepare("SELECT id, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id FROM persons WHERE personal_number = :pn LIMIT 1");
+            $pSel->execute([':pn'=>$personal_number]);
+            $person = $pSel->fetch(PDO::FETCH_ASSOC);
 
-            // 2) credentials
-            $hash = password_hash($pass1, PASSWORD_BCRYPT);
-            $insCred = $pdo->prepare("
-                INSERT INTO credentials (user_id, password_hash, last_password_change)
-                VALUES (:uid, :ph, NOW())
-            ");
-            $insCred->execute([':uid'=>$newUserId, ':ph'=>$hash]);
+            $personId = (int)($person['id'] ?? 0);
 
-            // 3) students
+            if ($personId === 0) {
+                // Po krijojmë person të ri → first_name & last_name duhen minimalisht
+                if ($first_name === '' || $last_name === '') {
+                    throw new RuntimeException('Për person të ri, Emri dhe Mbiemri janë të detyrueshëm.');
+                }
+                // Valido datëlindjen nëse u dërgua
+                if ($birth_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
+                    throw new RuntimeException('Datëlindja duhet në formatin YYYY-MM-DD.');
+                }
+
+                $pIns = $pdo->prepare("
+                    INSERT INTO persons (personal_number, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id)
+                    VALUES (:pn, :fn, :fat, :ln, :bd, :bp, :ph, :gid)
+                ");
+                $pIns->execute([
+                    ':pn'=>$personal_number, ':fn'=>$first_name, ':fat'=>$father_name, ':ln'=>$last_name,
+                    ':bd'=>($birth_date !== '' ? $birth_date : null),
+                    ':bp'=>($birth_place !== '' ? $birth_place : null),
+                    ':ph'=>($phone !== '' ? $phone : null),
+                    ':gid'=>($gender_id > 0 ? $gender_id : null),
+                ]);
+                $personId = (int)$pdo->lastInsertId();
+                $person   = [
+                    'id'=>$personId, 'first_name'=>$first_name, 'father_name'=>$father_name, 'last_name'=>$last_name,
+                    'birth_date'=>($birth_date !== '' ? $birth_date : null), 'birth_place'=>$birth_place ?: null,
+                    'phone'=>$phone ?: null, 'gender_id'=>($gender_id > 0 ? $gender_id : null),
+                ];
+            } else {
+                // Person ekzistues → s’ndryshojmë të detyrueshme; plotëso opsionalisht nëse u dhanë vlera të reja
+                $pUpd = $pdo->prepare("
+                    UPDATE persons SET
+                        first_name  = COALESCE(NULLIF(:fn,''), first_name),
+                        father_name = COALESCE(NULLIF(:fat,''), father_name),
+                        last_name   = COALESCE(NULLIF(:ln,''), last_name),
+                        birth_date  = COALESCE(NULLIF(:bd,''), birth_date),
+                        birth_place = COALESCE(NULLIF(:bp,''), birth_place),
+                        phone       = COALESCE(NULLIF(:ph,''), phone),
+                        gender_id   = COALESCE(:gid, gender_id)
+                    WHERE id = :pid
+                ");
+                $pUpd->execute([
+                    ':fn'=>$first_name, ':fat'=>$father_name, ':ln'=>$last_name,
+                    ':bd'=>$birth_date, ':bp'=>$birth_place, ':ph'=>$phone,
+                    ':gid'=>($gender_id > 0 ? $gender_id : null), ':pid'=>$personId
+                ]);
+                // rifresko array-in local
+                $pSel->execute([':pn'=>$personal_number]);
+                $person = $pSel->fetch(PDO::FETCH_ASSOC);
+            }
+
+            /* 2) USER për këtë person me rol student: gjej ose krijo */
+            $uSel = $pdo->prepare("SELECT id FROM users WHERE role_id = :rid AND person_id = :pid LIMIT 1");
+            $uSel->execute([':rid'=>$studentRoleId, ':pid'=>$personId]);
+            $userId = (int)($uSel->fetchColumn() ?: 0);
+
+            $full = trim(($person['first_name'] ?? '').' '.(($person['father_name'] ?? '') ? ($person['father_name'].' ') : '').($person['last_name'] ?? ''));
+
+            if ($userId === 0) {
+                // Krijo user të ri
+                $uIns = $pdo->prepare("INSERT INTO users (role_id, person_id, full_name, email) VALUES (:rid, :pid, :fn, NULL)");
+                $uIns->execute([':rid'=>$studentRoleId, ':pid'=>$personId, ':fn'=>$full]);
+                $userId = (int)$pdo->lastInsertId();
+
+                // Gjenero fjalëkalimin fillestar [Emri].[VitiLindjes]
+                $initialPassword = make_initial_password($person['first_name'] ?? $first_name, $person['birth_date'] ?? $birth_date);
+                $hash = password_hash($initialPassword, PASSWORD_BCRYPT);
+
+                $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid, :ph, NOW())")
+                    ->execute([':uid'=>$userId, ':ph'=>$hash]);
+            } else {
+                // User ekzistues → NUK ndryshojmë fjalëkalimin (ruaj të njëjtin sipas kërkesës)
+                // Vetëm rifresko full_name nëse kemi info më të pasur
+                $pdo->prepare("UPDATE users SET full_name=:fn WHERE id=:uid")
+                    ->execute([':fn'=>$full, ':uid'=>$userId]);
+
+                // Nëse mungon rreshti në credentials (rrallë), e krijojmë me rregullin e njëjtë
+                $cSel = $pdo->prepare("SELECT 1 FROM credentials WHERE user_id=:uid");
+                $cSel->execute([':uid'=>$userId]);
+                if (!$cSel->fetchColumn()) {
+                    $initialPassword = make_initial_password($person['first_name'] ?? $first_name, $person['birth_date'] ?? $birth_date);
+                    $hash = password_hash($initialPassword, PASSWORD_BCRYPT);
+                    $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid, :ph, NOW())")
+                        ->execute([':uid'=>$userId, ':ph'=>$hash]);
+                }
+            }
+
+            /* 3) STUDENT – nr_amze unik, por lejo shumë rreshta për të njëjtin person */
             $insStud = $pdo->prepare("
-                INSERT INTO students
-                (user_id, first_name, father_name, last_name, birth_date, birth_place, nr_amze, personal_number, education_level_id, phone, gender_id)
-                VALUES
-                (:uid, :fn, :fat, :ln, :bd, :bp, :amz, :pn, :edu, :ph, :gender)
+                INSERT INTO students (person_id, user_id, nr_amze, education_level_id)
+                VALUES (:pid, :uid, :amz, :edu)
             ");
             $insStud->execute([
-                ':uid'=>$newUserId, ':fn'=>$first_name, ':fat'=>$father_name, ':ln'=>$last_name,
-                ':bd'=>($birth_date !== '' ? $birth_date : null),
-                ':bp'=>($birth_place !== '' ? $birth_place : null),
-                ':amz'=>$nr_amze, ':pn'=>$personal_number,
-                ':edu'=>($education_level_id > 0 ? $education_level_id : null),
-                ':ph'=>($phone !== '' ? $phone : null),
-                ':gender'=>$gender_id
+                ':pid'=>$personId, ':uid'=>$userId, ':amz'=>$nr_amze,
+                ':edu'=>($education_level_id > 0 ? $education_level_id : null)
             ]);
 
             $pdo->commit();
             flash('ok', 'Studenti u shtua me sukses.');
         }
+
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
         flash('err', $e->getMessage());
@@ -152,7 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    Kërkim + Paginim (vetëm studentë) – renditje numerike sipas nr_amze
 ------------------------------- */
 $q      = trim($_GET['q'] ?? '');
-$edu    = trim($_GET['edu'] ?? ''); // mund të dërgohet code ose id
+$edu    = trim($_GET['edu'] ?? '');
 $page   = max(1, (int)($_GET['page'] ?? 1));
 $limit  = 20;
 $offset = ($page - 1) * $limit;
@@ -161,15 +262,14 @@ $where  = ["u.role_id = :studentRole"];
 $params = [':studentRole' => $studentRoleId];
 
 if ($q !== '') {
-    // Placeholderë unikë (kw1..kw7) – shmang HY093
     $where[] = "(
-        s.first_name      LIKE :kw1 OR
-        s.father_name     LIKE :kw2 OR
-        s.last_name       LIKE :kw3 OR
+        p.first_name      LIKE :kw1 OR
+        p.father_name     LIKE :kw2 OR
+        p.last_name       LIKE :kw3 OR
         s.nr_amze         LIKE :kw4 OR
-        s.personal_number LIKE :kw5 OR
-        s.phone           LIKE :kw6 OR
-        s.birth_place     LIKE :kw7
+        p.personal_number LIKE :kw5 OR
+        p.phone           LIKE :kw6 OR
+        p.birth_place     LIKE :kw7
     )";
     $kw = '%'.$q.'%';
     $params[':kw1'] = $kw;
@@ -195,10 +295,12 @@ $whereSql = 'WHERE '.implode(' AND ', $where);
 $countStmt = $pdo->prepare("
     SELECT COUNT(*)
     FROM students s
-    JOIN users u ON u.id = s.user_id
+    JOIN users u   ON u.id = s.user_id
+    JOIN persons p ON p.id = s.person_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
     $whereSql
 ");
+
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
@@ -206,27 +308,33 @@ $totalPages = max(1, (int)ceil($total / $limit));
 /* Lista – RENDITJE NUMERIKE sipas nr_amze */
 $listStmt = $pdo->prepare("
     SELECT
-        s.id            AS student_id,
+        s.id              AS student_id,
         s.user_id,
-        s.first_name,
-        s.father_name,
-        s.last_name,
-        s.birth_date,
-        s.birth_place,
         s.nr_amze,
-        s.personal_number,
-        s.phone,
         s.education_level_id AS edu_id,
-        el.code         AS edu_code,
-        el.label        AS edu_label,
-        s.gender_id,
-        g.code          AS gender_code,
-        g.label         AS gender_label,
-        u.created_at
+        u.created_at,
+
+        /* nga persons */
+        p.first_name,
+        p.father_name,
+        p.last_name,
+        p.birth_date,
+        p.birth_place,
+        p.personal_number,
+        p.phone,
+        p.gender_id,
+        g.code  AS gender_code,
+        g.label AS gender_label,
+
+        /* arsimi */
+        el.code AS edu_code,
+        el.label AS edu_label
+
     FROM students s
-    JOIN users u ON u.id = s.user_id
+    JOIN users u   ON u.id = s.user_id
+    JOIN persons p ON p.id = s.person_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
-    LEFT JOIN genders g ON g.id = s.gender_id
+    LEFT JOIN genders g           ON g.id = p.gender_id
     $whereSql
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
     LIMIT :lim OFFSET :off
@@ -253,7 +361,7 @@ require __DIR__ . '/inc/navbar.php';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
     <style>
-        body { background:#f5f7fb; padding-top:72px; } /* hapësirë për navbar fixed-top */
+        body { background:#f5f7fb; padding-top:72px; }
         .navbar-brand img { height:28px; }
         .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
         .mini-table thead { background:#f1f5f9; }
@@ -415,13 +523,13 @@ require __DIR__ . '/inc/navbar.php';
                                 </td>
                                 <!-- gender_id -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
-                                <select class="form-select form-select-sm inline-select">
+                                  <select class="form-select form-select-sm inline-select">
                                     <?php foreach ($genders as $g): ?>
-                                    <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
+                                      <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
                                         <?= htmlspecialchars($g['label']) ?>
-                                    </option>
+                                      </option>
                                     <?php endforeach; ?>
-                                </select>
+                                  </select>
                                 </td>
                                 <!-- phone -->
                                 <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
@@ -487,52 +595,17 @@ require __DIR__ . '/inc/navbar.php';
       <div class="modal-body">
         <div class="row g-3">
             <div class="col-md-4">
-                <label class="form-label">Emri *</label>
-                <input type="text" name="first_name" class="form-control" required>
+                <label class="form-label">Numri Personal *</label>
+                <input type="text" name="personal_number" id="pnInput" class="form-control" required placeholder="Shkruaj fillimisht këtu">
+                <div class="form-text">Nëse ekziston, të dhënat e tjera do të plotësohen automatikisht.</div>
             </div>
-            <div class="col-md-4">
-                <label class="form-label">Atësia</label>
-                <input type="text" name="father_name" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Mbiemri *</label>
-                <input type="text" name="last_name" class="form-control" required>
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label">Datëlindja</label>
-                <input type="date" name="birth_date" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Vendlindja</label>
-                <input type="text" name="birth_place" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Tel.</label>
-                <input type="text" name="phone" class="form-control" placeholder="+355 ...">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Gjinia *</label>
-                <select name="gender_id" class="form-select" required>
-                <?php foreach ($genders as $g): ?>
-                    <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>>
-                    <?= htmlspecialchars($g['label']) ?>
-                    </option>
-                <?php endforeach; ?>
-                </select>
-            </div>
-
             <div class="col-md-4">
                 <label class="form-label">Nr. Amzës *</label>
                 <input type="text" name="nr_amze" class="form-control" required>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Numri Personal *</label>
-                <input type="text" name="personal_number" class="form-control" required>
-            </div>
-            <div class="col-md-4">
                 <label class="form-label">Arsimi</label>
-                <select name="education_level_id" class="form-select">
+                <select name="education_level_id" id="eduSelect" class="form-select">
                     <option value="">— Zgjidh —</option>
                     <?php foreach ($eduLevels as $el): ?>
                         <option value="<?= (int)$el['id'] ?>"><?= htmlspecialchars($el['code'].' — '.$el['label']) ?></option>
@@ -540,18 +613,47 @@ require __DIR__ . '/inc/navbar.php';
                 </select>
             </div>
 
-            <div class="col-md-6">
-                <label class="form-label">Fjalëkalimi *</label>
-                <input type="password" name="password" class="form-control" required>
+            <div class="col-md-4">
+                <label class="form-label">Emri <?=/* detyrueshëm vetëm për person të ri */''?></label>
+                <input type="text" name="first_name" id="fnInput" class="form-control" placeholder="Detyrueshëm nëse person i ri">
             </div>
-            <div class="col-md-6">
-                <label class="form-label">Përsërit fjalëkalimin *</label>
-                <input type="password" name="password2" class="form-control" required>
+            <div class="col-md-4">
+                <label class="form-label">Atësia</label>
+                <input type="text" name="father_name" id="fatInput" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Mbiemri <?=/* detyrueshëm vetëm për person të ri */''?></label>
+                <input type="text" name="last_name" id="lnInput" class="form-control" placeholder="Detyrueshëm nëse person i ri">
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Datëlindja</label>
+                <input type="date" name="birth_date" id="bdInput" class="form-control">
+                <div class="form-text">Fjalëkalimi fillestar: <code>[Emri].[VitiLindjes]</code> (p.sh. <code>Ardit.1998</code>). Në mungesë vitit vendoset <code>0000</code>.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Vendlindja</label>
+                <input type="text" name="birth_place" id="bpInput" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Tel.</label>
+                <input type="text" name="phone" id="phInput" class="form-control" placeholder="+355 ...">
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Gjinia</label>
+                <select name="gender_id" id="genderSelect" class="form-select">
+                    <?php foreach ($genders as $g): ?>
+                        <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>>
+                            <?= htmlspecialchars($g['label']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
         </div>
         <div class="form-text mt-2">
-            Krijon rreshta në <code>users</code>, <code>credentials</code> dhe <code>students</code>.
-            Studentët hyjnë me <strong>Numrin Personal + fjalëkalim</strong>.
+            Krijohet/ri-përdoret <code>users</code> + <code>credentials</code> për personin (password auto).  
+            Mund të kesh shumë rreshta në <code>students</code> me të njëjtin Numër Personal, por <strong>AMZË</strong> duhet të jetë <strong>unik</strong>.
         </div>
       </div>
       <div class="modal-footer">
@@ -574,7 +676,7 @@ function cleanText(s) {
   return (v === '—' ? '' : v);
 }
 
-/* Ruajtje AJAX */
+/* Ruajtje AJAX për inline */
 async function saveInline(studentId, field, value, cell, displayEl) {
   try {
     cell.classList.add('cell-saving');
@@ -587,8 +689,7 @@ async function saveInline(studentId, field, value, cell, displayEl) {
     cell.classList.remove('cell-saving');
     if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
 
-    // Përditëso display (nëse serveri kthen vlerë “display”)
-    if (displayEl && field !== 'education_level_id') {
+    if (displayEl && field !== 'education_level_id' && field !== 'gender_id') {
       displayEl.textContent = json.display ?? (value || '—');
     }
     cell.classList.add('cell-ok');
@@ -608,7 +709,7 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
   el.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
-      el.blur(); // trigger blur -> save
+      el.blur();
     }
   });
   el.addEventListener('blur', () => {
@@ -616,20 +717,53 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
     const field = cell.dataset.field;
     const sid = parseInt(cell.dataset.id, 10);
     const newVal = cleanText(el.textContent);
-    if (newVal === cleanText(oldVal)) return; // asgjë s'ka ndryshuar
+    if (newVal === cleanText(oldVal)) return;
     saveInline(sid, field, newVal, cell, el);
   });
 });
 
-/* Event për select (education_level_id) */
+/* Event për select (education_level_id, gender_id) */
 document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
   sel.addEventListener('change', () => {
     const cell  = sel.closest('td.cell');
     const sid   = parseInt(cell.dataset.id, 10);
-    const field = cell.dataset.field; // 'education_level_id' ose 'gender_id'
-    const val   = sel.value; // '' ose id
+    const field = cell.dataset.field;
+    const val   = sel.value;
     saveInline(sid, field, val, cell, null);
   });
+});
+
+/* ------------------------------
+   Autoplotësim nga Numri Personal
+------------------------------- */
+const pnInput = document.getElementById('pnInput');
+pnInput?.addEventListener('blur', async ()=>{
+  const pn = pnInput.value.trim();
+  if (!pn) return;
+  try{
+    const res = await fetch(`students.php?action=lookup_person&personal_number=${encodeURIComponent(pn)}`, {
+      headers: {'Accept':'application/json'}
+    });
+    const json = await res.json();
+    if (!json.ok) return;
+
+    const p = json.person;
+    if (p) {
+      // Mbush fushat
+      document.getElementById('fnInput').value  = p.first_name ?? '';
+      document.getElementById('fatInput').value = p.father_name ?? '';
+      document.getElementById('lnInput').value  = p.last_name ?? '';
+      document.getElementById('bdInput').value  = p.birth_date ?? '';
+      document.getElementById('bpInput').value  = p.birth_place ?? '';
+      document.getElementById('phInput').value  = p.phone ?? '';
+
+      const gsel = document.getElementById('genderSelect');
+      if (gsel && p.gender_id) gsel.value = String(p.gender_id);
+
+      const esel = document.getElementById('eduSelect');
+      if (esel && json.education_level_id) esel.value = String(json.education_level_id);
+    }
+  }catch(e){ console.error(e); }
 });
 </script>
 </body>

@@ -30,7 +30,7 @@ $offset = ($page - 1) * $limit;
 $where = ["1=1"];
 $params = [];
 if ($q !== '') {
-  $where[] = "(s.nr_amze LIKE :kw OR s.personal_number LIKE :kw2 OR s.first_name LIKE :kw3 OR s.father_name LIKE :kw4 OR s.last_name LIKE :kw5)";
+  $where[] = "(s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2 OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
   $params[':kw']  = '%'.$q.'%';
   $params[':kw2'] = '%'.$q.'%';
   $params[':kw3'] = '%'.$q.'%';
@@ -42,7 +42,8 @@ $whereSql = 'WHERE '.implode(' AND ', $where);
 /* Subquery: grupi më i fundit për çdo student (sipas start_date) */
 $sqlBase = "
   FROM students s
-  JOIN users u ON u.id = s.user_id
+  JOIN users u   ON u.id = s.user_id
+  JOIN persons p ON p.id = s.person_id
   LEFT JOIN education_levels el ON el.id = s.education_level_id
   LEFT JOIN (
     SELECT t.student_id, t.group_id
@@ -70,19 +71,26 @@ $list = $pdo->prepare("
   SELECT
     s.id AS student_id,
     s.nr_amze,
-    s.first_name, s.father_name, s.last_name,
-    s.personal_number,
-    s.birth_date, s.birth_place,
-    TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) AS age,
+
+    /* nga persons */
+    p.first_name, p.father_name, p.last_name,
+    p.personal_number,
+    p.birth_date, p.birth_place,
+    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
+
+    /* arsimi */
     el.code AS edu_code, el.label AS edu_label,
+
+    /* grupi i fundit */
     lastg.group_id,
     cg.start_date, cg.end_date,
-    cgs.exam_date AS exam_date,
+    cg.exam_date AS exam_date,       -- JO cgs.exam_date (nuk ekziston në skemën e re)
     cgs.final_score
   ".$sqlBase."
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT :lim OFFSET :off
 ");
+
 foreach ($params as $k=>$v) $list->bindValue($k,$v,PDO::PARAM_STR);
 $list->bindValue(':lim',$limit,PDO::PARAM_INT);
 $list->bindValue(':off',$offset,PDO::PARAM_INT);
@@ -238,7 +246,7 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
             <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $prev ?>">‹</a></li>
             <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
             <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $next ?>">›</a></li>
-            <li class="page-item <?= $page>>= $totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $totalPages ?>">»</a></li>
+            <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
           </ul>
         </nav>
       </div>

@@ -2,7 +2,6 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
-require __DIR__ . '/inc/navbar.php';
 
 $pdo = getPDO();
 
@@ -145,6 +144,9 @@ $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 /* Flash mesazhe */
 $ok  = flash('ok');
 $err = flash('err');
+
+/* Trego që jemi tek faqja e moduleve */
+$NAV_ACTIVE = 'courses';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -187,6 +189,8 @@ $err = flash('err');
     </style>
 </head>
 <body>
+
+<?php require __DIR__ . '/inc/navbar.php'; ?>
 
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
