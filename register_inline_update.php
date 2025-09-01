@@ -68,7 +68,7 @@ if (!$chk->fetchColumn()) {
   echo json_encode(['ok'=>false,'error'=>'Ky student nuk i përket grupit të zgjedhur.']); exit;
 }
 
-/* Lexo datat e grupit (tani exam_date nuk merret nga grupi) */
+/* Lexo datat e grupit (për validim) */
 $ginfo = $pdo->prepare("SELECT start_date, end_date FROM course_groups WHERE id=:gid");
 $ginfo->execute([':gid'=>$group_id]);
 $G = $ginfo->fetch(PDO::FETCH_ASSOC);
@@ -83,10 +83,8 @@ try {
     if ($start === '' || $start === null) { throw new RuntimeException('Data e fillimit s’mund të jetë bosh.'); }
     $start = trim((string)$start);
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/',$start)) throw new RuntimeException('Formati i datës së fillimit është i pavlefshëm (YYYY-MM-DD).');
+    if (!empty($G['end_date']) && $G['end_date'] < $start) { throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.'); }
 
-    if (!empty($G['end_date']) && $G['end_date'] < $start) {
-      throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
-    }
     $st = $pdo->prepare("UPDATE course_groups SET start_date=:s WHERE id=:gid");
     $st->execute([':s'=>$start, ':gid'=>$group_id]);
     echo json_encode(['ok'=>true,'display'=>$start]); exit;
@@ -102,11 +100,11 @@ try {
     $start = $G['start_date'];
     if (!empty($start) && $end < $start) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
 
-    // Guard: asnjë student të mos ketë exam_date < end_date e re
+    // Guard: asnjë student të mos ketë exam_date < end_date e re (exam per-student)
     $q = $pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE group_id=:g AND exam_date IS NOT NULL AND exam_date < :e");
     $q->execute([':g'=>$group_id, ':e'=>$end]);
     if ((int)$q->fetchColumn() > 0) {
-      throw new RuntimeException('Ka studentë me datë provimi më herët se mbarimi i grupit. Përditëso fillimisht datat e provimit të studentëve.');
+      throw new RuntimeException('Ka studentë me datë provimi më herët se mbarimi i grupit. Përditëso fillimisht datat e provimit të atyre studentëve.');
     }
 
     $st = $pdo->prepare("UPDATE course_groups SET end_date=:e WHERE id=:gid");
@@ -152,7 +150,7 @@ try {
     $num = (float)$val;
     if ($num < 0 || $num > 100) throw new RuntimeException('Nota duhet në intervalin 0–100.');
 
-    // Kërko exam_date per-student
+    // Kërko exam_date per-student (tani është te cgs)
     $qe = $pdo->prepare("SELECT exam_date FROM course_group_students WHERE group_id=:g AND student_id=:s");
     $qe->execute([':g'=>$group_id, ':s'=>$student_id]);
     $row = $qe->fetch(PDO::FETCH_ASSOC);

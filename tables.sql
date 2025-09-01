@@ -298,3 +298,55 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+
+/* 1) Shto kolonën exam_date te course_group_students (nëse mungon) */
+ALTER TABLE course_group_students
+  ADD COLUMN exam_date DATE NULL;
+
+/* 2) (Nëse ekziston) hiqe ose injoroje cg.exam_date (mund ta lësh edhe si default per grup nëse do) */
+/* ALTER TABLE course_groups DROP COLUMN exam_date; */
+
+/* 3) Triggers të rinj për të imponuar rregullat me exam per-student */
+DELIMITER $$
+
+/* Nota lejohet vetëm nëse ekziston exam_date PER-STUDENT dhe është ≥ end_date e grupit */
+DROP TRIGGER IF EXISTS trg_cgs_grade_requires_exam_ins $$
+CREATE TRIGGER trg_cgs_grade_requires_exam_ins
+BEFORE INSERT ON course_group_students
+FOR EACH ROW
+BEGIN
+  DECLARE g_end DATE;
+  IF NEW.final_score IS NOT NULL THEN
+    IF NEW.exam_date IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nuk mund të vendoset notë pa përcaktuar datën e testit (student).';
+    END IF;
+    SELECT end_date INTO g_end FROM course_groups WHERE id = NEW.group_id;
+    IF g_end IS NOT NULL AND NEW.exam_date < g_end THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Data e testit (student) duhet të jetë ≥ datës së mbarimit të grupit.';
+    END IF;
+  END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_cgs_grade_requires_exam_upd $$
+CREATE TRIGGER trg_cgs_grade_requires_exam_upd
+BEFORE UPDATE ON course_group_students
+FOR EACH ROW
+BEGIN
+  DECLARE g_end DATE;
+  /* 3a) Nëse ndryshohet exam_date, validoje ndaj end_date */
+  IF NEW.exam_date IS NOT NULL AND (OLD.exam_date IS NULL OR NEW.exam_date <> OLD.exam_date) THEN
+    SELECT end_date INTO g_end FROM course_groups WHERE id = NEW.group_id;
+    IF g_end IS NOT NULL AND NEW.exam_date < g_end THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Data e testit (student) duhet të jetë ≥ datës së mbarimit të grupit.';
+    END IF;
+  END IF;
+  /* 3b) Nëse vendoset/ndryshohet nota, kërko exam_date per-student */
+  IF NEW.final_score IS NOT NULL AND (OLD.final_score IS NULL OR NEW.final_score <> OLD.final_score) THEN
+    IF NEW.exam_date IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nuk mund të vendoset notë pa përcaktuar datën e testit (student).';
+    END IF;
+  END IF;
+END $$
+
+DELIMITER ;

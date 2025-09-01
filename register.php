@@ -21,7 +21,7 @@ if (!$currentUser || $currentUser['role_name']!=='administrator') { header('Loca
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
 $CSRF = $_SESSION['csrf_token'];
 
-/* Kërkim opsional sipas emrit/AMZE/ID */
+/* Kërkim */
 $q = trim($_GET['q'] ?? '');
 $page   = max(1, (int)($_GET['page'] ?? 1));
 $limit  = 20;
@@ -39,7 +39,7 @@ if ($q !== '') {
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
-/* Subquery: grupi më i fundit për çdo student (sipas start_date) */
+/* Subquery: grupi i fundit për çdo student */
 $sqlBase = "
   FROM students s
   JOIN users u   ON u.id = s.user_id
@@ -84,13 +84,12 @@ $list = $pdo->prepare("
     /* grupi i fundit */
     lastg.group_id,
     cg.start_date, cg.end_date,
-    cg.exam_date AS exam_date,       -- JO cgs.exam_date (nuk ekziston në skemën e re)
+    cgs.exam_date AS exam_date,        -- EXAM PER-STUDENT
     cgs.final_score
   ".$sqlBase."
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT :lim OFFSET :off
 ");
-
 foreach ($params as $k=>$v) $list->bindValue($k,$v,PDO::PARAM_STR);
 $list->bindValue(':lim',$limit,PDO::PARAM_INT);
 $list->bindValue(':off',$offset,PDO::PARAM_INT);
@@ -115,7 +114,6 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
     .nowrap { white-space:nowrap; }
     @media (max-width: 575.98px) { .navbar-text { display:none; } }
 
-    /* Inline-edit si te students.php */
     .editable { display:inline-block; min-width:72px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
     .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
     .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
@@ -143,7 +141,6 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
     </form>
   </div>
 
-  <!-- Kuti mesazhesh (gabime/suksese) -->
   <div id="msgBox" class="mb-3" style="display:none;"></div>
 
   <div class="card">
@@ -151,19 +148,10 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
       <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Regjistri</h5>
       <div class="d-flex align-items-center gap-2">
         <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
-        <div class="btn-group" role="group" aria-label="Shkarkime">
-          <a class="btn btn-outline-success"
-            href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </a>
-          <a class="btn btn-outline-danger"
-            href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
-          </a>
-          <a class="btn btn-outline-primary"
-            href="register_export.php?f=docx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-word me-1"></i> Word
-          </a>
+        <div class="btn-group" role="group">
+          <a class="btn btn-outline-success" href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-excel me-1"></i> Excel</a>
+          <a class="btn btn-outline-danger" href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</a>
+          <a class="btn btn-outline-primary" href="register_export.php?f=docx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-word me-1"></i> Word</a>
         </div>
       </div>
     </div>
@@ -175,10 +163,10 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
           <tr>
             <th class="nowrap">AMZË</th>
             <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-            <th class="nowrap">Datë fillimi</th>
-            <th class="nowrap">Datë mbarimi</th>
-            <th class="nowrap">Datë testimi</th>
-            <th class="nowrap">Pikët perfundimtare</th>
+            <th class="nowrap">Datë fillimi (grup)</th>
+            <th class="nowrap">Datë mbarimi (grup)</th>
+            <th class="nowrap">Datë testimi (student)</th>
+            <th class="nowrap">Pikët përfundimtare</th>
             <th class="nowrap">Mosha</th>
             <th class="nowrap">Arsimi</th>
           </tr>
@@ -209,13 +197,13 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
                 <span class="editable" contenteditable="true"><?= htmlspecialchars($r['end_date'] ?: '—') ?></span>
               </td>
 
-              <!-- exam_date (inline student-në-grup) -->
+              <!-- exam_date (inline student) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date"
-                  title="YYYY-MM-DD (≥ data e mbarimit)">
+                  title="YYYY-MM-DD (≥ data e mbarimit të grupit)">
                 <span class="editable" contenteditable="true"><?= htmlspecialchars($r['exam_date'] ?: '—') ?></span>
               </td>
 
-              <!-- final_score (inline student-në-grup) -->
+              <!-- final_score (inline student) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score"
                   title="0–100 (me presje ose pikë)">
                 <span class="editable" contenteditable="true">
@@ -241,12 +229,13 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
             <?php
               $base='register.php?'.http_build_query(array_filter(['q'=>$q!==''?$q:null]));
               $prev=max(1,$page-1); $next=min($totalPages,$page+1);
+              $sep = (str_contains($base,'?')?'&':'?');
             ?>
-            <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=1">«</a></li>
-            <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $prev ?>">‹</a></li>
+            <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=1">«</a></li>
+            <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $prev ?>">‹</a></li>
             <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $next ?>">›</a></li>
-            <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
+            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $next ?>">›</a></li>
+            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $totalPages ?>">»</a></li>
           </ul>
         </nav>
       </div>
@@ -264,8 +253,6 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'register_inline_update.php';
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-
-/* Mesazhe gabimi/suksesi */
 function showMsg(type, text){
   const box = document.getElementById('msgBox');
   box.innerHTML = `
@@ -288,9 +275,8 @@ async function saveInline(payload, cell, displayEl, oldVal){
     cell.classList.remove('cell-saving');
 
     if(!json.ok){
-      if(displayEl) displayEl.textContent = oldVal; // rikthe vlerën
-      cell.classList.add('cell-err');
-      setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+      if(displayEl) displayEl.textContent = oldVal;
+      cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
       showMsg('danger', json.error || 'Gabim i panjohur.');
       return;
     }
@@ -298,19 +284,17 @@ async function saveInline(payload, cell, displayEl, oldVal){
     if(displayEl){
       displayEl.textContent = json.display ?? displayEl.textContent;
     }
-    cell.classList.add('cell-ok');
-    setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
   }catch(e){
     console.error(e);
     cell.classList.remove('cell-saving');
-    if(displayEl) displayEl.textContent = oldVal; // rikthe vlerën
-    cell.classList.add('cell-err');
-    setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+    if(displayEl) displayEl.textContent = oldVal;
+    cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
     showMsg('danger', 'Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
   }
 }
 
-/* contenteditable: blur/Enter */
+/* inline handlers */
 document.querySelectorAll('td.cell .editable').forEach(el=>{
   let oldVal = el.textContent;
   el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
@@ -324,7 +308,6 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
 
     if(newVal===clean(oldVal)) return;
 
-    // Validime bazike te formatit
     if(['start_date','end_date','exam_date'].includes(field)){
       if(newVal!=='' && !/^\d{4}-\d{2}-\d{2}$/.test(newVal)){
         el.textContent = oldVal;
@@ -350,7 +333,6 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
       return;
     }
 
-    // Dërgim sipas fushës
     if(field==='start_date'){
       if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
       saveInline({action:'update_group_start', student_id:studentId, group_id:groupId, start_date:(newVal===''?null:newVal)}, cell, el, oldVal);

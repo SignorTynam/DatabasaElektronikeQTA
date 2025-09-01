@@ -6,13 +6,12 @@ mb_internal_encoding('UTF-8');
 require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 
-// Autoload i Composer (kërkoje në disa shtegje të mundshme)
+/* Composer autoload */
 $autoloadCandidates = [
     __DIR__ . '/vendor/autoload.php',
     __DIR__ . '/../vendor/autoload.php',
     $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php',
 ];
-
 $autoloadLoaded = false;
 foreach ($autoloadCandidates as $p) {
     if (is_file($p)) { require_once $p; $autoloadLoaded = true; break; }
@@ -24,11 +23,8 @@ if (!$autoloadLoaded) {
     exit;
 }
 
-/* ------------------------------
-   Guard: vetëm admin i loguar
-------------------------------- */
+/* Guard admin */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
-
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
   FROM users u
@@ -38,7 +34,6 @@ $u = $pdo->prepare("
 ");
 $u->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $u->fetch();
-
 if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
     header('Location: selectProfile.php'); exit;
 }
@@ -52,14 +47,18 @@ if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
 }
 
 /* Parametra */
-$f = strtolower(trim($_GET['f'] ?? 'xlsx'));             // xlsx | pdf | docx
+$f = strtolower(trim($_GET['f'] ?? 'xlsx'));  // xlsx|pdf|docx
 $q = trim($_GET['q'] ?? '');
 
 /* Filtri */
 $where = ["1=1"];
 $params = [];
 if ($q !== '') {
-  $where[] = "(s.nr_amze LIKE :kw OR s.personal_number LIKE :kw2 OR s.first_name LIKE :kw3 OR s.father_name LIKE :kw4 OR s.last_name LIKE :kw5)";
+  $where[] = "(s.nr_amze LIKE :kw
+           OR p.personal_number LIKE :kw2
+           OR p.first_name LIKE :kw3
+           OR p.father_name LIKE :kw4
+           OR p.last_name LIKE :kw5)";
   $params[':kw']  = '%'.$q.'%';
   $params[':kw2'] = '%'.$q.'%';
   $params[':kw3'] = '%'.$q.'%';
@@ -71,7 +70,8 @@ $whereSql = 'WHERE '.implode(' AND ', $where);
 /* Subquery: grupi më i fundit për çdo student */
 $sqlBase = "
   FROM students s
-  JOIN users u ON u.id = s.user_id
+  JOIN users u   ON u.id = s.user_id
+  JOIN persons p ON p.id = s.person_id
   LEFT JOIN education_levels el ON el.id = s.education_level_id
   LEFT JOIN (
     SELECT t.student_id, t.group_id
@@ -88,18 +88,22 @@ $sqlBase = "
   $whereSql
 ";
 
-/* Merr të gjitha rreshtat, pa LIMIT/OFFSET */
+/* Merr të gjitha rreshtat */
 $sql = "
   SELECT
     s.id AS student_id,
     s.nr_amze,
-    s.first_name, s.father_name, s.last_name,
-    s.personal_number,
-    s.birth_date, s.birth_place,
-    TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) AS age,
+
+    p.first_name, p.father_name, p.last_name,
+    p.personal_number,
+    p.birth_date, p.birth_place,
+    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
+
     el.code AS edu_code, el.label AS edu_label,
+
     lastg.group_id,
-    cg.start_date, cg.end_date, cg.exam_date,
+    cg.start_date, cg.end_date,
+    cgs.exam_date,                 -- EXAM PER-STUDENT
     cgs.final_score
   $sqlBase
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
@@ -109,11 +113,11 @@ foreach ($params as $k=>$v) $stmt->bindValue($k, $v, PDO::PARAM_STR);
 $stmt->execute();
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* Përgatit dataset për eksport */
+/* Dataset për eksport */
 $headers = [
   'AMZË','Emër','Atësi','Mbiemër','ID Personal',
   'Datëlindje','Vendilindje','Mosha','Arsimi',
-  'Datë fillimi','Datë mbarimi','Datë testimi','Pikët përfundimtare'
+  'Datë fillimi (grup)','Datë mbarimi (grup)','Datë testimi (student)','Pikët përfundimtare'
 ];
 
 $data = [];
@@ -139,20 +143,18 @@ foreach ($rows as $r) {
 
 $filename = 'regjistri_'.date('Ymd_His');
 
+/* ===== Eksportues ===== */
 function outputXlsx(array $headers, array $data, string $filename): void {
-    require_once __DIR__ . '/vendor/autoload.php';
     $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Regjistri');
 
-    // Header row
     $col = 1;
     foreach ($headers as $h) {
         $cell = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col) . '1';
         $sheet->setCellValue($cell, $h);
         $col++;
     }
-    // Data rows
     $r = 2;
     foreach ($data as $row) {
         $c = 1;
@@ -163,7 +165,6 @@ function outputXlsx(array $headers, array $data, string $filename): void {
         }
         $r++;
     }
-    // Autosize columns
     $highestCol = $sheet->getHighestColumn();
     foreach (range('A', $highestCol) as $colLetter) {
         $sheet->getColumnDimension($colLetter)->setAutoSize(true);
@@ -179,12 +180,9 @@ function outputXlsx(array $headers, array $data, string $filename): void {
 }
 
 function outputPdf(array $headers, array $data, string $filename): void {
-    require_once __DIR__ . '/vendor/autoload.php';
     $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-    // Ndërto HTML tabelë (fonts: DejaVu Sans për shkronja shqip)
-    ob_start();
-    ?>
+    ob_start(); ?>
     <html>
     <head>
       <meta charset="UTF-8" />
@@ -221,7 +219,9 @@ function outputPdf(array $headers, array $data, string $filename): void {
     <?php
     $html = ob_get_clean();
 
-    $dompdf = new \Dompdf\Dompdf((new \Dompdf\Options())->set('isRemoteEnabled', true));
+    $options = new \Dompdf\Options();
+    $options->set('isRemoteEnabled', true);
+    $dompdf = new \Dompdf\Dompdf($options);
     $dompdf->loadHtml($html, 'UTF-8');
     $dompdf->setPaper('A4', 'landscape');
     $dompdf->render();
@@ -230,7 +230,6 @@ function outputPdf(array $headers, array $data, string $filename): void {
 }
 
 function outputDocx(array $headers, array $data, string $filename): void {
-    require_once __DIR__ . '/vendor/autoload.php';
     $phpWord = new \PhpOffice\PhpWord\PhpWord();
     $section = $phpWord->addSection(['orientation' => 'landscape', 'marginLeft'=>600, 'marginRight'=>600, 'marginTop'=>600, 'marginBottom'=>600]);
     $section->addText('Regjistri i studentëve', ['bold'=>true, 'size'=>14], ['spaceAfter'=>200]);
@@ -240,12 +239,10 @@ function outputDocx(array $headers, array $data, string $filename): void {
     $phpWord->addTableStyle('RegTbl', $styleTable, $styleFirstRow);
     $table = $section->addTable('RegTbl');
 
-    // Header row
     $table->addRow();
     foreach ($headers as $h) {
         $table->addCell()->addText($h, ['bold'=>true]);
     }
-    // Data
     foreach ($data as $row) {
         $table->addRow();
         foreach ($row as $cell) {
