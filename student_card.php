@@ -6,7 +6,7 @@ require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 
 /* -------------------------------------------------
-   Guard: vetëm admin ose agjenci (jo studentë)
+   Guard: vetëm admin, editor ose agjenci (jo studentë)
 -------------------------------------------------- */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 
@@ -21,7 +21,7 @@ $usr->execute([':uid'=>$_SESSION['user_id']]);
 $currentUser = $usr->fetch(PDO::FETCH_ASSOC);
 if (!$currentUser) { header('Location: selectProfile.php'); exit; }
 
-$ROLE = $currentUser['role_name'];
+$ROLE = (string)$currentUser['role_name'];
 if (!in_array($ROLE, ['administrator','editor','agjencia'], true)) {
   http_response_code(403); exit('Akses i ndaluar.');
 }
@@ -102,13 +102,18 @@ $selected = null;
 if ($sid > 0) {
   // Merr studentin sipas ID (me kontroll access)
   $sql = "
-    SELECT s.*, u.created_at, el.label AS edu_label,
-           ajs.agency_id, ag.company_name AS agency_name, ajs.assigned_at
+    SELECT
+      s.id, s.nr_amze, s.education_level_id, s.created_at,
+      u.created_at AS user_created_at,
+      p.first_name, p.father_name, p.last_name, p.personal_number,
+      el.label AS edu_label,
+      ajs.agency_id, ag.company_name AS agency_name, ajs.assigned_at
     FROM students s
-    JOIN users u ON u.id=s.user_id
+    JOIN users u    ON u.id = s.user_id
+    JOIN persons p  ON p.id = s.person_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
-    LEFT JOIN agency_students ajs ON ajs.student_id=s.id
-    LEFT JOIN agencies ag ON ag.id = ajs.agency_id
+    LEFT JOIN agency_students ajs  ON ajs.student_id = s.id
+    LEFT JOIN agencies ag          ON ag.id = ajs.agency_id
     WHERE s.id = :sid
   ";
   if ($ROLE==='agjencia') { $sql .= " AND ajs.agency_id = :aid"; }
@@ -118,22 +123,29 @@ if ($sid > 0) {
   $st->execute($params);
   $selected = $st->fetch(PDO::FETCH_ASSOC);
   if (!$selected) { flash('err','Studenti nuk u gjet ose nuk keni akses.'); }
-} elseif ($q !== '') {
+}
+elseif ($q !== '') {
   // Kërko sipas emrit / amzë / id personale / id studenti / email
   $sql = "
-    SELECT s.id, s.nr_amze, s.first_name, s.father_name, s.last_name,
-           s.personal_number, u.email,
-           ajs.agency_id, ag.company_name AS agency_name
+    SELECT
+      s.id,
+      s.nr_amze,
+      p.first_name, p.father_name, p.last_name,
+      p.personal_number,
+      u.email,
+      ajs.agency_id,
+      ag.company_name AS agency_name
     FROM students s
-    JOIN users u ON u.id = s.user_id
+    JOIN users u   ON u.id = s.user_id
+    JOIN persons p ON p.id = s.person_id
     LEFT JOIN agency_students ajs ON ajs.student_id = s.id
-    LEFT JOIN agencies ag ON ag.id = ajs.agency_id
+    LEFT JOIN agencies ag         ON ag.id = ajs.agency_id
     WHERE (
            s.id = :idExact
         OR s.nr_amze         LIKE :like1
-        OR s.personal_number LIKE :like2
-        OR s.first_name      LIKE :like3
-        OR s.last_name       LIKE :like4
+        OR p.personal_number LIKE :like2
+        OR p.first_name      LIKE :like3
+        OR p.last_name       LIKE :like4
         OR u.email           LIKE :like5
     )
   ";
@@ -152,7 +164,7 @@ if ($sid > 0) {
     $params[':aid'] = $MY_AGENCY_ID;
   }
 
-  $sql .= " ORDER BY s.last_name, s.first_name LIMIT 25";
+  $sql .= " ORDER BY p.last_name, p.first_name LIMIT 25";
 
   $st = $pdo->prepare($sql);
   $st->execute($params);
@@ -302,13 +314,9 @@ if ($selected) {
 <body>
 
 <?php
-if ($ROLE === 'administrator') {
-  require __DIR__.'/inc/navbar.php';
-} elseif ($ROLE === 'editor') {
-  require __DIR__.'/inc/navbar4.php';
-} elseif ($ROLE === 'agjencia') {
-  require __DIR__.'/inc/navbar2.php';
-}
+if     ($ROLE === 'administrator') require __DIR__.'/inc/navbar.php';
+elseif ($ROLE === 'editor')       require __DIR__.'/inc/navbar4.php';
+elseif ($ROLE === 'agjencia')     require __DIR__.'/inc/navbar2.php';
 ?>
 
 <main class="container-fluid px-3 px-md-4">
@@ -683,11 +691,15 @@ if ($ROLE === 'administrator') {
   document.getElementById('btnCopyLink')?.addEventListener('click', async ()=>{
     const inp = document.getElementById('verifyLink');
     if (!inp) return;
-    try { await navigator.clipboard.writeText(inp.value); 
-      const old = document.getElementById('btnCopyLink').innerHTML;
-      document.getElementById('btnCopyLink').innerHTML = '<i class="bi bi-check2"></i>';
-      setTimeout(()=>document.getElementById('btnCopyLink').innerHTML = old, 900);
-    } catch(e){ inp.select(); document.execCommand('copy'); }
+    try {
+      await navigator.clipboard.writeText(inp.value);
+      const btn = document.getElementById('btnCopyLink');
+      const old = btn.innerHTML;
+      btn.innerHTML = '<i class="bi bi-check2"></i>';
+      setTimeout(()=>btn.innerHTML = old, 900);
+    } catch(e){
+      inp.select(); document.execCommand('copy');
+    }
   });
 </script>
 <?php endif; ?>
