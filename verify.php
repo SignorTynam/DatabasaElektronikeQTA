@@ -69,14 +69,23 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   if (!$chk->fetchColumn()) return ['valid'=>false, 'reason'=>'Token i pavlefshëm ose nuk përputhet me këtë student.'];
 
   $sql = "
-    SELECT s.id, s.nr_amze, s.first_name, s.father_name, s.last_name, s.personal_number,
-           u.created_at, el.label AS edu_label,
-           ajs.agency_id, ag.company_name AS agency_name
+    SELECT
+      s.id,
+      s.nr_amze,
+      u.created_at,
+      el.label AS edu_label,
+      ajs.agency_id,
+      ag.company_name AS agency_name,
+      p.first_name,
+      p.father_name,
+      p.last_name,
+      p.personal_number
     FROM students s
-    JOIN users u ON u.id = s.user_id
+    JOIN users u    ON u.id = s.user_id
+    JOIN persons p  ON p.id = s.person_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
-    LEFT JOIN agency_students ajs ON ajs.student_id = s.id
-    LEFT JOIN agencies ag ON ag.id = ajs.agency_id
+    LEFT JOIN agency_students ajs  ON ajs.student_id = s.id
+    LEFT JOIN agencies ag          ON ag.id = ajs.agency_id
     WHERE s.id = :sid
     LIMIT 1
   ";
@@ -798,7 +807,6 @@ document.getElementById('btnShare')?.addEventListener('click', async ()=>{
 document.getElementById('btnPrint')?.addEventListener('click', ()=> window.print());
 
 /* ========= Tab events: start/stop camera sipas tab-it ========= */
-/* përdor listener në dokument (ngjarja "shown.bs.tab" bubblohet) që të funksionojë kudo */
 document.addEventListener('shown.bs.tab', async (e)=>{
   const target = e.target?.getAttribute('data-bs-target');
   if (target === '#pane-camera'){ await stopCamera(); startCamera(); }
@@ -811,7 +819,6 @@ document.addEventListener('visibilitychange', async ()=>{ if (document.hidden) a
 
 /* ========= Start ========= */
 window.addEventListener('load', ()=>{
-  // nis kamerën vetëm nëse pamja default është “Kamerë”
   const active = document.querySelector('#pane-camera');
   if (active && active.classList.contains('active')) startCamera();
 });
