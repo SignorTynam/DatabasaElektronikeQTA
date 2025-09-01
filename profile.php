@@ -24,10 +24,11 @@ $st->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $st->fetch(PDO::FETCH_ASSOC);
 if (!$currentUser) { header('Location: selectProfile.php'); exit; }
 
-$ROLE = $currentUser['role_name']; // 'administrator' | 'agjencia' | 'student'
+$ROLE = (string)$currentUser['role_name']; // 'administrator' | 'editor' | 'agjencia' | 'student'
+$IS_STAFF = in_array($ROLE, ['administrator','editor'], true);
 
 /* Ngarko rekorde shtesë sipas rolit (read-only për agency/student) */
-$agency = null; $student = null; $adminExtra = null;
+$agency = null; $student = null; $staffExtra = null;
 
 if ($ROLE === 'agjencia') {
   $q = $pdo->prepare("SELECT id, user_id, company_name, nip_t, address, phone FROM agencies WHERE user_id=:u LIMIT 1");
@@ -38,9 +39,10 @@ elseif ($ROLE === 'student') {
                       FROM students WHERE user_id=:u LIMIT 1");
   $q->execute([':u' => $currentUser['id']]); $student = $q->fetch(PDO::FETCH_ASSOC);
 }
-elseif ($ROLE === 'administrator') {
+elseif ($IS_STAFF) {
+  // Përdorim të njëjtën tabelë 'admins' si storage për info shtesë të stafit (admin + editor)
   $q = $pdo->prepare("SELECT id, user_id, employee_code FROM admins WHERE user_id=:u LIMIT 1");
-  $q->execute([':u' => $currentUser['id']]); $adminExtra = $q->fetch(PDO::FETCH_ASSOC);
+  $q->execute([':u' => $currentUser['id']]); $staffExtra = $q->fetch(PDO::FETCH_ASSOC);
 }
 
 /* Helpers */
@@ -56,6 +58,7 @@ $CSRF = $_SESSION['csrf_token'];
 
 /* ---------------------------------
    POST: veprime sipas rolit
+   (ADMIN dhe EDITOR me të njëjtat të drejta këtu)
 ---------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $token = $_POST['csrf'] ?? '';
@@ -65,9 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   $action = $_POST['action'] ?? '';
   try {
-    /* 1) ADMIN: update info bazë (full_name, email) */
+    /* 1) STAF (admin + editor): update info bazë (full_name, email) */
     if ($action === 'update_user_info') {
-      if ($ROLE !== 'administrator') { throw new RuntimeException('Nuk lejohet.'); }
+      if (!$IS_STAFF) { throw new RuntimeException('Nuk lejohet.'); }
       $full_name = trim($_POST['full_name'] ?? '');
       $email     = trim($_POST['email'] ?? '');
       if ($full_name === '') throw new RuntimeException('Emri nuk mund të jetë bosh.');
@@ -87,23 +90,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       header('Location: profile.php'); exit;
     }
 
-    /* 2) ADMIN: update admin extras (employee_code) */
-    if ($action === 'update_admin_extra') {
-      if ($ROLE !== 'administrator') { throw new RuntimeException('Nuk lejohet.'); }
+    /* 2) STAF (admin + editor): update info shtesë (employee_code) */
+    if ($action === 'update_staff_extra') {
+      if (!$IS_STAFF) { throw new RuntimeException('Nuk lejohet.'); }
       $employee_code = trim($_POST['employee_code'] ?? '');
       // nëse ekziston rresht te admins -> update, ndryshe krijo
-      if ($adminExtra) {
+      if ($staffExtra) {
         $up = $pdo->prepare("UPDATE admins SET employee_code=:c WHERE user_id=:u");
         $up->execute([':c'=>($employee_code!==''?$employee_code:null), ':u'=>$currentUser['id']]);
       } else {
         $ins = $pdo->prepare("INSERT INTO admins(user_id, employee_code) VALUES(:u, :c)");
         $ins->execute([':u'=>$currentUser['id'], ':c'=>($employee_code!==''?$employee_code:null)]);
       }
-      flash('ok', 'Të dhënat e administratorit u ruajtën.');
+      flash('ok', 'Të dhënat e stafit u ruajtën.');
       header('Location: profile.php'); exit;
     }
 
-    /* 3) NDRYSHIMI I FJALËKALIMIT (lejohet për të tre rolet) */
+    /* 3) NDRYSHIMI I FJALËKALIMIT (lejohet për të gjithë rolet) */
     if ($action === 'change_password') {
       $old = $_POST['old_password'] ?? '';
       $p1  = $_POST['new_password'] ?? '';
@@ -121,9 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($old === '' || !password_verify($old, $hashOld)) {
           throw new RuntimeException('Fjalëkalimi aktual është i pasaktë.');
         }
-      } else {
-        // nëse nuk ka rresht credentials: lejo pa verifikim të vjetrës
-      }
+      } // nëse nuk ka rresht credentials: lejo pa verifikim të vjetrës
 
       $newHash = password_hash($p1, PASSWORD_BCRYPT);
       if ($hashOld) {
@@ -178,6 +179,7 @@ $NAV_ACTIVE = 'profile';
 <?php
 // Ngarko navbar sipas rolit
 if ($ROLE === 'administrator')      { require __DIR__ . '/inc/navbar.php';   }
+elseif ($ROLE === 'editor')         { require __DIR__ . '/inc/navbar4.php';  }
 elseif ($ROLE === 'agjencia')       { require __DIR__ . '/inc/navbar2.php';  }
 elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
 ?>
@@ -208,7 +210,7 @@ elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
   <?php endif; ?>
 
   <div class="row g-4">
-    <!-- Kolona majtas: Info bazë (vetëm admin editable) / read-only për agjenci & student -->
+    <!-- Kolona majtas: Info bazë (STAF editable) / read-only për agjenci & student -->
     <div class="col-12 col-xl-7">
       <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
@@ -216,7 +218,7 @@ elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
           <span class="text-muted small">Roli: <?= h($ROLE) ?></span>
         </div>
         <div class="card-body">
-          <?php if ($ROLE === 'administrator'): ?>
+          <?php if ($IS_STAFF): ?>
             <form method="post" class="row g-3">
               <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
               <input type="hidden" name="action" value="update_user_info">
@@ -226,7 +228,7 @@ elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
               </div>
               <div class="col-md-6">
                 <label class="form-label">Email</label>
-                <input type="email" name="email" class="form-control" value="<?= h((string)$currentUser['email']) ?>" placeholder="p.sh. admin@qta.al">
+                <input type="email" name="email" class="form-control" value="<?= h((string)$currentUser['email']) ?>" placeholder="p.sh. staf@qta.al">
                 <div class="form-text">Duhet të jetë unik në sistem.</div>
               </div>
               <div class="col-12">
@@ -238,13 +240,13 @@ elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
 
             <form method="post" class="row g-3">
               <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
-              <input type="hidden" name="action" value="update_admin_extra">
+              <input type="hidden" name="action" value="update_staff_extra">
               <div class="col-md-6">
                 <label class="form-label">Kodi i punonjësit (opsional)</label>
-                <input type="text" name="employee_code" class="form-control" value="<?= h($adminExtra['employee_code'] ?? '') ?>">
+                <input type="text" name="employee_code" class="form-control" value="<?= h($staffExtra['employee_code'] ?? '') ?>">
               </div>
               <div class="col-12">
-                <button class="btn btn-outline-secondary"><i class="bi bi-save me-1"></i>Ruaj të dhënat e adminit</button>
+                <button class="btn btn-outline-secondary"><i class="bi bi-save me-1"></i>Ruaj të dhënat e stafit</button>
               </div>
             </form>
 
