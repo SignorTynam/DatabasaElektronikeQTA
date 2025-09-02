@@ -4,8 +4,6 @@ session_start();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
-require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
 
 /* ------------------------------
    Guard: vetëm student i loguar
@@ -29,10 +27,14 @@ if (!function_exists('h')) {
    Profili bazë i studentit
 ------------------------------- */
 $S0 = $pdo->prepare("
-  SELECT id, first_name, father_name, last_name, personal_number, phone,
-         birth_date, birth_place, education_level_id
-  FROM students
-  WHERE user_id = :uid
+  SELECT 
+    s.id,
+    s.person_id,
+    s.education_level_id,
+    p.personal_number
+  FROM students s
+  JOIN persons p ON p.id = s.person_id
+  WHERE s.user_id = :uid
   LIMIT 1
 ");
 $S0->execute([':uid'=>$_SESSION['user_id']]);
@@ -40,6 +42,7 @@ $meStud = $S0->fetch();
 
 if (!$meStud) { exit('Profili i studentit nuk u gjet.'); }
 
+$personId       = (int)$meStud['person_id'];
 $personalNumber = (string)($meStud['personal_number'] ?? '');
 
 /* Etiketat e arsimit (opsionale) */
@@ -52,26 +55,28 @@ if (!empty($meStud['education_level_id'])) {
 }
 
 /* ------------------------------
-   AMZË-t për këtë Numër Personal
+   AMZË-t për këtë person
 ------------------------------- */
 $myAmze = [];
-if ($personalNumber !== '') {
+if ($personId > 0) {
   $A = $pdo->prepare("
     SELECT DISTINCT s.nr_amze
     FROM students s
-    WHERE s.personal_number = :pn AND s.nr_amze IS NOT NULL AND s.nr_amze <> ''
+    WHERE s.person_id = :pid
+      AND s.nr_amze IS NOT NULL AND s.nr_amze <> ''
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   ");
-  $A->execute([':pn'=>$personalNumber]);
+  $A->execute([':pid'=>$personId]);
   $myAmze = array_map(fn($r)=> (string)$r['nr_amze'], $A->fetchAll(PDO::FETCH_ASSOC));
 }
 
+
 /* ------------------------------
    Grupet e studentit (për të gjitha AMZË-t e tij)
-   – lidhje përmes personal_number
+   – lidhje përmes person_id
 ------------------------------- */
 $groups = [];
-if ($personalNumber !== '') {
+if ($personId > 0) {
   $G = $pdo->prepare("
     SELECT
       cg.id AS group_id, cg.start_date, cg.end_date,
@@ -82,13 +87,15 @@ if ($personalNumber !== '') {
     JOIN course_group_students cgs ON cgs.student_id = s.id
     JOIN course_groups cg ON cg.id = cgs.group_id
     JOIN courses c ON c.id = cg.course_id
-    WHERE s.personal_number = :pn
-    ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+    WHERE s.person_id = :pid
+    ORDER BY cg.start_date DESC, cg.id DESC,
+             CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   ");
-  $G->execute([':pn'=>$personalNumber]);
+  $G->execute([':pid'=>$personId]);
   $groups = $G->fetchAll(PDO::FETCH_ASSOC);
 } else {
-  /* Fallback i rrallë: nëse s’ka personal_number, shfaq vetëm grupet e rreshtit aktual */
+  /* Fallback shumë i rrallë: nëse s’ka person_id (s’duhet të ndodhë),
+     shfaq vetëm grupet e rreshtit aktual të students */
   $G = $pdo->prepare("
     SELECT
       cg.id AS group_id, cg.start_date, cg.end_date,

@@ -62,6 +62,8 @@ if (!$row) { echo json_encode(['ok'=>false,'error'=>'Studenti nuk u gjet.']); ex
 $person_id = (int)$row['person_id'];
 if ($person_id <= 0) { echo json_encode(['ok'=>false,'error'=>'Lidhja me personin mungon.']); exit; }
 
+$user_id = (int)$row['user_id'];
+
 /* Whitelist fushash */
 $allowed = [
     'first_name','father_name','last_name',
@@ -76,6 +78,14 @@ if (!in_array($field, $allowed, true)) {
 /* Ndarje fushash sipas tabelës */
 $personFields  = ['first_name','father_name','last_name','birth_date','birth_place','personal_number','phone','gender_id'];
 $studentFields = ['nr_amze','education_level_id'];
+
+/* Helper: [Emri].[VitiLindjes], bosh → User.0000 */
+function qta_make_initial_password(string $first_name, ?string $birth_date): string {
+    $fname = trim(preg_replace('/\s+/', '', $first_name));
+    $year  = '0000';
+    if ($birth_date && preg_match('/^(\d{4})-/', $birth_date, $m)) { $year = $m[1]; }
+    return ($fname === '' ? 'User' : $fname) . '.' . $year;
+}
 
 $dispValue = null;
 
@@ -170,6 +180,26 @@ try {
     else {
         throw new RuntimeException('Fushë e panjohur.');
     }
+
+    /* ==== RESET PASSWORD pas çdo ndryshimi ==== */
+    $pNow = $pdo->prepare("SELECT COALESCE(NULLIF(first_name,''),'') AS fn, birth_date FROM persons WHERE id=:pid");
+    $pNow->execute([':pid'=>$person_id]);
+    $pers = $pNow->fetch(PDO::FETCH_ASSOC) ?: ['fn'=>'','birth_date'=>null];
+
+    $plain = qta_make_initial_password((string)$pers['fn'], $pers['birth_date'] ?? null);
+    $hash  = password_hash($plain, PASSWORD_BCRYPT);
+
+    // Siguro/ruaj në credentials
+    $cSel = $pdo->prepare("SELECT 1 FROM credentials WHERE user_id=:uid");
+    $cSel->execute([':uid'=>$user_id]);
+    if ($cSel->fetchColumn()) {
+        $pdo->prepare("UPDATE credentials SET password_hash=:ph, last_password_change=NOW() WHERE user_id=:uid")
+            ->execute([':ph'=>$hash, ':uid'=>$user_id]);
+    } else {
+        $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid,:ph,NOW())")
+            ->execute([':uid'=>$user_id, ':ph'=>$hash]);
+    }
+
 
     $pdo->commit();
     echo json_encode(['ok'=>true,'display'=>$dispValue]);

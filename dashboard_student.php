@@ -23,56 +23,69 @@ if (!function_exists('h')) {
 
 /* ================================
    Student bazë (sipas user_id)
+   -> marrë edhe person_id + personal_number nga persons
 =================================== */
-$baseQ = $pdo->prepare("SELECT id, personal_number FROM students WHERE user_id = :uid LIMIT 1");
+$baseQ = $pdo->prepare("
+  SELECT s.id AS sid, s.person_id, p.personal_number
+  FROM students s
+  JOIN persons p ON p.id = s.person_id
+  WHERE s.user_id = :uid
+  LIMIT 1
+");
 $baseQ->execute([':uid'=>$_SESSION['user_id']]);
-$base = $baseQ->fetch();
+$base = $baseQ->fetch(PDO::FETCH_ASSOC);
 if (!$base) { exit('Profili i studentit nuk u gjet.'); }
 
-$baseSid = (int)$base['id'];
+$baseSid        = (int)$base['sid'];
+$basePersonId   = (int)$base['person_id'];
 $personalNumber = (string)($base['personal_number'] ?? '');
 
-/* Të gjitha AMZË-të sipas numrit personal */
+/* Të gjitha AMZË-të sipas të njëjtit person_id */
 $amzeRows = [];
 $studentIds = [$baseSid];
 
-if ($personalNumber !== '') {
-  $allQ = $pdo->prepare("
-    SELECT id, nr_amze
-    FROM students
-    WHERE personal_number = :pn
-    ORDER BY CAST(nr_amze AS UNSIGNED) ASC, nr_amze ASC
-  ");
-  $allQ->execute([':pn'=>$personalNumber]);
-  $amzeRows = $allQ->fetchAll(PDO::FETCH_ASSOC);
+$allQ = $pdo->prepare("
+  SELECT id, nr_amze
+  FROM students
+  WHERE person_id = :pid
+  ORDER BY CAST(nr_amze AS UNSIGNED) ASC, nr_amze ASC
+");
+$allQ->execute([':pid'=>$basePersonId]);
+$amzeRows = $allQ->fetchAll(PDO::FETCH_ASSOC);
 
-  if ($amzeRows) {
-    $studentIds = array_map(fn($r)=>(int)$r['id'], $amzeRows);
-    // siguri kundër dublikatave
-    $studentIds = array_values(array_unique($studentIds));
-  }
+if ($amzeRows) {
+  $studentIds = array_values(array_unique(array_map(fn($r)=>(int)$r['id'], $amzeRows)));
 }
 
-/* Lista e AMZË-ve për shfaqje */
-$amzeList = array_values(array_filter(array_map(
-  fn($r)=> $r['nr_amze'] ?? '',
-  ($amzeRows ?: [['nr_amze' => $pdo->query("SELECT nr_amze FROM students WHERE id=".$baseSid)->fetchColumn()]])
-), fn($x)=> $x !== ''));
+/* Lista e AMZË-ve për shfaqje (fallback i sigurt, i parametruar) */
+$amzeList = [];
+if ($amzeRows) {
+  foreach ($amzeRows as $r) {
+    if (!empty($r['nr_amze'])) $amzeList[] = $r['nr_amze'];
+  }
+} else {
+  $one = $pdo->prepare("SELECT nr_amze FROM students WHERE id = :sid LIMIT 1");
+  $one->execute([':sid'=>$baseSid]);
+  $oneAmze = $one->fetchColumn();
+  if ($oneAmze) $amzeList[] = $oneAmze;
+}
 
-/* Info personale (nga rreshti bazë) */
+/* Info personale (nga persons) + arsimi nga students */
 $S = $pdo->prepare("
-  SELECT s.first_name, s.father_name, s.last_name, s.birth_date, s.birth_place,
-         s.nr_amze, s.personal_number, s.phone,
-         el.code AS edu_code, el.label AS edu_label
+  SELECT 
+    p.first_name, p.father_name, p.last_name, p.birth_date, p.birth_place,
+    s.nr_amze, p.personal_number, p.phone,
+    el.code AS edu_code, el.label AS edu_label
   FROM students s
+  JOIN persons p ON p.id = s.person_id
   LEFT JOIN education_levels el ON el.id = s.education_level_id
   WHERE s.id = :sid
   LIMIT 1
 ");
 $S->execute([':sid'=>$baseSid]);
-$stud = $S->fetch();
+$stud = $S->fetch(PDO::FETCH_ASSOC);
 
-/* Grupe për të GJITHË student_id me të njëjtin numër personal */
+/* Grupe për të GJITHË student_id me të njëjtin person */
 $groups = [];
 if ($studentIds) {
   $ph = implode(',', array_fill(0, count($studentIds), '?'));
@@ -93,7 +106,6 @@ if ($studentIds) {
 
 /* KPI për studentin */
 $k_total_groups = count($groups);
-
 $k_avg_score = null;
 $k_pass_rate = null;
 $allScores = array_values(array_filter(
