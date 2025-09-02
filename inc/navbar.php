@@ -45,6 +45,8 @@ if ($active === null) {
         'register.php'        => 'register_full',
         'groups.php'          => 'register_groups',
         'courses.php'         => 'courses',
+        'logs.php'            => 'logs',
+        'editors.php'        => 'users_editors',
         'profile.php'         => 'profile',
     ];
     $active = $map[$script] ?? '';
@@ -61,6 +63,7 @@ $isUsersStudents  = $active === 'users_students';
 $isStudentCard    = $active === 'student_card';
 $isRegFull        = $active === 'register_full';
 $isRegGroups      = $active === 'register_groups';
+$isLogs           = $active === 'logs';
 $isCourses        = $active === 'courses';
 $isProfile        = $active === 'profile';
 
@@ -178,6 +181,12 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
         <li class="nav-item">
           <a class="nav-link<?= $isCourses ? ' active' : '' ?>" <?= $isCourses ? 'aria-current="page"' : '' ?> href="courses.php">
             <i class="bi bi-book me-1"></i>Modulet
+          </a>
+        </li>
+        <!-- Log-et -->
+        <li class="nav-item">
+          <a class="nav-link<?= $isLogs ? ' active' : '' ?>" <?= $isLogs ? 'aria-current="page"' : '' ?> href="logs.php">
+            <i class="bi bi-clipboard-data me-1"></i>Logs
           </a>
         </li>
       </ul>

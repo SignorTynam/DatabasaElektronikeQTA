@@ -5,6 +5,8 @@ mb_internal_encoding('UTF-8');
 
 require_once __DIR__ . '/database.php';
 $pdo = getPDO();
+require_once __DIR__ . '/inc/audit_bootstrap.php';
+qta_audit_attach($pdo);
 
 /* Autoload i Composer (si te register_export.php) */
 $autoloadCandidates = [

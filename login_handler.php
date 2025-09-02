@@ -19,6 +19,8 @@ if (empty($role) || empty($identifier) || empty($password)) {
 }
 
 $pdo = getPDO();
+require_once __DIR__ . '/inc/audit_bootstrap.php';
+qta_audit_attach($pdo);
 
 try {
     if ($role === 'administrator') {

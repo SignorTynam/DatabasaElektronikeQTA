@@ -24,6 +24,9 @@ try {
     if (empty($_SESSION['user_id'])) jerr('Seanca ka skaduar. Hyni sërish.', 401);
 
     $pdo = getPDO();
+    require_once __DIR__ . '/inc/audit_bootstrap.php';
+    qta_audit_attach($pdo);
+
 
     $uStmt = $pdo->prepare("
         SELECT u.id, r.name AS role_name

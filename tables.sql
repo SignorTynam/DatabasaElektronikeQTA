@@ -377,3 +377,427 @@ DELIMITER ;
 
 INSERT INTO roles (name) VALUES ('editor')
 ON DUPLICATE KEY UPDATE name = VALUES(name);
+
+USE qta_db;
+
+-- =========================================
+--  AUDIT TABLES (MariaDB-compatible)
+-- =========================================
+CREATE TABLE IF NOT EXISTS audit_events (
+  id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+  happened_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  action       ENUM('INSERT','UPDATE','DELETE') NOT NULL,
+  table_name   VARCHAR(64) NOT NULL,
+  row_pk       LONGTEXT NOT NULL,                   -- JSON string
+  user_id      INT NULL,
+  ip_address   VARCHAR(45) NULL,
+  user_agent   VARCHAR(255) NULL,
+  old_data     LONGTEXT NULL,                       -- JSON string
+  new_data     LONGTEXT NULL,                       -- JSON string
+  INDEX idx_audit_time (happened_at),
+  INDEX idx_audit_table (table_name),
+  INDEX idx_audit_user (user_id),
+  CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS audit_event_fields (
+  id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_id     BIGINT NOT NULL,
+  column_name  VARCHAR(64) NOT NULL,
+  old_value    TEXT NULL,
+  new_value    TEXT NULL,
+  CONSTRAINT fk_audit_fields_event FOREIGN KEY (event_id) REFERENCES audit_events(id) ON DELETE CASCADE,
+  INDEX idx_audit_fields_event (event_id),
+  INDEX idx_audit_fields_col (column_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- =========================================
+--  PROCEDURE: audit_capture (MariaDB-safe)
+--  - NUK përdor JSON_TABLE
+--  - Vendos @last_audit_event_id që e lexojnë trigger-at
+-- =========================================
+DELIMITER $$
+DROP PROCEDURE IF EXISTS audit_capture $$
+CREATE PROCEDURE audit_capture (
+  IN p_table_name VARCHAR(64),
+  IN p_action     VARCHAR(10),   -- INSERT/UPDATE/DELETE
+  IN p_row_pk     LONGTEXT,      -- JSON string
+  IN p_old        LONGTEXT,      -- JSON string
+  IN p_new        LONGTEXT       -- JSON string
+)
+BEGIN
+  INSERT INTO audit_events (action, table_name, row_pk, user_id, ip_address, user_agent, old_data, new_data)
+  VALUES (p_action, p_table_name, p_row_pk, @audit_user_id, @audit_ip, @audit_ua, p_old, p_new);
+
+  SET @last_audit_event_id = LAST_INSERT_ID();
+END $$
+DELIMITER ;
+
+DELIMITER $$
+
+/* ====================== users ====================== */
+DROP TRIGGER IF EXISTS trg_audit_users_ai $$
+CREATE TRIGGER trg_audit_users_ai AFTER INSERT ON users
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'users','INSERT',
+    JSON_OBJECT('id', NEW.id),
+    NULL,
+    JSON_OBJECT('id', NEW.id, 'role_id', NEW.role_id, 'person_id', NEW.person_id,
+                'full_name', NEW.full_name, 'email', NEW.email, 'created_at', NEW.created_at)
+  );
+
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'role_id',NULL,NEW.role_id),(@e,'person_id',NULL,NEW.person_id),
+    (@e,'full_name',NULL,NEW.full_name),(@e,'email',NULL,NEW.email),(@e,'created_at',NULL,NEW.created_at);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_users_au $$
+CREATE TRIGGER trg_audit_users_au AFTER UPDATE ON users
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'users','UPDATE',
+    JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'role_id', OLD.role_id, 'person_id', OLD.person_id,
+                'full_name', OLD.full_name, 'email', OLD.email, 'created_at', OLD.created_at),
+    JSON_OBJECT('id', NEW.id, 'role_id', NEW.role_id, 'person_id', NEW.person_id,
+                'full_name', NEW.full_name, 'email', NEW.email, 'created_at', NEW.created_at)
+  );
+
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.role_id   <=> NEW.role_id)   THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'role_id',   OLD.role_id,   NEW.role_id);   END IF;
+  IF NOT (OLD.person_id <=> NEW.person_id) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'person_id', OLD.person_id, NEW.person_id); END IF;
+  IF NOT (OLD.full_name <=> NEW.full_name) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'full_name', OLD.full_name, NEW.full_name); END IF;
+  IF NOT (OLD.email     <=> NEW.email)     THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'email',     OLD.email,     NEW.email);     END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_users_ad $$
+CREATE TRIGGER trg_audit_users_ad AFTER DELETE ON users
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'users','DELETE',
+    JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'role_id', OLD.role_id, 'person_id', OLD.person_id,
+                'full_name', OLD.full_name, 'email', OLD.email, 'created_at', OLD.created_at),
+    NULL
+  );
+
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'role_id',OLD.role_id,NULL),(@e,'person_id',OLD.person_id,NULL),
+    (@e,'full_name',OLD.full_name,NULL),(@e,'email',OLD.email,NULL),(@e,'created_at',OLD.created_at,NULL);
+END $$
+
+/* ====================== persons ====================== */
+DROP TRIGGER IF EXISTS trg_audit_persons_ai $$
+CREATE TRIGGER trg_audit_persons_ai AFTER INSERT ON persons
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'persons','INSERT', JSON_OBJECT('id', NEW.id), NULL,
+    JSON_OBJECT('id', NEW.id, 'personal_number', NEW.personal_number, 'first_name', NEW.first_name,
+                'father_name', NEW.father_name, 'last_name', NEW.last_name, 'birth_date', NEW.birth_date,
+                'birth_place', NEW.birth_place, 'phone', NEW.phone, 'gender_id', NEW.gender_id)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'personal_number',NULL,NEW.personal_number),(@e,'first_name',NULL,NEW.first_name),
+    (@e,'father_name',NULL,NEW.father_name),(@e,'last_name',NULL,NEW.last_name),(@e,'birth_date',NULL,NEW.birth_date),
+    (@e,'birth_place',NULL,NEW.birth_place),(@e,'phone',NULL,NEW.phone),(@e,'gender_id',NULL,NEW.gender_id);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_persons_au $$
+CREATE TRIGGER trg_audit_persons_au AFTER UPDATE ON persons
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'persons','UPDATE', JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'personal_number', OLD.personal_number, 'first_name', OLD.first_name,
+                'father_name', OLD.father_name, 'last_name', OLD.last_name, 'birth_date', OLD.birth_date,
+                'birth_place', OLD.birth_place, 'phone', OLD.phone, 'gender_id', OLD.gender_id),
+    JSON_OBJECT('id', NEW.id, 'personal_number', NEW.personal_number, 'first_name', NEW.first_name,
+                'father_name', NEW.father_name, 'last_name', NEW.last_name, 'birth_date', NEW.birth_date,
+                'birth_place', NEW.birth_place, 'phone', NEW.phone, 'gender_id', NEW.gender_id)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.personal_number <=> NEW.personal_number) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'personal_number', OLD.personal_number, NEW.personal_number); END IF;
+  IF NOT (OLD.first_name      <=> NEW.first_name)      THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'first_name',      OLD.first_name,      NEW.first_name);      END IF;
+  IF NOT (OLD.father_name     <=> NEW.father_name)     THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'father_name',     OLD.father_name,     NEW.father_name);     END IF;
+  IF NOT (OLD.last_name       <=> NEW.last_name)       THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'last_name',       OLD.last_name,       NEW.last_name);       END IF;
+  IF NOT (OLD.birth_date      <=> NEW.birth_date)      THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'birth_date',      OLD.birth_date,      NEW.birth_date);      END IF;
+  IF NOT (OLD.birth_place     <=> NEW.birth_place)     THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'birth_place',     OLD.birth_place,     NEW.birth_place);     END IF;
+  IF NOT (OLD.phone           <=> NEW.phone)           THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'phone',           OLD.phone,           NEW.phone);           END IF;
+  IF NOT (OLD.gender_id       <=> NEW.gender_id)       THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'gender_id',       OLD.gender_id,       NEW.gender_id);       END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_persons_ad $$
+CREATE TRIGGER trg_audit_persons_ad AFTER DELETE ON persons
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'persons','DELETE', JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'personal_number', OLD.personal_number, 'first_name', OLD.first_name,
+                'father_name', OLD.father_name, 'last_name', OLD.last_name, 'birth_date', OLD.birth_date,
+                'birth_place', OLD.birth_place, 'phone', OLD.phone, 'gender_id', OLD.gender_id),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'personal_number',OLD.personal_number,NULL),(@e,'first_name',OLD.first_name,NULL),
+    (@e,'father_name',OLD.father_name,NULL),(@e,'last_name',OLD.last_name,NULL),(@e,'birth_date',OLD.birth_date,NULL),
+    (@e,'birth_place',OLD.birth_place,NULL),(@e,'phone',OLD.phone,NULL),(@e,'gender_id',OLD.gender_id,NULL);
+END $$
+
+/* ====================== students ====================== */
+DROP TRIGGER IF EXISTS trg_audit_students_ai $$
+CREATE TRIGGER trg_audit_students_ai AFTER INSERT ON students
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'students','INSERT', JSON_OBJECT('id', NEW.id), NULL,
+    JSON_OBJECT('id', NEW.id, 'person_id', NEW.person_id, 'user_id', NEW.user_id,
+                'nr_amze', NEW.nr_amze, 'education_level_id', NEW.education_level_id, 'created_at', NEW.created_at)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'person_id',NULL,NEW.person_id),(@e,'user_id',NULL,NEW.user_id),
+    (@e,'nr_amze',NULL,NEW.nr_amze),(@e,'education_level_id',NULL,NEW.education_level_id),(@e,'created_at',NULL,NEW.created_at);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_students_au $$
+CREATE TRIGGER trg_audit_students_au AFTER UPDATE ON students
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'students','UPDATE', JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'person_id', OLD.person_id, 'user_id', OLD.user_id,
+                'nr_amze', OLD.nr_amze, 'education_level_id', OLD.education_level_id, 'created_at', OLD.created_at),
+    JSON_OBJECT('id', NEW.id, 'person_id', NEW.person_id, 'user_id', NEW.user_id,
+                'nr_amze', NEW.nr_amze, 'education_level_id', NEW.education_level_id, 'created_at', NEW.created_at)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.person_id          <=> NEW.person_id)          THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'person_id',          OLD.person_id,          NEW.person_id);          END IF;
+  IF NOT (OLD.user_id            <=> NEW.user_id)            THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'user_id',            OLD.user_id,            NEW.user_id);            END IF;
+  IF NOT (OLD.nr_amze            <=> NEW.nr_amze)            THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'nr_amze',            OLD.nr_amze,            NEW.nr_amze);            END IF;
+  IF NOT (OLD.education_level_id <=> NEW.education_level_id) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'education_level_id', OLD.education_level_id, NEW.education_level_id); END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_students_ad $$
+CREATE TRIGGER trg_audit_students_ad AFTER DELETE ON students
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'students','DELETE', JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'person_id', OLD.person_id, 'user_id', OLD.user_id,
+                'nr_amze', OLD.nr_amze, 'education_level_id', OLD.education_level_id, 'created_at', OLD.created_at),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'person_id',OLD.person_id,NULL),(@e,'user_id',OLD.user_id,NULL),
+    (@e,'nr_amze',OLD.nr_amze,NULL),(@e,'education_level_id',OLD.education_level_id,NULL),(@e,'created_at',OLD.created_at,NULL);
+END $$
+
+/* ====================== agencies ====================== */
+DROP TRIGGER IF EXISTS trg_audit_agencies_ai $$
+CREATE TRIGGER trg_audit_agencies_ai AFTER INSERT ON agencies
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'agencies','INSERT', JSON_OBJECT('id', NEW.id), NULL,
+    JSON_OBJECT('id', NEW.id, 'user_id', NEW.user_id, 'nip_t', NEW.nip_t,
+                'company_name', NEW.company_name, 'address', NEW.address, 'phone', NEW.phone)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'user_id',NULL,NEW.user_id),(@e,'nip_t',NULL,NEW.nip_t),
+    (@e,'company_name',NULL,NEW.company_name),(@e,'address',NULL,NEW.address),(@e,'phone',NULL,NEW.phone);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_agencies_au $$
+CREATE TRIGGER trg_audit_agencies_au AFTER UPDATE ON agencies
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'agencies','UPDATE', JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'user_id', OLD.user_id, 'nip_t', OLD.nip_t,
+                'company_name', OLD.company_name, 'address', OLD.address, 'phone', OLD.phone),
+    JSON_OBJECT('id', NEW.id, 'user_id', NEW.user_id, 'nip_t', NEW.nip_t,
+                'company_name', NEW.company_name, 'address', NEW.address, 'phone', NEW.phone)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.user_id      <=> NEW.user_id)      THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'user_id',      OLD.user_id,      NEW.user_id);      END IF;
+  IF NOT (OLD.nip_t        <=> NEW.nip_t)        THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'nip_t',        OLD.nip_t,        NEW.nip_t);        END IF;
+  IF NOT (OLD.company_name <=> NEW.company_name) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'company_name', OLD.company_name, NEW.company_name); END IF;
+  IF NOT (OLD.address      <=> NEW.address)      THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'address',      OLD.address,      NEW.address);      END IF;
+  IF NOT (OLD.phone        <=> NEW.phone)        THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'phone',        OLD.phone,        NEW.phone);        END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_agencies_ad $$
+CREATE TRIGGER trg_audit_agencies_ad AFTER DELETE ON agencies
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'agencies','DELETE', JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'user_id', OLD.user_id, 'nip_t', OLD.nip_t,
+                'company_name', OLD.company_name, 'address', OLD.address, 'phone', OLD.phone),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'user_id',OLD.user_id,NULL),(@e,'nip_t',OLD.nip_t,NULL),
+    (@e,'company_name',OLD.company_name,NULL),(@e,'address',OLD.address,NULL),(@e,'phone',OLD.phone,NULL);
+END $$
+
+/* ====================== courses ====================== */
+DROP TRIGGER IF EXISTS trg_audit_courses_ai $$
+CREATE TRIGGER trg_audit_courses_ai AFTER INSERT ON courses
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'courses','INSERT', JSON_OBJECT('id', NEW.id), NULL,
+    JSON_OBJECT('id', NEW.id, 'code', NEW.code, 'name', NEW.name, 'hours', NEW.hours, 'created_at', NEW.created_at)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'code',NULL,NEW.code),(@e,'name',NULL,NEW.name),
+    (@e,'hours',NULL,NEW.hours),(@e,'created_at',NULL,NEW.created_at);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_courses_au $$
+CREATE TRIGGER trg_audit_courses_au AFTER UPDATE ON courses
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'courses','UPDATE', JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'code', OLD.code, 'name', OLD.name, 'hours', OLD.hours, 'created_at', OLD.created_at),
+    JSON_OBJECT('id', NEW.id, 'code', NEW.code, 'name', NEW.name, 'hours', NEW.hours, 'created_at', NEW.created_at)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.code  <=> NEW.code)  THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'code',  OLD.code,  NEW.code);  END IF;
+  IF NOT (OLD.name  <=> NEW.name)  THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'name',  OLD.name,  NEW.name);  END IF;
+  IF NOT (OLD.hours <=> NEW.hours) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'hours', OLD.hours, NEW.hours); END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_courses_ad $$
+CREATE TRIGGER trg_audit_courses_ad AFTER DELETE ON courses
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'courses','DELETE', JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'code', OLD.code, 'name', OLD.name, 'hours', OLD.hours, 'created_at', OLD.created_at),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'code',OLD.code,NULL),(@e,'name',OLD.name,NULL),
+    (@e,'hours',OLD.hours,NULL),(@e,'created_at',OLD.created_at,NULL);
+END $$
+
+/* ====================== course_groups ====================== */
+DROP TRIGGER IF EXISTS trg_audit_cg_ai $$
+CREATE TRIGGER trg_audit_cg_ai AFTER INSERT ON course_groups
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_groups','INSERT', JSON_OBJECT('id', NEW.id), NULL,
+    JSON_OBJECT('id', NEW.id, 'course_id', NEW.course_id, 'start_date', NEW.start_date,
+                'end_date', NEW.end_date, 'exam_date', NEW.exam_date, 'created_at', NEW.created_at)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'course_id',NULL,NEW.course_id),(@e,'start_date',NULL,NEW.start_date),
+    (@e,'end_date',NULL,NEW.end_date),(@e,'exam_date',NULL,NEW.exam_date),(@e,'created_at',NULL,NEW.created_at);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_cg_au $$
+CREATE TRIGGER trg_audit_cg_au AFTER UPDATE ON course_groups
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_groups','UPDATE', JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'course_id', OLD.course_id, 'start_date', OLD.start_date,
+                'end_date', OLD.end_date, 'exam_date', OLD.exam_date, 'created_at', OLD.created_at),
+    JSON_OBJECT('id', NEW.id, 'course_id', NEW.course_id, 'start_date', NEW.start_date,
+                'end_date', NEW.end_date, 'exam_date', NEW.exam_date, 'created_at', NEW.created_at)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.course_id  <=> NEW.course_id)  THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'course_id',  OLD.course_id,  NEW.course_id);  END IF;
+  IF NOT (OLD.start_date <=> NEW.start_date) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'start_date', OLD.start_date, NEW.start_date); END IF;
+  IF NOT (OLD.end_date   <=> NEW.end_date)   THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'end_date',   OLD.end_date,   NEW.end_date);   END IF;
+  IF NOT (OLD.exam_date  <=> NEW.exam_date)  THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'exam_date',  OLD.exam_date,  NEW.exam_date);  END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_cg_ad $$
+CREATE TRIGGER trg_audit_cg_ad AFTER DELETE ON course_groups
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_groups','DELETE', JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'course_id', OLD.course_id, 'start_date', OLD.start_date,
+                'end_date', OLD.end_date, 'exam_date', OLD.exam_date, 'created_at', OLD.created_at),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'course_id',OLD.course_id,NULL),(@e,'start_date',OLD.start_date,NULL),
+    (@e,'end_date',OLD.end_date,NULL),(@e,'exam_date',OLD.exam_date,NULL),(@e,'created_at',OLD.created_at,NULL);
+END $$
+
+/* ====================== course_group_students ====================== */
+DROP TRIGGER IF EXISTS trg_audit_cgs_ai $$
+CREATE TRIGGER trg_audit_cgs_ai AFTER INSERT ON course_group_students
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_group_students','INSERT',
+    JSON_OBJECT('group_id', NEW.group_id, 'student_id', NEW.student_id),
+    NULL,
+    JSON_OBJECT('group_id', NEW.group_id, 'student_id', NEW.student_id,
+                'final_score', NEW.final_score, 'exam_date', NEW.exam_date)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'group_id',NULL,NEW.group_id),(@e,'student_id',NULL,NEW.student_id),
+    (@e,'final_score',NULL,NEW.final_score),(@e,'exam_date',NULL,NEW.exam_date);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_cgs_au $$
+CREATE TRIGGER trg_audit_cgs_au AFTER UPDATE ON course_group_students
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_group_students','UPDATE',
+    JSON_OBJECT('group_id', NEW.group_id, 'student_id', NEW.student_id),
+    JSON_OBJECT('group_id', OLD.group_id, 'student_id', OLD.student_id,
+                'final_score', OLD.final_score, 'exam_date', OLD.exam_date),
+    JSON_OBJECT('group_id', NEW.group_id, 'student_id', NEW.student_id,
+                'final_score', NEW.final_score, 'exam_date', NEW.exam_date)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.final_score <=> NEW.final_score) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'final_score', OLD.final_score, NEW.final_score); END IF;
+  IF NOT (OLD.exam_date  <=> NEW.exam_date)  THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'exam_date',  OLD.exam_date,  NEW.exam_date);  END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_cgs_ad $$
+CREATE TRIGGER trg_audit_cgs_ad AFTER DELETE ON course_group_students
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_group_students','DELETE',
+    JSON_OBJECT('group_id', OLD.group_id, 'student_id', OLD.student_id),
+    JSON_OBJECT('group_id', OLD.group_id, 'student_id', OLD.student_id,
+                'final_score', OLD.final_score, 'exam_date', OLD.exam_date),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'group_id',OLD.group_id,NULL),(@e,'student_id',OLD.student_id,NULL),
+    (@e,'final_score',OLD.final_score,NULL),(@e,'exam_date',OLD.exam_date,NULL);
+END $$
+
+DELIMITER ;

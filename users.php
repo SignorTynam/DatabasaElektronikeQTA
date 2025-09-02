@@ -5,6 +5,8 @@ require_once __DIR__ . '/database.php';
 require __DIR__ . '/inc/navbar.php';
 
 $pdo = getPDO();
+require_once __DIR__ . '/inc/audit_bootstrap.php';
+qta_audit_attach($pdo);
 
 /* ------------------------------
    Guard: vetëm admin i loguar

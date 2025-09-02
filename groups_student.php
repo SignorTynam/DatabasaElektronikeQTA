@@ -4,6 +4,8 @@ session_start();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
+require_once __DIR__ . '/inc/audit_bootstrap.php';
+qta_audit_attach($pdo);
 
 /* ------------------------------
    Guard: vetëm student i loguar

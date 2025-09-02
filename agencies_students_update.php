@@ -5,8 +5,9 @@ require_once __DIR__ . '/database.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 $pdo = getPDO();
+require_once __DIR__ . '/inc/audit_bootstrap.php';
+qta_audit_attach($pdo);
 
-/* Guard admin */
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
   http_response_code(401);

@@ -3,6 +3,8 @@
 require 'database.php';
 
 $pdo = getPDO();
+require_once __DIR__ . '/inc/audit_bootstrap.php';
+qta_audit_attach($pdo);
 
 // ndrysho këto të dhëna sipas dëshirës
 $adminEmail = 'admin@qta.test';
