@@ -602,18 +602,43 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .nowrap { white-space:nowrap; }
     @media (max-width: 575.98px) { .navbar-text { display:none; } }
 
+    /* --- Inline editable cells --- */
     .editable { display:inline-block; min-width:72px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
-    .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
-    .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+    .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
+    .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+    .editable[contenteditable="false"] { opacity:.7; cursor:default; }
+
     .cell-saving { position:relative; }
     .cell-saving::after { content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem; border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%; animation:spin .6s linear infinite; transform:translateY(-50%); }
     @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
     .cell-ok { animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
     .cell-err { animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
 
-    /* Edit Mode OFF visuals */
+    /* --- Edit Mode OFF visuals --- */
     .editing-off .editable { color:#6b7280; cursor:not-allowed; }
     .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
+
+    /* --- Soft buttons & pills --- */
+    .btn-pill { border-radius:999px !important; }
+    .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
+    .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
+    .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
+    .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
+    .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+    .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
+    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+    /* --- Toolbar layout --- */
+    .page-toolbar { gap:.5rem; }
+    .page-toolbar .btn, .group-toolbar .btn { padding:.4rem .75rem; }
+
+    /* --- Status badge spacing --- */
+    .group-badge { font-size:.75rem; }
+
+    /* --- Status alert --- */
+    .status-alert { border-radius:.75rem; }
+    .status-alert i { opacity:.8; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -621,41 +646,61 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Grupe</h2>
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      <!-- Edit Mode Toggle -->
-      <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>">
-        <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-        Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-      </a>
+    <div class="d-flex flex-wrap align-items-center page-toolbar">
 
-      <form class="d-flex" method="get" action="groups.php">
-        <div class="input-group">
-          <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-          <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko studentë sipas AMZË/ID/Emri...">
-          <select name="course_id" class="form-select">
-            <option value="">— Modul —</option>
-            <?php foreach($courses as $c): ?>
-              <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
-                <?= htmlspecialchars($c['code'].' — '.$c['name']) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <button class="btn btn-outline-secondary" type="button" onclick="window.location='groups.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-          <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-        </div>
-      </form>
-
-      <!-- Form 1 & 2 -->
-      <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#form1Modal">
+      <!-- Export buttons (better UI) -->
+      <button class="btn btn-soft-success btn-pill" data-bs-toggle="modal" data-bs-target="#form1Modal" data-bs-title="Shkarko statistika për grupe">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1
       </button>
-      <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#form2Modal">
+      <button class="btn btn-soft-danger btn-pill" data-bs-toggle="modal" data-bs-target="#form2Modal" data-bs-title="Shkarko listë studentësh sipas AMZË">
         <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
       </button>
 
-      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+      <!-- Krijo grup -->
+      <button class="btn btn-soft-primary btn-pill" data-bs-toggle="modal" data-bs-target="#createGroupModal" <?= $EDIT_MODE ? '' : 'disabled' ?> title="<?= $EDIT_MODE?'Krijo grup të ri':'Aktivizo Edit Mode' ?>">
         <i class="bi bi-plus-circle me-1"></i> Krijo grup
       </button>
+
+      <!-- Edit Mode Toggle (button-style) -->
+      <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
+         title="Ndrysho gjendjen e Edit Mode">
+        <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
+        Edit Mode:
+        <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Kërkim + filter -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <form class="row g-2 align-items-end" method="get" action="groups.php">
+        <div class="col-md-9">
+          <div class="d-flex align-items-center">
+            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
+            <div class="input-group flex-grow-1">
+              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
+              <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko studentë sipas AMZË/ID/Emri...">
+              <select name="course_id" class="form-select">
+                <option value="">— Modul —</option>
+                <?php foreach($courses as $c): ?>
+                  <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
+                    <?= htmlspecialchars($c['code'].' — '.$c['name']) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 text-end">
+          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='groups.php'">
+            <i class="bi bi-x-circle me-1"></i>Pastro
+          </button>
+          <button class="btn btn-primary btn-pill" type="submit">
+            <i class="bi bi-funnel me-1"></i>Apliko
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -711,18 +756,46 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <i class="bi bi-collection me-2"></i>
             Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_code'].' · '.$g['header']['course_name']) ?>
           </h5>
-          <span class="badge <?= $completed ? 'bg-success' : 'bg-warning text-dark' ?> group-badge" data-group="<?= (int)$gid ?>">
+          <span class="badge <?= $completed ? 'text-bg-success' : 'text-bg-danger' ?> group-badge" data-group="<?= (int)$gid ?>">
             <?= $completed ? 'I përfunduar' : 'Jo i përfunduar' ?>
           </span>
           <!-- Toggle completed -->
-          <div class="form-check form-switch ms-2">
+          <div class="form-check form-switch ms-2" title="Ndrysho statusin e përfundimit">
             <input class="form-check-input toggle-completed" type="checkbox"
                    data-group="<?= (int)$gid ?>" <?= $completed ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
             <label class="form-check-label small">Përfunduar</label>
           </div>
         </div>
-        <div class="d-flex flex-wrap align-items-center gap-3">
-          <div class="text-muted small">
+        <div class="d-flex flex-wrap align-items-center gap-2 group-toolbar">
+          <button class="btn btn-soft-secondary btn-pill"
+                  data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
+                  title="Shto/hiq anëtarë (maks 10)">
+            <i class="bi bi-people me-1"></i> Anëtarët
+          </button>
+          <button class="btn btn-soft-secondary btn-pill"
+                  data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
+                  title="Ndrysho modulin e grupit">
+            <i class="bi bi-book me-1"></i> Moduli
+          </button>
+          <button class="btn btn-soft-danger btn-pill"
+                  data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
+                  title="Fshi grupin">
+            <i class="bi bi-trash me-1"></i> Fshi
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+
+        <!-- Status alert per kërkesën tuaj: jeshile kur i përfunduar, e kuqe kur jo i përfunduar -->
+        <div id="statusAlert_<?= (int)$gid ?>" class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 mb-3 small">
+          <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
+          <?= $completed
+                ? 'Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.'
+                : 'Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.' ?>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 text-muted small">
+          <div>
             <span class="me-3">Fillimi:
               <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
                     data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
@@ -734,29 +807,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
                     title="DD-MM-YYYY (≥ data e fillimit)"><?= htmlspecialchars(fmt_dMY($g['header']['end_date'])) ?></span>
             </span>
           </div>
-          <div class="d-flex align-items-center gap-2">
-            <button class="btn btn-outline-primary btn-sm"
-                    data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <i class="bi bi-pencil-square me-1"></i>Modifiko anëtarët
-            </button>
-            <button class="btn btn-outline-secondary btn-sm"
-                    data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <i class="bi bi-pencil me-1"></i>Ndrysho modul
-            </button>
-            <button class="btn btn-outline-danger btn-sm"
-                    data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <i class="bi bi-trash me-1"></i>Fshi grupin
-            </button>
-          </div>
         </div>
-      </div>
-      <div class="card-body">
-        <?php if ($completed): ?>
-          <div class="alert alert-warning py-2 mb-3 small">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            Ky grup është i përfunduar. Çdo ndryshim do të kërkojë konfirmim.
-          </div>
-        <?php endif; ?>
+
         <div class="table-responsive mini-table">
           <table class="table align-middle mb-0">
             <thead class="table-light">
@@ -820,9 +872,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <?php if ($completed): ?>
-              <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i> Ky grup është i përfunduar.</div>
-            <?php endif; ?>
             <label class="form-label">AMZË që duhet të jenë në këtë grup (deri në 10)</label>
             <textarea name="amze_spec_members" class="form-control" rows="3" <?= $EDIT_MODE ? '' : 'disabled' ?>
               placeholder="p.sh. 3400-3403, 3409"><?= htmlspecialchars($prefillAmzeStr) ?></textarea>
@@ -833,8 +882,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
-            <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj ndryshimet</button>
+            <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
+            <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj ndryshimet</button>
           </div>
         </form>
       </div>
@@ -855,9 +904,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
           </div>
 
           <div class="modal-body">
-            <?php if ($completed): ?>
-              <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i> Ky grup është i përfunduar.</div>
-            <?php endif; ?>
             <label class="form-label">Zgjidh modul</label>
             <select name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
               <?php foreach($courses as $c): ?>
@@ -870,8 +916,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
-            <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
+            <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
+            <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
           </div>
         </form>
       </div>
@@ -890,16 +936,13 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <?php if ($completed): ?>
-              <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i> Ky grup është i përfunduar.</div>
-            <?php endif; ?>
             Jeni i sigurt që doni të fshini këtë grup?<br/>
             <strong>Kujdes:</strong> Kjo do të fshijë edhe lidhjet e studentëve me këtë grup (notat e ruajtura në këtë grup).
             Studentët nuk fshihen nga sistemi.
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-            <button class="btn btn-danger" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Po, fshije</button>
+            <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+            <button class="btn btn-danger btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Po, fshije</button>
           </div>
         </form>
       </div>
@@ -1000,11 +1043,11 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </div>
       <div class="modal-footer">
         <div class="btn-group me-auto">
-          <button type="button" class="btn btn-outline-success" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-          <button type="button" class="btn btn-outline-danger" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
-          <button type="button" class="btn btn-outline-primary" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
+          <button type="button" class="btn btn-soft-success btn-pill" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+          <button type="button" class="btn btn-soft-danger btn-pill" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
+          <button type="button" class="btn btn-soft-primary btn-pill" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
         </div>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
       </div>
     </form>
   </div>
@@ -1038,11 +1081,11 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </div>
       <div class="modal-footer">
         <div class="btn-group me-auto">
-          <button type="button" class="btn btn-outline-success" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-          <button type="button" class="btn btn-outline-danger" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
-          <button type="button" class="btn btn-outline-primary" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
+          <button type="button" class="btn btn-soft-success btn-pill" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+          <button type="button" class="btn btn-soft-danger btn-pill" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
+          <button type="button" class="btn btn-soft-primary btn-pill" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
         </div>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
       </div>
     </form>
   </div>
@@ -1102,8 +1145,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Krijo grup</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Krijo grup</button>
       </div>
     </form>
   </div>
@@ -1166,6 +1209,23 @@ function confirmIfCompleted(formEl, groupId){
   return true;
 }
 
+/* Përditëso UI e statusit (badge + alert) */
+function updateStatusUI(gid, isCompleted){
+  const badge = document.querySelector(`.group-badge[data-group="${gid}"]`);
+  if (badge){
+    badge.textContent = isCompleted ? 'I përfunduar' : 'Jo i përfunduar';
+    badge.className = `badge ${isCompleted ? 'text-bg-success' : 'text-bg-danger'} group-badge`;
+  }
+  const alertBox = document.getElementById(`statusAlert_${gid}`);
+  if (alertBox){
+    alertBox.classList.remove('alert-success','alert-danger');
+    alertBox.classList.add(isCompleted ? 'alert-success' : 'alert-danger');
+    alertBox.innerHTML = isCompleted
+      ? `<i class="bi bi-check-circle me-1"></i> Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.`
+      : `<i class="bi bi-x-octagon me-1"></i> Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.`;
+  }
+}
+
 /* AJAX helper */
 async function saveInline(payload, cell, displayEl, oldVal){
   if (!EDIT_MODE) return; // hard stop
@@ -1186,10 +1246,11 @@ async function saveInline(payload, cell, displayEl, oldVal){
       return;
     }
 
-    if (json.badge_text !== undefined && json.badge_class !== undefined) {
-      const badge = document.querySelector(`.group-badge[data-group="${payload.group_id}"]`);
-      if (badge) { badge.textContent = json.badge_text; badge.className = `badge ${json.badge_class} group-badge`; }
-      GROUP_COMPLETED[String(payload.group_id)] = json.is_completed ? 1 : 0;
+    // Nëse serveri kthen statusin e ri të përfundimit
+    if (json.is_completed !== undefined) {
+      const gid = payload.group_id;
+      GROUP_COMPLETED[String(gid)] = json.is_completed ? 1 : 0;
+      updateStatusUI(gid, !!json.is_completed);
     }
 
     if(displayEl && json.display !== undefined){
