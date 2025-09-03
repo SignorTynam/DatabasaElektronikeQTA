@@ -798,3 +798,7 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+ALTER TABLE course_groups
+  ADD COLUMN is_completed TINYINT(1) NOT NULL DEFAULT 0
+  AFTER end_date;

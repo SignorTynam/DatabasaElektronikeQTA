@@ -24,12 +24,16 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
 function nonEmpty(?string $s): bool { return $s !== null && $s !== ''; }
 function fmtDate(?string $v): string {
   if ($v === null || $v === '') return '—';
-  // Përpiqu të lexosh datetime ose date
-  if (preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/', $v)) {
+  // YYYY-MM-DD ose YYYY-MM-DD HH:MM:SS
+  if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
     $ts = strtotime($v);
-    return $ts ? date('d.m.Y H:i', $ts) : h($v);
+    return $ts ? date('d-m-Y', $ts) : htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
   }
-  return h($v);
+  if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $v)) {
+    $ts = strtotime($v);
+    return $ts ? date('d-m-Y H:i', $ts) : htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+  }
+  return htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
 }
 function fmtPlain(?string $v): string {
   if ($v === null || $v === '') return '—';
@@ -65,29 +69,55 @@ $tableLabels = [
 
 $columnLabels = [
   'users' => [
-    'full_name'=>'Emri i plotë','email'=>'Email','role_id'=>'Roli','person_id'=>'Personi',
-    'created_at'=>'Krijuar më'
+    'full_name'   => 'Emri i plotë',
+    'email'       => 'Email',
+    'role_id'     => 'Roli',
+    'person_id'   => 'Personi',
+    'created_at'  => 'Krijuar më',
   ],
   'persons' => [
-    'personal_number'=>'ID personale','first_name'=>'Emri','father_name'=>'Emri i atit',
-    'last_name'=>'Mbiemri','birth_date'=>'Datëlindja','birth_place'=>'Vendlindja',
-    'phone'=>'Telefoni','gender_id'=>'Gjinia'
+    'personal_number' => 'ID personale',
+    'first_name'      => 'Emri',
+    'father_name'     => 'Emri i atit',
+    'last_name'       => 'Mbiemri',
+    'birth_date'      => 'Datëlindja',
+    'birth_place'     => 'Vendlindja',
+    'phone'           => 'Telefoni',
+    'gender_id'       => 'Gjinia',
   ],
   'students' => [
-    'person_id'=>'Personi','user_id'=>'Llogaria','nr_amze'=>'AMZË','education_level_id'=>'Niveli arsimor','created_at'=>'Krijuar më'
+    'person_id'          => 'Personi',
+    'user_id'            => 'Llogaria',
+    'nr_amze'            => 'AMZË',
+    'education_level_id' => 'Niveli arsimor',
+    'created_at'         => 'Krijuar më',
   ],
   'agencies' => [
-    'user_id'=>'Llogaria','nip_t'=>'NIPT','company_name'=>'Emri i kompanisë','address'=>'Adresa','phone'=>'Telefoni'
+    'user_id'      => 'Llogaria',
+    'nip_t'        => 'NIPT',
+    'company_name' => 'Emri i kompanisë',
+    'address'      => 'Adresa',
+    'phone'        => 'Telefoni',
   ],
   'courses' => [
-    'code'=>'Kodi','name'=>'Emri i modulit','hours'=>'Orë mësimore','created_at'=>'Krijuar më'
+    'code'       => 'Kodi',
+    'name'       => 'Emri i modulit',
+    'hours'      => 'Orë mësimore',
+    'created_at' => 'Krijuar më',
   ],
   'course_groups' => [
-    'course_id'=>'Moduli','start_date'=>'Fillon','end_date'=>'Mbaron','exam_date'=>'Data e testit','created_at'=>'Krijuar më'
+    'course_id'    => 'Moduli',
+    'start_date'   => 'Fillon',
+    'end_date'     => 'Mbaron',
+    'is_completed' => 'Përfunduar? (grup)',
+    'created_at'   => 'Krijuar më',
   ],
   'course_group_students' => [
-    'group_id'=>'Grupi','student_id'=>'Studenti','final_score'=>'Nota finale','exam_date'=>'Data testit (student)'
-  ]
+    'group_id'    => 'Grupi',
+    'student_id'  => 'Studenti',
+    'final_score' => 'Nota finale',
+    'exam_date'   => 'Data testit (student)',
+  ],
 ];
 
 /**
@@ -140,10 +170,17 @@ function prettyValue(PDO $pdo, string $table, string $col, ?string $val): string
     case 'exam_date':
     case 'created_at':
       return fmtDate($val);
+
+    case 'is_completed': {
+      $v = strtolower(trim((string)$val));
+      $truthy = ['1','true','t','yes','y','on'];
+      return in_array($v, $truthy, true) ? 'I përfunduar' : 'Jo i përfunduar';
+    }
+
     case 'hours':
     case 'final_score':
-      // numra: ruaj presje dhjetore nëse ka
       return rtrim(rtrim((string)$val, '0'), '.') . (in_array($col, ['hours']) ? ' orë' : '');
+
     case 'role_id':
       return h(lookup($pdo,'role',(int)$val) ?? ('Rol #'.(int)$val));
     case 'gender_id':
@@ -407,7 +444,7 @@ require __DIR__ . '/inc/navbar.php';
                 // Subjekti (p.sh. "Student: AMZË 1234")
                 $subject = subjectFor($pdo, (string)$ev['table_name'], $pk, $tableLabels);
 
-                // Përmbledhje njerëzore e diferencave
+                // Përmbledhje njerëzore e diferencave nga audit_event_fields
                 $diffs = $fields[$eid] ?? [];
                 $humanBits = [];
                 $translated = $columnLabels[$ev['table_name']] ?? [];
@@ -424,6 +461,41 @@ require __DIR__ . '/inc/navbar.php';
                     $humanBits[] = "$label: nga \"$old\" në \"$new\"";
                   }
                 }
+
+                // Fallback: nëse s’ka diff fields (p.sh. kur ndryshohet vetëm is_completed),
+                // provo të nxjerrësh ndryshimet nga JSON-i old_data/new_data.
+                if (!$humanBits) {
+                  $j = $pdo->prepare("SELECT old_data, new_data FROM audit_events WHERE id = ?");
+                  $j->execute([$eid]);
+                  $jd = $j->fetch(PDO::FETCH_ASSOC) ?: [];
+                  $oldJ = json_decode($jd['old_data'] ?? 'null', true) ?: [];
+                  $newJ = json_decode($jd['new_data'] ?? 'null', true) ?: [];
+
+                  if ($oldJ || $newJ) {
+                    $allKeys = array_unique(array_merge(array_keys($oldJ), array_keys($newJ)));
+                    foreach ($allKeys as $k) {
+                      $ov = array_key_exists($k, $oldJ) ? $oldJ[$k] : null;
+                      $nv = array_key_exists($k, $newJ) ? $newJ[$k] : null;
+                      if ($ov === $nv) continue;
+
+                      $label = $translated[$k] ?? ucfirst(str_replace('_',' ',$k));
+                      $ovS = ($ov === null ? null : (string)$ov);
+                      $nvS = ($nv === null ? null : (string)$nv);
+
+                      $oldPretty = prettyValue($pdo, (string)$ev['table_name'], $k, $ovS);
+                      $newPretty = prettyValue($pdo, (string)$ev['table_name'], $k, $nvS);
+
+                      if ($act === 'INSERT') {
+                        $humanBits[] = "$label: $newPretty";
+                      } elseif ($act === 'DELETE') {
+                        $humanBits[] = "$label: $oldPretty";
+                      } else {
+                        $humanBits[] = "$label: nga \"$oldPretty\" në \"$newPretty\"";
+                      }
+                    }
+                  }
+                }
+
                 // Limit shfaqjen e gjatë
                 $summary = $humanBits ? implode('; ', array_slice($humanBits, 0, 4)) . (count($humanBits)>4 ? '…' : '') : '—';
 
