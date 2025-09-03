@@ -9,7 +9,7 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
-/* Guard: vetëm admin i loguar */
+/* Guard: vetëm admin ose editor i loguar */
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit;
@@ -27,6 +27,13 @@ $role = strtolower((string)($me['role_name'] ?? ''));
 if (!$me || !in_array($role, ['administrator','editor'], true)) {
     http_response_code(403);
     echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']); exit;
+}
+
+/* Enforce EDIT MODE */
+$EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
+if (!$EDIT_MODE) {
+    http_response_code(403);
+    echo json_encode(['ok'=>false,'error'=>'Edit Mode është OFF. Aktivizo për të bërë ndryshime.']); exit;
 }
 
 /* Lexo input (JSON ose form) */
@@ -61,7 +68,6 @@ if (!$row) { echo json_encode(['ok'=>false,'error'=>'Studenti nuk u gjet.']); ex
 
 $person_id = (int)$row['person_id'];
 if ($person_id <= 0) { echo json_encode(['ok'=>false,'error'=>'Lidhja me personin mungon.']); exit; }
-
 $user_id = (int)$row['user_id'];
 
 /* Whitelist fushash */
@@ -85,6 +91,14 @@ function qta_make_initial_password(string $first_name, ?string $birth_date): str
     $year  = '0000';
     if ($birth_date && preg_match('/^(\d{4})-/', $birth_date, $m)) { $year = $m[1]; }
     return ($fname === '' ? 'User' : $fname) . '.' . $year;
+}
+
+/* Helper: kthe YYYY-MM-DD -> DD-MM-YYYY për UI */
+function fmt_dMY(?string $iso): string {
+    if (!$iso) return '—';
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
+    $ts = strtotime($iso);
+    return $ts ? date('d-m-Y', $ts) : '—';
 }
 
 $dispValue = null;
@@ -111,25 +125,45 @@ try {
         }
         elseif ($field === 'birth_date') {
             $v = trim((string)$value);
-            if ($v !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
-                throw new RuntimeException('Data duhet në formatin YYYY-MM-DD.');
+
+            // Prano si: yyyy-mm-dd (preferuar nga JS), ose dd-mm-yyyy (nëse vjen direkt)
+            if ($v !== '') {
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                    $iso = $v;
+                } elseif (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $v, $m)) {
+                    $dd = str_pad($m[1],2,'0',STR_PAD_LEFT);
+                    $mm = str_pad($m[2],2,'0',STR_PAD_LEFT);
+                    $yy = $m[3];
+                    $iso = "{$yy}-{$mm}-{$dd}";
+                } else {
+                    throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
+                }
+            } else {
+                $iso = null;
             }
+
             $q = $pdo->prepare("UPDATE persons SET birth_date=:v WHERE id=:pid");
-            $q->execute([':v'=>($v===''?null:$v), ':pid'=>$person_id]);
-            $dispValue = ($v===''?'—':$v);
+            $q->execute([':v'=>$iso, ':pid'=>$person_id]);
+            $dispValue = $iso ? fmt_dMY($iso) : '—';
         }
         elseif ($field === 'personal_number') {
             $v = trim((string)$value);
-            if ($v === '') throw new RuntimeException('Numri Personal është i detyrueshëm.');
-            /* Unike në persons */
-            $c = $pdo->prepare("SELECT COUNT(*) FROM persons WHERE personal_number=:v AND id<>:pid");
-            $c->execute([':v'=>$v, ':pid'=>$person_id]);
-            if ((int)$c->fetchColumn() > 0) {
-                throw new RuntimeException('Numri Personal përdoret nga një person tjetër.');
+            if ($v === '') {
+                // Lejo bosh sipas skemës së re (NULL)
+                $pdo->prepare("UPDATE persons SET personal_number=NULL WHERE id=:pid")
+                    ->execute([':pid'=>$person_id]);
+                $dispValue = '—';
+            } else {
+                /* Unike në persons */
+                $c = $pdo->prepare("SELECT COUNT(*) FROM persons WHERE personal_number=:v AND id<>:pid");
+                $c->execute([':v'=>$v, ':pid'=>$person_id]);
+                if ((int)$c->fetchColumn() > 0) {
+                    throw new RuntimeException('Numri Personal përdoret nga një person tjetër.');
+                }
+                $q = $pdo->prepare("UPDATE persons SET personal_number=:v WHERE id=:pid");
+                $q->execute([':v'=>$v, ':pid'=>$person_id]);
+                $dispValue = $v;
             }
-            $q = $pdo->prepare("UPDATE persons SET personal_number=:v WHERE id=:pid");
-            $q->execute([':v'=>$v, ':pid'=>$person_id]);
-            $dispValue = $v;
         }
         else {
             /* first_name, father_name, last_name, birth_place, phone */
@@ -199,7 +233,6 @@ try {
         $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid,:ph,NOW())")
             ->execute([':uid'=>$user_id, ':ph'=>$hash]);
     }
-
 
     $pdo->commit();
     echo json_encode(['ok'=>true,'display'=>$dispValue]);

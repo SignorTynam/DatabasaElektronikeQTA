@@ -30,6 +30,19 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
 }
 
 /* ------------------------------
+   EDIT MODE toggle (persistohet në session)
+------------------------------- */
+if (isset($_GET['edit'])) {
+    $e = strtolower((string)$_GET['edit']);
+    $_SESSION['edit_mode'] = ($e === 'on');
+    // Heq parametër 'edit' nga URL duke bërë redirect në të njëjtën faqe pa të
+    $qs = $_GET; unset($qs['edit']);
+    $url = 'students.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
+    header("Location: $url"); exit;
+}
+$EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
+
+/* ------------------------------
    CSRF & Flash helpers
 ------------------------------- */
 function flash(string $key, ?string $msg=null) {
@@ -63,7 +76,7 @@ $genders   = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fet
 $maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (int)$g['id']; break; } }
 
 /* ------------------------------
-   AJAX: Autoplotësim sipas Numrit Personal
+   AJAX: Autoplotësim sipas Numrit Personal (opsional)
 ------------------------------- */
 if (($_SERVER['REQUEST_METHOD'] === 'GET') && isset($_GET['action']) && $_GET['action']==='lookup_person') {
     header('Content-Type: application/json; charset=UTF-8');
@@ -90,7 +103,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'GET') && isset($_GET['action']) && $_GET['a
 }
 
 /* ------------------------------
-   Helpers për fjalëkalimin
+   Helpers për fjalëkalimin dhe datën
 ------------------------------- */
 function make_initial_password(string $first_name, ?string $birth_date): string {
     $fname = trim($first_name);
@@ -98,6 +111,12 @@ function make_initial_password(string $first_name, ?string $birth_date): string 
     $year  = '0000';
     if ($birth_date && preg_match('/^(\d{4})-/', $birth_date, $m)) { $year = $m[1]; }
     return ($fname === '' ? 'User' : $fname) . '.' . $year;
+}
+function fmt_dMY(?string $iso): string {
+    if (!$iso) return '—';
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars($iso, ENT_QUOTES, 'UTF-8');
+    $ts = strtotime($iso);
+    return $ts ? date('d-m-Y', $ts) : '—';
 }
 
 /* ------------------------------
@@ -109,20 +128,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($action === 'create_student') {
-            $personal_number   = trim($_POST['personal_number'] ?? '');
-            $nr_amze           = trim($_POST['nr_amze'] ?? '');
-            $first_name        = trim($_POST['first_name'] ?? '');
-            $father_name       = trim($_POST['father_name'] ?? '');
-            $last_name         = trim($_POST['last_name'] ?? '');
-            $birth_date        = trim($_POST['birth_date'] ?? '');
-            $birth_place       = trim($_POST['birth_place'] ?? '');
-            $phone             = trim($_POST['phone'] ?? '');
-            $gender_id         = (int)($_POST['gender_id'] ?? 0);
-            $education_level_id= (int)($_POST['education_level_id'] ?? 0);
+            if (!$EDIT_MODE) { throw new RuntimeException('Edit Mode është OFF. Aktivizo për të kryer ndryshime.'); }
 
-            if ($personal_number === '') {
-                throw new RuntimeException('Numri Personal është i detyrueshëm.');
-            }
+            $personal_number    = trim($_POST['personal_number'] ?? ''); // OPSIONALE
+            $nr_amze            = trim($_POST['nr_amze'] ?? '');
+            $first_name         = trim($_POST['first_name'] ?? '');
+            $father_name        = trim($_POST['father_name'] ?? '');
+            $last_name          = trim($_POST['last_name'] ?? '');
+            $birth_date         = trim($_POST['birth_date'] ?? ''); // nga <input type="date"> → yyyy-mm-dd
+            $birth_place        = trim($_POST['birth_place'] ?? '');
+            $phone              = trim($_POST['phone'] ?? '');
+            $gender_id          = (int)($_POST['gender_id'] ?? 0);
+            $education_level_id = (int)($_POST['education_level_id'] ?? 0);
+
             if ($nr_amze === '') {
                 throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
             }
@@ -135,44 +153,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Nëse gjinia s'është dërguar → default M (nëse ekziston)
             if ($gender_id <= 0 && $maleId) { $gender_id = $maleId; }
 
+            // Valido datëlindjen nëse u dërgua (nga input date)
+            if ($birth_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
+                throw new RuntimeException('Datëlindja duhet në formatin YYYY-MM-DD (input i kontrollës së datës).');
+            }
+
             $pdo->beginTransaction();
 
-            /* 1) PERSON: gjej ose krijo sipas personal_number */
-            $pSel = $pdo->prepare("SELECT id, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id FROM persons WHERE personal_number = :pn LIMIT 1");
-            $pSel->execute([':pn'=>$personal_number]);
-            $person = $pSel->fetch(PDO::FETCH_ASSOC);
+            /* 1) PERSON: sipas personal_number nëse u dha, përndryshe krijo minimal */
+            $personId = 0;
+            $person   = null;
 
-            $personId = (int)($person['id'] ?? 0);
+            if ($personal_number !== '') {
+                $pSel = $pdo->prepare("SELECT id, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id FROM persons WHERE personal_number = :pn LIMIT 1");
+                $pSel->execute([':pn'=>$personal_number]);
+                $person = $pSel->fetch(PDO::FETCH_ASSOC);
+                $personId = (int)($person['id'] ?? 0);
+            }
 
             if ($personId === 0) {
-                // Po krijojmë person të ri → first_name & last_name duhen minimalisht
-                if ($first_name === '' || $last_name === '') {
-                    throw new RuntimeException('Për person të ri, Emri dhe Mbiemri janë të detyrueshëm.');
-                }
-                // Valido datëlindjen nëse u dërgua
-                if ($birth_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
-                    throw new RuntimeException('Datëlindja duhet në formatin YYYY-MM-DD.');
-                }
-
                 $pIns = $pdo->prepare("
                     INSERT INTO persons (personal_number, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id)
                     VALUES (:pn, :fn, :fat, :ln, :bd, :bp, :ph, :gid)
                 ");
                 $pIns->execute([
-                    ':pn'=>$personal_number, ':fn'=>$first_name, ':fat'=>$father_name, ':ln'=>$last_name,
+                    ':pn'=>($personal_number !== '' ? $personal_number : null),
+                    ':fn'=>($first_name !== '' ? $first_name : null),
+                    ':fat'=>($father_name !== '' ? $father_name : null),
+                    ':ln'=>($last_name !== '' ? $last_name : null),
                     ':bd'=>($birth_date !== '' ? $birth_date : null),
                     ':bp'=>($birth_place !== '' ? $birth_place : null),
                     ':ph'=>($phone !== '' ? $phone : null),
-                    ':gid'=>($gender_id > 0 ? $gender_id : null),
+                    ':gid'=>($gender_id > 0 ? $gender_id : $maleId)
                 ]);
                 $personId = (int)$pdo->lastInsertId();
                 $person   = [
-                    'id'=>$personId, 'first_name'=>$first_name, 'father_name'=>$father_name, 'last_name'=>$last_name,
+                    'id'=>$personId, 'first_name'=>$first_name ?: '', 'father_name'=>$father_name ?: '', 'last_name'=>$last_name ?: '',
                     'birth_date'=>($birth_date !== '' ? $birth_date : null), 'birth_place'=>$birth_place ?: null,
-                    'phone'=>$phone ?: null, 'gender_id'=>($gender_id > 0 ? $gender_id : null),
+                    'phone'=>$phone ?: null, 'gender_id'=>($gender_id > 0 ? $gender_id : $maleId),
                 ];
             } else {
-                // Person ekzistues → s’ndryshojmë të detyrueshme; plotëso opsionalisht nëse u dhanë vlera të reja
+                // Person ekzistues → plotëso opsionalisht
                 $pUpd = $pdo->prepare("
                     UPDATE persons SET
                         first_name  = COALESCE(NULLIF(:fn,''), first_name),
@@ -189,9 +210,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':bd'=>$birth_date, ':bp'=>$birth_place, ':ph'=>$phone,
                     ':gid'=>($gender_id > 0 ? $gender_id : null), ':pid'=>$personId
                 ]);
-                // rifresko array-in local
-                $pSel->execute([':pn'=>$personal_number]);
-                $person = $pSel->fetch(PDO::FETCH_ASSOC);
+                $pSel2 = $pdo->prepare("SELECT id, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id FROM persons WHERE id=:pid");
+                $pSel2->execute([':pid'=>$personId]);
+                $person = $pSel2->fetch(PDO::FETCH_ASSOC);
             }
 
             /* 2) USER për këtë person me rol student: gjej ose krijo */
@@ -202,24 +223,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $full = trim(($person['first_name'] ?? '').' '.(($person['father_name'] ?? '') ? ($person['father_name'].' ') : '').($person['last_name'] ?? ''));
 
             if ($userId === 0) {
-                // Krijo user të ri
                 $uIns = $pdo->prepare("INSERT INTO users (role_id, person_id, full_name, email) VALUES (:rid, :pid, :fn, NULL)");
-                $uIns->execute([':rid'=>$studentRoleId, ':pid'=>$personId, ':fn'=>$full]);
+                $uIns->execute([':rid'=>$studentRoleId, ':pid'=>$personId, ':fn'=>$full !== '' ? $full : null]);
                 $userId = (int)$pdo->lastInsertId();
 
-                // Gjenero fjalëkalimin fillestar [Emri].[VitiLindjes]
                 $initialPassword = make_initial_password($person['first_name'] ?? $first_name, $person['birth_date'] ?? $birth_date);
                 $hash = password_hash($initialPassword, PASSWORD_BCRYPT);
 
                 $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid, :ph, NOW())")
                     ->execute([':uid'=>$userId, ':ph'=>$hash]);
             } else {
-                // User ekzistues → NUK ndryshojmë fjalëkalimin (ruaj të njëjtin sipas kërkesës)
-                // Vetëm rifresko full_name nëse kemi info më të pasur
                 $pdo->prepare("UPDATE users SET full_name=:fn WHERE id=:uid")
-                    ->execute([':fn'=>$full, ':uid'=>$userId]);
+                    ->execute([':fn'=>($full !== '' ? $full : null), ':uid'=>$userId]);
 
-                // Nëse mungon rreshti në credentials (rrallë), e krijojmë me rregullin e njëjtë
                 $cSel = $pdo->prepare("SELECT 1 FROM credentials WHERE user_id=:uid");
                 $cSel->execute([':uid'=>$userId]);
                 if (!$cSel->fetchColumn()) {
@@ -230,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            /* 3) STUDENT – nr_amze unik, por lejo shumë rreshta për të njëjtin person */
+            /* 3) STUDENT – nr_amze unik */
             $insStud = $pdo->prepare("
                 INSERT INTO students (person_id, user_id, nr_amze, education_level_id)
                 VALUES (:pid, :uid, :amz, :edu)
@@ -350,9 +366,18 @@ $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
+/* Navbars */
 $NAV_ACTIVE = 'students';
 if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
 elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
+
+/* Build toggle URL që ruan q/edu/page */
+$toggleUrl = 'students.php?' . http_build_query(array_filter([
+    'q' => ($q !== '' ? $q : null),
+    'edu' => ($edu !== '' ? $edu : null),
+    'page' => ($page > 1 ? $page : null),
+    'edit' => ($EDIT_MODE ? 'off' : 'on')
+]));
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -394,15 +419,28 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
         .cell-err { animation: flashErr 1.2s ease; }
         @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
         .inline-select { min-width: 160px; }
+
+        /* Edit Mode OFF visuals */
+        .editing-off .editable { color:#6b7280; cursor:not-allowed; }
+        .editing-off td.cell .inline-select:disabled { background:#f3f4f6; color:#6b7280; cursor:not-allowed; }
+        .badge-edit { letter-spacing:.2px; }
     </style>
 </head>
-<body>
+<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Studentët</h2>
         <div class="d-flex align-items-center gap-2">
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+            <!-- Edit Mode Toggle -->
+            <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>"
+               href="<?= htmlspecialchars($toggleUrl) ?>">
+               <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
+               Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?> badge-edit"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+            </a>
+
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal"
+                    <?= $EDIT_MODE ? '' : 'disabled' ?> title="<?= $EDIT_MODE ? '' : 'Aktivizo Edit Mode për të shtuar' ?>">
                 <i class="bi bi-person-plus me-1"></i> Shto Student
             </button>
         </div>
@@ -488,35 +526,35 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
                             <tr>
                                 <!-- nr_amze -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="nr_amze">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['nr_amze']) ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['nr_amze']) ?></span>
                                 </td>
                                 <!-- first_name -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="first_name">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['first_name'] ?: '—') ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['first_name'] ?: '—') ?></span>
                                 </td>
                                 <!-- father_name -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="father_name">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['father_name'] ?: '—') ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['father_name'] ?: '—') ?></span>
                                 </td>
                                 <!-- last_name -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="last_name">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['last_name'] ?: '—') ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['last_name'] ?: '—') ?></span>
                                 </td>
                                 <!-- personal_number -->
                                 <td class="cell nowrap" data-id="<?= $sid ?>" data-field="personal_number">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['personal_number'] ?: '—') ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['personal_number'] ?: '—') ?></span>
                                 </td>
-                                <!-- birth_date -->
-                                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="YYYY-MM-DD">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['birth_date'] ?: '—') ?></span>
+                                <!-- birth_date (display dd-mm-yyyy) -->
+                                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="DD-MM-YYYY">
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($s['birth_date'])) ?></span>
                                 </td>
                                 <!-- birth_place -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="birth_place">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['birth_place'] ?: '—') ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['birth_place'] ?: '—') ?></span>
                                 </td>
                                 <!-- education_level_id -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="education_level_id">
-                                    <select class="form-select form-select-sm inline-select">
+                                    <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
                                         <option value="">— Zgjidh —</option>
                                         <?php foreach ($eduLevels as $el): ?>
                                             <option value="<?= (int)$el['id'] ?>" <?= ((int)$s['edu_id'] === (int)$el['id']) ? 'selected' : '' ?>>
@@ -527,7 +565,7 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
                                 </td>
                                 <!-- gender_id -->
                                 <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
-                                  <select class="form-select form-select-sm inline-select">
+                                  <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
                                     <?php foreach ($genders as $g): ?>
                                       <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
                                         <?= htmlspecialchars($g['label']) ?>
@@ -537,7 +575,7 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
                                 </td>
                                 <!-- phone -->
                                 <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($s['phone'] ?: '—') ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['phone'] ?: '—') ?></span>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -599,8 +637,8 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
       <div class="modal-body">
         <div class="row g-3">
             <div class="col-md-4">
-                <label class="form-label">Numri Personal *</label>
-                <input type="text" name="personal_number" id="pnInput" class="form-control" required placeholder="Shkruaj fillimisht këtu">
+                <label class="form-label">Numri Personal <span class="text-muted">(opsional)</span></label>
+                <input type="text" name="personal_number" id="pnInput" class="form-control" placeholder="Opsional — për autoplotësim">
                 <div class="form-text">Nëse ekziston, të dhënat e tjera do të plotësohen automatikisht.</div>
             </div>
             <div class="col-md-4">
@@ -618,16 +656,16 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
             </div>
 
             <div class="col-md-4">
-                <label class="form-label">Emri <?=/* detyrueshëm vetëm për person të ri */''?></label>
-                <input type="text" name="first_name" id="fnInput" class="form-control" placeholder="Detyrueshëm nëse person i ri">
+                <label class="form-label">Emri <span class="text-muted">(opsional)</span></label>
+                <input type="text" name="first_name" id="fnInput" class="form-control" placeholder="Opsional">
             </div>
             <div class="col-md-4">
                 <label class="form-label">Atësia</label>
                 <input type="text" name="father_name" id="fatInput" class="form-control">
             </div>
             <div class="col-md-4">
-                <label class="form-label">Mbiemri <?=/* detyrueshëm vetëm për person të ri */''?></label>
-                <input type="text" name="last_name" id="lnInput" class="form-control" placeholder="Detyrueshëm nëse person i ri">
+                <label class="form-label">Mbiemri <span class="text-muted">(opsional)</span></label>
+                <input type="text" name="last_name" id="lnInput" class="form-control" placeholder="Opsional">
             </div>
 
             <div class="col-md-4">
@@ -656,13 +694,13 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
             </div>
         </div>
         <div class="form-text mt-2">
-            Krijohet/ri-përdoret <code>users</code> + <code>credentials</code> për personin (password auto).  
-            Mund të kesh shumë rreshta në <code>students</code> me të njëjtin Numër Personal, por <strong>AMZË</strong> duhet të jetë <strong>unik</strong>.
+            Mund të krijosh student vetëm me <strong>Nr. Amzës</strong>. Fusha të tjera janë opsionale.
+            Krijohet/ri-përdoret <code>users</code> + <code>credentials</code> (password auto).
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Shto student</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Shto student</button>
       </div>
     </form>
   </div>
@@ -673,6 +711,7 @@ elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'students_inline_update.php';
+const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
 /* Helper: trim & normalizim “—” */
 function cleanText(s) {
@@ -680,8 +719,29 @@ function cleanText(s) {
   return (v === '—' ? '' : v);
 }
 
+/* Parse dhe normalizo vlerën e datës për server-in (YYYY-MM-DD) */
+function normalizeDateForServer(str) {
+  const v = (str || '').trim();
+  if (v === '' || v === '—') return '';
+  // dd-mm-yyyy
+  let m = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) {
+    const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yy = m[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+  // yyyy-mm-dd (lejo edhe input të tillë)
+  m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    const yy = m[1], mm = m[2].padStart(2,'0'), dd = m[3].padStart(2,'0');
+    return `${yy}-${mm}-${dd}`;
+  }
+  // forma të tjera: mos e prano
+  throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+}
+
 /* Ruajtje AJAX për inline */
 async function saveInline(studentId, field, value, cell, displayEl) {
+  if (!EDIT_MODE) return; // hard stop në UI
   try {
     cell.classList.add('cell-saving');
     const res = await fetch(ENDPOINT, {
@@ -700,6 +760,7 @@ async function saveInline(studentId, field, value, cell, displayEl) {
     setTimeout(()=>cell.classList.remove('cell-ok'), 800);
   } catch (e) {
     console.error(e);
+    alert(e.message || e); // feedback
     cell.classList.remove('cell-saving');
     cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
@@ -709,6 +770,11 @@ async function saveInline(studentId, field, value, cell, displayEl) {
 /* Event për contenteditable (blur & Enter) */
 document.querySelectorAll('td.cell .editable').forEach(el => {
   let oldVal = el.textContent;
+  // Në Edit Mode OFF → mos lejo fokusim/redaktim
+  if (!EDIT_MODE) {
+    el.setAttribute('contenteditable', 'false');
+  }
+
   el.addEventListener('focus', () => { oldVal = el.textContent; });
   el.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
@@ -717,18 +783,31 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
     }
   });
   el.addEventListener('blur', () => {
+    if (!EDIT_MODE) return;
     const cell = el.closest('td.cell');
     const field = cell.dataset.field;
     const sid = parseInt(cell.dataset.id, 10);
-    const newVal = cleanText(el.textContent);
+    let newVal = cleanText(el.textContent);
     if (newVal === cleanText(oldVal)) return;
+
+    if (field === 'birth_date') {
+      try { newVal = normalizeDateForServer(newVal); }
+      catch (err) {
+        // rivendos vlerën e vjetër vizuale
+        el.textContent = oldVal;
+        alert(err.message || err);
+        return;
+      }
+    }
     saveInline(sid, field, newVal, cell, el);
   });
 });
 
 /* Event për select (education_level_id, gender_id) */
 document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
+  if (!EDIT_MODE) { sel.setAttribute('disabled', 'disabled'); }
   sel.addEventListener('change', () => {
+    if (!EDIT_MODE) return;
     const cell  = sel.closest('td.cell');
     const sid   = parseInt(cell.dataset.id, 10);
     const field = cell.dataset.field;
@@ -738,7 +817,7 @@ document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
 });
 
 /* ------------------------------
-   Autoplotësim nga Numri Personal
+   Autoplotësim nga Numri Personal në MODAL
 ------------------------------- */
 const pnInput = document.getElementById('pnInput');
 pnInput?.addEventListener('blur', async ()=>{
@@ -757,7 +836,7 @@ pnInput?.addEventListener('blur', async ()=>{
       document.getElementById('fnInput').value  = p.first_name ?? '';
       document.getElementById('fatInput').value = p.father_name ?? '';
       document.getElementById('lnInput').value  = p.last_name ?? '';
-      document.getElementById('bdInput').value  = p.birth_date ?? '';
+      document.getElementById('bdInput').value  = p.birth_date ?? ''; // input type=date pret yyyy-mm-dd
       document.getElementById('bpInput').value  = p.birth_place ?? '';
       document.getElementById('phInput').value  = p.phone ?? '';
 
