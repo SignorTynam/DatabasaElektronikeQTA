@@ -8,7 +8,6 @@
 -- =========================================================
 CREATE DATABASE IF NOT EXISTS qta_db
   CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE qta_db;
 
 -- Rekomandim: mënyra strikte
 SET sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION';
@@ -377,8 +376,6 @@ DELIMITER ;
 
 INSERT INTO roles (name) VALUES ('editor')
 ON DUPLICATE KEY UPDATE name = VALUES(name);
-
-USE qta_db;
 
 -- =========================================
 --  AUDIT TABLES (MariaDB-compatible)
