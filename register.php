@@ -22,26 +22,46 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
   header('Location: selectProfile.php'); exit;
 }
 
+/* ------------------------------
+   EDIT MODE toggle (persistohet në session)
+------------------------------- */
+if (isset($_GET['edit'])) {
+  $e = strtolower((string)$_GET['edit']);
+  $_SESSION['edit_mode'] = ($e === 'on');
+  // hiq param 'edit' nga URL
+  $qs = $_GET; unset($qs['edit']);
+  $url = 'register.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
+  header("Location: $url"); exit;
+}
+$EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
+
 /* Navbar sipas rolit (opsionale) */
 $NAV_ACTIVE = 'register';
-if ($role === 'editor') {
-  require __DIR__ . '/inc/navbar4.php';   // navbar i editorit
-} else {
-  require __DIR__ . '/inc/navbar.php';    // navbar i administratorit
-}
+if ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
+else require __DIR__ . '/inc/navbar.php';
 
 /* CSRF */
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
 $CSRF = $_SESSION['csrf_token'];
 
-/* Kërkim */
-$q = trim($_GET['q'] ?? '');
-$page   = max(1, (int)($_GET['page'] ?? 1));
-$limit  = 20;
-$offset = ($page - 1) * $limit;
+/* Helper: formatim datash për shfaqje (dd-mm-yyyy) */
+function fmt_dMY(?string $iso): string {
+  if (!$iso) return '—';
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars($iso, ENT_QUOTES, 'UTF-8');
+  $ts = strtotime($iso);
+  return $ts ? date('d-m-Y', $ts) : '—';
+}
 
-$where = ["1=1"];
+/* Kërkim dhe filtrat */
+$q          = trim($_GET['q'] ?? '');
+$from_amze  = trim($_GET['from_amze'] ?? ''); // Fillo nga ky nr AMZË
+$page       = max(1, (int)($_GET['page'] ?? 1));
+$limit      = 20;
+$offset     = ($page - 1) * $limit;
+
+$where  = ["1=1"];
 $params = [];
+
 if ($q !== '') {
   $where[] = "(s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2 OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
   $params[':kw']  = '%'.$q.'%';
@@ -50,6 +70,19 @@ if ($q !== '') {
   $params[':kw4'] = '%'.$q.'%';
   $params[':kw5'] = '%'.$q.'%';
 }
+
+/* Filtro nga nr_amze (nga ai e deri në fund) */
+if ($from_amze !== '') {
+  if (ctype_digit($from_amze)) {
+    $where[] = "CAST(s.nr_amze AS UNSIGNED) >= :from_num";
+    $params[':from_num'] = (int)$from_amze;
+  } else {
+    // fallback leksikografik nëse ka shkronja
+    $where[] = "s.nr_amze >= :from_str";
+    $params[':from_str'] = $from_amze;
+  }
+}
+
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
 /* Subquery: grupi i fundit për çdo student */
@@ -103,11 +136,21 @@ $list = $pdo->prepare("
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT :lim OFFSET :off
 ");
-foreach ($params as $k=>$v) $list->bindValue($k,$v,PDO::PARAM_STR);
+foreach ($params as $k=>$v) {
+  $list->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+}
 $list->bindValue(':lim',$limit,PDO::PARAM_INT);
 $list->bindValue(':off',$offset,PDO::PARAM_INT);
 $list->execute();
 $rows = $list->fetchAll(PDO::FETCH_ASSOC);
+
+/* Build toggle URL që ruan parametrat aktualë */
+$toggleUrl = 'register.php?' . http_build_query(array_filter([
+  'q' => ($q !== '' ? $q : null),
+  'from_amze' => ($from_amze !== '' ? $from_amze : null),
+  'page' => ($page > 1 ? $page : null),
+  'edit' => ($EDIT_MODE ? 'off' : 'on'),
+]));
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -135,23 +178,37 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
     @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
     .cell-ok { animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
     .cell-err { animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
+
+    /* Edit Mode OFF visuals */
+    .editing-off .editable { color:#6b7280; cursor:not-allowed; }
   </style>
 </head>
-<body>
+<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Regjistri i studentëve</h2>
-    <form class="d-flex" method="get" action="register.php">
-      <div class="input-group">
-        <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-        <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZËS/ID/Emrit...">
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <form class="d-flex flex-wrap gap-2" method="get" action="register.php">
+        <div class="input-group">
+          <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
+          <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZËS/ID/Emrit...">
+          <span class="input-group-text bg-light border-0">Fillo nga AMZË</span>
+          <input type="text" name="from_amze" value="<?= htmlspecialchars($from_amze) ?>" class="form-control border-0" placeholder="p.sh. 1050">
+        </div>
+        <div class="input-group">
+        </div>
         <button class="btn btn-outline-secondary" type="button" onclick="window.location='register.php'">
           <i class="bi bi-x-circle me-1"></i>Pastro
         </button>
         <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-      </div>
-    </form>
+        <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>">
+          <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
+          Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+        </a>
+      </form>
+    </div>
   </div>
 
   <div id="msgBox" class="mb-3" style="display:none;"></div>
@@ -162,9 +219,9 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
       <div class="d-flex align-items-center gap-2">
         <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
         <div class="btn-group" role="group">
-          <a class="btn btn-outline-success" href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-excel me-1"></i> Excel</a>
-          <a class="btn btn-outline-danger" href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</a>
-          <a class="btn btn-outline-primary" href="register_export.php?f=docx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-word me-1"></i> Word</a>
+          <a class="btn btn-outline-success" href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-excel me-1"></i> Excel</a>
+          <a class="btn btn-outline-danger" href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</a>
+          <a class="btn btn-outline-primary" href="register_export.php?f=docx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-word me-1"></i> Word</a>
         </div>
       </div>
     </div>
@@ -200,26 +257,26 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
 
               <!-- start_date (inline grup) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="start_date"
-                  title="YYYY-MM-DD">
-                <span class="editable" contenteditable="true"><?= htmlspecialchars($r['start_date'] ?: '—') ?></span>
+                  title="DD-MM-YYYY">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['start_date'])) ?></span>
               </td>
 
               <!-- end_date (inline grup) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="end_date"
-                  title="YYYY-MM-DD (≥ data e fillimit)">
-                <span class="editable" contenteditable="true"><?= htmlspecialchars($r['end_date'] ?: '—') ?></span>
+                  title="DD-MM-YYYY (≥ data e fillimit)">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['end_date'])) ?></span>
               </td>
 
               <!-- exam_date (inline student) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date"
-                  title="YYYY-MM-DD (≥ data e mbarimit të grupit)">
-                <span class="editable" contenteditable="true"><?= htmlspecialchars($r['exam_date'] ?: '—') ?></span>
+                  title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?></span>
               </td>
 
               <!-- final_score (inline student) -->
               <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score"
                   title="0–100 (me presje ose pikë)">
-                <span class="editable" contenteditable="true">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
                   <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
                 </span>
               </td>
@@ -240,7 +297,10 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
         <nav aria-label="Page navigation">
           <ul class="pagination mb-0 justify-content-end">
             <?php
-              $base='register.php?'.http_build_query(array_filter(['q'=>$q!==''?$q:null]));
+              $base='register.php?'.http_build_query(array_filter([
+                'q'=>$q!==''?$q:null,
+                'from_amze'=>$from_amze!==''?$from_amze:null,
+              ]));
               $prev=max(1,$page-1); $next=min($totalPages,$page+1);
               $sep = (str_contains($base,'?')?'&':'?');
             ?>
@@ -264,6 +324,7 @@ $rows = $list->fetchAll(PDO::FETCH_ASSOC);
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'register_inline_update.php';
+const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 function showMsg(type, text){
@@ -276,7 +337,25 @@ function showMsg(type, text){
   box.style.display = '';
 }
 
+/* Konverto dd-mm-yyyy / yyyy-mm-dd -> yyyy-mm-dd (për server) */
+function normalizeDateForServer(v){
+  const s = clean(v);
+  if (s === '' || s === '—') return '';
+  let m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/); // dd-mm-yyyy
+  if (m){
+    const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yy = m[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // yyyy-mm-dd
+  if (m){
+    const yy = m[1], mm = m[2].padStart(2,'0'), dd = m[3].padStart(2,'0');
+    return `${yy}-${mm}-${dd}`;
+  }
+  throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+}
+
 async function saveInline(payload, cell, displayEl, oldVal){
+  if (!EDIT_MODE) return; // hard stop
   try{
     cell.classList.add('cell-saving');
     const res = await fetch(ENDPOINT, {
@@ -310,22 +389,29 @@ async function saveInline(payload, cell, displayEl, oldVal){
 /* inline handlers */
 document.querySelectorAll('td.cell .editable').forEach(el=>{
   let oldVal = el.textContent;
+
+  if (!EDIT_MODE) el.setAttribute('contenteditable','false');
+
   el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
   el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
   el.addEventListener('blur', ()=>{
+    if (!EDIT_MODE) return;
+
     const cell = el.closest('td.cell');
     const field = cell.dataset.field;
     const studentId = parseInt(cell.dataset.student,10);
     const groupId = parseInt(cell.dataset.group,10) || null;
-    const newVal = clean(el.textContent);
+    let newVal = clean(el.textContent);
 
     if(newVal===clean(oldVal)) return;
 
     if(['start_date','end_date','exam_date'].includes(field)){
-      if(newVal!=='' && !/^\d{4}-\d{2}-\d{2}$/.test(newVal)){
+      try {
+        newVal = normalizeDateForServer(newVal); // -> yyyy-mm-dd ose '' (=> null)
+      } catch(err){
         el.textContent = oldVal;
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
-        showMsg('danger','Data duhet në formatin YYYY-MM-DD.');
+        showMsg('danger', err.message || err);
         return;
       }
     }

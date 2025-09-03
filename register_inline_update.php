@@ -30,6 +30,13 @@ if (!$me || !in_array($role, ['administrator','editor'], true)) {
   echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']); exit;
 }
 
+/* Enforce EDIT MODE */
+$EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
+if (!$EDIT_MODE) {
+  http_response_code(403);
+  echo json_encode(['ok'=>false,'error'=>'Edit Mode është OFF. Aktivizo për të bërë ndryshime.']); exit;
+}
+
 /* Input */
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw,true);
@@ -50,7 +57,30 @@ if ($student_id<=0) {
   echo json_encode(['ok'=>false,'error'=>'ID studenti e pavlefshme.']); exit;
 }
 
-/* Gjej grupin target (më i fundit nëse s’është dhënë apo është 0) */
+/* Helper: shfaq dd-mm-yyyy */
+function fmt_dMY(?string $iso): string {
+  if (!$iso) return '—';
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
+  $ts = strtotime($iso);
+  return $ts ? date('d-m-Y', $ts) : '—';
+}
+/* Helper: prano dd-mm-yyyy ose yyyy-mm-dd dhe kthe në yyyy-mm-dd */
+function to_iso_date(?string $v): ?string {
+  if ($v === null) return null;
+  $v = trim((string)$v);
+  if ($v === '') return null;
+  if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $v, $m)) {
+    $yy=$m[1]; $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $dd=str_pad($m[3],2,'0',STR_PAD_LEFT);
+    return "{$yy}-{$mm}-{$dd}";
+  }
+  if (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $v, $m)) {
+    $dd=str_pad($m[1],2,'0',STR_PAD_LEFT); $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $yy=$m[3];
+    return "{$yy}-{$mm}-{$dd}";
+  }
+  throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
+}
+
+/* Gjej grupin target (më i fundit nëse s’është dhënë) */
 if ($group_id <= 0) {
   $gq = $pdo->prepare("
     SELECT cgs.group_id
@@ -85,26 +115,26 @@ if(!$G){
 try {
   /* ================== START DATE I GRUPIT ================== */
   if ($action==='update_group_start') {
-    $start = $data['start_date'] ?? null;
-    if ($start === '' || $start === null) { throw new RuntimeException('Data e fillimit s’mund të jetë bosh.'); }
-    $start = trim((string)$start);
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/',$start)) throw new RuntimeException('Formati i datës së fillimit është i pavlefshëm (YYYY-MM-DD).');
-    if (!empty($G['end_date']) && $G['end_date'] < $start) { throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.'); }
+    $start = to_iso_date($data['start_date'] ?? null);
+    if ($start === null) throw new RuntimeException('Data e fillimit s’mund të jetë bosh.');
+    if (!empty($G['end_date']) && $G['end_date'] < $start) {
+      throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
+    }
 
     $st = $pdo->prepare("UPDATE course_groups SET start_date=:s WHERE id=:gid");
     $st->execute([':s'=>$start, ':gid'=>$group_id]);
-    echo json_encode(['ok'=>true,'display'=>$start]); exit;
+    echo json_encode(['ok'=>true,'display'=>fmt_dMY($start)]); exit;
   }
 
   /* ================== END DATE I GRUPIT ================== */
   if ($action==='update_group_end') {
-    $end = $data['end_date'] ?? null;
-    if ($end === '' || $end === null) { throw new RuntimeException('Data e mbarimit s’mund të jetë bosh.'); }
-    $end = trim((string)$end);
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/',$end)) throw new RuntimeException('Formati i datës së mbarimit është i pavlefshëm (YYYY-MM-DD).');
+    $end = to_iso_date($data['end_date'] ?? null);
+    if ($end === null) throw new RuntimeException('Data e mbarimit s’mund të jetë bosh.');
 
     $start = $G['start_date'];
-    if (!empty($start) && $end < $start) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
+    if (!empty($start) && $end < $start) {
+      throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
+    }
 
     // Guard: asnjë student të mos ketë exam_date < end_date e re (exam per-student)
     $q = $pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE group_id=:g AND exam_date IS NOT NULL AND exam_date < :e");
@@ -115,7 +145,7 @@ try {
 
     $st = $pdo->prepare("UPDATE course_groups SET end_date=:e WHERE id=:gid");
     $st->execute([':e'=>$end, ':gid'=>$group_id]);
-    echo json_encode(['ok'=>true,'display'=>$end]); exit;
+    echo json_encode(['ok'=>true,'display'=>fmt_dMY($end)]); exit;
   }
 
   /* ================== EXAM DATE PER-STUDENT ================== */
@@ -128,17 +158,14 @@ try {
       echo json_encode(['ok'=>true,'display'=>'—']); exit;
     }
 
-    $exam = trim((string)$exam);
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/',$exam)) {
-      throw new RuntimeException('Formati i datës së testit është i pavlefshëm (YYYY-MM-DD).');
-    }
-    if (!empty($G['end_date']) && $exam < $G['end_date']) {
+    $iso = to_iso_date($exam);
+    if (!empty($G['end_date']) && $iso < $G['end_date']) {
       throw new RuntimeException('Data e testit duhet të jetë ≥ datës së mbarimit të grupit.');
     }
 
     $st = $pdo->prepare("UPDATE course_group_students SET exam_date=:d WHERE group_id=:g AND student_id=:s");
-    $st->execute([':d'=>$exam, ':g'=>$group_id, ':s'=>$student_id]);
-    echo json_encode(['ok'=>true,'display'=>$exam]); exit;
+    $st->execute([':d'=>$iso, ':g'=>$group_id, ':s'=>$student_id]);
+    echo json_encode(['ok'=>true,'display'=>fmt_dMY($iso)]); exit;
   }
 
   /* ================== NOTA PER-STUDENT ================== */
