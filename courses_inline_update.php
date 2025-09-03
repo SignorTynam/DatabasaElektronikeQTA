@@ -9,7 +9,7 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
-/* Guard: vetëm admin i loguar */
+/* Guard: vetëm admin ose editor i loguar */
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit;
@@ -23,11 +23,16 @@ $userStmt = $pdo->prepare("
 $userStmt->execute([':uid'=>$_SESSION['user_id']]);
 $me = $userStmt->fetch();
 
-// brenda courses_inline_update.php
-$meRole = strtolower((string)$me['role_name'] ?? '');
+$meRole = strtolower((string)($me['role_name'] ?? ''));
 if (!in_array($meRole, ['administrator','editor'], true)) {
   http_response_code(403);
   echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']); exit;
+}
+
+/* Guard: Edit Mode duhet të jetë ON */
+if (empty($_SESSION['courses_edit_mode'])) {
+    http_response_code(403);
+    echo json_encode(['ok'=>false,'error'=>'Aktivizo mënyrën e redaktimit.']); exit;
 }
 
 /* Lexo input (JSON ose form) */
@@ -66,7 +71,6 @@ try {
     if ($field === 'code') {
         $v = trim((string)$value);
         if ($v === '') throw new RuntimeException('Kodi është i detyrueshëm.');
-        // unik
         $q = $pdo->prepare("SELECT COUNT(*) FROM courses WHERE code=:v AND id<>:id");
         $q->execute([':v'=>$v, ':id'=>$course_id]);
         if ((int)$q->fetchColumn() > 0) throw new RuntimeException('Ky kod kursi përdoret nga modul tjetër.');

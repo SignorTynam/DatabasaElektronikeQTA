@@ -7,6 +7,19 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
+/* -------------------------------------------------
+   Toggle: Edit Mode (ruhet në session)
+-------------------------------------------------- */
+if (isset($_GET['edit'])) {
+    $_SESSION['courses_edit_mode'] = ($_GET['edit'] === '1');
+    // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
+    $qs = $_GET; unset($qs['edit']);
+    $redir = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
+    header('Location: ' . $redir);
+    exit;
+}
+$EDIT_MODE = !empty($_SESSION['courses_edit_mode']);
+
 /* ------------------------------
    Guard: admin OSE editor i loguar
 ------------------------------- */
@@ -52,7 +65,6 @@ $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
    POST: Shto / Fshi kurs
-   (Lejuar si për admin, ashtu edhe për editor)
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -60,6 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'create_course') {
         try {
+            if (!$EDIT_MODE) { throw new RuntimeException('Aktivizo mënyrën e redaktimit për të shtuar module.'); }
+
             $code  = trim($_POST['code'] ?? '');
             $name  = trim($_POST['name'] ?? '');
             $hours = trim($_POST['hours'] ?? '');
@@ -89,6 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete_course') {
         try {
+            if (!$EDIT_MODE) { throw new RuntimeException('Aktivizo mënyrën e redaktimit për të fshirë module.'); }
+
             $course_id = (int)($_POST['course_id'] ?? 0);
             if ($course_id <= 0) throw new RuntimeException('Kurs i pavlefshëm.');
 
@@ -174,8 +190,10 @@ $NAV_ACTIVE = 'courses';
           display:inline-block; min-width:72px; padding:.35rem .5rem;
           border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
         }
-        .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
-        .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
+        .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .editable[contenteditable="false"] { opacity:.7; cursor:default; }
+
         .cell-saving { position:relative; }
         .cell-saving::after {
           content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
@@ -203,8 +221,20 @@ $NAV_ACTIVE = 'courses';
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Modulet</h2>
-        <div class="d-flex align-items-center gap-2">
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCourseModal">
+        <div class="d-flex align-items-center gap-3">
+            <!-- Edit Mode switch -->
+            <?php
+                // Build toggle URL (preserve query params except 'edit')
+                $qs = $_GET;
+                $qs['edit'] = $EDIT_MODE ? '0' : '1';
+                $toggleUrl = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
+            ?>
+            <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>">
+                <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
+                Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+            </a>
+
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCourseModal" <?= $EDIT_MODE?'':'disabled' ?>>
                 <i class="bi bi-bookmark-plus me-1"></i> Shto Modul
             </button>
         </div>
@@ -220,6 +250,13 @@ $NAV_ACTIVE = 'courses';
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
             <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($err) ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!$EDIT_MODE): ?>
+        <div class="alert alert-secondary py-2">
+            <i class="bi bi-info-circle me-1"></i>
+            Aktivizo <strong>Mënyrën e redaktimit</strong> për të ndryshuar qelizat, për të shtuar ose fshirë module.
         </div>
     <?php endif; ?>
 
@@ -270,13 +307,13 @@ $NAV_ACTIVE = 'courses';
                         <?php foreach ($courses as $c): $cid=(int)$c['course_id']; ?>
                             <tr>
                                 <td class="cell" data-id="<?= $cid ?>" data-field="code">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($c['code']) ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= htmlspecialchars($c['code']) ?></span>
                                 </td>
                                 <td class="cell" data-id="<?= $cid ?>" data-field="name">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($c['name']) ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= htmlspecialchars($c['name']) ?></span>
                                 </td>
                                 <td class="cell nowrap" data-id="<?= $cid ?>" data-field="hours" title="Numër i plotë ≥ 1">
-                                    <span class="editable" contenteditable="true"><?= (int)$c['hours'] ?></span>
+                                    <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= (int)$c['hours'] ?></span>
                                 </td>
                                 <td class="text-muted small nowrap"><?= htmlspecialchars($c['created_at']) ?></td>
                                 <td class="text-end">
@@ -288,6 +325,8 @@ $NAV_ACTIVE = 'courses';
                                         data-course-id="<?= $cid ?>"
                                         data-course-code="<?= htmlspecialchars($c['code'], ENT_QUOTES) ?>"
                                         data-course-name="<?= htmlspecialchars($c['name'], ENT_QUOTES) ?>"
+                                        <?= $EDIT_MODE?'':'disabled' ?>
+                                        title="<?= $EDIT_MODE?'Fshi këtë modul':'Aktivizo Edit Mode për të fshirë' ?>"
                                     >
                                         <i class="bi bi-trash me-1"></i> Fshi
                                     </button>
@@ -349,15 +388,15 @@ $NAV_ACTIVE = 'courses';
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">Kod *</label>
-                <input type="text" name="code" class="form-control" placeholder="p.sh. QTA-ALGO" required>
+                <input type="text" name="code" class="form-control" placeholder="p.sh. QTA-ALGO" <?= $EDIT_MODE?'required':'disabled' ?>>
             </div>
             <div class="col-md-5">
                 <label class="form-label">Emër *</label>
-                <input type="text" name="name" class="form-control" placeholder="p.sh. Algoritme" required>
+                <input type="text" name="name" class="form-control" placeholder="p.sh. Algoritme" <?= $EDIT_MODE?'required':'disabled' ?>>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Orë *</label>
-                <input type="number" name="hours" class="form-control" min="1" step="1" placeholder="p.sh. 30" required>
+                <input type="number" name="hours" class="form-control" min="1" step="1" placeholder="p.sh. 30" <?= $EDIT_MODE?'required':'disabled' ?>>
             </div>
         </div>
         <div class="form-text mt-2">
@@ -366,25 +405,23 @@ $NAV_ACTIVE = 'courses';
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Shto modul</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Shto modul</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- MODAL: Fshi modul (i ripërdorshëm, JASHTË tabelës) -->
+<!-- MODAL: Fshi modul -->
 <div class="modal fade" id="deleteCourseModal" tabindex="-1" aria-labelledby="deleteCourseLabel" aria-hidden="true">
   <div class="modal-dialog">
     <form class="modal-content" method="post" action="courses.php">
       <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
       <input type="hidden" name="action" value="delete_course">
       <input type="hidden" name="course_id" id="deleteCourseId" value="">
-
       <div class="modal-header">
         <h5 class="modal-title" id="deleteCourseLabel"><i class="bi bi-trash me-1"></i> Fshi modul</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
-
       <div class="modal-body">
         <p>Jeni i sigurt që dëshironi të fshini modulin:</p>
         <ul class="mb-2">
@@ -396,10 +433,9 @@ $NAV_ACTIVE = 'courses';
           <strong>Kujdes:</strong> Fshirja do të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul.
         </div>
       </div>
-
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-danger" type="submit">Po, fshije</button>
+        <button class="btn btn-danger" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Po, fshije</button>
       </div>
     </form>
   </div>
@@ -410,6 +446,17 @@ $NAV_ACTIVE = 'courses';
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'courses_inline_update.php';
+const EDIT_ENABLED = <?= $EDIT_MODE ? 'true' : 'false' ?>;
+
+/* Edit Mode switch -> vendos param ?edit=1/0 dhe ruhet në session */
+const editSwitch = document.getElementById('editSwitch');
+if (editSwitch) {
+  editSwitch.addEventListener('change', () => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('edit', editSwitch.checked ? '1' : '0');
+    window.location.href = 'courses.php?' + params.toString();
+  });
+}
 
 function cleanText(s) { return (s || '').replace(/\s+/g,' ').trim(); }
 
@@ -433,35 +480,37 @@ async function saveInline(courseId, field, value, cell, displayEl) {
   }
 }
 
-document.querySelectorAll('td.cell .editable').forEach(el => {
-  let oldVal = el.textContent;
-  el.addEventListener('focus', () => { oldVal = el.textContent; });
-  el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
-  el.addEventListener('blur', () => {
-    const cell = el.closest('td.cell');
-    const field = cell.dataset.field;
-    const cid = parseInt(cell.dataset.id, 10);
-    const newVal = cleanText(el.textContent);
-    if (newVal === cleanText(oldVal)) return;
-    if (field === 'hours' && (newVal === '' || isNaN(newVal) || parseInt(newVal,10) < 1)) {
-      el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-      return;
-    }
-    saveInline(cid, field, newVal, cell, el);
+/* Inline editing: vetëm kur Edit Mode është ON */
+if (EDIT_ENABLED) {
+  document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el => {
+    let oldVal = el.textContent;
+    el.addEventListener('focus', () => { oldVal = el.textContent; });
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
+    el.addEventListener('blur', () => {
+      const cell = el.closest('td.cell');
+      const field = cell.dataset.field;
+      const cid = parseInt(cell.dataset.id, 10);
+      const newVal = cleanText(el.textContent);
+      if (newVal === cleanText(oldVal)) return;
+      if (field === 'hours' && (newVal === '' || isNaN(newVal) || parseInt(newVal,10) < 1)) {
+        el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+        return;
+      }
+      saveInline(cid, field, newVal, cell, el);
+    });
   });
-});
+}
 
 /* Modal fshirjeje i ripërdorshëm */
 const deleteModal = document.getElementById('deleteCourseModal');
 if (deleteModal) {
   deleteModal.addEventListener('show.bs.modal', event => {
     const button = event.relatedTarget;
-    if (!button) return;
+    if (!button || button.hasAttribute('disabled')) { event.preventDefault(); return; }
     const id   = button.getAttribute('data-course-id');
     const code = button.getAttribute('data-course-code') || '';
     const name = button.getAttribute('data-course-name') || '';
 
-    // Vendos vlerat në modal
     document.getElementById('deleteCourseId').value = id;
     document.getElementById('delCode').textContent  = code;
     document.getElementById('delName').textContent  = name;
