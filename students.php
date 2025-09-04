@@ -107,7 +107,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'GET') && isset($_GET['action']) && $_GET['a
 ------------------------------- */
 function make_initial_password(string $first_name, ?string $birth_date): string {
     $fname = trim($first_name);
-    $fname = preg_replace('/\s+/', '', $fname); // hiq hapësirat
+    $fname = preg_replace('/\s+/', '', $fname);
     $year  = '0000';
     if ($birth_date && preg_match('/^(\d{4})-/', $birth_date, $m)) { $year = $m[1]; }
     return ($fname === '' ? 'User' : $fname) . '.' . $year;
@@ -130,12 +130,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'create_student') {
             if (!$EDIT_MODE) { throw new RuntimeException('Edit Mode është OFF. Aktivizo për të kryer ndryshime.'); }
 
-            $personal_number    = trim($_POST['personal_number'] ?? ''); // OPSIONALE
+            $personal_number    = trim($_POST['personal_number'] ?? '');
             $nr_amze            = trim($_POST['nr_amze'] ?? '');
             $first_name         = trim($_POST['first_name'] ?? '');
             $father_name        = trim($_POST['father_name'] ?? '');
             $last_name          = trim($_POST['last_name'] ?? '');
-            $birth_date         = trim($_POST['birth_date'] ?? ''); // nga <input type="date"> → yyyy-mm-dd
+            $birth_date         = trim($_POST['birth_date'] ?? '');
             $birth_place        = trim($_POST['birth_place'] ?? '');
             $phone              = trim($_POST['phone'] ?? '');
             $gender_id          = (int)($_POST['gender_id'] ?? 0);
@@ -145,25 +145,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
             }
 
-            // nr_amze unik në students
             $q1 = $pdo->prepare("SELECT COUNT(*) FROM students WHERE nr_amze = :x");
             $q1->execute([':x'=>$nr_amze]);
             if ((int)$q1->fetchColumn() > 0) throw new RuntimeException('Nr. i amzës ekziston tashmë.');
 
-            // Nëse gjinia s'është dërguar → default M (nëse ekziston)
             if ($gender_id <= 0 && $maleId) { $gender_id = $maleId; }
 
-            // Valido datëlindjen nëse u dërgua (nga input date)
             if ($birth_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
-                throw new RuntimeException('Datëlindja duhet në formatin YYYY-MM-DD (input i kontrollës së datës).');
+                throw new RuntimeException('Datëlindja duhet në formatin YYYY-MM-DD.');
             }
 
             $pdo->beginTransaction();
 
-            /* 1) PERSON: sipas personal_number nëse u dha, përndryshe krijo minimal */
-            $personId = 0;
-            $person   = null;
-
+            /* 1) PERSON */
+            $personId = 0; $person = null;
             if ($personal_number !== '') {
                 $pSel = $pdo->prepare("SELECT id, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id FROM persons WHERE personal_number = :pn LIMIT 1");
                 $pSel->execute([':pn'=>$personal_number]);
@@ -193,7 +188,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'phone'=>$phone ?: null, 'gender_id'=>($gender_id > 0 ? $gender_id : $maleId),
                 ];
             } else {
-                // Person ekzistues → plotëso opsionalisht
                 $pUpd = $pdo->prepare("
                     UPDATE persons SET
                         first_name  = COALESCE(NULLIF(:fn,''), first_name),
@@ -215,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $person = $pSel2->fetch(PDO::FETCH_ASSOC);
             }
 
-            /* 2) USER për këtë person me rol student: gjej ose krijo */
+            /* 2) USER me rol student */
             $uSel = $pdo->prepare("SELECT id FROM users WHERE role_id = :rid AND person_id = :pid LIMIT 1");
             $uSel->execute([':rid'=>$studentRoleId, ':pid'=>$personId]);
             $userId = (int)($uSel->fetchColumn() ?: 0);
@@ -229,7 +223,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $initialPassword = make_initial_password($person['first_name'] ?? $first_name, $person['birth_date'] ?? $birth_date);
                 $hash = password_hash($initialPassword, PASSWORD_BCRYPT);
-
                 $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid, :ph, NOW())")
                     ->execute([':uid'=>$userId, ':ph'=>$hash]);
             } else {
@@ -383,7 +376,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 <html lang="sq">
 <head>
     <meta charset="UTF-8" />
-    <title>Studentët – QTA Admin</title>
+    <title>Studentët – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- Bootstrap & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
@@ -405,8 +398,9 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
           display:inline-block; min-width:72px; padding:.35rem .5rem;
           border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
         }
-        .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
-        .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
+        .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .editable[contenteditable="false"] { opacity:.7; cursor:default; }
         .cell-saving { position:relative; }
         .cell-saving::after {
           content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
@@ -424,6 +418,21 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .editing-off .editable { color:#6b7280; cursor:not-allowed; }
         .editing-off td.cell .inline-select:disabled { background:#f3f4f6; color:#6b7280; cursor:not-allowed; }
         .badge-edit { letter-spacing:.2px; }
+
+        /* --- Soft buttons & pills (UI i ri) --- */
+        .btn-pill { border-radius:999px !important; }
+        .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
+        .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
+        .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
+        .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
+        .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
+        .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+        .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+        /* Toolbar layout */
+        .page-toolbar { gap:.5rem; }
+        .page-toolbar .btn { padding:.45rem .9rem; }
     </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -431,15 +440,16 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Studentët</h2>
-        <div class="d-flex align-items-center gap-2">
-            <!-- Edit Mode Toggle -->
-            <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>"
-               href="<?= htmlspecialchars($toggleUrl) ?>">
+        <div class="d-flex align-items-center page-toolbar">
+            <!-- Edit Mode Toggle (UI i ri) -->
+            <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
+               href="<?= htmlspecialchars($toggleUrl) ?>" title="Ndrysho gjendjen e Edit Mode">
                <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-               Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?> badge-edit"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+               Edit Mode:
+               <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?> badge-edit"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
             </a>
 
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal"
+            <button class="btn btn-primary btn-pill" data-bs-toggle="modal" data-bs-target="#addStudentModal"
                     <?= $EDIT_MODE ? '' : 'disabled' ?> title="<?= $EDIT_MODE ? '' : 'Aktivizo Edit Mode për të shtuar' ?>">
                 <i class="bi bi-person-plus me-1"></i> Shto Student
             </button>
@@ -459,7 +469,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         </div>
     <?php endif; ?>
 
-    <!-- Kërkim + filtër edukimi -->
+    <!-- Kërkim + filtër edukimi (UI i ri) -->
     <div class="card mb-3">
         <div class="card-body">
             <form class="row g-2 align-items-end" method="get" action="students.php">
@@ -489,9 +499,9 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
                     </div>
                 </div>
                 <div class="col-md-3 text-end">
-                    <button class="btn btn-outline-secondary me-1" type="button"
+                    <button class="btn btn-soft-secondary btn-pill me-1" type="button"
                             onclick="window.location='students.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-                    <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+                    <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
                 </div>
             </form>
         </div>
@@ -580,7 +590,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="9" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -699,8 +709,8 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Shto student</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Shto student</button>
       </div>
     </form>
   </div>
@@ -729,19 +739,18 @@ function normalizeDateForServer(str) {
     const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yy = m[3];
     return `${yy}-${mm}-${dd}`;
   }
-  // yyyy-mm-dd (lejo edhe input të tillë)
+  // yyyy-mm-dd
   m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) {
     const yy = m[1], mm = m[2].padStart(2,'0'), dd = m[3].padStart(2,'0');
     return `${yy}-${mm}-${dd}`;
   }
-  // forma të tjera: mos e prano
   throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
 }
 
 /* Ruajtje AJAX për inline */
 async function saveInline(studentId, field, value, cell, displayEl) {
-  if (!EDIT_MODE) return; // hard stop në UI
+  if (!EDIT_MODE) return;
   try {
     cell.classList.add('cell-saving');
     const res = await fetch(ENDPOINT, {
@@ -760,7 +769,7 @@ async function saveInline(studentId, field, value, cell, displayEl) {
     setTimeout(()=>cell.classList.remove('cell-ok'), 800);
   } catch (e) {
     console.error(e);
-    alert(e.message || e); // feedback
+    alert(e.message || e);
     cell.classList.remove('cell-saving');
     cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
@@ -770,18 +779,10 @@ async function saveInline(studentId, field, value, cell, displayEl) {
 /* Event për contenteditable (blur & Enter) */
 document.querySelectorAll('td.cell .editable').forEach(el => {
   let oldVal = el.textContent;
-  // Në Edit Mode OFF → mos lejo fokusim/redaktim
-  if (!EDIT_MODE) {
-    el.setAttribute('contenteditable', 'false');
-  }
+  if (!EDIT_MODE) el.setAttribute('contenteditable', 'false');
 
   el.addEventListener('focus', () => { oldVal = el.textContent; });
-  el.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      el.blur();
-    }
-  });
+  el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
   el.addEventListener('blur', () => {
     if (!EDIT_MODE) return;
     const cell = el.closest('td.cell');
@@ -792,12 +793,7 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
 
     if (field === 'birth_date') {
       try { newVal = normalizeDateForServer(newVal); }
-      catch (err) {
-        // rivendos vlerën e vjetër vizuale
-        el.textContent = oldVal;
-        alert(err.message || err);
-        return;
-      }
+      catch (err) { el.textContent = oldVal; alert(err.message || err); return; }
     }
     saveInline(sid, field, newVal, cell, el);
   });
@@ -805,7 +801,7 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
 
 /* Event për select (education_level_id, gender_id) */
 document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
-  if (!EDIT_MODE) { sel.setAttribute('disabled', 'disabled'); }
+  if (!EDIT_MODE) sel.setAttribute('disabled', 'disabled');
   sel.addEventListener('change', () => {
     if (!EDIT_MODE) return;
     const cell  = sel.closest('td.cell');
@@ -816,9 +812,7 @@ document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
   });
 });
 
-/* ------------------------------
-   Autoplotësim nga Numri Personal në MODAL
-------------------------------- */
+/* Autoplotësim nga Numri Personal (MODAL) */
 const pnInput = document.getElementById('pnInput');
 pnInput?.addEventListener('blur', async ()=>{
   const pn = pnInput.value.trim();
@@ -832,11 +826,10 @@ pnInput?.addEventListener('blur', async ()=>{
 
     const p = json.person;
     if (p) {
-      // Mbush fushat
       document.getElementById('fnInput').value  = p.first_name ?? '';
       document.getElementById('fatInput').value = p.father_name ?? '';
       document.getElementById('lnInput').value  = p.last_name ?? '';
-      document.getElementById('bdInput').value  = p.birth_date ?? ''; // input type=date pret yyyy-mm-dd
+      document.getElementById('bdInput').value  = p.birth_date ?? '';
       document.getElementById('bpInput').value  = p.birth_place ?? '';
       document.getElementById('phInput').value  = p.phone ?? '';
 

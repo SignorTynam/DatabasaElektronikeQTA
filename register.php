@@ -156,7 +156,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
 <html lang="sq">
 <head>
   <meta charset="UTF-8" />
-  <title>Regjistri – QTA Admin</title>
+  <title>Regjistri – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
@@ -170,17 +170,36 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     .nowrap { white-space:nowrap; }
     @media (max-width: 575.98px) { .navbar-text { display:none; } }
 
+    /* --- Inline editable cells --- */
     .editable { display:inline-block; min-width:72px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
-    .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
-    .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+    .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
+    .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+    .editable[contenteditable="false"] { opacity:.7; cursor:default; }
+
     .cell-saving { position:relative; }
     .cell-saving::after { content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem; border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%; animation:spin .6s linear infinite; transform:translateY(-50%); }
     @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
     .cell-ok { animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
     .cell-err { animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
 
-    /* Edit Mode OFF visuals */
+    /* --- Edit Mode OFF visuals --- */
     .editing-off .editable { color:#6b7280; cursor:not-allowed; }
+    .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
+
+    /* --- Soft buttons & pills (UI i ri) --- */
+    .btn-pill { border-radius:999px !important; }
+    .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
+    .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
+    .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
+    .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
+    .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+    .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
+    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+    /* --- Toolbar layout --- */
+    .page-toolbar { gap:.5rem; }
+    .page-toolbar .btn { padding:.4rem .75rem; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -189,24 +208,38 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Regjistri i studentëve</h2>
 
-    <div class="d-flex flex-wrap align-items-center gap-2">
-      <form class="d-flex flex-wrap gap-2" method="get" action="register.php">
-        <div class="input-group">
-          <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-          <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZËS/ID/Emrit...">
-          <span class="input-group-text bg-light border-0">Fillo nga AMZË</span>
-          <input type="text" name="from_amze" value="<?= htmlspecialchars($from_amze) ?>" class="form-control border-0" placeholder="p.sh. 1050">
+    <!-- Toolbar me UI të ri -->
+    <div class="d-flex flex-wrap align-items-center page-toolbar">
+      <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
+         title="Ndrysho gjendjen e Edit Mode">
+        <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
+        Edit Mode:
+        <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Kërkim & Filtrim (kartë e lehtë si te UI i ri) -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <form class="row g-2 align-items-end" method="get" action="register.php">
+        <div class="col-lg-9">
+          <div class="d-flex align-items-center">
+            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
+            <div class="input-group flex-grow-1">
+              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
+              <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZËS/ID personale/Emrit...">
+              <span class="input-group-text bg-light border-0">Fillo nga AMZË</span>
+              <input type="text" name="from_amze" value="<?= htmlspecialchars($from_amze) ?>" class="form-control border-0" placeholder="p.sh. 1050">
+            </div>
+          </div>
         </div>
-        <div class="input-group">
+        <div class="col-lg-3 text-end">
+          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='register.php'">
+            <i class="bi bi-x-circle me-1"></i>Pastro
+          </button>
+          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
         </div>
-        <button class="btn btn-outline-secondary" type="button" onclick="window.location='register.php'">
-          <i class="bi bi-x-circle me-1"></i>Pastro
-        </button>
-        <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-        <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>">
-          <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-          Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-        </a>
       </form>
     </div>
   </div>
@@ -219,9 +252,18 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
       <div class="d-flex align-items-center gap-2">
         <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
         <div class="btn-group" role="group">
-          <a class="btn btn-outline-success" href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-excel me-1"></i> Excel</a>
-          <a class="btn btn-outline-danger" href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</a>
-          <a class="btn btn-outline-primary" href="register_export.php?f=docx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>"><i class="bi bi-file-earmark-word me-1"></i> Word</a>
+          <a class="btn btn-soft-success btn-pill"
+             href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>">
+            <i class="bi bi-file-earmark-excel me-1"></i> Excel
+          </a>
+          <a class="btn btn-soft-danger btn-pill"
+             href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>">
+            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+          </a>
+          <a class="btn btn-soft-primary btn-pill"
+             href="register_export.php?f=docx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>">
+            <i class="bi bi-file-earmark-word me-1"></i> Word
+          </a>
         </div>
       </div>
     </div>
