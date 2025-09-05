@@ -322,16 +322,6 @@ elseif ($ROLE === 'agjencia')     require __DIR__.'/inc/navbar2.php';
 ?>
 
 <main class="container-fluid px-3 px-md-4">
-  <!-- HERO -->
-  <section class="hero p-4 p-md-5 mb-4">
-    <div class="d-flex align-items-center gap-2 mb-2">
-      <span class="badge chip rounded-pill">Kartela e studentit</span>
-      <span class="small" style="opacity:.85">QTA • Qendra e Trajnimeve të Avancuara</span>
-    </div>
-    <h1 class="display-6 fw-bold mb-1">Kërko & shiko detajet e studentit</h1>
-    <p class="mb-0">Kërko sipas emrit, AMZË, ID personale, ID studenti ose email.</p>
-  </section>
-
   <?php if ($m = flash('ok')): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       <i class="bi bi-check-circle me-1"></i><?= h($m) ?>
@@ -350,7 +340,7 @@ elseif ($ROLE === 'agjencia')     require __DIR__.'/inc/navbar2.php';
     <div class="card-body">
       <form class="row g-2 align-items-end" method="get" action="student_card.php">
         <div class="col-md-9">
-          <label class="form-label">Kërko studentin</label>
+          <h2 class="form-label">Kërko studentin</h2>
           <div class="input-group">
             <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
             <input type="text" name="q" class="form-control border-0" placeholder="p.sh. Ana, 3401, ID, ose email" value="<?= h($q) ?>">
