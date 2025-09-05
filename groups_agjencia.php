@@ -47,8 +47,11 @@ $params = [':agid' => (int)$AGENCY['id']];
 $w = ["asg.agency_id = :agid"];
 
 if ($q !== '') {
-  $w[] = "(s.nr_amze LIKE :kw OR s.personal_number LIKE :kw2
-           OR s.first_name LIKE :kw3 OR s.father_name LIKE :kw4 OR s.last_name LIKE :kw5)";
+$w[] = "(s.nr_amze LIKE :kw
+         OR p.personal_number LIKE :kw2
+         OR p.first_name LIKE :kw3
+         OR p.father_name LIKE :kw4
+         OR p.last_name LIKE :kw5)";
   $params[':kw']  = '%'.$q.'%';
   $params[':kw2'] = '%'.$q.'%';
   $params[':kw3'] = '%'.$q.'%';
@@ -65,14 +68,16 @@ $sql = "
   SELECT
     cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.exam_date,
     c.code AS course_code, c.name AS course_name,
-    s.id AS student_id, s.nr_amze, s.first_name, s.father_name, s.last_name, s.personal_number,
-    TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) AS age,
+    s.id AS student_id, s.nr_amze,
+    p.first_name, p.father_name, p.last_name, p.personal_number,
+    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
     el.code AS edu_code, el.label AS edu_label,
     cgs.final_score
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
   LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
   LEFT JOIN students s ON s.id = cgs.student_id
+  LEFT JOIN persons p ON p.id = s.person_id
   LEFT JOIN agency_students asg ON asg.student_id = s.id
   LEFT JOIN education_levels el ON el.id = s.education_level_id
   $whereSql
@@ -108,8 +113,11 @@ foreach ($rows as $r) {
 $params2 = [':agid' => (int)$AGENCY['id']];
 $w2 = ["asg.agency_id = :agid"];
 if ($q !== '') {
-  $w2[] = "(s.nr_amze LIKE :kw OR s.personal_number LIKE :kw2
-            OR s.first_name LIKE :kw3 OR s.father_name LIKE :kw4 OR s.last_name LIKE :kw5)";
+$w2[] = "(s.nr_amze LIKE :kw
+          OR p.personal_number LIKE :kw2
+          OR p.first_name LIKE :kw3
+          OR p.father_name LIKE :kw4
+          OR p.last_name LIKE :kw5)";
   $params2[':kw']  = '%'.$q.'%';
   $params2[':kw2'] = '%'.$q.'%';
   $params2[':kw3'] = '%'.$q.'%';
@@ -118,10 +126,13 @@ if ($q !== '') {
 }
 $whereNoGroup = 'WHERE '.implode(' AND ', $w2);
 $sqlNoGroup = "
-  SELECT s.id AS student_id, s.nr_amze, s.first_name, s.father_name, s.last_name, s.personal_number,
-         TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) AS age,
-         el.code AS edu_code, el.label AS edu_label
+  SELECT
+    s.id AS student_id, s.nr_amze,
+    p.first_name, p.father_name, p.last_name, p.personal_number,
+    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
+    el.code AS edu_code, el.label AS edu_label
   FROM students s
+  LEFT JOIN persons p ON p.id = s.person_id
   JOIN agency_students asg ON asg.student_id = s.id
   LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
   LEFT JOIN education_levels el ON el.id = s.education_level_id

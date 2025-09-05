@@ -41,22 +41,42 @@ $action    = $in['action'] ?? '';
 $agency_id = isset($in['agency_id']) ? (int)$in['agency_id'] : 0;
 
 function parseAmzeRanges(string $s): array {
-  $out=[]; foreach (preg_split('/\s*,\s*/', trim($s)) as $tok) {
+  $out=[];
+  foreach (preg_split('/\s*,\s*/', trim($s)) as $tok) {
     if ($tok==='') continue;
-    if (preg_match('/^(\d+)\s*-\s*(\d+)$/',$tok,$m)) { $a=(int)$m[1]; $b=(int)$m[2]; if($a>$b) [$a,$b]=[$b,$a]; for($i=$a;$i<=$b;$i++) $out[$i]=true; }
-    elseif (preg_match('/^\d+$/',$tok)) { $out[(int)$tok]=true; }
+    if (preg_match('/^(\d+)\s*-\s*(\d+)$/',$tok,$m)) {
+      $a=(int)$m[1]; $b=(int)$m[2];
+      if($a>$b) [$a,$b]=[$b,$a];
+      for($i=$a;$i<=$b;$i++) $out[$i]=true;
+    } elseif (preg_match('/^\d+$/',$tok)) {
+      $out[(int)$tok]=true;
+    }
   }
-  $nums=array_keys($out); sort($nums,SORT_NUMERIC); return $nums;
+  $nums=array_keys($out);
+  sort($nums,SORT_NUMERIC);
+  return $nums;
 }
 
 try {
+
+  /* =========================
+     LISTO STUDENTËT E LIDHUR
+     (bashko me persons p)
+  ==========================*/
   if ($action==='list_assigned') {
     if ($agency_id<=0) throw new RuntimeException('Agjencia e pavlefshme.');
     $q = $pdo->prepare("
-      SELECT s.id, s.nr_amze, s.first_name, s.father_name, s.last_name, s.personal_number
+      SELECT
+        s.id,
+        s.nr_amze,
+        p.first_name,
+        p.father_name,
+        p.last_name,
+        p.personal_number
       FROM agency_students ajs
-      JOIN students s ON s.id=ajs.student_id
-      WHERE ajs.agency_id=:a
+      JOIN students s     ON s.id = ajs.student_id
+      LEFT JOIN persons p ON p.id = s.person_id
+      WHERE ajs.agency_id = :a
       ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
     ");
     $q->execute([':a'=>$agency_id]);
@@ -64,6 +84,9 @@ try {
     echo json_encode(['ok'=>true,'students'=>$rows]); exit;
   }
 
+  /* =========================
+     SHTO LIDHJE NGA AMZË
+  ==========================*/
   if ($action==='assign_by_amze') {
     if ($agency_id<=0) throw new RuntimeException('Agjencia e pavlefshme.');
     $spec = trim((string)($in['amze_spec'] ?? ''));
@@ -71,53 +94,86 @@ try {
     $nums = parseAmzeRanges($spec);
     if (!$nums) throw new RuntimeException('Formati i AMZË-ve është i pavlefshëm.');
 
-    // Gjej studentët ekzistues me këto AMZË
-    $inQ = implode(',', array_fill(0, count($nums), '?'));
-    $st  = $pdo->prepare("SELECT id, nr_amze FROM students WHERE CAST(nr_amze AS UNSIGNED) IN ($inQ)");
-    foreach ($nums as $i=>$v) $st->bindValue($i+1,$v,PDO::PARAM_INT);
+    // gjej studentët ekzistues me këto AMZË (map: amz(int) => student_id)
+    $place = implode(',', array_fill(0, count($nums), '?'));
+    $st = $pdo->prepare("
+      SELECT id, CAST(nr_amze AS UNSIGNED) AS amz
+      FROM students
+      WHERE CAST(nr_amze AS UNSIGNED) IN ($place)
+    ");
+    foreach ($nums as $i=>$v) $st->bindValue($i+1, $v, PDO::PARAM_INT);
     $st->execute();
-    $found = $st->fetchAll(PDO::FETCH_KEY_PAIR); // nr_amze=>id (jo direkt, do riorg.)
-
-    // Harto: numër -> student_id
     $nr2id = [];
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) { $nr2id[(int)$r['nr_amze']] = (int)$r['id']; }
-    // Por më thjeshtë, rigjejmë si më poshtë:
-    $st2 = $pdo->prepare("SELECT id, nr_amze FROM students WHERE CAST(nr_amze AS UNSIGNED) IN ($inQ)");
-    foreach ($nums as $i=>$v) $st2->bindValue($i+1,$v,PDO::PARAM_INT);
-    $st2->execute();
-    $nr2id = [];
-    foreach ($st2->fetchAll(PDO::FETCH_ASSOC) as $r) $nr2id[(int)$r['nr_amze']] = (int)$r['id'];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+      $nr2id[(int)$r['amz']] = (int)$r['id'];
+    }
 
-    $missing = array_values(array_diff($nums, array_keys($nr2id)));
+    // mungesat
+    $foundAmz = array_map('intval', array_keys($nr2id));
+    $missing = array_values(array_diff($nums, $foundAmz));
     if ($missing) {
       $missStr = implode(', ', $missing);
       throw new RuntimeException("Këto AMZË nuk u gjetën: $missStr");
     }
 
-    // Kontrollo nëse ndonjëri është i lidhur me agjenci tjetër
-    $inS = implode(',', array_fill(0, count($nr2id), '?'));
-    $chk = $pdo->prepare("SELECT student_id FROM agency_students WHERE student_id IN ($inS)");
-    $i=1; foreach ($nr2id as $sid) $chk->bindValue($i++,$sid,PDO::PARAM_INT);
+    // kontrollo lidhje ekzistuese për këta studentë
+    $studentIds = array_values($nr2id);
+    $placeS = implode(',', array_fill(0, count($studentIds), '?'));
+    $chk = $pdo->prepare("
+      SELECT student_id, agency_id
+      FROM agency_students
+      WHERE student_id IN ($placeS)
+    ");
+    foreach ($studentIds as $i=>$sid) $chk->bindValue($i+1, $sid, PDO::PARAM_INT);
     $chk->execute();
-    $already = $chk->fetchAll(PDO::FETCH_COLUMN, 0);
-    if ($already) {
-      // gjej AMZË-t e përplasuara
-      $sidSet = array_flip($already);
-      $bad = [];
-      foreach ($nr2id as $amz=>$sid) if (isset($sidSet[$sid])) $bad[] = $amz;
-      $badStr = implode(', ', $bad);
-      throw new RuntimeException("Disa AMZË tashmë janë të lidhura me një agjenci tjetër: $badStr");
+    $rows = $chk->fetchAll(PDO::FETCH_ASSOC);
+
+    // ndaji në: tashmë në të njëjtën agjenci (ignore) dhe në agjenci tjetër (gabim)
+    $alreadySame   = [];
+    $alreadyOther  = [];
+    $bySidToAmz    = array_flip($nr2id); // student_id => amz
+
+    foreach ($rows as $r) {
+      $sid = (int)$r['student_id'];
+      $aid = (int)$r['agency_id'];
+      if ($aid === $agency_id) {
+        $alreadySame[] = $bySidToAmz[$sid] ?? $sid;
+      } else {
+        $alreadyOther[] = $bySidToAmz[$sid] ?? $sid;
+      }
     }
 
-    // Lidh
+    if ($alreadyOther) {
+      $badStr = implode(', ', $alreadyOther);
+      throw new RuntimeException("Disa AMZË janë të lidhura me një agjenci tjetër: $badStr");
+    }
+
+    // filtro ata që s’janë ende në këtë agjenci
+    $toInsertSids = [];
+    foreach ($nr2id as $amz=>$sid) {
+      if (!in_array($amz, $alreadySame, true)) {
+        $toInsertSids[] = $sid;
+      }
+    }
+
+    if (!$toInsertSids) {
+      echo json_encode(['ok'=>true,'added'=>0,'info'=>'Të gjitha AMZË-t ishin tashmë të lidhura me këtë agjenci.']); exit;
+    }
+
+    // lidhje në DB
     $pdo->beginTransaction();
     $ins = $pdo->prepare("INSERT INTO agency_students (agency_id, student_id) VALUES (:a,:s)");
-    foreach ($nr2id as $sid) $ins->execute([':a'=>$agency_id, ':s'=>$sid]);
+    foreach ($toInsertSids as $sid) {
+      $ins->execute([':a'=>$agency_id, ':s'=>$sid]);
+    }
     $pdo->commit();
 
-    echo json_encode(['ok'=>true,'added'=>count($nr2id)]); exit;
+    echo json_encode(['ok'=>true,'added'=>count($toInsertSids)]); exit;
   }
 
+  /* =========================
+     HIQ LIDHJEN
+  ==========================*/
   if ($action==='unlink') {
     $student_id = (int)($in['student_id'] ?? 0);
     if ($agency_id<=0 || $student_id<=0) throw new RuntimeException('Parametra të pavlefshëm.');
