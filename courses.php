@@ -186,10 +186,8 @@ $NAV_ACTIVE = 'courses';
         .nowrap { white-space:nowrap; }
         @media (max-width: 575.98px) { .navbar-text { display:none; } }
 
-        .editable {
-          display:inline-block; min-width:72px; padding:.35rem .5rem;
-          border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
-        }
+        /* Editable cells */
+        .editable { display:inline-block; min-width:72px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
         .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
         .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
         .editable[contenteditable="false"] { opacity:.7; cursor:default; }
@@ -205,9 +203,48 @@ $NAV_ACTIVE = 'courses';
         @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
         .cell-err { animation: flashErr 1.2s ease; }
         @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
+
+        /* Edit Mode OFF visuals */
+        .editing-off .editable { color:#6b7280; cursor:not-allowed; }
+        .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
+
+        /* Soft buttons & pills */
+        .btn-pill { border-radius:999px !important; }
+        .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
+        .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
+        .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
+        .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
+        .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
+        .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+        .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+        .page-toolbar { gap:.5rem; }
+        .page-toolbar .btn { padding:.4rem .75rem; }
+
+        /* FAB (+) poshtë DJATHTAS */
+        .btn-fab{
+          position: fixed;
+          right: 24px;
+          bottom: 24px;
+          width: 56px; height: 56px; border-radius: 50%;
+          display:flex; align-items:center; justify-content:center;
+          z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
+        }
+        .btn-fab i{ font-size:1.25rem; line-height:1; }
+        .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
+        @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+
+        /* Toasts poshtë MAJTAS */
+        .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
+        .toast.qta-toast .toast-header{ border-bottom:0; }
+        .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
+        .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
+        .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
+        .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
     </style>
 </head>
-<body>
+<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 
 <?php
     // Navbar sipas rolit
@@ -218,40 +255,28 @@ $NAV_ACTIVE = 'courses';
     }
 ?>
 
+<!-- Toast container -->
+<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
+
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Modulet</h2>
-        <div class="d-flex align-items-center gap-3">
-            <!-- Edit Mode switch -->
+
+        <div class="d-flex align-items-center page-toolbar">
             <?php
                 // Build toggle URL (preserve query params except 'edit')
                 $qs = $_GET;
                 $qs['edit'] = $EDIT_MODE ? '0' : '1';
                 $toggleUrl = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
             ?>
-            <a class="btn <?= $EDIT_MODE ? 'btn-success' : 'btn-outline-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>">
+            <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
+               title="Ndrysho gjendjen e Edit Mode">
                 <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-                Edit Mode: <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+                Edit Mode:
+                <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
             </a>
-
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCourseModal" <?= $EDIT_MODE?'':'disabled' ?>>
-                <i class="bi bi-bookmark-plus me-1"></i> Shto Modul
-            </button>
         </div>
     </div>
-
-    <?php if ($ok): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($ok) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-    <?php if ($err): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($err) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
 
     <?php if (!$EDIT_MODE): ?>
         <div class="alert alert-secondary py-2">
@@ -276,9 +301,9 @@ $NAV_ACTIVE = 'courses';
                     </div>
                 </div>
                 <div class="col-md-3 text-end">
-                    <button class="btn btn-outline-secondary me-1" type="button"
+                    <button class="btn btn-soft-secondary btn-pill me-1" type="button"
                             onclick="window.location='courses.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-                    <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+                    <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
                 </div>
             </form>
         </div>
@@ -360,7 +385,7 @@ $NAV_ACTIVE = 'courses';
                     <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
                         <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
                     </li>
-                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
+                    <li class="page-item <?= $page>>= $totalPages?'disabled':'' ?>">
                         <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
                     </li>
                 </ul>
@@ -373,6 +398,20 @@ $NAV_ACTIVE = 'courses';
         &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
     </div>
 </main>
+
+<!-- FAB: Shto modul (poshtë djathtas) -->
+<?php if ($EDIT_MODE): ?>
+<button class="btn btn-primary btn-fab" type="button"
+        data-bs-toggle="modal" data-bs-target="#addCourseModal"
+        aria-label="Shto modul">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php else: ?>
+<button class="btn btn-soft-secondary btn-fab" type="button" disabled
+        title="Aktivizo Edit Mode për të shtuar modul">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php endif; ?>
 
 <!-- MODAL: Shto Modul -->
 <div class="modal fade" id="addCourseModal" tabindex="-1" aria-hidden="true">
@@ -404,8 +443,8 @@ $NAV_ACTIVE = 'courses';
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Shto modul</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Shto modul</button>
       </div>
     </form>
   </div>
@@ -434,8 +473,8 @@ $NAV_ACTIVE = 'courses';
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-danger" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Po, fshije</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-danger btn-pill" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Po, fshije</button>
       </div>
     </form>
   </div>
@@ -448,14 +487,34 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'courses_inline_update.php';
 const EDIT_ENABLED = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Edit Mode switch -> vendos param ?edit=1/0 dhe ruhet në session */
-const editSwitch = document.getElementById('editSwitch');
-if (editSwitch) {
-  editSwitch.addEventListener('change', () => {
-    const params = new URLSearchParams(window.location.search);
-    params.set('edit', editSwitch.checked ? '1' : '0');
-    window.location.href = 'courses.php?' + params.toString();
-  });
+/* Toast helper */
+function notify(type, text, opts={}){
+  const zone = document.getElementById('toastZone');
+  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
+  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
+  const icon = icons[type] || 'bell';
+  const title = opts.title ?? (
+    type==='success' ? 'Sukses' :
+    type==='danger'  ? 'Gabim'  :
+    type==='warning' ? 'Kujdes' : 'Njoftim'
+  );
+  const autohide = opts.autohide ?? true;
+  const delay = opts.delay ?? 4500;
+
+  const html = `
+    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <i class="bi bi-${icon} me-2"></i>
+        <strong class="me-auto">${title}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+      </div>
+      <div class="toast-body">${text}</div>
+    </div>`;
+  zone.insertAdjacentHTML('beforeend', html);
+  const el = document.getElementById(id);
+  const t = new bootstrap.Toast(el, { autohide, delay });
+  el.addEventListener('hidden.bs.toast', ()=> el.remove());
+  t.show();
 }
 
 function cleanText(s) { return (s || '').replace(/\s+/g,' ').trim(); }
@@ -473,10 +532,12 @@ async function saveInline(courseId, field, value, cell, displayEl) {
     if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
     if (displayEl) { displayEl.textContent = json.display ?? (value || ''); }
     cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    notify('success','U ruajt me sukses.');
   } catch (e) {
     console.error(e);
     cell.classList.remove('cell-saving'); cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+    notify('danger', e.message || 'Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
   }
 }
 
@@ -492,10 +553,25 @@ if (EDIT_ENABLED) {
       const cid = parseInt(cell.dataset.id, 10);
       const newVal = cleanText(el.textContent);
       if (newVal === cleanText(oldVal)) return;
-      if (field === 'hours' && (newVal === '' || isNaN(newVal) || parseInt(newVal,10) < 1)) {
+
+      if (field === 'hours') {
+        if (newVal === '' || isNaN(newVal) || parseInt(newVal,10) < 1) {
+          el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+          notify('warning','Fusha “Orë” duhet të jetë numër i plotë ≥ 1.');
+          return;
+        }
+      }
+      if (field === 'code' && newVal === '') {
         el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+        notify('warning','Kodi nuk mund të jetë bosh.');
         return;
       }
+      if (field === 'name' && newVal === '') {
+        el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+        notify('warning','Emri nuk mund të jetë bosh.');
+        return;
+      }
+
       saveInline(cid, field, newVal, cell, el);
     });
   });
@@ -516,6 +592,14 @@ if (deleteModal) {
     document.getElementById('delName').textContent  = name;
   });
 }
+
+/* Flash -> Toast sapo ngarkohet faqja */
+<?php if ($ok): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($ok) ?>));
+<?php endif; ?>
+<?php if ($err): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($err) ?>));
+<?php endif; ?>
 </script>
 </body>
 </html>

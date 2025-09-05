@@ -639,9 +639,33 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     /* --- Status alert --- */
     .status-alert { border-radius:.75rem; }
     .status-alert i { opacity:.8; }
+
+    /* FAB (+) poshtë DJATHTAS */
+    .btn-fab{
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      width: 56px; height: 56px; border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
+    }
+    .btn-fab i{ font-size:1.25rem; line-height:1; }
+    .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
+    @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+
+    /* Toasts poshtë MAJTAS */
+    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
+    .toast.qta-toast .toast-header{ border-bottom:0; }
+    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
+    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
+    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
+    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
+
+<!-- Toast container -->
+<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
@@ -654,11 +678,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </button>
       <button class="btn btn-soft-danger btn-pill" data-bs-toggle="modal" data-bs-target="#form2Modal" data-bs-title="Shkarko listë studentësh sipas AMZË">
         <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
-      </button>
-
-      <!-- Krijo grup -->
-      <button class="btn btn-soft-primary btn-pill" data-bs-toggle="modal" data-bs-target="#createGroupModal" <?= $EDIT_MODE ? '' : 'disabled' ?> title="<?= $EDIT_MODE?'Krijo grup të ri':'Aktivizo Edit Mode' ?>">
-        <i class="bi bi-plus-circle me-1"></i> Krijo grup
       </button>
 
       <!-- Edit Mode Toggle (button-style) -->
@@ -703,19 +722,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </form>
     </div>
   </div>
-
-  <?php if ($flash_ok): ?>
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-      <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($flash_ok) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
-  <?php if ($flash_err): ?>
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-      <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($flash_err) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
 
   <div id="msgBox" class="mb-3" style="display:none;"></div>
 
@@ -786,7 +792,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </div>
       <div class="card-body">
 
-        <!-- Status alert per kërkesën tuaj: jeshile kur i përfunduar, e kuqe kur jo i përfunduar -->
+        <!-- Status alert -->
         <div id="statusAlert_<?= (int)$gid ?>" class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 mb-3 small">
           <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
           <?= $completed
@@ -998,6 +1004,20 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   </div>
 </main>
 
+<!-- FAB: Krijo grup (poshtë djathtas) -->
+<?php if ($EDIT_MODE): ?>
+<button class="btn btn-primary btn-fab" type="button"
+        data-bs-toggle="modal" data-bs-target="#createGroupModal"
+        aria-label="Krijo grup">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php else: ?>
+<button class="btn btn-soft-secondary btn-fab" type="button" disabled
+        title="Aktivizo Edit Mode për të krijuar grup">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php endif; ?>
+
 <!-- MODAL: Formulari nr. 1 -->
 <div class="modal fade" id="form1Modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -1165,14 +1185,40 @@ const GROUP_COMPLETED = <?= json_encode(array_column($groupInfo, 'is_completed',
 const GROUP_AMZE = <?= json_encode(array_column($groupInfo, null, 'id'), JSON_UNESCAPED_UNICODE) ?>;
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-function showMsg(type, text){
-  const box = document.getElementById('msgBox');
-  box.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-      ${text}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+
+/* Toast helper (si te students.php) */
+function notify(type, text, opts={}){
+  const zone = document.getElementById('toastZone');
+  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
+  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
+  const icon = icons[type] || 'bell';
+  const title = opts.title ?? (
+    type==='success' ? 'Sukses' :
+    type==='danger'  ? 'Gabim'  :
+    type==='warning' ? 'Kujdes' : 'Njoftim'
+  );
+  const autohide = opts.autohide ?? true;
+  const delay = opts.delay ?? 4500;
+
+  const html = `
+    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <i class="bi bi-${icon} me-2"></i>
+        <strong class="me-auto">${title}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+      </div>
+      <div class="toast-body">${text}</div>
     </div>`;
-  box.style.display = '';
+  zone.insertAdjacentHTML('beforeend', html);
+  const el = document.getElementById(id);
+  const t = new bootstrap.Toast(el, { autohide, delay });
+  el.addEventListener('hidden.bs.toast', ()=> el.remove());
+  t.show();
+}
+
+/* showMsg tani përdor toast */
+function showMsg(type, text){
+  notify(type, text);
 }
 
 /* dd-mm-yyyy / yyyy-mm-dd -> yyyy-mm-dd (për server) */
@@ -1257,6 +1303,7 @@ async function saveInline(payload, cell, displayEl, oldVal){
       displayEl.textContent = json.display;
     }
     if(cell){ cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800); }
+    notify('success','U ruajt me sukses.');
   }catch(e){
     console.error(e);
     if(displayEl) displayEl.textContent = oldVal;
@@ -1378,6 +1425,13 @@ document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
     document.getElementById('form2Export').submit();
   });
 });
+
+<?php if ($flash_ok): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($flash_ok) ?>));
+<?php endif; ?>
+<?php if ($flash_err): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($flash_err) ?>));
+<?php endif; ?>
 </script>
 </body>
 </html>

@@ -312,7 +312,6 @@ $countStmt = $pdo->prepare("
     LEFT JOIN education_levels el ON el.id = s.education_level_id
     $whereSql
 ");
-
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
@@ -358,11 +357,6 @@ $listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
 $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
-
-/* Navbars */
-$NAV_ACTIVE = 'students';
-if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
-elseif ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
 
 /* Build toggle URL që ruan q/edu/page */
 $toggleUrl = 'students.php?' . http_build_query(array_filter([
@@ -419,7 +413,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .editing-off td.cell .inline-select:disabled { background:#f3f4f6; color:#6b7280; cursor:not-allowed; }
         .badge-edit { letter-spacing:.2px; }
 
-        /* --- Soft buttons & pills (UI i ri) --- */
+        /* --- Soft buttons & pills (UI e re) --- */
         .btn-pill { border-radius:999px !important; }
         .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
         .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
@@ -430,46 +424,55 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
         .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-        /* Toolbar layout */
-        .page-toolbar { gap:.5rem; }
-        .page-toolbar .btn { padding:.45rem .9rem; }
+        /* FAB (+) poshtë DJATHTAS */
+        .btn-fab{
+          position: fixed;
+          right: 24px;
+          bottom: 24px;
+          width: 56px; height: 56px; border-radius: 50%;
+          display:flex; align-items:center; justify-content:center;
+          z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
+        }
+        .btn-fab i{ font-size:1.25rem; line-height:1; }
+        .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
+        @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+
+        /* Toasts poshtë MAJTAS */
+        .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
+        .toast.qta-toast .toast-header{ border-bottom:0; }
+        .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
+        .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
+        .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
+        .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
     </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
+
+<?php
+  $NAV_ACTIVE = 'students';
+  if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
+  elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
+?>
+
+<!-- Toast container -->
+<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Studentët</h2>
         <div class="d-flex align-items-center page-toolbar">
-            <!-- Edit Mode Toggle (UI i ri) -->
+            <!-- Edit Mode Toggle -->
             <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
                href="<?= htmlspecialchars($toggleUrl) ?>" title="Ndrysho gjendjen e Edit Mode">
                <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
                Edit Mode:
                <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?> badge-edit"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
             </a>
-
-            <button class="btn btn-primary btn-pill" data-bs-toggle="modal" data-bs-target="#addStudentModal"
-                    <?= $EDIT_MODE ? '' : 'disabled' ?> title="<?= $EDIT_MODE ? '' : 'Aktivizo Edit Mode për të shtuar' ?>">
-                <i class="bi bi-person-plus me-1"></i> Shto Student
-            </button>
+            <!-- Heqim butonin klasik 'Shto Student'; përdor FAB poshtë djathtas -->
         </div>
     </div>
 
-    <?php if ($m = flash('ok')): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($m) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-    <?php if ($m = flash('err')): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($m) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-
-    <!-- Kërkim + filtër edukimi (UI i ri) -->
+    <!-- Kërkim + filtër edukimi -->
     <div class="card mb-3">
         <div class="card-body">
             <form class="row g-2 align-items-end" method="get" action="students.php">
@@ -634,6 +637,20 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
     </div>
 </main>
 
+<!-- FAB: Shto Student (poshtë djathtas) -->
+<?php if ($EDIT_MODE): ?>
+<button class="btn btn-primary btn-fab" type="button"
+        data-bs-toggle="modal" data-bs-target="#addStudentModal"
+        aria-label="Shto student">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php else: ?>
+<button class="btn btn-soft-secondary btn-fab" type="button" disabled
+        title="Aktivizo Edit Mode për të shtuar student">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php endif; ?>
+
 <!-- MODAL: Shto Student -->
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl">
@@ -723,6 +740,37 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'students_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
+/* Toast helper */
+function notify(type, text, opts={}){
+  const zone = document.getElementById('toastZone');
+  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
+  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
+  const icon = icons[type] || 'bell';
+  const title = opts.title ?? (
+    type==='success' ? 'Sukses' :
+    type==='danger'  ? 'Gabim'  :
+    type==='warning' ? 'Kujdes' : 'Njoftim'
+  );
+  const autohide = opts.autohide ?? true;
+  const delay = opts.delay ?? 4500;
+
+  const html = `
+    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <i class="bi bi-${icon} me-2"></i>
+        <strong class="me-auto">${title}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+      </div>
+      <div class="toast-body">${text}</div>
+    </div>`;
+  zone.insertAdjacentHTML('beforeend', html);
+
+  const el = document.getElementById(id);
+  const t = new bootstrap.Toast(el, { autohide, delay });
+  el.addEventListener('hidden.bs.toast', ()=> el.remove());
+  t.show();
+}
+
 /* Helper: trim & normalizim “—” */
 function cleanText(s) {
   const v = (s || '').replace(/\s+/g,' ').trim();
@@ -767,9 +815,10 @@ async function saveInline(studentId, field, value, cell, displayEl) {
     }
     cell.classList.add('cell-ok');
     setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    notify('success','U ruajt me sukses.');
   } catch (e) {
     console.error(e);
-    alert(e.message || e);
+    notify('danger', e.message || 'Ndodhi një gabim.');
     cell.classList.remove('cell-saving');
     cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
@@ -793,7 +842,7 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
 
     if (field === 'birth_date') {
       try { newVal = normalizeDateForServer(newVal); }
-      catch (err) { el.textContent = oldVal; alert(err.message || err); return; }
+      catch (err) { el.textContent = oldVal; notify('danger', err.message || err); return; }
     }
     saveInline(sid, field, newVal, cell, el);
   });
@@ -822,7 +871,7 @@ pnInput?.addEventListener('blur', async ()=>{
       headers: {'Accept':'application/json'}
     });
     const json = await res.json();
-    if (!json.ok) return;
+    if (!json.ok) { notify('danger', json.error || 'Gabim në kërkim.'); return; }
 
     const p = json.person;
     if (p) {
@@ -838,9 +887,21 @@ pnInput?.addEventListener('blur', async ()=>{
 
       const esel = document.getElementById('eduSelect');
       if (esel && json.education_level_id) esel.value = String(json.education_level_id);
+
+      notify('info','Të dhënat u plotësuan nga numri personal.');
+    } else {
+      notify('warning','Nuk u gjet person me këtë numër personal.');
     }
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error(e); notify('danger','Gabim gjatë autoplotësimit.'); }
 });
+
+/* Flash -> Toast sapo ngarkohet faqja */
+<?php if ($m = flash('ok')): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($m) ?>));
+<?php endif; ?>
+<?php if ($m = flash('err')): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($m) ?>));
+<?php endif; ?>
 </script>
 </body>
 </html>

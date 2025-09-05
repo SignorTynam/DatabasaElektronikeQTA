@@ -217,10 +217,6 @@ $listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
 $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
-
-$NAV_ACTIVE = 'users_editors';
-require __DIR__ . '/inc/navbar.php';
-
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -239,7 +235,10 @@ require __DIR__ . '/inc/navbar.php';
     .mini-table thead { background:#f1f5f9; }
     .form-control::placeholder { color:#9ca3af; }
     .pagination .page-link { border-radius:.5rem; }
+    .nowrap { white-space:nowrap; }
     @media (max-width:575.98px){ .navbar-text{ display:none; } }
+
+    /* Inline-edit styles */
     .editable { display:inline-block; min-width:120px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
     .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
     .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
@@ -248,35 +247,42 @@ require __DIR__ . '/inc/navbar.php';
     @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
     .cell-ok { animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
     .cell-err { animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
-    .nowrap { white-space:nowrap; }
+
+    /* UI i ri – soft & pill */
+    .btn-pill { border-radius:999px !important; }
+    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+    /* FAB: rrethi me + në cep të faqes (poshtë DJATHTAS) */
+    .btn-fab{
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      width: 56px; height: 56px; border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
+    }
+    .btn-fab i{ font-size:1.25rem; line-height:1; }
+    .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
+    @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+
+    /* Toasts (poshtë MAJTAS) */
+    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
+    .toast.qta-toast .toast-header{ border-bottom:0; }
+    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
+    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
+    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
+    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
   </style>
 </head>
 <body>
+<?php $NAV_ACTIVE = 'users_editors'; require __DIR__ . '/inc/navbar.php'; ?>
 
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Menaxhimi i editorëve</h2>
-    <div class="d-flex gap-2">
-      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEditorModal">
-        <i class="bi bi-person-plus me-1"></i> Shto Editor
-      </button>
-    </div>
+    <!-- Butoni + është FAB poshtë djathtas -->
   </div>
-
-  <div id="msgBox" class="mb-3" style="display:none;"></div>
-
-  <?php if ($m = flash('ok')): ?>
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-      <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($m) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
-  <?php if ($m = flash('err')): ?>
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-      <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($m) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
 
   <!-- Kërkim -->
   <div class="card mb-3">
@@ -290,10 +296,10 @@ require __DIR__ . '/inc/navbar.php';
           </div>
         </div>
         <div class="col-md-3 text-end">
-          <button class="btn btn-outline-secondary me-1" type="button" onclick="window.location='editors.php'">
+          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='editors.php'">
             <i class="bi bi-x-circle me-1"></i>Pastro
           </button>
-          <button class="btn btn-primary" type="submit">
+          <button class="btn btn-primary btn-pill" type="submit">
             <i class="bi bi-funnel me-1"></i>Apliko
           </button>
         </div>
@@ -396,6 +402,16 @@ require __DIR__ . '/inc/navbar.php';
   </div>
 </main>
 
+<!-- Floating Action Button (FAB) – poshtë djathtas -->
+<button class="btn btn-primary btn-fab" type="button"
+        data-bs-toggle="modal" data-bs-target="#addEditorModal"
+        aria-label="Shto editor">
+  <i class="bi bi-plus-lg"></i>
+</button>
+
+<!-- Toasts: poshtë MAJTAS (që të mos bllokohen nga FAB i djathtë) -->
+<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
+
 <!-- MODALS -->
 
 <!-- Modal: Shto Editor -->
@@ -432,8 +448,8 @@ require __DIR__ . '/inc/navbar.php';
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Ruaj</button>
+        <button class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit">Ruaj</button>
       </div>
     </form>
   </div>
@@ -468,8 +484,8 @@ require __DIR__ . '/inc/navbar.php';
         <div class="form-text">Fjalëkalimi ruhet me <code>PASSWORD_BCRYPT</code>.</div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Ruaj</button>
+        <button class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit">Ruaj</button>
       </div>
     </form>
   </div>
@@ -481,21 +497,47 @@ require __DIR__ . '/inc/navbar.php';
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'editors_inline.php';
 
+/* Toast helper */
+function notify(type, text, opts={}){
+  const zone = document.getElementById('toastZone');
+  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
+  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
+  const icon = icons[type] || 'bell';
+  const title = opts.title ?? (
+    type==='success' ? 'Sukses' :
+    type==='danger'  ? 'Gabim'  :
+    type==='warning' ? 'Kujdes' : 'Njoftim'
+  );
+  const autohide = opts.autohide ?? true;
+  const delay = opts.delay ?? 4500;
+
+  const html = `
+    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <i class="bi bi-${icon} me-2"></i>
+        <strong class="me-auto">${title}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+      </div>
+      <div class="toast-body">${text}</div>
+    </div>`;
+  zone.insertAdjacentHTML('beforeend', html);
+
+  const el = document.getElementById(id);
+  const t = new bootstrap.Toast(el, { autohide, delay });
+  el.addEventListener('hidden.bs.toast', ()=> el.remove());
+  t.show();
+}
+
+/* Alias për kompatibilitet */
+function showMsg(type, text){ notify(type, text); }
+
+/* Util */
 function cleanText(s) {
   const v = (s || '').replace(/\s+/g,' ').trim();
   return (v === '—' ? '' : v);
 }
 
-function showMsg(type, text){
-  const box = document.getElementById('msgBox');
-  box.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-      ${text}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>`;
-  box.style.display = '';
-}
-
+/* Ruajtje inline (Emër/Email) */
 async function saveInline(userId, field, value, cell, displayEl) {
   try {
     cell.classList.add('cell-saving');
@@ -510,10 +552,11 @@ async function saveInline(userId, field, value, cell, displayEl) {
     if (displayEl) { displayEl.textContent = json.display ?? (value || '—'); }
     cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
   } catch (e) {
+    console.error(e);
     if (displayEl) displayEl.textContent = displayEl.dataset.old || displayEl.textContent;
     cell.classList.remove('cell-saving'); cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-    showMsg('danger', e.message);
+    showMsg('danger', e.message || 'Ndodhi një gabim.');
   }
 }
 
@@ -545,6 +588,14 @@ resetModal?.addEventListener('show.bs.modal', event => {
   document.getElementById('reset_user_id').value = btn.getAttribute('data-user-id');
   document.getElementById('reset_user_name').value = btn.getAttribute('data-user-name');
 });
+
+/* Flash -> Toast sapo ngarkohet faqja */
+<?php if ($m = flash('ok')): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($m) ?>));
+<?php endif; ?>
+<?php if ($m = flash('err')): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($m) ?>));
+<?php endif; ?>
 </script>
 </body>
 </html>

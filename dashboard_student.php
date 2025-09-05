@@ -5,7 +5,7 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
-/* Guard: vetëm student i loguar */
+/* ===== Guard: vetëm STUDENT ===== */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
@@ -13,24 +13,19 @@ $u = $pdo->prepare("
   WHERE u.id=:id LIMIT 1
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
-$currentUser = $u->fetch();
-if (!$currentUser || $currentUser['role_name']!=='student') { header('Location: selectProfile.php'); exit; }
+$currentUser = $u->fetch(PDO::FETCH_ASSOC);
+if (!$currentUser || ($currentUser['role_name']??'')!=='student') { header('Location: selectProfile.php'); exit; }
 
-/* Helper HTML safe */
-if (!function_exists('h')) {
-  function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-}
+/* ===== Helpers ===== */
+function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+function i($v): int { return (int)$v; }
+$today = date('Y-m-d');
 
-/* ================================
-   Student bazë (sipas user_id)
-   -> marrë edhe person_id + personal_number nga persons
-=================================== */
+/* ===== Profili bazë i studentit ===== */
 $baseQ = $pdo->prepare("
   SELECT s.id AS sid, s.person_id, p.personal_number
-  FROM students s
-  JOIN persons p ON p.id = s.person_id
-  WHERE s.user_id = :uid
-  LIMIT 1
+  FROM students s JOIN persons p ON p.id=s.person_id
+  WHERE s.user_id=:uid LIMIT 1
 ");
 $baseQ->execute([':uid'=>$_SESSION['user_id']]);
 $base = $baseQ->fetch(PDO::FETCH_ASSOC);
@@ -40,52 +35,48 @@ $baseSid        = (int)$base['sid'];
 $basePersonId   = (int)$base['person_id'];
 $personalNumber = (string)($base['personal_number'] ?? '');
 
-/* Të gjitha AMZË-të sipas të njëjtit person_id */
-$amzeRows = [];
-$studentIds = [$baseSid];
-
-$allQ = $pdo->prepare("
-  SELECT id, nr_amze
-  FROM students
-  WHERE person_id = :pid
+/* Të gjitha regjistrimet (AMZË) për të njëjtin person_id */
+$amzeRows = $pdo->prepare("
+  SELECT id, nr_amze FROM students
+  WHERE person_id=:pid
   ORDER BY CAST(nr_amze AS UNSIGNED) ASC, nr_amze ASC
 ");
-$allQ->execute([':pid'=>$basePersonId]);
-$amzeRows = $allQ->fetchAll(PDO::FETCH_ASSOC);
+$amzeRows->execute([':pid'=>$basePersonId]);
+$amzeRows = $amzeRows->fetchAll(PDO::FETCH_ASSOC);
 
-if ($amzeRows) {
-  $studentIds = array_values(array_unique(array_map(fn($r)=>(int)$r['id'], $amzeRows)));
-}
+$studentIds = $amzeRows ? array_values(array_unique(array_map(fn($r)=>(int)$r['id'], $amzeRows))) : [$baseSid];
+$amzeList   = array_values(array_filter(array_map(fn($r)=>$r['nr_amze'] ?? null, $amzeRows)));
 
-/* Lista e AMZË-ve për shfaqje (fallback i sigurt, i parametruar) */
-$amzeList = [];
-if ($amzeRows) {
-  foreach ($amzeRows as $r) {
-    if (!empty($r['nr_amze'])) $amzeList[] = $r['nr_amze'];
-  }
-} else {
-  $one = $pdo->prepare("SELECT nr_amze FROM students WHERE id = :sid LIMIT 1");
-  $one->execute([':sid'=>$baseSid]);
-  $oneAmze = $one->fetchColumn();
-  if ($oneAmze) $amzeList[] = $oneAmze;
-}
-
-/* Info personale (nga persons) + arsimi nga students */
+/* Info personale + arsimi */
 $S = $pdo->prepare("
   SELECT 
     p.first_name, p.father_name, p.last_name, p.birth_date, p.birth_place,
     s.nr_amze, p.personal_number, p.phone,
     el.code AS edu_code, el.label AS edu_label
   FROM students s
-  JOIN persons p ON p.id = s.person_id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
-  WHERE s.id = :sid
-  LIMIT 1
+  JOIN persons p ON p.id=s.person_id
+  LEFT JOIN education_levels el ON el.id=s.education_level_id
+  WHERE s.id=:sid LIMIT 1
 ");
 $S->execute([':sid'=>$baseSid]);
 $stud = $S->fetch(PDO::FETCH_ASSOC);
 
-/* Grupe për të GJITHË student_id me të njëjtin person */
+/* Kompania e caktuar (maksimumi 1 sipas skemës) */
+$company = null;
+if ($studentIds) {
+  $ph = implode(',', array_fill(0, count($studentIds), '?'));
+  $C = $pdo->prepare("
+    SELECT a.company_name, a.nip_t, a.phone
+    FROM agency_students s
+    JOIN agencies a ON a.id=s.agency_id
+    WHERE s.student_id IN ($ph)
+    LIMIT 1
+  ");
+  $C->execute($studentIds);
+  $company = $C->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+/* Grupe për TË GJITHË student_id-t */
 $groups = [];
 if ($studentIds) {
   $ph = implode(',', array_fill(0, count($studentIds), '?'));
@@ -95,8 +86,8 @@ if ($studentIds) {
            cgs.final_score, cgs.exam_date AS my_exam,
            cgs.student_id
     FROM course_group_students cgs
-    JOIN course_groups cg ON cg.id = cgs.group_id
-    JOIN courses c ON c.id = cg.course_id
+    JOIN course_groups cg ON cg.id=cgs.group_id
+    JOIN courses c ON c.id=cg.course_id
     WHERE cgs.student_id IN ($ph)
     ORDER BY cg.start_date DESC, cg.id DESC
   ");
@@ -104,37 +95,64 @@ if ($studentIds) {
   $groups = $G->fetchAll(PDO::FETCH_ASSOC);
 }
 
-/* KPI për studentin */
-$k_total_groups = count($groups);
-$k_avg_score = null;
+/* ===== KPI & përmbledhje ===== */
+$k_total_groups   = count($groups);
+$k_active_groups  = 0;
+$k_completed      = 0;
+$k_upcoming_tests = 0;
+$totalHours       = 0;
+
+$allScores = [];
+foreach ($groups as $g) {
+  $totalHours += (int)($g['hours'] ?? 0);
+  $isActive   = !empty($g['start_date']) && !empty($g['end_date']) && ($today >= $g['start_date'] && $today <= $g['end_date']);
+  $isEnded    = !empty($g['end_date']) && $g['end_date'] < $today;
+  if ($isActive) $k_active_groups++;
+  if ($isEnded)  $k_completed++;
+  if (!empty($g['my_exam']) && $g['my_exam'] >= $today) $k_upcoming_tests++;
+  if ($g['final_score'] !== null) $allScores[] = (float)$g['final_score'];
+}
+$k_avg_score = $allScores ? round(array_sum($allScores)/count($allScores), 2) : null;
 $k_pass_rate = null;
-$allScores = array_values(array_filter(
-  array_map(fn($r)=> $r['final_score']!==null ? (float)$r['final_score'] : null, $groups),
-  fn($v)=> $v!==null
-));
 if ($allScores) {
-  $k_avg_score = round(array_sum($allScores)/count($allScores), 2);
-  $pass = 0; foreach ($allScores as $sc) if ($sc>=50) $pass++;
-  $k_pass_rate = round(($pass / count($allScores))*100, 1);
+  $passed = 0; foreach ($allScores as $sc) if ($sc >= 50) $passed++;
+  $k_pass_rate = round(($passed / count($allScores)) * 100, 1);
 }
 
-/* Teste në të ardhmen */
-$today = date('Y-m-d');
+/* Teste në të ardhmen (Top 5) */
 $upcoming = array_values(array_filter($groups, fn($r)=> !empty($r['my_exam']) && $r['my_exam'] >= $today));
-usort($upcoming, fn($a,$b)=> strcmp($a['my_exam']??'', $b['my_exam']??''));
+usort($upcoming, fn($a,$b)=> strcmp($a['my_exam'], $b['my_exam']));
 $upcoming = array_slice($upcoming, 0, 5);
 
-/* Data për grafikun e pikëve */
-$chartLabels = [];
-$chartData   = [];
-foreach (array_reverse($groups) as $r) { // të vjetrit më parë në grafik
+/* Data për grafiqe */
+$scoreLabels = [];
+$scoreData   = [];
+foreach (array_reverse($groups) as $r) { // të vjetrit më parë
   if ($r['final_score'] !== null) {
-    $chartLabels[] = trim(($r['course_code'] ?? 'Kurs')." #".$r['group_id']);
-    $chartData[]   = (float)$r['final_score'];
+    $scoreLabels[] = trim(($r['course_code'] ?? 'Kurs')." #".$r['group_id']);
+    $scoreData[]   = (float)$r['final_score'];
   }
 }
 
-/* Navbar (variant studenti) */
+/* Orët sipas modulit (bar) */
+$hoursByCourse = [];
+foreach ($groups as $r) {
+  $key = ($r['course_code'] ?? '').' · '.($r['course_name'] ?? '');
+  $hoursByCourse[$key] = ($hoursByCourse[$key] ?? 0) + (int)($r['hours'] ?? 0);
+}
+$hoursLabels = array_keys($hoursByCourse);
+$hoursData   = array_values($hoursByCourse);
+
+/* Status split (doughnut) */
+$statusCounts = [
+  'Aktive'   => $k_active_groups,
+  'Të mbyllura' => $k_completed,
+  'Me test në pritje' => $k_upcoming_tests,
+];
+$statusLabels = array_keys($statusCounts);
+$statusData   = array_values($statusCounts);
+
+/* Navbar studenti */
 $NAV_ACTIVE = 'dashboard';
 require __DIR__ . '/inc/navbar3.php';
 ?>
@@ -142,127 +160,109 @@ require __DIR__ . '/inc/navbar3.php';
 <html lang="sq">
 <head>
   <meta charset="UTF-8" />
-  <title>Paneli i Studentit – QTA</title>
+  <title>Dashboard i Ri — Studenti • QTA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Bootstrap & Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     body { background:#f5f7fb; padding-top:72px; }
-    .navbar-brand img { height:28px; }
     .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
     .hero {
+      border-radius:1.25rem; color:#0b1220;
       background:
-        radial-gradient(1200px 420px at 10% -20%, rgba(37,99,235,.20), rgba(37,99,235,0) 60%),
-        radial-gradient(900px 320px at 90% -10%, rgba(99,102,241,.18), rgba(99,102,241,0) 55%),
-        linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
-      color:#fff; border-radius:1.25rem; overflow:hidden;
+        radial-gradient(900px 300px at 90% -20%, rgba(16,185,129,.18), rgba(16,185,129,0) 60%),
+        radial-gradient(900px 300px at 10% -30%, rgba(59,130,246,.22), rgba(59,130,246,0) 55%),
+        linear-gradient(135deg, #e0f2fe 0%, #eff6ff 100%);
     }
-    .hero .chip { background:rgba(255,255,255,.17); border:1px solid rgba(255,255,255,.26); }
+    .chip { background:#eef2ff; border:1px solid #e0e7ff; border-radius:999px; padding:.25rem .65rem; }
+    .soft { background:#f8fafc; border:1px solid #e2e8f0; border-radius:.75rem; padding:.5rem .75rem; }
+    .mini-table thead { background:#f1f5f9; }
+    .kpi .icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#f1f5f9; }
     .badge-soft { background:#f1f5f9; color:#475569; }
     .nowrap { white-space:nowrap; }
-    @media (max-width: 575.98px) { .navbar-text { display:none; } }
   </style>
 </head>
 <body>
 
 <main class="container-fluid px-3 px-md-4">
-
-  <!-- HERO -->
+  <!-- HERO (i njëjtë stil si Admin/Editor) -->
   <section class="hero p-4 p-md-5 mb-4">
-    <div class="row align-items-center">
-      <div class="col-lg-8 pe-lg-5">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
         <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="badge chip rounded-pill">Paneli i Studentit</span>
-          <span class="small" style="opacity:.85">QTA • Qendra e Trajnimeve të Avancuara</span>
+          <span class="chip">Panel i ri</span>
+          <span class="small text-muted">QTA • Qendra e Trajnimeve të Avancuara</span>
         </div>
-        <h1 class="display-6 fw-bold mb-2">
-          Mirë se erdhe, <?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Student')) ?>!
-        </h1>
-        <p class="mb-0">Këtu gjen informacionin kryesor: grupet ku je, datat e testimeve dhe rezultatet e tua.</p>
+        <h1 class="fw-bold mb-1">Përmbledhje personale</h1>
+        <p class="mb-0 text-muted">Grupet, testet dhe progresi yt — gjithçka në një vend.</p>
       </div>
-      <div class="col-lg-4 mt-4 mt-lg-0">
-        <div class="card text-dark">
-          <div class="card-body">
-            <div class="d-flex align-items-center mb-2">
-              <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
-                <i class="bi bi-person-badge fs-4"></i>
-              </div>
-              <div>
-                <div class="text-uppercase small text-muted">Numri Personal</div>
-                <div class="h6 mb-0"><?= h($personalNumber ?: ($stud['personal_number'] ?? '—')) ?></div>
-              </div>
-            </div>
-            <div class="small mb-2"><span class="text-muted">AMZË-të:</span>
-              <?php if ($amzeList): foreach ($amzeList as $a): ?>
-                <span class="badge rounded-pill bg-light text-dark border ms-1"><?= h((string)$a) ?></span>
-              <?php endforeach; else: ?>
-                <span class="badge rounded-pill bg-light text-dark border ms-1">—</span>
-              <?php endif; ?>
-            </div>
-            <div class="mt-2 small">
-              <span class="badge badge-soft rounded-pill me-1">Arsimi: <?= h(($stud['edu_code']?($stud['edu_code'].' · '):'').($stud['edu_label']??'—')) ?></span>
-              <span class="badge badge-soft rounded-pill">Tel: <?= h($stud['phone'] ?? '—') ?></span>
-            </div>
-          </div>
-        </div>
+      <div class="soft">
+        <div class="small text-muted">Mirë se erdhe</div>
+        <div class="h5 mb-0"><?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Student')) ?></div>
       </div>
     </div>
   </section>
 
   <!-- KPIs -->
-  <section class="row g-4 mb-4">
-    <div class="col-12 col-md-6 col-xl-4">
+  <section class="row g-4 mb-4 kpi">
+    <div class="col-12 col-md-6 col-xl-3">
       <div class="card p-3 h-100">
         <div class="d-flex align-items-center">
-          <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eff6ff;display:flex;align-items:center;justify-content:center;">
-            <i class="bi bi-collection fs-4 text-primary"></i>
-          </div>
+          <div class="icon me-3"><i class="bi bi-collection fs-4 text-primary"></i></div>
           <div>
             <div class="small text-muted text-uppercase">Grupet e mia</div>
-            <div class="h3 mb-0"><?= number_format($k_total_groups) ?></div>
+            <div class="h3 mb-1"><?= number_format($k_total_groups) ?></div>
+            <span class="small text-muted">Aktive sot: <?= number_format($k_active_groups) ?></span>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-12 col-md-6 col-xl-4">
+    <div class="col-12 col-md-6 col-xl-3">
       <div class="card p-3 h-100">
         <div class="d-flex align-items-center">
-          <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#ecfdf5;display:flex;align-items:center;justify-content:center;">
-            <i class="bi bi-bar-chart-line fs-4 text-success"></i>
-          </div>
+          <div class="icon me-3"><i class="bi bi-hourglass-split fs-4 text-success"></i></div>
           <div>
-            <div class="small text-muted text-uppercase">Mesatarja e pikëve</div>
-            <div class="h3 mb-0"><?= $k_avg_score!==null ? $k_avg_score : '—' ?></div>
+            <div class="small text-muted text-uppercase">Orë mësimore</div>
+            <div class="h3 mb-1"><?= number_format($totalHours) ?></div>
+            <span class="small text-muted">Sipas moduleve ku je regjistruar</span>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-12 col-md-6 col-xl-4">
+    <div class="col-12 col-md-6 col-xl-3">
       <div class="card p-3 h-100">
         <div class="d-flex align-items-center">
-          <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#fff7ed;display:flex;align-items:center;justify-content:center;">
-            <i class="bi bi-check2-circle fs-4 text-warning"></i>
-          </div>
+          <div class="icon me-3"><i class="bi bi-clipboard2-check fs-4 text-warning"></i></div>
           <div>
-            <div class="small text-muted text-uppercase">Kalueshmëria</div>
-            <div class="h3 mb-0"><?= $k_pass_rate!==null ? ($k_pass_rate.'%') : '—' ?></div>
+            <div class="small text-muted text-uppercase">Teste në pritje</div>
+            <div class="h3 mb-1"><?= number_format($k_upcoming_tests) ?></div>
+            <span class="small text-muted">Për 30 ditët e ardhshme</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card p-3 h-100">
+        <div class="d-flex align-items-center">
+          <div class="icon me-3"><i class="bi bi-building fs-4 text-danger"></i></div>
+          <div>
+            <div class="small text-muted text-uppercase">Kompania</div>
+            <div class="h6 mb-1"><?= h($company['company_name'] ?? '—') ?></div>
+            <span class="small text-muted"><?= isset($company['nip_t']) ? 'NIPT: '.h($company['nip_t']) : 'S’ka të caktuar' ?></span>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Charts + Info -->
+  <!-- Charts -->
   <section class="row g-4 mb-4">
     <div class="col-12 col-xl-7">
       <div class="card h-100">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
           <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Pikët e mia</h5>
-          <span class="text-muted small">Shfaqen vetëm kur ka nota</span>
+          <span class="text-muted small">Shfaqen kur ka rezultate</span>
         </div>
         <div class="card-body">
           <canvas id="chartScores" height="120"></canvas>
@@ -270,6 +270,31 @@ require __DIR__ . '/inc/navbar3.php';
       </div>
     </div>
     <div class="col-12 col-xl-5">
+      <div class="card h-100">
+        <div class="card-header bg-white d-flex align-items-center justify-content-between">
+          <h5 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i>Orë sipas modulit</h5>
+        </div>
+        <div class="card-body">
+          <canvas id="chartHours" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Status split + Profi info -->
+  <section class="row g-4 mb-4">
+    <div class="col-12 col-xl-5">
+      <div class="card h-100">
+        <div class="card-header bg-white">
+          <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>Statusi i grupeve</h5>
+        </div>
+        <div class="card-body">
+          <canvas id="chartStatus" height="150"></canvas>
+          <div class="small text-muted mt-2">Përmbledhje e grupeve aktive, të mbyllura dhe testeve në pritje.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-7">
       <div class="card h-100">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
           <h5 class="mb-0"><i class="bi bi-person-lines-fill me-2"></i>Profili im</h5>
@@ -280,7 +305,10 @@ require __DIR__ . '/inc/navbar3.php';
             <div class="col-12"><strong>Vendlindja:</strong> <?= h($stud['birth_place'] ?? '—') ?></div>
             <div class="col-6"><strong>Datëlindja:</strong> <?= h($stud['birth_date'] ?? '—') ?></div>
             <div class="col-6"><strong>Tel.:</strong> <?= h($stud['phone'] ?? '—') ?></div>
-            <div class="col-12"><small class="text-muted">Për çdo ndryshim të të dhënave, kontakto administratën.</small></div>
+            <div class="col-12 mt-2">
+              <span class="badge badge-soft rounded-pill me-1">Arsimi: <?= h(($stud['edu_code']?($stud['edu_code'].' · '):'').($stud['edu_label']??'—')) ?></span>
+              <span class="badge badge-soft rounded-pill">Nr. Personal: <?= h($personalNumber ?: ($stud['personal_number'] ?? '—')) ?></span>
+            </div>
           </div>
         </div>
       </div>
@@ -328,7 +356,7 @@ require __DIR__ . '/inc/navbar3.php';
               <td class="nowrap"><span class="badge badge-soft rounded-pill"><?= h($status) ?></span></td>
             </tr>
           <?php endforeach; else: ?>
-            <tr><td colspan="7" class="text-center text-muted">Aktualisht s'je i regjistruar në asnjë grup.</td></tr>
+            <tr><td colspan="7" class="text-center text-muted">Aktualisht s’je i regjistruar në asnjë grup.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>
@@ -336,7 +364,7 @@ require __DIR__ . '/inc/navbar3.php';
     </div>
   </section>
 
-  <!-- Teste në të ardhmen -->
+  <!-- Testet e planifikuara -->
   <section class="card mt-4">
     <div class="card-header bg-white d-flex align-items-center justify-content-between">
       <h6 class="mb-0"><i class="bi bi-calendar2-event me-2"></i>Testet e planifikuara</h6>
@@ -349,7 +377,7 @@ require __DIR__ . '/inc/navbar3.php';
             <li class="list-group-item d-flex justify-content-between align-items-start">
               <div>
                 <div class="fw-semibold"><?= h(($e['course_code'] ?? '').' · '.($e['course_name'] ?? '')) ?></div>
-                <div class="small text-muted">Data: <?= h($e['my_exam']) ?></div>
+                <div class="small text-muted">Data: <?= h($e['my_exam']) ?> • Grupi #<?= (int)$e['group_id'] ?></div>
               </div>
               <span class="badge rounded-pill text-bg-primary">Test</span>
             </li>
@@ -361,7 +389,7 @@ require __DIR__ . '/inc/navbar3.php';
     </div>
   </section>
 
-  <div class="text-center text-muted small mt-4">
+  <div class="text-center text-muted small my-4">
     &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
   </div>
 </main>
@@ -369,33 +397,37 @@ require __DIR__ . '/inc/navbar3.php';
 <!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* Grafiku i pikëve */
-const scoreLabels = <?= json_encode($chartLabels) ?>;
-const scoreData   = <?= json_encode($chartData) ?>;
+/* PHP → JS */
+const scoreLabels = <?= json_encode($scoreLabels) ?>;
+const scoreData   = <?= json_encode($scoreData) ?>;
+
+const hoursLabels = <?= json_encode($hoursLabels) ?>;
+const hoursData   = <?= json_encode($hoursData) ?>;
+
+const statusLabels = <?= json_encode($statusLabels) ?>;
+const statusData   = <?= json_encode($statusData) ?>;
+
+/* Charts */
 (() => {
-  const ctx = document.getElementById('chartScores');
-  if (!ctx || !scoreData.length) return;
-  new Chart(ctx, {
+  const cs = document.getElementById('chartScores');
+  if (cs && scoreData.length) new Chart(cs, {
     type: 'line',
-    data: {
-      labels: scoreLabels,
-      datasets: [{
-        label: 'Pikët',
-        data: scoreData,
-        tension: .35,
-        fill: true,
-        borderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display:false } },
-      scales: {
-        x: { grid: { display:false } },
-        y: { beginAtZero:true, suggestedMax:100 }
-      }
-    }
+    data: { labels: scoreLabels, datasets: [{ label:'Pikët', data: scoreData, borderWidth:2, tension:.35, fill:true }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true, suggestedMax:100 } } }
+  });
+
+  const ch = document.getElementById('chartHours');
+  if (ch && hoursData.length) new Chart(ch, {
+    type: 'bar',
+    data: { labels: hoursLabels, datasets: [{ label:'Orë', data: hoursData, borderWidth:1 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true } } }
+  });
+
+  const cst = document.getElementById('chartStatus');
+  if (cst) new Chart(cst, {
+    type: 'doughnut',
+    data: { labels: statusLabels, datasets: [{ data: statusData }] },
+    options: { plugins:{ legend:{ position:'bottom' } } }
   });
 })();
 </script>

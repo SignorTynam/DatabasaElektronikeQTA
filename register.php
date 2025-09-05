@@ -35,10 +35,8 @@ if (isset($_GET['edit'])) {
 }
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 
-/* Navbar sipas rolit (opsionale) */
+/* Nav identifikim (renderohet brenda <body>) */
 $NAV_ACTIVE = 'register';
-if ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
-else require __DIR__ . '/inc/navbar.php';
 
 /* CSRF */
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
@@ -197,12 +195,25 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
     .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-    /* --- Toolbar layout --- */
-    .page-toolbar { gap:.5rem; }
-    .page-toolbar .btn { padding:.4rem .75rem; }
+    /* --- Toasts poshtë MAJTAS --- */
+    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
+    .toast.qta-toast .toast-header{ border-bottom:0; }
+    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
+    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
+    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
+    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
+
+<?php
+  // Render navbar brenda body për të shmangur “headers already sent”
+  if ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
+  else require __DIR__ . '/inc/navbar.php';
+?>
+
+<!-- Toasts: poshtë MAJTAS -->
+<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
@@ -219,7 +230,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     </div>
   </div>
 
-  <!-- Kërkim & Filtrim (kartë e lehtë si te UI i ri) -->
+  <!-- Kërkim & Filtrim -->
   <div class="card mb-3">
     <div class="card-body">
       <form class="row g-2 align-items-end" method="get" action="register.php">
@@ -243,8 +254,6 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
       </form>
     </div>
   </div>
-
-  <div id="msgBox" class="mb-3" style="display:none;"></div>
 
   <div class="card">
     <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -368,16 +377,41 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'register_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-function showMsg(type, text){
-  const box = document.getElementById('msgBox');
-  box.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-      ${text}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+/* Toast helper */
+function notify(type, text, opts={}){
+  const zone = document.getElementById('toastZone');
+  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
+  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
+  const icon = icons[type] || 'bell';
+  const title = opts.title ?? (
+    type==='success' ? 'Sukses' :
+    type==='danger'  ? 'Gabim'  :
+    type==='warning' ? 'Kujdes' : 'Njoftim'
+  );
+  const autohide = opts.autohide ?? true;
+  const delay = opts.delay ?? 4500;
+
+  const html = `
+    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <i class="bi bi-${icon} me-2"></i>
+        <strong class="me-auto">${title}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+      </div>
+      <div class="toast-body">${text}</div>
     </div>`;
-  box.style.display = '';
+  zone.insertAdjacentHTML('beforeend', html);
+
+  const el = document.getElementById(id);
+  const t = new bootstrap.Toast(el, { autohide, delay });
+  el.addEventListener('hidden.bs.toast', ()=> el.remove());
+  t.show();
 }
+
+/* Për kompatibilitet me kodin ekzistues */
+function showMsg(type, text){ notify(type, text); }
+
+function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
 /* Konverto dd-mm-yyyy / yyyy-mm-dd -> yyyy-mm-dd (për server) */
 function normalizeDateForServer(v){
@@ -411,7 +445,7 @@ async function saveInline(payload, cell, displayEl, oldVal){
     if(!json.ok){
       if(displayEl) displayEl.textContent = oldVal;
       cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-      showMsg('danger', json.error || 'Gabim i panjohur.');
+      notify('danger', json.error || 'Gabim i panjohur.');
       return;
     }
 
@@ -419,12 +453,13 @@ async function saveInline(payload, cell, displayEl, oldVal){
       displayEl.textContent = json.display ?? displayEl.textContent;
     }
     cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    notify('success','U ruajt me sukses.');
   }catch(e){
     console.error(e);
     cell.classList.remove('cell-saving');
     if(displayEl) displayEl.textContent = oldVal;
     cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-    showMsg('danger', 'Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
+    notify('danger', 'Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
   }
 }
 
@@ -453,7 +488,7 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
       } catch(err){
         el.textContent = oldVal;
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
-        showMsg('danger', err.message || err);
+        notify('danger', err.message || err);
         return;
       }
     }
@@ -467,7 +502,7 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
       if(isNaN(n)){
         el.textContent = oldVal;
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
-        showMsg('danger','Nota duhet të jetë numër.');
+        notify('danger','Nota duhet të jetë numër.');
         return;
       }
       saveInline({action:'update_final_score', student_id:studentId, group_id:groupId, final_score:n}, cell, el, oldVal);
@@ -475,17 +510,17 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
     }
 
     if(field==='start_date'){
-      if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
+      if(!groupId){ el.textContent = oldVal; notify('danger','Ky student s’ka grup.'); return; }
       saveInline({action:'update_group_start', student_id:studentId, group_id:groupId, start_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
     if(field==='end_date'){
-      if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
+      if(!groupId){ el.textContent = oldVal; notify('danger','Ky student s’ka grup.'); return; }
       saveInline({action:'update_group_end', student_id:studentId, group_id:groupId, end_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
     if(field==='exam_date'){
-      if(!groupId){ el.textContent = oldVal; showMsg('danger','Ky student s’ka grup.'); return; }
+      if(!groupId){ el.textContent = oldVal; notify('danger','Ky student s’ka grup.'); return; }
       saveInline({action:'update_student_exam_date', student_id:studentId, group_id:groupId, exam_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }

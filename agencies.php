@@ -30,11 +30,17 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 $CSRF = $_SESSION['csrf_token'];
 
 /* Flash helpers */
-function flash(string $k, ?string $m=null){ if($m===null){ if(!empty($_SESSION['flash'][$k])){ $x=$_SESSION['flash'][$k]; unset($_SESSION['flash'][$k]); return $x; } return null; } $_SESSION['flash'][$k]=$m; }
+function flash(string $k, ?string $m=null){
+  if($m===null){
+    if(!empty($_SESSION['flash'][$k])){ $x=$_SESSION['flash'][$k]; unset($_SESSION['flash'][$k]); return $x; }
+    return null;
+  }
+  $_SESSION['flash'][$k]=$m;
+}
 
 /* Role agency id */
 $roles = $pdo->query("SELECT id,name FROM roles ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
-$agencyRoleId=null; foreach($roles as $r) if($r['name']==='agjencia'){ $agencyRoleId=(int)$r['id']; break; }
+$agencyRoleId=null; foreach($roles as $r) if(strtolower($r['name'])==='agjencia'){ $agencyRoleId=(int)$r['id']; break; }
 if($agencyRoleId===null) exit('Mungon roli "agjencia".');
 
 /* POST: create/delete agency */
@@ -81,10 +87,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       $uid = (int)$st->fetchColumn();
       if(!$uid) throw new RuntimeException('Agjencia nuk u gjet.');
 
-      /* FSHIRJE E SIGURT:
-         - Fshijmë user-in: do të fshihet automatikisht edhe rreshti te `agencies`
-           dhe kredencialet (`credentials`) falë ON DELETE CASCADE.
-         - `agency_students` gjithashtu fshihet (FK ON DELETE CASCADE te agencies.id). */
+      /* FSHIRJE E SIGURT (FK ON DELETE CASCADE te users/agencies/credentials/agency_students) */
       $pdo->beginTransaction();
       $pdo->prepare("DELETE FROM users WHERE id=:uid")->execute([':uid'=>$uid]);
       $pdo->commit();
@@ -130,10 +133,6 @@ foreach($params as $k=>$v){ $st->bindValue($k,$v,is_int($v)?PDO::PARAM_INT:PDO::
 $st->bindValue(':lim',$limit,PDO::PARAM_INT);
 $st->bindValue(':off',$offset,PDO::PARAM_INT);
 $st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
-
-/* Active nav */
-$NAV_ACTIVE='agencies';
-require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -161,34 +160,45 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
     .cell-err{ animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
     .nowrap{ white-space:nowrap; }
     .badge-soft{ background:#eef2ff; color:#4338ca; }
+
+    /* UI e re – soft & pill */
+    .btn-pill { border-radius:999px !important; }
+    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+    /* FAB (+) poshtë DJATHTAS */
+    .btn-fab{
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      width: 56px; height: 56px; border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
+    }
+    .btn-fab i{ font-size:1.25rem; line-height:1; }
+    .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
+    @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+
+    /* Toasts poshtë MAJTAS */
+    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
+    .toast.qta-toast .toast-header{ border-bottom:0; }
+    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
+    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
+    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
+    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
   </style>
 </head>
 <body>
+<?php
+  $NAV_ACTIVE='agencies';
+  require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
+?>
 
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Agjencitë & lidhja me studentët</h2>
-    <div class="d-flex align-items-center gap-2">
-      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAgencyModal">
-        <i class="bi bi-building-add me-1"></i> Shto Agjenci
-      </button>
-    </div>
+    <!-- Butoni + vjen si FAB poshtë djathtas -->
   </div>
-
-  <?php if ($m = flash('ok')): ?>
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-      <i class="bi bi-check-circle me-1"></i><?= htmlspecialchars($m) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
-  <?php if ($m = flash('err')): ?>
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-      <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($m) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
-
-  <div id="msgBox" class="mb-3" style="display:none;"></div>
 
   <!-- Kërkim -->
   <div class="card mb-3">
@@ -202,8 +212,8 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
           </div>
         </div>
         <div class="col-md-3 text-end">
-          <button class="btn btn-outline-secondary me-1" type="button" onclick="window.location='agencies.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-          <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='agencies.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
+          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
         </div>
       </form>
     </div>
@@ -257,7 +267,7 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
 
               <td class="text-muted"><?= htmlspecialchars($a['created_at']) ?></td>
               <td class="text-end">
-                <!-- Menaxho (egzistuese) -->
+                <!-- Menaxho -->
                 <button class="btn btn-sm btn-outline-primary me-2" 
                         data-bs-toggle="modal" data-bs-target="#manageStudentsModal"
                         data-agency="<?= $aid ?>" 
@@ -265,9 +275,8 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
                   <i class="bi bi-people"></i> Menaxho
                 </button>
 
-                <!-- Fshi Agjencinë -->
-                <form method="post" class="d-inline"
-                      onsubmit="return confirm('Kujdes! Fshirja do të heqë edhe lidhjet me studentët dhe kredencialet e këtij llogari. Vazhdo?');">
+                <!-- Fshi Agjencinë (me modal konfirmimi) -->
+                <form method="post" class="d-inline js-confirm-delete" data-confirm="Kujdes! Fshirja do të heqë edhe lidhjet me studentët dhe kredencialet e këtij llogari. Vazhdo?">
                   <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
                   <input type="hidden" name="action" value="delete_agency">
                   <input type="hidden" name="agency_id" value="<?= $aid ?>">
@@ -279,7 +288,7 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
 
             </tr>
           <?php endforeach; else: ?>
-            <tr><td colspan="7" class="text-center text-muted">Nuk u gjet asnjë agjenci.</td></tr>
+            <tr><td colspan="8" class="text-center text-muted">Nuk u gjet asnjë agjenci.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>
@@ -310,7 +319,17 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
   </div>
 </main>
 
-<!-- Modal: Shto Agjenci (si më parë) -->
+<!-- Floating Action Button (FAB) – poshtë djathtas -->
+<button class="btn btn-primary btn-fab" type="button"
+        data-bs-toggle="modal" data-bs-target="#addAgencyModal"
+        aria-label="Shto agjenci">
+  <i class="bi bi-plus-lg"></i>
+</button>
+
+<!-- Toasts: poshtë MAJTAS -->
+<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
+
+<!-- Modal: Shto Agjenci -->
 <div class="modal fade" id="addAgencyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <form class="modal-content" method="post">
@@ -349,13 +368,12 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
           </div>
         </div>
         <div class="form-text mt-2">
-          Krijon rreshta në <code>users</code>, <code>credentials</code> dhe <code>agencies</code>.
-          Agjencitë hyjnë me <strong>NIPT + fjalëkalim</strong>.
+          Krijon rreshta në <code>users</code>, <code>credentials</code> dhe <code>agencies</code>. Agjencitë hyjnë me <strong>NIPT + fjalëkalim</strong>.
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit">Shto agjenci</button>
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit">Shto agjenci</button>
       </div>
     </form>
   </div>
@@ -371,8 +389,6 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
       </div>
       <div class="modal-body">
         <input type="hidden" id="msAgencyId" value="">
-        <div id="msMsg" class="mb-3" style="display:none;"></div>
-
         <div class="row g-3 align-items-end mb-3">
           <div class="col-md-8">
             <label class="form-label">Shto nga AMZË (intervale ose vlera të ndara me presje)</label>
@@ -400,7 +416,24 @@ require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        <button class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Konfirmim veprimi (universal) -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Konfirmim</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body" id="confirmText">A jeni i sigurt?</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" class="btn btn-danger btn-pill" id="confirmYesBtn">Po, vazhdo</button>
       </div>
     </div>
   </div>
@@ -413,14 +446,46 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const INLINE_ENDPOINT = 'agencies_inline_update.php';
 const LINK_ENDPOINT   = 'agencies_students_update.php';
 
-function showMsg(container, type, text){
-  const el = typeof container==='string' ? document.querySelector(container) : container;
-  el.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-      ${text}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+/* Toast helper */
+function notify(type, text, opts={}){
+  const zone = document.getElementById('toastZone');
+  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
+  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
+  const icon = icons[type] || 'bell';
+  const title = opts.title ?? (
+    type==='success' ? 'Sukses' :
+    type==='danger'  ? 'Gabim'  :
+    type==='warning' ? 'Kujdes' : 'Njoftim'
+  );
+  const autohide = opts.autohide ?? true;
+  const delay = opts.delay ?? 4500;
+
+  const html = `
+    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <i class="bi bi-${icon} me-2"></i>
+        <strong class="me-auto">${title}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+      </div>
+      <div class="toast-body">${text}</div>
     </div>`;
-  el.style.display='';
+  zone.insertAdjacentHTML('beforeend', html);
+
+  const el = document.getElementById(id);
+  const t = new bootstrap.Toast(el, { autohide, delay });
+  el.addEventListener('hidden.bs.toast', ()=> el.remove());
+  t.show();
+}
+
+/* Për kompatibilitet me kodin ekzistues (injoron container dhe përdor toast) */
+function showMsg(containerOrType, typeOrText, maybeText){
+  if (maybeText === undefined) {
+    // showMsg('danger','Mesazh')
+    notify(containerOrType, typeOrText);
+  } else {
+    // showMsg('#box','danger','Mesazh')
+    notify(typeOrText, maybeText);
+  }
 }
 
 function cleanText(s){ const v=(s||'').replace(/\s+/g,' ').trim(); return v==='—'?'':v; }
@@ -445,11 +510,12 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
       if(!json.ok) throw new Error(json.error||'Gabim.');
       el.textContent = json.display ?? (val||'—');
       cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'),800);
+      notify('success','U ruajt me sukses.');
     }catch(e){
       el.textContent=oldVal;
       cell.classList.remove('cell-saving');
       cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
-      showMsg('#msgBox','danger', e.message);
+      notify('danger', e.message || 'Ndodhi një gabim.');
     }
   });
 });
@@ -505,7 +571,7 @@ async function loadAgencyStudents(agencyId){
 document.getElementById('msAddBtn')?.addEventListener('click', async ()=>{
   const agencyId = parseInt(document.getElementById('msAgencyId').value,10);
   const spec = document.getElementById('msAmzeInput').value.trim();
-  if(!spec){ showMsg('#msMsg','warning','Shkruaj AMZË.'); return; }
+  if(!spec){ notify('warning','Shkruaj AMZË.'); return; }
   try{
     const res = await fetch(LINK_ENDPOINT, {
       method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
@@ -513,31 +579,61 @@ document.getElementById('msAddBtn')?.addEventListener('click', async ()=>{
     });
     const json = await res.json();
     if(!json.ok) throw new Error(json.error||'Gabim.');
-    showMsg('#msMsg','success', `U shtuan ${json.added} student(ë).`);
+    notify('success', `U shtuan ${json.added} student(ë).`);
     loadAgencyStudents(agencyId);
-  }catch(e){ showMsg('#msMsg','danger', e.message); }
+  }catch(e){ notify('danger', e.message || 'Gabim gjatë shtimit.'); }
 });
 
-/* Hiq student nga agjencia (delegim) */
+/* Konfirmim universal me modal */
+let __confirmCb = null;
+function openConfirm(message, onYes){
+  document.getElementById('confirmText').textContent = message || 'A jeni i sigurt?';
+  __confirmCb = typeof onYes==='function' ? onYes : null;
+  const m = new bootstrap.Modal('#confirmModal');
+  m.show();
+  const yesBtn = document.getElementById('confirmYesBtn');
+  yesBtn.onclick = ()=>{ if(__confirmCb) __confirmCb(); m.hide(); __confirmCb=null; };
+}
+
+/* Hiq student nga agjencia (delegim) me modal confirm */
 document.querySelector('#msTable tbody')?.addEventListener('click', async (ev)=>{
   const btn = ev.target.closest('button[data-unlink]');
   if(!btn) return;
   const sid = parseInt(btn.getAttribute('data-unlink'),10);
   const agencyId = parseInt(document.getElementById('msAgencyId').value,10);
-  if(!confirm('Të hiqet ky student nga agjencia?')) return;
-  try{
-    const res = await fetch(LINK_ENDPOINT, {
-      method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body: JSON.stringify({csrf:CSRF, action:'unlink', agency_id:agencyId, student_id:sid})
-    });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error||'Gabim.');
-    loadAgencyStudents(agencyId);
-  }catch(e){ showMsg('#msMsg','danger', e.message); }
+  openConfirm('Të hiqet ky student nga agjencia?', async ()=>{
+    try{
+      const res = await fetch(LINK_ENDPOINT, {
+        method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body: JSON.stringify({csrf:CSRF, action:'unlink', agency_id:agencyId, student_id:sid})
+      });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error||'Gabim.');
+      notify('success','U hoq me sukses.');
+      loadAgencyStudents(agencyId);
+    }catch(e){ notify('danger', e.message || 'Gabim gjatë heqjes.'); }
+  });
+});
+
+/* Konfirmim për fshirjen e agjencisë (forms) */
+document.querySelectorAll('form.js-confirm-delete').forEach(form=>{
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const msg = form.getAttribute('data-confirm') || 'A jeni i sigurt?';
+    openConfirm(msg, ()=> form.submit());
+  });
 });
 
 /* Helpers */
 function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
+
+/* Flash -> Toast sapo ngarkohet faqja */
+<?php if ($m = flash('ok')): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($m) ?>));
+<?php endif; ?>
+<?php if ($m = flash('err')): ?>
+document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($m) ?>));
+<?php endif; ?>
 </script>
 </body>
 </html>
