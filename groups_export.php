@@ -146,7 +146,7 @@ function exportAny(array $headers, array $rows, string $title, string $filename,
 }
 
 /* ------------------------------
-   FORM 1: grupi fillim…mbarim
+   FORM 1: grupi fillim…mbarim (PA kode kursi)
 ------------------------------- */
 if ($type === 'form1') {
   $gstart = (int)($_GET['gstart'] ?? 0);
@@ -156,7 +156,7 @@ if ($type === 'form1') {
   $sql = "
     SELECT
       cg.id AS group_id,
-      c.code AS course_code, c.name AS course_name,
+      c.name AS course_name,              -- vetëm emri, pa code
       cg.start_date, cg.end_date,
       COUNT(s.id) AS total,
 
@@ -208,11 +208,10 @@ if ($type === 'form1') {
   ];
   $data = [];
   foreach ($rows as $r) {
-    $labelCourse = ($r['course_code'] ? ($r['course_code'].' · ') : '') . ($r['course_name'] ?? '');
     $amzeSpan = ($r['amze_min']===null || $r['amze_max']===null) ? '' : ($r['amze_min'].'–'.$r['amze_max']);
     $data[] = [
       (int)$r['group_id'],
-      $labelCourse,
+      $r['course_name'] ?? '',                 // vetëm emri i kursit
       $r['start_date'] ?? '',
       $r['end_date'] ?? '',
       (int)$r['total'],
@@ -232,7 +231,7 @@ if ($type === 'form1') {
 }
 
 /* ------------------------------
-   FORM 2: AMZË fillim…mbarim
+   FORM 2: AMZË fillim…mbarim (veç emrit të kursit të fundit)
 ------------------------------- */
 if ($type === 'form2') {
   $a1 = (int)($_GET['amze_start'] ?? 0);

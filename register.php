@@ -159,6 +159,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
   <style>
+    /* ===== Base layout ===== */
     body { background:#f5f7fb; padding-top:72px; }
     .navbar-brand img { height:28px; }
     .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
@@ -184,7 +185,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     .editing-off .editable { color:#6b7280; cursor:not-allowed; }
     .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
 
-    /* --- Soft buttons & pills (UI i ri) --- */
+    /* --- Soft buttons (shared) --- */
     .btn-pill { border-radius:999px !important; }
     .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
     .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
@@ -195,13 +196,65 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
     .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-    /* --- Toasts poshtë MAJTAS --- */
+    /* ===== Floating action buttons (stacked) — IDENTIK me groups.php ===== */
+    .fab-stack{
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 12px;
+      z-index: 1040;
+    }
+    .fab-stack .fab-btn{
+      align-self: flex-end;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 52px;
+      height: 52px;
+      width: 52px;                 /* icon-only by default */
+      padding: 0 14px;             /* room for label when expanded */
+      border-radius: 999px;
+      box-shadow: 0 12px 20px rgba(2,6,23,.15);
+      transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
+      overflow: hidden;
+    }
+    .fab-stack .fab-btn .fab-text{
+      white-space: nowrap;
+      max-width: 0;
+      opacity: 0;
+      transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
+      margin-left: 0;
+    }
+    .fab-stack .fab-btn:hover,
+    .fab-stack .fab-btn:focus{
+      width: auto;                 /* pill with label */
+      box-shadow: 0 16px 28px rgba(2,6,23,.22);
+    }
+    .fab-stack .fab-btn:hover .fab-text,
+    .fab-stack .fab-btn:focus .fab-text{
+      max-width: 180px;
+      opacity: 1;
+      margin-left: 4px;
+    }
+    .fab-stack .fab-btn:active{ transform: translateY(1px); }
+    @media (max-width: 575.98px){
+      .fab-stack{ right:16px; bottom:16px; gap:10px; }
+      .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
+    }
+
+    /* Toasts poshtë MAJTAS */
     .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
     .toast.qta-toast .toast-header{ border-bottom:0; }
     .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
     .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
     .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
     .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
+
+    /* Compact paddings si te groups.php */
+    .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -218,16 +271,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Regjistri i studentëve</h2>
-
-    <!-- Toolbar me UI të ri -->
-    <div class="d-flex flex-wrap align-items-center page-toolbar">
-      <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
-         title="Ndrysho gjendjen e Edit Mode">
-        <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-        Edit Mode:
-        <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-      </a>
-    </div>
+    <!-- Heqëm butona të tjerë — përdorim vetëm FAB për Edit Mode -->
   </div>
 
   <!-- Kërkim & Filtrim -->
@@ -371,11 +415,25 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
   </div>
 </main>
 
+<!-- FAB Stack: vetëm Edit Mode (dizajn identik me groups.php) -->
+<div class="fab-stack" role="group" aria-label="Veprime shpejta">
+  <a id="editModeFab"
+     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
+     href="<?= htmlspecialchars($toggleUrl) ?>"
+     title="Ndrysho gjendjen e Edit Mode">
+    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
+    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+  </a>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'register_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
+
+/* Compact mode si te groups.php */
+document.addEventListener('DOMContentLoaded', ()=>document.body.classList.add('compact'));
 
 /* Toast helper */
 function notify(type, text, opts={}){

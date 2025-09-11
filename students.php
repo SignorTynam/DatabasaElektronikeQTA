@@ -162,7 +162,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-
             $pdo->beginTransaction();
 
             /* 1) PERSON */
@@ -432,18 +431,57 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
         .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-        /* FAB (+) poshtë DJATHTAS */
-        .btn-fab{
+        /* ===== Floating action buttons (stacked) — identik me groups.php ===== */
+        .fab-stack{
           position: fixed;
           right: 24px;
           bottom: 24px;
-          width: 56px; height: 56px; border-radius: 50%;
-          display:flex; align-items:center; justify-content:center;
-          z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
+          display: flex;
+          flex-direction: column-reverse;
+          gap: 12px;
+          z-index: 1040;
         }
-        .btn-fab i{ font-size:1.25rem; line-height:1; }
-        .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
-        @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+        .fab-stack .fab-btn{
+          align-self: flex-end;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          min-height: 52px;
+          height: 52px;
+          width: 52px;                 /* icon-only by default */
+          padding: 0 14px;             /* room for label when expanded */
+          border-radius: 999px;
+          box-shadow: 0 12px 20px rgba(2,6,23,.15);
+          transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
+          overflow: hidden;
+        }
+        .fab-stack .fab-btn .fab-text{
+          white-space: nowrap;
+          max-width: 0;
+          opacity: 0;
+          transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
+          margin-left: 0;
+        }
+        .fab-stack .fab-btn:hover,
+        .fab-stack .fab-btn:focus{
+          width: auto;                 /* pill with label */
+          box-shadow: 0 16px 28px rgba(2,6,23,.22);
+        }
+        .fab-stack .fab-btn:hover .fab-text,
+        .fab-stack .fab-btn:focus .fab-text{
+          max-width: 180px;
+          opacity: 1;
+          margin-left: 4px;
+        }
+        .fab-stack .fab-btn:active{ transform: translateY(1px); }
+        @media (max-width: 575.98px){
+          .fab-stack{ right:16px; bottom:16px; gap:10px; }
+          .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
+        }
+
+        /* Fshih fallback-in e vjetër .btn-fab nëse mbetet në DOM */
+        .btn-fab{ display:none !important; }
 
         /* Toasts poshtë MAJTAS */
         .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
@@ -452,6 +490,9 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
         .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
         .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
+
+        /* Compact paddings si te groups.php */
+        .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
     </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -468,16 +509,8 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Studentët</h2>
-        <div class="d-flex align-items-center page-toolbar">
-            <!-- Edit Mode Toggle -->
-            <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
-               href="<?= htmlspecialchars($toggleUrl) ?>" title="Ndrysho gjendjen e Edit Mode">
-               <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-               Edit Mode:
-               <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?> badge-edit"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-            </a>
-            <!-- Heqim butonin klasik 'Shto Student'; përdor FAB poshtë djathtas -->
-        </div>
+        <!-- Heqëm butonin e sipërm të Edit Mode; përdoret FAB poshtë djathtas -->
+        <div class="page-toolbar"></div>
     </div>
 
     <!-- Kërkim + filtër edukimi -->
@@ -645,19 +678,29 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
     </div>
 </main>
 
-<!-- FAB: Shto Student (poshtë djathtas) -->
-<?php if ($EDIT_MODE): ?>
-<button class="btn btn-primary btn-fab" type="button"
-        data-bs-toggle="modal" data-bs-target="#addStudentModal"
-        aria-label="Shto student">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php else: ?>
-<button class="btn btn-soft-secondary btn-fab" type="button" disabled
-        title="Aktivizo Edit Mode për të shtuar student">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php endif; ?>
+<!-- FAB Stack: Edit Mode + Student i ri (si te groups.php) -->
+<div class="fab-stack" role="group" aria-label="Veprime shpejta">
+  <!-- Edit Mode -->
+  <a id="editModeFab"
+     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
+     href="<?= htmlspecialchars($toggleUrl) ?>"
+     title="Ndrysho gjendjen e Edit Mode">
+    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
+    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+  </a>
+
+  <!-- Student i ri (vetëm kur Edit Mode = ON) -->
+  <?php if ($EDIT_MODE): ?>
+  <button class="fab-btn btn btn-primary"
+          type="button"
+          data-bs-toggle="modal"
+          data-bs-target="#addStudentModal"
+          title="Shto student">
+    <i class="bi bi-plus-lg"></i>
+    <span class="fab-text">Student i ri</span>
+  </button>
+  <?php endif; ?>
+</div>
 
 <!-- MODAL: Shto Student -->
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
@@ -747,6 +790,9 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'students_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
+
+/* Compact mode si te groups.php */
+document.addEventListener('DOMContentLoaded', ()=>document.body.classList.add('compact'));
 
 /* Toast helper */
 function notify(type, text, opts={}){

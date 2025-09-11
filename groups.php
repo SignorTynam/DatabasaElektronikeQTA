@@ -66,11 +66,9 @@ function dmy_to_iso(?string $s): ?string {
   if ($s === null) return null;
   $s = trim($s);
   if ($s === '') return null;
-  // prano vetëm DD-MM-YYYY dhe kthe në YYYY-MM-DD
   if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $s, $m)) {
     return "{$m[3]}-{$m[2]}-{$m[1]}";
   }
-  // nëse vjen si ISO, lëre (për kompatibilitet)
   if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) return $s;
   return null;
 }
@@ -90,6 +88,17 @@ function parseAmzeRanges(string $s): array {
   sort($nums, SORT_NUMERIC);
   return $nums;
 }
+/* Audit helper – thërret librarinë nëse ekziston */
+function qta_audit_event(string $type, array $payload): void {
+  try {
+    if (function_exists('qta_audit_log')) {
+      qta_audit_log($GLOBALS['pdo'] ?? null, $type, $payload);
+    }
+  } catch (Throwable $e) {
+    // mos blloko rrjedhën nëse audit dështon
+  }
+}
+
 /** Siguron ekzistencën e një studenti me nr_amze = $amzeNum (krijon persons+users+students nëse mungon). */
 function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, int $amzeNum): int {
   $q = $pdo->prepare("SELECT id FROM students WHERE CAST(nr_amze AS UNSIGNED) = :n LIMIT 1");
@@ -97,7 +106,6 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, in
   $sid = $q->fetchColumn();
   if ($sid) return (int)$sid;
 
-  // 1) person
   $insP = $pdo->prepare("
     INSERT INTO persons (first_name, father_name, last_name, birth_date, birth_place, personal_number, phone, gender_id)
     VALUES (NULL, NULL, NULL, NULL, NULL, NULL, NULL, :g)
@@ -105,12 +113,10 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, in
   $insP->execute([':g'=>$maleGenderId]);
   $pid = (int)$pdo->lastInsertId();
 
-  // 2) user
   $insU = $pdo->prepare("INSERT INTO users (role_id, person_id, full_name, email) VALUES (:r, :pid, NULL, NULL)");
   $insU->execute([':r'=>$studentRoleId, ':pid'=>$pid]);
   $uid = (int)$pdo->lastInsertId();
 
-  // 3) student
   $insS = $pdo->prepare("INSERT INTO students (user_id, person_id, nr_amze, education_level_id) VALUES (:uid, :pid, :amz, NULL)");
   $insS->execute([':uid'=>$uid, ':pid'=>$pid, ':amz'=>(string)$amzeNum]);
 
@@ -123,12 +129,10 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, in
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $_POST['action'] ?? '';
 
-  // Enforce EDIT MODE
   if (!$EDIT_MODE) {
     $_SESSION['flash_err'] = 'Edit Mode është OFF. Aktivizo për të bërë ndryshime.';
     header('Location: groups.php'); exit;
   }
-  // Enforce CSRF
   if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
     http_response_code(400); $_SESSION['flash_err'] = 'CSRF token mismatch.'; header('Location: groups.php'); exit;
   }
@@ -137,7 +141,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   if ($action==='create_group') {
     try {
       $course_id   = (int)($_POST['course_id'] ?? 0);
-      // prano vetëm DD-MM-YYYY nga forma dhe ktheje në ISO për DB
       $start_date  = dmy_to_iso((string)($_POST['start_date'] ?? ''));
       $end_date    = dmy_to_iso((string)($_POST['end_date'] ?? ''));
       $amze_spec   = trim((string)($_POST['amze_spec'] ?? ''));
@@ -150,12 +153,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
       $pdo->beginTransaction();
 
-      // Krijo grupin – tani me is_completed
       $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed) VALUES (:c,:s,:e,:ic)");
       $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':ic'=>$is_completed]);
       $gid = (int)$pdo->lastInsertId();
 
-      // Anëtarët (deri në 10) + rregull: personi s’mund ta ndjekë dy herë të njëjtin modul
       if ($amze_spec !== '') {
         $nums = parseAmzeRanges($amze_spec);
         if (count($nums) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup. Redukto listën e AMZË-ve.');
@@ -165,7 +166,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $ids = array_values(array_unique($ids));
         if (count($ids)>10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
 
-        // 1) Kontroll sipas student_id në të njëjtin modul
         if ($ids) {
           $ph = implode(',', array_fill(0, count($ids), '?'));
           $confQ = $pdo->prepare("
@@ -184,7 +184,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           }
         }
 
-        // 2) Kontroll shtesë sipas persons.personal_number
         if ($ids) {
           $phIds = implode(',', array_fill(0, count($ids), '?'));
           $pnStmt = $pdo->prepare("
@@ -218,11 +217,20 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           }
         }
 
-        // Shto anëtarët (exam_date dhe final_score = NULL fillimisht)
         $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
         foreach ($ids as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
       }
       $pdo->commit();
+
+      // AUDIT
+      qta_audit_event('group.create', [
+        'group_id'=>$gid,
+        'course_id'=>$course_id,
+        'start_date'=>$start_date,
+        'end_date'=>$end_date,
+        'is_completed'=>$is_completed,
+        'actor_user_id'=>$_SESSION['user_id'] ?? null
+      ]);
 
       $_SESSION['flash_ok'] = 'Grupi u krijua me sukses.';
     } catch (Throwable $e) {
@@ -241,24 +249,20 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     try {
       if ($group_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
 
-      // Lexo statusin
       $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
       $is_completed = (int)($gRow->fetchColumn() ?? 0);
       if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i përfunduar. Konfirmo ndryshimin.'); }
 
-      // Moduli duhet të ekzistojë
       $q = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
       $q->execute([':id'=>$course_id]);
       if (!$q->fetchColumn()) throw new RuntimeException('Moduli i zgjedhur nuk ekziston.');
 
-      // Anëtarët aktualë të grupit
       $members = $pdo->prepare("SELECT student_id FROM course_group_students WHERE group_id=:g");
       $members->execute([':g'=>$group_id]);
       $toCheck = $members->fetchAll(PDO::FETCH_COLUMN, 0);
 
       if ($toCheck) {
-        // 1) Kontroll sipas student_id
         $ph = implode(',', array_fill(0, count($toCheck), '?'));
         $confQ = $pdo->prepare("
           SELECT s.nr_amze, cg.id AS other_group_id, c.name AS course_name
@@ -277,7 +281,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           throw new RuntimeException('Ndërrimi i modulit s’lejohet: disa studentë e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
         }
 
-        // 2) Kontroll shtesë sipas persons.personal_number
         $phIds = implode(',', array_fill(0, count($toCheck), '?'));
         $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
@@ -310,9 +313,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         }
       }
 
-      // OK – përditëso
       $st = $pdo->prepare("UPDATE course_groups SET course_id=:c WHERE id=:g");
       $st->execute([':c'=>$course_id, ':g'=>$group_id]);
+
+      // AUDIT
+      qta_audit_event('group.update_course', [
+        'group_id'=>$group_id,
+        'new_course_id'=>$course_id,
+        'actor_user_id'=>$_SESSION['user_id'] ?? null
+      ]);
 
       $_SESSION['flash_ok'] = 'Moduli i grupit u përditësua.';
     } catch (Throwable $e) {
@@ -330,13 +339,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     try {
       if ($group_id<=0) throw new RuntimeException('Grup i pavlefshëm.');
 
-      // Statusi
-      $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
+      $gRow = $pdo->prepare("SELECT is_completed, course_id FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
-      $is_completed = (int)($gRow->fetchColumn() ?? 0);
+      $gRowData = $gRow->fetch(PDO::FETCH_ASSOC);
+      $is_completed = (int)($gRowData['is_completed'] ?? 0);
+      $gidCourseId  = (int)($gRowData['course_id'] ?? 0);
       if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i përfunduar. Konfirmo ndryshimin.'); }
 
-      // Ekzistuesit (amz num -> student_id)
       $q = $pdo->prepare("
         SELECT s.id AS student_id, CAST(s.nr_amze AS UNSIGNED) AS amznum
         FROM course_group_students cgs
@@ -349,15 +358,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $existMap = [];
       foreach ($existing as $row) $existMap[(int)$row['amznum']] = (int)$row['student_id'];
 
-      // Target (deri 10)
       $targetNums = ($amze_spec_members === '') ? [] : parseAmzeRanges($amze_spec_members);
       if (count($targetNums) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
 
-      $targetMap = []; // amznum => student_id
+      $targetMap = [];
       foreach ($targetNums as $n) { $targetMap[$n] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n); }
       if (count($targetMap) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
 
-      // Diferencat
       $toRemove = [];
       foreach ($existMap as $amz=>$sid) if (!array_key_exists($amz, $targetMap)) $toRemove[] = $sid;
       $toAdd = [];
@@ -365,17 +372,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
       $pdo->beginTransaction();
 
-      // Heqjet
       if ($toRemove) {
         $del = $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g AND student_id=:s");
         foreach ($toRemove as $sid) { $del->execute([':g'=>$group_id, ':s'=>$sid]); }
       }
 
-      // Shtimet
       if ($toAdd) {
-        $gidCourseId = (int)$pdo->query("SELECT course_id FROM course_groups WHERE id = ".(int)$group_id)->fetchColumn();
-
-        // 1) Rregulli: askush nga $toAdd të mos e ketë ndjekur këtë modul
         $ph = implode(',', array_fill(0, count($toAdd), '?'));
         $confQ = $pdo->prepare("
           SELECT s.nr_amze, cg.id AS group_id, c.name AS course_name
@@ -392,7 +394,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           throw new RuntimeException('Këta studentë e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
         }
 
-        // 2) Kontroll shtesë sipas persons.personal_number
         $phIds = implode(',', array_fill(0, count($toAdd), '?'));
         $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
@@ -423,7 +424,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           }
         }
 
-        // Kapaciteti
         $cnt = (int)$pdo->query("SELECT COUNT(*) FROM course_group_students WHERE group_id=".(int)$group_id)->fetchColumn();
         if ($cnt + count($toAdd) > 10) throw new RuntimeException('Ky ndryshim tejkalon kufirin 10 për grup.');
 
@@ -432,6 +432,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       }
 
       $pdo->commit();
+
+      // AUDIT
+      qta_audit_event('group.update_members', [
+        'group_id'=>$group_id,
+        'added'=>$toAdd,
+        'removed'=>$toRemove,
+        'actor_user_id'=>$_SESSION['user_id'] ?? null
+      ]);
+
       $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
@@ -448,7 +457,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     try {
       if ($group_id<=0) throw new RuntimeException('Grup i pavlefshëm.');
 
-      // Statusi
       $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
       $is_completed = (int)($gRow->fetchColumn() ?? 0);
@@ -462,6 +470,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g")->execute([':g'=>$group_id]);
       $pdo->prepare("DELETE FROM course_groups WHERE id=:g")->execute([':g'=>$group_id]);
       $pdo->commit();
+
+      // AUDIT
+      qta_audit_event('group.delete', [
+        'group_id'=>$group_id,
+        'actor_user_id'=>$_SESSION['user_id'] ?? null
+      ]);
 
       $_SESSION['flash_ok'] = 'Grupi u fshi me sukses.';
     } catch (Throwable $e) {
@@ -478,8 +492,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $q = trim($_GET['q'] ?? '');
 $courseFilter = trim($_GET['course_id'] ?? '');  // opsional
 
-/* Kurset për dropdown */
-$courses = $pdo->query("SELECT id, code, name FROM courses ORDER BY code")->fetchAll(PDO::FETCH_ASSOC);
+/* Kurset për dropdown (pa kodin, vetëm emrat) */
+$courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Query: rreshta (grup + student) */
 $params = [];
@@ -505,7 +519,7 @@ $whereSql = 'WHERE '.implode(' AND ', $w);
 $sql = "
   SELECT
     cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
-    c.code AS course_code, c.name AS course_name,
+    c.name AS course_name,
 
     s.id AS student_id, s.nr_amze,
     p.first_name, p.father_name, p.last_name,
@@ -514,7 +528,7 @@ $sql = "
 
     el.code AS edu_code, el.label AS edu_label,
 
-    cgs.exam_date,            -- EXAM PER-STUDENT
+    cgs.exam_date,
     cgs.final_score
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
@@ -565,12 +579,12 @@ foreach ($params2 as $k=>$v) $ng->bindValue($k,$v,PDO::PARAM_STR);
 $ng->execute();
 $noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
 
-/* Info për dropdown-et e Formularit 1 (për hints AMZË dhe status) */
+/* Info për dropdown-et e Formularit 1 (pa kod, vetëm emër kursi) */
 $groupInfo = $pdo->query("
   SELECT
     cg.id,
     cg.start_date, cg.end_date, cg.is_completed,
-    c.code AS course_code, c.name AS course_name,
+    c.name AS course_name,
     MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
     MAX(CAST(s.nr_amze AS UNSIGNED)) AS amze_max
   FROM course_groups cg
@@ -627,11 +641,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .cell-ok { animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
     .cell-err { animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
 
-    /* --- Edit Mode OFF visuals --- */
-    .editing-off .editable { color:#6b7280; cursor:not-allowed; }
-    .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
-
-    /* --- Soft buttons & pills --- */
     .btn-pill { border-radius:999px !important; }
     .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
     .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
@@ -646,10 +655,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .page-toolbar { gap:.5rem; }
     .page-toolbar .btn, .group-toolbar .btn { padding:.4rem .75rem; }
 
-    /* --- Status badge spacing --- */
     .group-badge { font-size:.75rem; }
-
-    /* --- Status alert --- */
     .status-alert { border-radius:.75rem; }
     .status-alert i { opacity:.8; }
 
@@ -662,9 +668,67 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       display:flex; align-items:center; justify-content:center;
       z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
     }
-    .btn-fab i{ font-size:1.25rem; line-height:1; }
+    .btn-fab i{ font-size: 1.15rem; line-height: 1; }
     .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
     @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
+
+/* ===== Floating action buttons (stacked) ===== */
+.fab-stack{
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column-reverse; /* create on bottom, toggles above, then edit mode */
+  gap: 12px;
+  z-index: 1040;
+}
+
+.fab-stack .fab-btn{
+  align-self: flex-end;            /* expand left, stick to right edge */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 52px;
+  height: 52px;
+  width: 52px;                     /* compact (icon-only) by default */
+  padding: 0 14px;                 /* room for text when expanded */
+  border-radius: 999px;
+  box-shadow: 0 12px 20px rgba(2,6,23,.15);
+  transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
+  overflow: hidden;
+}
+
+.fab-stack .fab-btn .fab-text{
+  white-space: nowrap;
+  max-width: 0;
+  opacity: 0;
+  transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
+  margin-left: 0;
+}
+
+.fab-stack .fab-btn:hover,
+.fab-stack .fab-btn:focus{
+  width: auto;                     /* pill with label */
+  box-shadow: 0 16px 28px rgba(2,6,23,.22);
+}
+
+.fab-stack .fab-btn:hover .fab-text,
+.fab-stack .fab-btn:focus .fab-text{
+  max-width: 180px;
+  opacity: 1;
+  margin-left: 4px;
+}
+
+.fab-stack .fab-btn:active{ transform: translateY(1px); }
+
+@media (max-width: 575.98px){
+  .fab-stack{ right:16px; bottom:16px; gap:10px; }
+  .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
+}
+
+/* Optional: keep old .btn-fab buttons from overlapping if left in DOM */
+.btn-fab.fab-toggleall, .btn-fab.fab-editmode{ display:none !important; }
 
     /* Toasts poshtë MAJTAS */
     .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
@@ -674,11 +738,9 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
     .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
 
-    /* --- Accordion --- */
     .collapse-toggle .bi-chevron-down { transition: transform .2s ease; }
     .collapse-toggle[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
 
-    /* --- Compact mode --- */
     .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
   </style>
 </head>
@@ -691,34 +753,16 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Grupe</h2>
     <div class="d-flex flex-wrap align-items-center page-toolbar">
-
-      <!-- Export buttons (better UI) -->
       <button class="btn btn-soft-success btn-pill" data-bs-toggle="modal" data-bs-target="#form1Modal" data-bs-title="Shkarko statistika për grupe">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1
       </button>
       <button class="btn btn-soft-danger btn-pill" data-bs-toggle="modal" data-bs-target="#form2Modal" data-bs-title="Shkarko listë studentësh sipas AMZË">
         <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
       </button>
-
-      <!-- Expand/Collapse All -->
-      <button class="btn btn-soft-secondary btn-pill" id="expandAll">
-        <i class="bi bi-arrows-angle-expand me-1"></i> Zgjero të gjitha
-      </button>
-      <button class="btn btn-soft-secondary btn-pill" id="collapseAll">
-        <i class="bi bi-arrows-angle-contract me-1"></i> Mbyll të gjitha
-      </button>
-
-      <!-- Edit Mode Toggle (button-style) -->
-      <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
-         title="Ndrysho gjendjen e Edit Mode">
-        <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-        Edit Mode:
-        <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-      </a>
+      <!-- U hoqën butonat Expand/Collapse dhe Edit Mode nga toolbar-i sipër -->
     </div>
   </div>
 
-  <!-- Kërkim + filter -->
   <div class="card mb-3">
     <div class="card-body">
       <form class="row g-2 align-items-end" method="get" action="groups.php">
@@ -732,7 +776,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
                 <option value="">— Modul —</option>
                 <?php foreach($courses as $c): ?>
                   <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
-                    <?= htmlspecialchars($c['code'].' — '.$c['name']) ?>
+                    <?= htmlspecialchars($c['name']) ?>
                   </option>
                 <?php endforeach; ?>
               </select>
@@ -754,7 +798,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   <div id="msgBox" class="mb-3" style="display:none;"></div>
 
   <?php
-  // Grupi -> (header, students[])
   $groups = [];
   foreach ($rows as $r) {
     $gid = (int)$r['group_id'];
@@ -763,7 +806,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
         'header' => [
           'group_id'=>$gid,
           'course_id'=>$r['course_id'],
-          'course_code'=>$r['course_code'],
           'course_name'=>$r['course_name'],
           'start_date'=>$r['start_date'],
           'end_date'=>$r['end_date'],
@@ -775,7 +817,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     if ($r['student_id']) $groups[$gid]['students'][] = $r;
   }
 
-  // llogarit min/max AMZË për çdo grup dhe rendit sipas min_amze (numri i parë i AMZË-së në grup)
   foreach ($groups as $gid => &$g) {
     $amzes = [];
     foreach ($g['students'] as $stRow) {
@@ -802,13 +843,12 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
         <div class="d-flex align-items-center gap-3">
           <h5 class="mb-0">
             <i class="bi bi-collection me-2"></i>
-            Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_code'].' · '.$g['header']['course_name']) ?>
+            Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_name']) ?>
           </h5>
           <small class="text-muted">AMZË: <?= htmlspecialchars($minLbl.$maxLbl) ?></small>
           <span class="badge <?= $completed ? 'text-bg-success' : 'text-bg-danger' ?> group-badge" data-group="<?= (int)$gid ?>">
             <?= $completed ? 'I përfunduar' : 'Jo i përfunduar' ?>
           </span>
-          <!-- Toggle completed -->
           <div class="form-check form-switch ms-2" title="Ndrysho statusin e përfundimit">
             <input class="form-check-input toggle-completed" type="checkbox"
                    data-group="<?= (int)$gid ?>" <?= $completed ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
@@ -816,7 +856,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
           </div>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2 group-toolbar">
-          <!-- Accordion toggler -->
           <button class="btn btn-soft-secondary btn-pill collapse-toggle"
                   data-bs-toggle="collapse"
                   data-bs-target="#gBody_<?= (int)$gid ?>"
@@ -842,11 +881,9 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
         </div>
       </div>
 
-      <!-- Accordion body -->
       <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
         <div class="card-body">
 
-          <!-- Status alert -->
           <div id="statusAlert_<?= (int)$gid ?>" class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 mb-3 small">
             <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
             <?= $completed
@@ -892,7 +929,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
                     <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
                   </td>
 
-                  <!-- exam_date per student -->
                   <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
                       title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
                     <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
@@ -900,7 +936,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
                     </span>
                   </td>
 
-                  <!-- final_score per student -->
                   <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
                     <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
                       <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
@@ -969,7 +1004,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <select name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
               <?php foreach($courses as $c): ?>
                 <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === (int)$g['header']['course_id']) ? 'selected' : '' ?>>
-                  <?= htmlspecialchars($c['code'].' — '.$c['name']) ?>
+                  <?= htmlspecialchars($c['name']) ?>
                 </option>
               <?php endforeach; ?>
             </select>
@@ -1017,7 +1052,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     </div>
   <?php endif; ?>
 
-  <!-- Studentë pa grup -->
   <div class="card mb-4">
     <div class="card-header bg-white d-flex align-items-center justify-content-between">
       <h5 class="mb-0"><i class="bi bi-person-dash me-2"></i>Studentë pa grup</h5>
@@ -1059,19 +1093,35 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   </div>
 </main>
 
-<!-- FAB: Krijo grup (poshtë djathtas) -->
-<?php if ($EDIT_MODE): ?>
-<button class="btn btn-primary btn-fab" type="button"
-        data-bs-toggle="modal" data-bs-target="#createGroupModal"
-        aria-label="Krijo grup">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php else: ?>
-<button class="btn btn-soft-secondary btn-fab" type="button" disabled
-        title="Aktivizo Edit Mode për të krijuar grup">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php endif; ?>
+<!-- REPLACE the three floating buttons block with this stack -->
+<div class="fab-stack" role="group" aria-label="Veprime shpejta">
+  <!-- Toggle All -->
+  <button id="toggleAllBtn" class="btn btn-soft-secondary fab-btn" type="button" title="Zgjero/Mbyll të gjitha">
+    <i class="bi bi-arrows-angle-expand" id="toggleAllIcon"></i>
+    <span class="fab-text" id="toggleAllText">Zgjero të gjitha</span>
+  </button>
+
+  <!-- Edit Mode -->
+  <a id="editModeFab"
+     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
+     href="<?= htmlspecialchars($toggleUrl) ?>"
+     title="Ndrysho gjendjen e Edit Mode">
+    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
+    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+  </a>
+
+  <!-- Create Group (only when Edit Mode is ON) -->
+  <?php if ($EDIT_MODE): ?>
+  <button class="fab-btn btn btn-primary"
+          type="button"
+          data-bs-toggle="modal"
+          data-bs-target="#createGroupModal"
+          title="Krijo grup">
+    <i class="bi bi-plus-lg"></i>
+    <span class="fab-text">Grup i ri</span>
+  </button>
+  <?php endif; ?>
+</div>
 
 <!-- MODAL: Formulari nr. 1 -->
 <div class="modal fade" id="form1Modal" tabindex="-1" aria-hidden="true">
@@ -1091,7 +1141,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <option value="">— Zgjidh —</option>
             <?php foreach($groupInfo as $gi): ?>
               <option value="<?= (int)$gi['id'] ?>">
-                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_code'].' · '.$gi['course_name']) ?>
+                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name']) ?>
                 (<?= htmlspecialchars(fmt_dMY($gi['start_date']).' → '.fmt_dMY($gi['end_date'])) ?>)
               </option>
             <?php endforeach; ?>
@@ -1104,7 +1154,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <option value="">— Zgjidh —</option>
             <?php foreach($groupInfo as $gi): ?>
               <option value="<?= (int)$gi['id'] ?>">
-                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_code'].' · '.$gi['course_name']) ?>
+                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name']) ?>
                 (<?= htmlspecialchars(fmt_dMY($gi['start_date']).' → '.fmt_dMY($gi['end_date'])) ?>)
               </option>
             <?php endforeach; ?>
@@ -1185,7 +1235,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <select name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
               <option value="">— Zgjidh —</option>
               <?php foreach($courses as $c): ?>
-                <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['code'].' — '.$c['name']) ?></option>
+                <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
@@ -1238,7 +1288,7 @@ const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 /* Map: groupId -> completed (0/1) për konfirmime */
 const GROUP_COMPLETED = <?= json_encode(array_column($groupInfo, 'is_completed', 'id')) ?>;
 
-/* Mapping për hints e Formularit 1 (duke përfshirë amze_min/amze_max) */
+/* Mapping për hints e Formularit 1 */
 const GROUP_AMZE = <?= json_encode(array_column($groupInfo, null, 'id'), JSON_UNESCAPED_UNICODE) ?>;
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
@@ -1265,6 +1315,8 @@ function notify(type, text, opts={}){
         <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
       </div>
       <div class="toast-body">${text}</div>
+          </div>
+      <div class="toast-body">${text}</div>
     </div>`;
   zone.insertAdjacentHTML('beforeend', html);
   const el = document.getElementById(id);
@@ -1273,7 +1325,7 @@ function notify(type, text, opts={}){
   t.show();
 }
 
-/* showMsg tani përdor toast */
+/* showMsg wrapper */
 function showMsg(type, text){ notify(type, text); }
 
 /* DD-MM-YYYY -> YYYY-MM-DD (vetëm ky format lejohet) */
@@ -1321,7 +1373,7 @@ function updateStatusUI(gid, isCompleted){
 
 /* AJAX helper */
 async function saveInline(payload, cell, displayEl, oldVal){
-  if (!EDIT_MODE) return; // hard stop
+  if (!EDIT_MODE) return;
   try{
     if (cell) cell.classList.add('cell-saving');
     const res = await fetch(ENDPOINT, {
@@ -1339,7 +1391,6 @@ async function saveInline(payload, cell, displayEl, oldVal){
       return;
     }
 
-    // Nëse serveri kthen statusin e ri të përfundimit
     if (json.is_completed !== undefined) {
       const gid = payload.group_id;
       GROUP_COMPLETED[String(gid)] = json.is_completed ? 1 : 0;
@@ -1359,6 +1410,49 @@ async function saveInline(payload, cell, displayEl, oldVal){
   }
 }
 
+/* Maskë DD-MM-YYYY për contenteditable dhe input */
+function maskToDDMMYYYY(input) {
+  const digits = String(input || '').replace(/\D/g, '').slice(0, 8);
+  const d = digits.slice(0, 2);
+  const m = digits.slice(2, 4);
+  const y = digits.slice(4, 8);
+  let out = d;
+  if (digits.length > 2) out += '-' + m;
+  if (digits.length > 4) out += '-' + y;
+  return out;
+}
+function placeCaretAtEnd(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+function attachDateMaskContentEditable(el) {
+  el.addEventListener('input', () => {
+    const masked = maskToDDMMYYYY(el.textContent);
+    if (el.textContent !== masked) {
+      el.textContent = masked;
+      placeCaretAtEnd(el);
+    }
+  });
+  el.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const txt = (e.clipboardData || window.clipboardData).getData('text');
+    el.textContent = maskToDDMMYYYY(txt);
+    placeCaretAtEnd(el);
+  });
+}
+function applyDmyMask(el){
+  el.addEventListener('input', ()=>{
+    let v = el.value.replace(/[^\d]/g,'').slice(0,8);
+    if (v.length >= 5) v = v.slice(0,2)+'-'+v.slice(2,4)+'-'+v.slice(4);
+    else if (v.length >= 3) v = v.slice(0,2)+'-'+v.slice(2);
+    el.value = v;
+  });
+}
+
 /* Toggle Completed (AJAX) */
 document.querySelectorAll('.toggle-completed').forEach(chk=>{
   chk.addEventListener('change', ()=>{
@@ -1376,6 +1470,9 @@ document.querySelectorAll('.toggle-completed').forEach(chk=>{
 document.querySelectorAll('.cell-inline.editable').forEach(el=>{
   let oldVal = el.textContent;
   if (!EDIT_MODE) el.setAttribute('contenteditable','false');
+
+  /* maskë për datë */
+  attachDateMaskContentEditable(el);
 
   el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
   el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
@@ -1401,6 +1498,10 @@ document.querySelectorAll('.cell-inline.editable').forEach(el=>{
 document.querySelectorAll('td.cell .editable').forEach(el=>{
   let oldVal = el.textContent;
   if (!EDIT_MODE) el.setAttribute('contenteditable','false');
+
+  /* maskë për exam_date */
+  const cell = el.closest('td.cell');
+  if (cell && cell.dataset.field === 'exam_date') attachDateMaskContentEditable(el);
 
   el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
   el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
@@ -1473,24 +1574,15 @@ document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
   });
 });
 
-/* ========== Maskë për input-et DD-MM-YYYY në modal "Krijo grup" ========== */
-function applyDmyMask(el){
-  el.addEventListener('input', ()=>{
-    let v = el.value.replace(/[^\d]/g,'').slice(0,8);
-    if (v.length >= 5) v = v.slice(0,2)+'-'+v.slice(2,4)+'-'+v.slice(4);
-    else if (v.length >= 3) v = v.slice(0,2)+'-'+v.slice(2);
-    el.value = v;
-  });
-}
+/* Maskë për input-et DD-MM-YYYY në modal "Krijo grup" */
 document.querySelectorAll('input.dmy').forEach(applyDmyMask);
-
 const createForm = document.querySelector('#createGroupModal form');
 if (createForm){
   createForm.addEventListener('submit', (ev)=>{
     const s = createForm.querySelector('input[name="start_date"]');
     const e = createForm.querySelector('input[name="end_date"]');
     try{
-      s.value = normalizeDateForServer(s.value); // dërgo ISO te serveri
+      s.value = normalizeDateForServer(s.value);
       e.value = normalizeDateForServer(e.value);
     }catch(err){
       ev.preventDefault();
@@ -1499,7 +1591,7 @@ if (createForm){
   });
 }
 
-/* ========== Accordion state me localStorage + butona globalë ========== */
+/* Accordion state me localStorage + ToggleAll i vetëm */
 const OPEN_KEY = 'qta_groups_open';
 function getOpenSet(){
   try{ return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || '[]').map(String)); }
@@ -1508,48 +1600,65 @@ function getOpenSet(){
 function saveOpenSet(set){
   localStorage.setItem(OPEN_KEY, JSON.stringify(Array.from(set)));
 }
+function areAllOpen(){
+  const bodies = document.querySelectorAll('.group-body.collapse');
+  const open = Array.from(bodies).filter(b=>b.classList.contains('show')).length;
+  return open === bodies.length && bodies.length>0;
+}
+function updateToggleAllBtn(){
+  const btn = document.getElementById('toggleAllBtn');
+  const icon = document.getElementById('toggleAllIcon');
+  const txt = document.getElementById('toggleAllText');
+  if (!btn || !icon || !txt) return;
+  if (areAllOpen()){
+    icon.className = 'bi bi-arrows-angle-contract me-1';
+    txt.textContent = 'Mbyll të gjitha';
+  } else {
+    icon.className = 'bi bi-arrows-angle-expand me-1';
+    txt.textContent = 'Zgjero të gjitha';
+  }
+}
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  // aktivizo "compact mode" për tabelat (mund ta heqësh nëse s’do)
+  // compact mode
   document.body.classList.add('compact');
 
+  // accordion restore
   const open = getOpenSet();
   document.querySelectorAll('.group-body.collapse').forEach(el=>{
     const gid = (el.id || '').replace('gBody_','');
     const inst = new bootstrap.Collapse(el, { toggle:false });
-    // hapë automatikisht grupet e ruajtura si të hapura
     if (open.has(String(gid))) inst.show();
 
     el.addEventListener('shown.bs.collapse', ()=>{
-      open.add(String(gid)); saveOpenSet(open);
+      open.add(String(gid)); saveOpenSet(open); updateToggleAllBtn();
       const btn = document.querySelector(`.collapse-toggle[data-bs-target="#${el.id}"]`);
       if (btn) btn.setAttribute('aria-expanded','true');
     });
     el.addEventListener('hidden.bs.collapse', ()=>{
-      open.delete(String(gid)); saveOpenSet(open);
+      open.delete(String(gid)); saveOpenSet(open); updateToggleAllBtn();
       const btn = document.querySelector(`.collapse-toggle[data-bs-target="#${el.id}"]`);
       if (btn) btn.setAttribute('aria-expanded','false');
     });
   });
+  updateToggleAllBtn();
 
-  const btnExp = document.getElementById('expandAll');
-  const btnCol = document.getElementById('collapseAll');
-  if (btnExp) btnExp.addEventListener('click', ()=>{
-    const open = getOpenSet();
-    document.querySelectorAll('.group-body.collapse').forEach(el=>{
-      new bootstrap.Collapse(el, { toggle:false }).show();
-      const gid = (el.id || '').replace('gBody_',''); open.add(String(gid));
+  // ToggleAll floating button
+  const toggleAll = document.getElementById('toggleAllBtn');
+  if (toggleAll){
+    toggleAll.addEventListener('click', ()=>{
+      const allBodies = document.querySelectorAll('.group-body.collapse');
+      const wantOpen = !areAllOpen();
+      allBodies.forEach(el=>{
+        new bootstrap.Collapse(el, { toggle:false })[wantOpen ? 'show' : 'hide']();
+        const gid = (el.id || '').replace('gBody_','');
+        const set = getOpenSet();
+        if (wantOpen) set.add(String(gid)); else set.delete(String(gid));
+        saveOpenSet(set);
+      });
+      updateToggleAllBtn();
     });
-    saveOpenSet(open);
-  });
-  if (btnCol) btnCol.addEventListener('click', ()=>{
-    const open = getOpenSet();
-    document.querySelectorAll('.group-body.collapse.show').forEach(el=>{
-      new bootstrap.Collapse(el, { toggle:false }).hide();
-      const gid = (el.id || '').replace('gBody_',''); open.delete(String(gid));
-    });
-    saveOpenSet(open);
-  });
+  }
 });
 
 <?php if ($flash_ok): ?>
@@ -1561,3 +1670,4 @@ document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encod
 </script>
 </body>
 </html>
+
