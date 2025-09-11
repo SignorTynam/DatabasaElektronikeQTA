@@ -151,9 +151,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($gender_id <= 0 && $maleId) { $gender_id = $maleId; }
 
-            if ($birth_date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
-                throw new RuntimeException('Datëlindja duhet në formatin YYYY-MM-DD.');
+            // prano DD-MM-YYYY (preferuar) ose YYYY-MM-DD, por ruaj gjithmonë si YYYY-MM-DD
+            if ($birth_date !== '') {
+                if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $birth_date)) {
+                    // DD-MM-YYYY -> YYYY-MM-DD
+                    [$dd,$mm,$yy] = explode('-', $birth_date);
+                    $birth_date = sprintf('%04d-%02d-%02d', (int)$yy, (int)$mm, (int)$dd);
+                } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
+                    throw new RuntimeException('Datëlindja duhet në formatin DD-MM-YYYY.');
+                }
             }
+
 
             $pdo->beginTransaction();
 
@@ -697,7 +705,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 
             <div class="col-md-4">
                 <label class="form-label">Datëlindja</label>
-                <input type="date" name="birth_date" id="bdInput" class="form-control">
+                <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off">
                 <div class="form-text">Fjalëkalimi fillestar: <code>[Emri].[VitiLindjes]</code> (p.sh. <code>Ardit.1998</code>). Në mungesë vitit vendoset <code>0000</code>.</div>
             </div>
             <div class="col-md-4">
@@ -878,7 +886,7 @@ pnInput?.addEventListener('blur', async ()=>{
       document.getElementById('fnInput').value  = p.first_name ?? '';
       document.getElementById('fatInput').value = p.father_name ?? '';
       document.getElementById('lnInput').value  = p.last_name ?? '';
-      document.getElementById('bdInput').value  = p.birth_date ?? '';
+      document.getElementById('bdInput').value  = isoToDmy(p.birth_date) || '';
       document.getElementById('bpInput').value  = p.birth_place ?? '';
       document.getElementById('phInput').value  = p.phone ?? '';
 
@@ -902,6 +910,66 @@ document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_enco
 <?php if ($m = flash('err')): ?>
 document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($m) ?>));
 <?php endif; ?>
+</script>
+<script>
+// === Maskë DD-MM-YYYY (auto-viza) për contenteditable & input tekst ===
+function maskToDDMMYYYY(input) {
+  const digits = String(input || '').replace(/\D/g, '').slice(0, 8); // max 8 shifra
+  const d = digits.slice(0, 2);
+  const m = digits.slice(2, 4);
+  const y = digits.slice(4, 8);
+  let out = d;
+  if (digits.length > 2) out += '-' + m;
+  if (digits.length > 4) out += '-' + y;
+  return out;
+}
+function placeCaretAtEnd(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+function attachDateMaskContentEditable(el) {
+  el.addEventListener('input', () => {
+    const masked = maskToDDMMYYYY(el.textContent);
+    if (el.textContent !== masked) {
+      el.textContent = masked;
+      placeCaretAtEnd(el);
+    }
+  });
+  el.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const txt = (e.clipboardData || window.clipboardData).getData('text');
+    el.textContent = maskToDDMMYYYY(txt);
+    placeCaretAtEnd(el);
+  });
+}
+function attachDateMaskInput(inp) {
+  const apply = () => { inp.value = maskToDDMMYYYY(inp.value); };
+  inp.addEventListener('input', apply);
+  inp.addEventListener('blur', apply);
+  inp.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const txt = (e.clipboardData || window.clipboardData).getData('text');
+    inp.value = maskToDDMMYYYY(txt);
+  });
+}
+// ISO -> DD-MM-YYYY (p.sh. për autoplotësim)
+function isoToDmy(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}-${m}-${y}`;
+}
+
+// 3a) Apliko maskë në qelizat inline të birth_date
+document.querySelectorAll('td.cell[data-field="birth_date"] .editable')
+  .forEach(attachDateMaskContentEditable);
+
+// 3b) Apliko maskë te input-i i modalit (bdInput)
+const bdInputEl = document.getElementById('bdInput');
+if (bdInputEl) attachDateMaskInput(bdInputEl);
 </script>
 </body>
 </html>

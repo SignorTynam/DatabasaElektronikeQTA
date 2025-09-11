@@ -62,6 +62,18 @@ function fmt_dMY(?string $iso): string {
   $ts = strtotime($iso);
   return $ts ? date('d-m-Y', $ts) : '—';
 }
+function dmy_to_iso(?string $s): ?string {
+  if ($s === null) return null;
+  $s = trim($s);
+  if ($s === '') return null;
+  // prano vetëm DD-MM-YYYY dhe kthe në YYYY-MM-DD
+  if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $s, $m)) {
+    return "{$m[3]}-{$m[2]}-{$m[1]}";
+  }
+  // nëse vjen si ISO, lëre (për kompatibilitet)
+  if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) return $s;
+  return null;
+}
 function parseAmzeRanges(string $s): array {
   $out = [];
   foreach (preg_split('/\s*,\s*/', trim($s)) as $tok) {
@@ -125,14 +137,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   if ($action==='create_group') {
     try {
       $course_id   = (int)($_POST['course_id'] ?? 0);
-      $start_date  = trim((string)($_POST['start_date'] ?? '')); // yyyy-mm-dd (nga <input type=date>)
-      $end_date    = trim((string)($_POST['end_date'] ?? ''));
+      // prano vetëm DD-MM-YYYY nga forma dhe ktheje në ISO për DB
+      $start_date  = dmy_to_iso((string)($_POST['start_date'] ?? ''));
+      $end_date    = dmy_to_iso((string)($_POST['end_date'] ?? ''));
       $amze_spec   = trim((string)($_POST['amze_spec'] ?? ''));
       $is_completed = isset($_POST['is_completed']) && $_POST['is_completed']=='1' ? 1 : 0;
 
       if ($course_id<=0) throw new RuntimeException('Zgjidh një modul.');
-      if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) throw new RuntimeException('Data e fillimit është e pavlefshme.');
-      if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) throw new RuntimeException('Data e mbarimit është e pavlefshme.');
+      if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) throw new RuntimeException('Data e fillimit duhet në formatin DD-MM-YYYY.');
+      if (!$end_date   || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date))   throw new RuntimeException('Data e mbarimit duhet në formatin DD-MM-YYYY.');
       if ($end_date < $start_date) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
 
       $pdo->beginTransaction();
@@ -552,7 +565,7 @@ foreach ($params2 as $k=>$v) $ng->bindValue($k,$v,PDO::PARAM_STR);
 $ng->execute();
 $noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
 
-/* Info për dropdown-et e Formularit 1 */
+/* Info për dropdown-et e Formularit 1 (për hints AMZË dhe status) */
 $groupInfo = $pdo->query("
   SELECT
     cg.id,
@@ -660,6 +673,13 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
     .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
     .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
+
+    /* --- Accordion --- */
+    .collapse-toggle .bi-chevron-down { transition: transform .2s ease; }
+    .collapse-toggle[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
+
+    /* --- Compact mode --- */
+    .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -678,6 +698,14 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </button>
       <button class="btn btn-soft-danger btn-pill" data-bs-toggle="modal" data-bs-target="#form2Modal" data-bs-title="Shkarko listë studentësh sipas AMZË">
         <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
+      </button>
+
+      <!-- Expand/Collapse All -->
+      <button class="btn btn-soft-secondary btn-pill" id="expandAll">
+        <i class="bi bi-arrows-angle-expand me-1"></i> Zgjero të gjitha
+      </button>
+      <button class="btn btn-soft-secondary btn-pill" id="collapseAll">
+        <i class="bi bi-arrows-angle-contract me-1"></i> Mbyll të gjitha
       </button>
 
       <!-- Edit Mode Toggle (button-style) -->
@@ -746,6 +774,18 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     }
     if ($r['student_id']) $groups[$gid]['students'][] = $r;
   }
+
+  // llogarit min/max AMZË për çdo grup dhe rendit sipas min_amze (numri i parë i AMZË-së në grup)
+  foreach ($groups as $gid => &$g) {
+    $amzes = [];
+    foreach ($g['students'] as $stRow) {
+      if (!empty($stRow['nr_amze'])) $amzes[] = (int)$stRow['nr_amze'];
+    }
+    $g['min_amze'] = $amzes ? min($amzes) : PHP_INT_MAX;
+    $g['max_amze'] = $amzes ? max($amzes) : null;
+  }
+  unset($g);
+  uasort($groups, function($A, $B){ return ($A['min_amze'] <=> $B['min_amze']); });
   ?>
 
   <?php if ($groups): foreach ($groups as $gid=>$g): ?>
@@ -754,6 +794,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       foreach ($g['students'] as $stRow) { $prefillAmze[] = (string)((int)$stRow['nr_amze']); }
       $prefillAmzeStr = implode(', ', $prefillAmze);
       $completed = (int)$g['header']['is_completed'] === 1;
+      $minLbl = ($g['min_amze']===PHP_INT_MAX) ? '—' : (string)$g['min_amze'];
+      $maxLbl = ($g['max_amze']===null ? '' : '–'.$g['max_amze']);
     ?>
     <div class="card mb-4">
       <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -762,6 +804,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <i class="bi bi-collection me-2"></i>
             Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_code'].' · '.$g['header']['course_name']) ?>
           </h5>
+          <small class="text-muted">AMZË: <?= htmlspecialchars($minLbl.$maxLbl) ?></small>
           <span class="badge <?= $completed ? 'text-bg-success' : 'text-bg-danger' ?> group-badge" data-group="<?= (int)$gid ?>">
             <?= $completed ? 'I përfunduar' : 'Jo i përfunduar' ?>
           </span>
@@ -773,6 +816,14 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
           </div>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2 group-toolbar">
+          <!-- Accordion toggler -->
+          <button class="btn btn-soft-secondary btn-pill collapse-toggle"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#gBody_<?= (int)$gid ?>"
+                  aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
+            <i class="bi bi-chevron-down me-1"></i> Hap/Mbyll
+          </button>
+
           <button class="btn btn-soft-secondary btn-pill"
                   data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
                   title="Shto/hiq anëtarë (maks 10)">
@@ -790,77 +841,81 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
           </button>
         </div>
       </div>
-      <div class="card-body">
 
-        <!-- Status alert -->
-        <div id="statusAlert_<?= (int)$gid ?>" class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 mb-3 small">
-          <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
-          <?= $completed
-                ? 'Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.'
-                : 'Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.' ?>
-        </div>
+      <!-- Accordion body -->
+      <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
+        <div class="card-body">
 
-        <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 text-muted small">
-          <div>
-            <span class="me-3">Fillimi:
-              <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                    data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                    title="DD-MM-YYYY"><?= htmlspecialchars(fmt_dMY($g['header']['start_date'])) ?></span>
-            </span>
-            <span class="me-3">Mbarimi:
-              <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                    data-field="end_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                    title="DD-MM-YYYY (≥ data e fillimit)"><?= htmlspecialchars(fmt_dMY($g['header']['end_date'])) ?></span>
-            </span>
+          <!-- Status alert -->
+          <div id="statusAlert_<?= (int)$gid ?>" class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 mb-3 small">
+            <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
+            <?= $completed
+                  ? 'Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.'
+                  : 'Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.' ?>
           </div>
-        </div>
 
-        <div class="table-responsive mini-table">
-          <table class="table align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th class="nowrap">AMZË</th>
-                <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                <th class="nowrap">Datë testimi (student)</th>
-                <th class="nowrap">Pikët përfundimtare</th>
-                <th class="nowrap">Mosha</th>
-                <th class="nowrap">Arsimi</th>
-              </tr>
-            </thead>
-            <tbody>
-            <?php if ($g['students']): foreach ($g['students'] as $r): ?>
-              <tr>
-                <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
-                <td>
-                  <div class="fw-semibold">
-                    <?= htmlspecialchars(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
-                  </div>
-                  <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
-                </td>
+          <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 text-muted small">
+            <div>
+              <span class="me-3">Fillimi:
+                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                      data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
+                      title="DD-MM-YYYY"><?= htmlspecialchars(fmt_dMY($g['header']['start_date'])) ?></span>
+              </span>
+              <span class="me-3">Mbarimi:
+                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                      data-field="end_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
+                      title="DD-MM-YYYY (≥ data e fillimit)"><?= htmlspecialchars(fmt_dMY($g['header']['end_date'])) ?></span>
+              </span>
+            </div>
+          </div>
 
-                <!-- exam_date per student -->
-                <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
-                    title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                    <?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?>
-                  </span>
-                </td>
+          <div class="table-responsive mini-table">
+            <table class="table align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="nowrap">AMZË</th>
+                  <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
+                  <th class="nowrap">Datë testimi (student)</th>
+                  <th class="nowrap">Pikët përfundimtare</th>
+                  <th class="nowrap">Mosha</th>
+                  <th class="nowrap">Arsimi</th>
+                </tr>
+              </thead>
+              <tbody>
+              <?php if ($g['students']): foreach ($g['students'] as $r): ?>
+                <tr>
+                  <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
+                  <td>
+                    <div class="fw-semibold">
+                      <?= htmlspecialchars(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
+                    </div>
+                    <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
+                  </td>
 
-                <!-- final_score per student -->
-                <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                    <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
-                  </span>
-                </td>
+                  <!-- exam_date per student -->
+                  <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
+                      title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
+                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
+                      <?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?>
+                    </span>
+                  </td>
 
-                <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
-              </tr>
-            <?php endforeach; else: ?>
-              <tr><td colspan="6" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
-            <?php endif; ?>
-            </tbody>
-          </table>
+                  <!-- final_score per student -->
+                  <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
+                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
+                      <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
+                    </span>
+                  </td>
+
+                  <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+                  <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
+                </tr>
+              <?php endforeach; else: ?>
+                <tr><td colspan="6" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
+              <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -1137,12 +1192,14 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 
           <div class="col-md-3">
             <label class="form-label">Datë fillimi *</label>
-            <input type="date" name="start_date" class="form-control" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <input type="text" name="start_date" class="form-control dmy" required
+                   placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
 
           <div class="col-md-3">
             <label class="form-label">Datë mbarimi *</label>
-            <input type="date" name="end_date" class="form-control" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <input type="text" name="end_date" class="form-control dmy" required
+                   placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
 
           <div class="col-12">
@@ -1181,12 +1238,12 @@ const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 /* Map: groupId -> completed (0/1) për konfirmime */
 const GROUP_COMPLETED = <?= json_encode(array_column($groupInfo, 'is_completed', 'id')) ?>;
 
-/* Mapping për hints e Formularit 1 */
+/* Mapping për hints e Formularit 1 (duke përfshirë amze_min/amze_max) */
 const GROUP_AMZE = <?= json_encode(array_column($groupInfo, null, 'id'), JSON_UNESCAPED_UNICODE) ?>;
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
-/* Toast helper (si te students.php) */
+/* Toast helper */
 function notify(type, text, opts={}){
   const zone = document.getElementById('toastZone');
   const id = 't' + Date.now() + Math.random().toString(16).slice(2);
@@ -1217,25 +1274,15 @@ function notify(type, text, opts={}){
 }
 
 /* showMsg tani përdor toast */
-function showMsg(type, text){
-  notify(type, text);
-}
+function showMsg(type, text){ notify(type, text); }
 
-/* dd-mm-yyyy / yyyy-mm-dd -> yyyy-mm-dd (për server) */
+/* DD-MM-YYYY -> YYYY-MM-DD (vetëm ky format lejohet) */
 function normalizeDateForServer(v){
   const s = clean(v);
   if (s === '' || s === '—') return '';
-  let m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/); // dd-mm-yyyy
-  if (m){
-    const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yy = m[3];
-    return `${yy}-${mm}-${dd}`;
-  }
-  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // yyyy-mm-dd
-  if (m){
-    const yy = m[1], mm = m[2].padStart(2,'0'), dd = m[3].padStart(2,'0');
-    return `${yy}-${mm}-${dd}`;
-  }
-  throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+  return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
 /* Konfirmim & vendos "force" për modale */
@@ -1423,6 +1470,85 @@ document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.getElementById('form2Format').value = btn.dataset.dl;
     document.getElementById('form2Export').submit();
+  });
+});
+
+/* ========== Maskë për input-et DD-MM-YYYY në modal "Krijo grup" ========== */
+function applyDmyMask(el){
+  el.addEventListener('input', ()=>{
+    let v = el.value.replace(/[^\d]/g,'').slice(0,8);
+    if (v.length >= 5) v = v.slice(0,2)+'-'+v.slice(2,4)+'-'+v.slice(4);
+    else if (v.length >= 3) v = v.slice(0,2)+'-'+v.slice(2);
+    el.value = v;
+  });
+}
+document.querySelectorAll('input.dmy').forEach(applyDmyMask);
+
+const createForm = document.querySelector('#createGroupModal form');
+if (createForm){
+  createForm.addEventListener('submit', (ev)=>{
+    const s = createForm.querySelector('input[name="start_date"]');
+    const e = createForm.querySelector('input[name="end_date"]');
+    try{
+      s.value = normalizeDateForServer(s.value); // dërgo ISO te serveri
+      e.value = normalizeDateForServer(e.value);
+    }catch(err){
+      ev.preventDefault();
+      notify('danger', err.message || 'Formati i datës duhet të jetë DD-MM-YYYY.');
+    }
+  });
+}
+
+/* ========== Accordion state me localStorage + butona globalë ========== */
+const OPEN_KEY = 'qta_groups_open';
+function getOpenSet(){
+  try{ return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || '[]').map(String)); }
+  catch{ return new Set(); }
+}
+function saveOpenSet(set){
+  localStorage.setItem(OPEN_KEY, JSON.stringify(Array.from(set)));
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  // aktivizo "compact mode" për tabelat (mund ta heqësh nëse s’do)
+  document.body.classList.add('compact');
+
+  const open = getOpenSet();
+  document.querySelectorAll('.group-body.collapse').forEach(el=>{
+    const gid = (el.id || '').replace('gBody_','');
+    const inst = new bootstrap.Collapse(el, { toggle:false });
+    // hapë automatikisht grupet e ruajtura si të hapura
+    if (open.has(String(gid))) inst.show();
+
+    el.addEventListener('shown.bs.collapse', ()=>{
+      open.add(String(gid)); saveOpenSet(open);
+      const btn = document.querySelector(`.collapse-toggle[data-bs-target="#${el.id}"]`);
+      if (btn) btn.setAttribute('aria-expanded','true');
+    });
+    el.addEventListener('hidden.bs.collapse', ()=>{
+      open.delete(String(gid)); saveOpenSet(open);
+      const btn = document.querySelector(`.collapse-toggle[data-bs-target="#${el.id}"]`);
+      if (btn) btn.setAttribute('aria-expanded','false');
+    });
+  });
+
+  const btnExp = document.getElementById('expandAll');
+  const btnCol = document.getElementById('collapseAll');
+  if (btnExp) btnExp.addEventListener('click', ()=>{
+    const open = getOpenSet();
+    document.querySelectorAll('.group-body.collapse').forEach(el=>{
+      new bootstrap.Collapse(el, { toggle:false }).show();
+      const gid = (el.id || '').replace('gBody_',''); open.add(String(gid));
+    });
+    saveOpenSet(open);
+  });
+  if (btnCol) btnCol.addEventListener('click', ()=>{
+    const open = getOpenSet();
+    document.querySelectorAll('.group-body.collapse.show').forEach(el=>{
+      new bootstrap.Collapse(el, { toggle:false }).hide();
+      const gid = (el.id || '').replace('gBody_',''); open.delete(String(gid));
+    });
+    saveOpenSet(open);
   });
 });
 

@@ -413,21 +413,13 @@ function showMsg(type, text){ notify(type, text); }
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
-/* Konverto dd-mm-yyyy / yyyy-mm-dd -> yyyy-mm-dd (për server) */
+/* SI TEK groups.php: prano VETËM DD-MM-YYYY dhe kthe në YYYY-MM-DD për server */
 function normalizeDateForServer(v){
   const s = clean(v);
   if (s === '' || s === '—') return '';
-  let m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/); // dd-mm-yyyy
-  if (m){
-    const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yy = m[3];
-    return `${yy}-${mm}-${dd}`;
-  }
-  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // yyyy-mm-dd
-  if (m){
-    const yy = m[1], mm = m[2].padStart(2,'0'), dd = m[3].padStart(2,'0');
-    return `${yy}-${mm}-${dd}`;
-  }
-  throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+  return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
 async function saveInline(payload, cell, displayEl, oldVal){
@@ -527,5 +519,51 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
   });
 });
 </script>
+<script>
+// === Auto-viza për datat (DD-MM-YYYY) në contenteditable ===
+function maskToDDMMYYYY(input) {
+  const digits = String(input || '').replace(/\D/g, '').slice(0, 8); // max 8 shifra
+  const d = digits.slice(0, 2);
+  const m = digits.slice(2, 4);
+  const y = digits.slice(4, 8);
+  let out = d;
+  if (digits.length > 2) out += '-' + m;
+  if (digits.length > 4) out += '-' + y;
+  return out;
+}
+function placeCaretAtEnd(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+function attachDateMask(el) {
+  // mos lejo karaktere të tjerë; formo automatikisht vizat
+  el.addEventListener('input', () => {
+    const masked = maskToDDMMYYYY(el.textContent);
+    if (el.textContent !== masked) {
+      el.textContent = masked;
+      placeCaretAtEnd(el);
+    }
+  });
+  // paste → pastro & masko
+  el.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const txt = (e.clipboardData || window.clipboardData).getData('text');
+    el.textContent = maskToDDMMYYYY(txt);
+    placeCaretAtEnd(el);
+  });
+}
+
+// Apliko maskën te të gjitha qelizat e datës
+document.querySelectorAll(
+  'td.cell[data-field="start_date"] .editable,' +
+  'td.cell[data-field="end_date"] .editable,'  +
+  'td.cell[data-field="exam_date"] .editable'
+).forEach(attachDateMask);
+</script>
+
 </body>
 </html>
