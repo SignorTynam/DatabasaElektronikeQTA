@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Admin Navbar (revamped)
+ * Admin Navbar (revamped + updated)
  * -------------------------------------------------
  * Përfshije PAS autentikimit dhe pasi të kesh $currentUser.
  * Nëse s’është vendosur, ky skedar përpiqet ta lexojë vetë.
@@ -37,35 +37,37 @@ $active = $NAV_ACTIVE ?? null;
 if ($active === null) {
     $script = strtolower(basename($_SERVER['SCRIPT_NAME'] ?? ''));
     $map = [
-        'dashboard_admin.php' => 'dashboard',
-        'users.php'           => 'users_admins',
-        'agencies.php'        => 'users_agencies',
-        'students.php'        => 'users_students',
-        'student_card.php'    => 'student_card',
-        'register.php'        => 'register_full',
-        'groups.php'          => 'register_groups',
-        'courses.php'         => 'courses',
-        'logs.php'            => 'logs',
-        'editors.php'        => 'users_editors',
-        'profile.php'         => 'profile',
+        'dashboard_admin.php'      => 'dashboard',
+        'users.php'                => 'users_admins',
+        'agencies.php'             => 'users_agencies',
+        'students.php'             => 'users_students',
+        'student_card.php'         => 'student_card',
+        'editors.php'              => 'users_editors',
+        'register.php'             => 'register_full',
+        'groups.php'               => 'register_groups',
+        'students_without_groups.php' => 'students_without_groups',   // NEW
+        'courses.php'              => 'courses',
+        'logs.php'                 => 'logs',
+        'profile.php'              => 'profile',
     ];
     $active = $map[$script] ?? '';
 }
 
 /* Flage për active states */
-$usersActive      = in_array($active, ['users_admins','users_agencies','users_students','student_card'], true);
-$registerActive   = in_array($active, ['register_full','register_groups'], true);
-$isDash           = $active === 'dashboard';
-$isUsersAdmins    = $active === 'users_admins';
-$isUsersEditors   = $active === 'users_editors';
-$isUsersAgencies  = $active === 'users_agencies';
-$isUsersStudents  = $active === 'users_students';
-$isStudentCard    = $active === 'student_card';
-$isRegFull        = $active === 'register_full';
-$isRegGroups      = $active === 'register_groups';
-$isLogs           = $active === 'logs';
-$isCourses        = $active === 'courses';
-$isProfile        = $active === 'profile';
+$usersActive            = in_array($active, ['users_admins','users_agencies','users_students','student_card','users_editors'], true);
+$registerActive         = in_array($active, ['register_full','register_groups','students_without_groups'], true); // UPDATED
+$isDash                 = $active === 'dashboard';
+$isUsersAdmins          = $active === 'users_admins';
+$isUsersEditors         = $active === 'users_editors';
+$isUsersAgencies        = $active === 'users_agencies';
+$isUsersStudents        = $active === 'users_students';
+$isStudentCard          = $active === 'student_card';
+$isRegFull              = $active === 'register_full';
+$isRegGroups            = $active === 'register_groups';
+$isRegStudentsNoGroups  = $active === 'students_without_groups'; // NEW
+$isLogs                 = $active === 'logs';
+$isCourses              = $active === 'courses';
+$isProfile              = $active === 'profile';
 
 /* Roli & emri */
 $role = strtolower((string)($currentUser['role_name'] ?? 'administrator')) ?: 'administrator';
@@ -85,8 +87,7 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
     border-radius:.5rem; color:#e5e7eb;
   }
   /* Ndaje vizualisht kolonat e menusë në desktop */
-  @media (min-width: 992px){ .navbar .vr { opacity:.25; }
-  }
+  @media (min-width: 992px){ .navbar .vr { opacity:.25; } }
 </style>
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top" data-bs-theme="dark" role="navigation" aria-label="Navbar administrimi">
@@ -106,7 +107,7 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
       <a href="index.php" class="btn btn-outline-light btn-sm" title="Shko te faqja publike">
         <i class="bi bi-globe2"></i>
       </a>
-      <button class="navbar-toggler ms-1" type="button" data-bs-toggle="collapse" data-bs-target="#topNav" aria-controls="topNav" aria-expanded="false" aria-label="Shfaq/FSheh menunë">
+      <button class="navbar-toggler ms-1" type="button" data-bs-toggle="collapse" data-bs-target="#topNav" aria-controls="topNav" aria-expanded="false" aria-label="Shfaq/Fsheh menunë">
         <span class="navbar-toggler-icon"></span>
       </button>
     </div>
@@ -139,7 +140,6 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
                 <i class="bi bi-pencil-square me-2"></i>Editorët
               </a>
             </li>
-
             <li>
               <a class="dropdown-item<?= $isUsersAgencies ? ' active' : '' ?>" <?= $isUsersAgencies ? 'aria-current="page"' : '' ?> href="agencies.php">
                 <i class="bi bi-building me-2"></i>Agjencitë
@@ -174,6 +174,11 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
                 <i class="bi bi-people-fill me-2"></i>Regjistri me grupe
               </a>
             </li>
+            <li>
+              <a class="dropdown-item<?= $isRegStudentsNoGroups ? ' active' : '' ?>" <?= $isRegStudentsNoGroups ? 'aria-current="page"' : '' ?> href="students_without_groups.php">
+                <i class="bi bi-person-x me-2"></i>Studentët pa grupe
+              </a>
+            </li>
           </ul>
         </li>
 
@@ -183,6 +188,7 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator');
             <i class="bi bi-book me-1"></i>Modulet
           </a>
         </li>
+
         <!-- Log-et -->
         <li class="nav-item">
           <a class="nav-link<?= $isLogs ? ' active' : '' ?>" <?= $isLogs ? 'aria-current="page"' : '' ?> href="logs.php">

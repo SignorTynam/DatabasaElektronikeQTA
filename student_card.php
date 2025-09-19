@@ -176,7 +176,7 @@ elseif ($q !== '') {
 /* -------------------------------------------------
    Nëse kemi një student të zgjedhur: llogarit statistikat
 -------------------------------------------------- */
-$stats = $groups = $upcoming = $scores = []; $qrToken = null; $qrCreatedAt = null; $verifyURL = null;
+$stats = $groups = $upcoming = $scores = []; $qrToken = null; $qrCreatedAt = null; $verifyURL = null; $planned = [];
 if ($selected) {
   $SID = (int)$selected['id'];
 
@@ -198,7 +198,7 @@ if ($selected) {
   $st = $pdo->prepare("SELECT COUNT(DISTINCT group_id) FROM course_group_students WHERE student_id=:sid");
   $st->execute([':sid'=>$SID]); $stats['groups'] = (int)$st->fetchColumn();
 
-  // # module + orë totale
+  // # module + orë totale (nga grupet e ndjekura)
   $st = $pdo->prepare("
     SELECT COUNT(DISTINCT cg.course_id) AS courses_cnt, COALESCE(SUM(c.hours),0) AS total_hours
     FROM course_group_students cgs
@@ -235,7 +235,7 @@ if ($selected) {
   ");
   $st->execute([':sid'=>$SID]); $stats['last'] = $st->fetchColumn();
 
-  // Listë grupe (5 të fundit)
+  // TË GJITHA grupet ku studenti ka marrë pjesë
   $st = $pdo->prepare("
     SELECT cg.id AS group_id, c.code, c.name, cg.start_date, cg.end_date, cgs.exam_date, cgs.final_score
     FROM course_group_students cgs
@@ -243,9 +243,22 @@ if ($selected) {
     JOIN courses c ON c.id = cg.course_id
     WHERE cgs.student_id=:sid
     ORDER BY cg.start_date DESC, cg.id DESC
-    LIMIT 5
   ");
-  $st->execute([':sid'=>$SID]); $groups = $st->fetchAll(PDO::FETCH_ASSOC);
+  $st->execute([':sid'=>$SID]);
+  $groups = $st->fetchAll(PDO::FETCH_ASSOC);
+
+  // Modulet e planifikuara për studentin që ENDE NUK kanë grup
+  $st = $pdo->prepare("
+    SELECT DISTINCT c.id AS course_id, c.code, c.name
+    FROM student_course_plans scp
+    JOIN courses c ON c.id = scp.course_id
+    WHERE scp.student_id = :sid
+      AND scp.status = 'planned'
+      AND scp.group_id IS NULL
+    ORDER BY c.name ASC
+  ");
+  $st->execute([':sid'=>$SID]);
+  $planned = $st->fetchAll(PDO::FETCH_ASSOC);
 
   // Provime të afërta (30 ditë)
   $st = $pdo->prepare("
@@ -303,9 +316,7 @@ if ($selected) {
     .mini-table thead { background:#f1f5f9; }
     .nowrap{ white-space:nowrap; }
     .kpi .icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#eef2ff; }
-    .glass {
-      background:var(--glass); border:1px solid var(--glass-b); backdrop-filter: blur(10px);
-    }
+    .glass { background:var(--glass); border:1px solid var(--glass-b); backdrop-filter: blur(10px); }
     .avatar{
       width:58px;height:58px;border-radius:1rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;
       font-weight:700;color:#4338ca; letter-spacing:.5px;
@@ -589,38 +600,77 @@ elseif ($ROLE === 'agjencia')     require __DIR__.'/inc/navbar2.php';
           </div>
         </section>
 
-        <!-- Groups table -->
+        <!-- Modulet & Grupet -->
         <div class="card">
           <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0"><i class="bi bi-collection me-2"></i>Grupet e fundit</h5>
-            <span class="text-muted small">max 5</span>
+            <h5 class="mb-0"><i class="bi bi-collection me-2"></i>Modulet & grupet</h5>
           </div>
           <div class="card-body">
+
+            <?php if (empty($groups) && !empty($planned)): ?>
+              <div class="alert alert-info py-2">
+                Ky student ende <strong>nuk ka marrë pjesë në asnjë grup</strong>, por ka module të planifikuara më poshtë.
+              </div>
+            <?php endif; ?>
+
             <div class="table-responsive mini-table">
               <table class="table align-middle">
                 <thead class="table-light">
                   <tr>
-                    <th>#</th><th>Moduli</th><th class="nowrap">Datat</th><th class="nowrap">Testi</th><th class="nowrap">Pikët</th>
+                    <th>#</th>
+                    <th>Moduli</th>
+                    <th class="nowrap">Status</th>
+                    <th class="nowrap">Datat</th>
+                    <th class="nowrap">Testi</th>
+                    <th class="nowrap">Pikët</th>
                   </tr>
                 </thead>
                 <tbody>
-                <?php if ($groups): foreach ($groups as $g): ?>
-                  <tr>
-                    <td>#<?= (int)$g['group_id'] ?></td>
-                    <td><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></td>
-                    <td class="nowrap"><?= h($g['start_date']) ?> – <?= h($g['end_date']) ?></td>
-                    <td class="nowrap"><?= h($g['exam_date'] ?? '—') ?></td>
-                    <td class="nowrap"><?= $g['final_score']!==null ? h((string)$g['final_score']) : '—' ?></td>
-                  </tr>
-                <?php endforeach; else: ?>
-                  <tr><td colspan="5" class="text-center text-muted">Nuk ka grupe.</td></tr>
+
+                <?php
+                $hasRows = false;
+
+                // 1) Modulet e planifikuara (pa grup)
+                if (!empty($planned)) {
+                  $hasRows = true;
+                  foreach ($planned as $pl): ?>
+                    <tr>
+                      <td class="text-muted">—</td>
+                      <td><?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?></td>
+                      <td class="nowrap">
+                        <span class="badge text-bg-warning me-1">Pa grup</span>
+                        <span class="small text-muted">Planifikuar</span>
+                      </td>
+                      <td class="nowrap">—</td>
+                      <td class="nowrap">—</td>
+                      <td class="nowrap">—</td>
+                    </tr>
+                <?php endforeach; } ?>
+
+                <?php
+                // 2) Të gjitha grupet ku studenti ka marrë pjesë
+                if (!empty($groups)) {
+                  $hasRows = true;
+                  foreach ($groups as $g): ?>
+                    <tr>
+                      <td>#<?= (int)$g['group_id'] ?></td>
+                      <td><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></td>
+                      <td class="nowrap"><span class="badge text-bg-success">Në grup</span></td>
+                      <td class="nowrap"><?= h($g['start_date']) ?> – <?= h($g['end_date']) ?></td>
+                      <td class="nowrap"><?= h($g['exam_date'] ?? '—') ?></td>
+                      <td class="nowrap"><?= $g['final_score']!==null ? h((string)$g['final_score']) : '—' ?></td>
+                    </tr>
+                <?php endforeach; } ?>
+
+                <?php if (!$hasRows): ?>
+                  <tr><td colspan="6" class="text-center text-muted">Nuk ka ende të dhëna për module/grupe.</td></tr>
                 <?php endif; ?>
+
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-
       </div>
     </section>
   <?php endif; ?>

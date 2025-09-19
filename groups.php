@@ -561,14 +561,26 @@ if ($q !== '') {
 }
 $whereNoGroup = 'WHERE '.implode(' AND ', $w2);
 $sqlNoGroup = "
-  SELECT s.id AS student_id, s.nr_amze,
-         p.first_name, p.father_name, p.last_name, p.personal_number, p.birth_date,
-         TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-         el.code AS edu_code, el.label AS edu_label
+  SELECT
+    s.id AS student_id, s.nr_amze,
+    p.first_name, p.father_name, p.last_name, p.personal_number, p.birth_date,
+    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
+    el.code AS edu_code, el.label AS edu_label,
+
+    /* NEW: plan i modulit (mund të ketë më shumë se 1) */
+    COUNT(DISTINCT scp.course_id) AS planned_count,
+    MIN(cp.name) AS planned_first_name
+
   FROM students s
   LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
   LEFT JOIN persons  p ON p.id = s.person_id
   LEFT JOIN education_levels el ON el.id = s.education_level_id
+
+  /* NEW: planet e moduleve */
+  LEFT JOIN student_course_plans scp
+         ON scp.student_id = s.id AND scp.status = 'planned'
+  LEFT JOIN courses cp ON cp.id = scp.course_id
+
   $whereNoGroup
   GROUP BY s.id
   HAVING COUNT(cgs.group_id) = 0
@@ -578,6 +590,31 @@ $ng = $pdo->prepare($sqlNoGroup);
 foreach ($params2 as $k=>$v) $ng->bindValue($k,$v,PDO::PARAM_STR);
 $ng->execute();
 $noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
+
+/* ===== Banner metrics ===== */
+try {
+  // (1) Studentë pa asnjë grup fare
+  $countNoGroup = (int)$pdo->query("
+    SELECT COUNT(*)
+    FROM students s
+    LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
+    WHERE cgs.student_id IS NULL
+  ")->fetchColumn();
+
+  // (2) Studentë që KANË modul (plan) por NUK janë në asnjë grup
+  $countPlannedNoGroup = (int)$pdo->query("
+    SELECT COUNT(DISTINCT s.id)
+    FROM students s
+    LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
+    JOIN student_course_plans scp
+      ON scp.student_id = s.id AND scp.status = 'planned'
+    WHERE cgs.student_id IS NULL
+  ")->fetchColumn();
+} catch (Throwable $e) {
+  // Nëse mungon tabela student_course_plans, mos e prish faqen
+  $countNoGroup = (int)($countNoGroup ?? 0);
+  $countPlannedNoGroup = 0;
+}
 
 /* Info për dropdown-et e Formularit 1 (pa kod, vetëm emër kursi) */
 $groupInfo = $pdo->query("
@@ -742,6 +779,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .collapse-toggle[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
 
     .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
+    .status-banner strong { font-size:1.05rem; }
+    .status-banner .metric { display:flex; align-items:center; gap:.5rem; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -762,6 +801,20 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       <!-- U hoqën butonat Expand/Collapse dhe Edit Mode nga toolbar-i sipër -->
     </div>
   </div>
+
+  <?php if (isset($countNoGroup, $countPlannedNoGroup)): ?>
+    <div class="alert alert-primary status-banner d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+      <div class="metric">
+        <i class="bi bi-people me-1"></i>
+        <span><strong><?= number_format((int)$countNoGroup) ?></strong> studentë pa asnjë grup.</span>
+      </div>
+      <div class="metric">
+        <i class="bi bi-journal-text me-1"></i>
+        <span><strong><?= number_format((int)$countPlannedNoGroup) ?></strong> me modul (plan) por ende pa grup.</span>
+      </div>
+    </div>
+  <?php endif; ?>
+
 
   <div class="card mb-3">
     <div class="card-body">
@@ -1065,6 +1118,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <th class="nowrap">AMZË</th>
             <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
             <th class="nowrap">Mosha</th>
+            <th class="nowrap">Gjendja modulit</th>
             <th class="nowrap">Arsimi</th>
           </tr>
           </thead>
@@ -1073,12 +1127,31 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <tr>
               <td class="nowrap"><?= htmlspecialchars($s['nr_amze']) ?></td>
               <td>
-                <div class="fw-semibold"><?= htmlspecialchars(trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??''))) ?></div>
+                <div class="fw-semibold">
+                  <?= htmlspecialchars(trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??''))) ?>
+                </div>
                 <div class="text-muted small"><?= htmlspecialchars($s['personal_number'] ?? '') ?></div>
               </td>
               <td class="nowrap"><?= $s['age'] !== null ? (int)$s['age'] : '—' ?></td>
+
+              <!-- NEW: Gjendja modulit -->
+              <td class="nowrap">
+                <?php if ((int)($s['planned_count'] ?? 0) > 0): ?>
+                  <span class="badge text-bg-primary me-1">Me modul</span>
+                  <span class="text-muted small" title="<?= htmlspecialchars((string)$s['planned_first_name']) ?>">
+                    <?= htmlspecialchars((string)$s['planned_first_name']) ?>
+                    <?php if ((int)$s['planned_count'] > 1): ?>
+                      +<?= (int)$s['planned_count'] - 1 ?>
+                    <?php endif; ?>
+                  </span>
+                <?php else: ?>
+                  <span class="badge text-bg-secondary">Pa modul</span>
+                <?php endif; ?>
+              </td>
+
               <td><?= htmlspecialchars(($s['edu_code']? $s['edu_code'].' — ' : '').($s['edu_label'] ?? '—')) ?></td>
             </tr>
+
           <?php endforeach; else: ?>
             <tr><td colspan="4" class="text-center text-muted">Të gjithë studentët janë në grupe.</td></tr>
           <?php endif; ?>

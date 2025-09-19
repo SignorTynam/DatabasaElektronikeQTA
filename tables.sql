@@ -919,3 +919,160 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+-- =========================================
+-- STUDENT_COURSE_PLANS: Zgjedhje moduli pa grup
+-- =========================================
+CREATE TABLE IF NOT EXISTS student_course_plans (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  student_id    INT NOT NULL,
+  course_id     INT NOT NULL,
+  -- status i thjeshtë; mjafton 'planned' -> 'assigned' -> 'cancelled'/'completed'
+  status        ENUM('planned','assigned','cancelled','completed') NOT NULL DEFAULT 'planned',
+  group_id      INT NULL,                    -- vendoset kur e cakton në një grup
+  selected_by   INT NULL,                    -- kush e regjistroi (users.id)
+  selected_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  assigned_at   TIMESTAMP NULL,
+  note          VARCHAR(255) NULL,
+
+  CONSTRAINT fk_scp_student  FOREIGN KEY (student_id) REFERENCES students(id)      ON DELETE CASCADE,
+  CONSTRAINT fk_scp_course   FOREIGN KEY (course_id) REFERENCES courses(id)        ON DELETE CASCADE,
+  CONSTRAINT fk_scp_group    FOREIGN KEY (group_id)  REFERENCES course_groups(id)  ON DELETE SET NULL,
+  CONSTRAINT fk_scp_user     FOREIGN KEY (selected_by) REFERENCES users(id)        ON DELETE SET NULL,
+
+  -- një student s’mund të ketë dy rreshta për të njëjtin modul
+  UNIQUE KEY uq_scp_student_course (student_id, course_id),
+  KEY idx_scp_status (status),
+  KEY idx_scp_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS trg_scp_validate_group_bu $$
+CREATE TRIGGER trg_scp_validate_group_bu
+BEFORE UPDATE ON student_course_plans
+FOR EACH ROW
+BEGIN
+  IF NEW.group_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM course_groups cg
+      WHERE cg.id = NEW.group_id
+        AND cg.course_id = NEW.course_id
+    ) THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'group_id nuk i përket course_id të kësaj zgjedhjeje.';
+    END IF;
+  END IF;
+
+  -- status 'assigned' kërkon group_id
+  IF NEW.status = 'assigned' AND NEW.group_id IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Status=assigned kërkon group_id.';
+  END IF;
+END $$
+
+DELIMITER ;
+
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS trg_cgs_after_insert_ai $$
+CREATE TRIGGER trg_cgs_after_insert_ai
+AFTER INSERT ON course_group_students
+FOR EACH ROW
+BEGIN
+  DECLARE v_course_id INT;
+  SELECT course_id INTO v_course_id FROM course_groups WHERE id = NEW.group_id;
+
+  -- nëse ka plan për (student, modul), e lidhim dhe e kalojmë në assigned
+  IF EXISTS (SELECT 1
+             FROM student_course_plans scp
+             WHERE scp.student_id = NEW.student_id AND scp.course_id = v_course_id)
+  THEN
+    UPDATE student_course_plans
+    SET group_id = NEW.group_id,
+        status   = 'assigned',
+        assigned_at = NOW()
+    WHERE student_id = NEW.student_id
+      AND course_id  = v_course_id;
+  ELSE
+    -- nëse s’ka plan, e krijojmë automatikisht si 'assigned'
+    INSERT INTO student_course_plans (student_id, course_id, status, group_id, assigned_at)
+    VALUES (NEW.student_id, v_course_id, 'assigned', NEW.group_id, NOW());
+  END IF;
+END $$
+
+DELIMITER ;
+
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS trg_audit_scp_ai $$
+CREATE TRIGGER trg_audit_scp_ai
+AFTER INSERT ON student_course_plans
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'student_course_plans','INSERT',
+    JSON_OBJECT('id', NEW.id),
+    NULL,
+    JSON_OBJECT('id', NEW.id, 'student_id', NEW.student_id, 'course_id', NEW.course_id,
+                'status', NEW.status, 'group_id', NEW.group_id, 'selected_by', NEW.selected_by,
+                'selected_at', NEW.selected_at, 'assigned_at', NEW.assigned_at, 'note', NEW.note)
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),(@e,'student_id',NULL,NEW.student_id),(@e,'course_id',NULL,NEW.course_id),
+    (@e,'status',NULL,NEW.status),(@e,'group_id',NULL,NEW.group_id),
+    (@e,'selected_by',NULL,NEW.selected_by),(@e,'selected_at',NULL,NEW.selected_at),
+    (@e,'assigned_at',NULL,NEW.assigned_at),(@e,'note',NULL,NEW.note);
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_scp_au $$
+CREATE TRIGGER trg_audit_scp_au
+AFTER UPDATE ON student_course_plans
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'student_course_plans','UPDATE',
+    JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT('id', OLD.id, 'student_id', OLD.student_id, 'course_id', OLD.course_id,
+                'status', OLD.status, 'group_id', OLD.group_id, 'selected_by', OLD.selected_by,
+                'selected_at', OLD.selected_at, 'assigned_at', OLD.assigned_at, 'note', OLD.note),
+    JSON_OBJECT('id', NEW.id, 'student_id', NEW.student_id, 'course_id', NEW.course_id,
+                'status', NEW.status, 'group_id', NEW.group_id, 'selected_by', NEW.selected_by,
+                'selected_at', NEW.selected_at, 'assigned_at', NEW.assigned_at, 'note', NEW.note)
+  );
+  SET @e := @last_audit_event_id;
+  IF NOT (OLD.student_id <=> NEW.student_id) THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'student_id', OLD.student_id, NEW.student_id); END IF;
+  IF NOT (OLD.course_id  <=> NEW.course_id)  THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'course_id',  OLD.course_id,  NEW.course_id);  END IF;
+  IF NOT (OLD.status     <=> NEW.status)     THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'status',     OLD.status,     NEW.status);     END IF;
+  IF NOT (OLD.group_id   <=> NEW.group_id)   THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'group_id',   OLD.group_id,   NEW.group_id);   END IF;
+  IF NOT (OLD.selected_by<=> NEW.selected_by)THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'selected_by',OLD.selected_by,NEW.selected_by);END IF;
+  IF NOT (OLD.assigned_at<=> NEW.assigned_at)THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'assigned_at',OLD.assigned_at,NEW.assigned_at);END IF;
+  IF NOT (OLD.note       <=> NEW.note)       THEN INSERT INTO audit_event_fields VALUES (NULL,@e,'note',       OLD.note,       NEW.note);       END IF;
+END $$
+
+DROP TRIGGER IF EXISTS trg_audit_scp_ad $$
+CREATE TRIGGER trg_audit_scp_ad
+AFTER DELETE ON student_course_plans
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'student_course_plans','DELETE',
+    JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT('id', OLD.id, 'student_id', OLD.student_id, 'course_id', OLD.course_id,
+                'status', OLD.status, 'group_id', OLD.group_id, 'selected_by', OLD.selected_by,
+                'selected_at', OLD.selected_at, 'assigned_at', OLD.assigned_at, 'note', OLD.note),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),(@e,'student_id',OLD.student_id,NULL),(@e,'course_id',OLD.course_id,NULL),
+    (@e,'status',OLD.status,NULL),(@e,'group_id',OLD.group_id,NULL),
+    (@e,'selected_by',OLD.selected_by,NULL),(@e,'selected_at',OLD.selected_at,NULL),
+    (@e,'assigned_at',OLD.assigned_at,NULL),(@e,'note',OLD.note,NULL);
+END $$
+
+DELIMITER ;
+

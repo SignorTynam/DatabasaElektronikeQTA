@@ -75,6 +75,13 @@ $eduLevels = $pdo->query("SELECT id, code, label FROM education_levels ORDER BY 
 $genders   = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (int)$g['id']; break; } }
 
+/* Kurse (modulet) për zgjedhje */
+try {
+    $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $courses = [];
+}
+
 /* ------------------------------
    AJAX: Autoplotësim sipas Numrit Personal (opsional)
 ------------------------------- */
@@ -120,7 +127,7 @@ function fmt_dMY(?string $iso): string {
 }
 
 /* ------------------------------
-   Veprime POST: create student
+   Veprime POST: create student (me modul të planifikuar opsional)
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -140,6 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $phone              = trim($_POST['phone'] ?? '');
             $gender_id          = (int)($_POST['gender_id'] ?? 0);
             $education_level_id = (int)($_POST['education_level_id'] ?? 0);
+            $planned_course_id  = (int)($_POST['planned_course_id'] ?? 0); // NEW
 
             if ($nr_amze === '') {
                 throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
@@ -255,6 +263,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':pid'=>$personId, ':uid'=>$userId, ':amz'=>$nr_amze,
                 ':edu'=>($education_level_id > 0 ? $education_level_id : null)
             ]);
+            $newStudentId = (int)$pdo->lastInsertId();
+
+            /* 4) (NEW) Planifiko modul për këtë student, pa grup */
+            if ($planned_course_id > 0) {
+                $chk = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
+                $chk->execute([':id'=>$planned_course_id]);
+                if ($chk->fetchColumn()) {
+                    $pdo->prepare("
+                        INSERT INTO student_course_plans (student_id, course_id, status, selected_by)
+                        VALUES (:sid, :cid, 'planned', :uid)
+                        ON DUPLICATE KEY UPDATE status=VALUES(status), selected_by=VALUES(selected_by)
+                    ")->execute([
+                        ':sid'=>$newStudentId,
+                        ':cid'=>$planned_course_id,
+                        ':uid'=>$_SESSION['user_id'] ?? null
+                    ]);
+                }
+            }
 
             $pdo->commit();
             flash('ok', 'Studenti u shtua me sukses.');
@@ -770,6 +796,18 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
                     <?php endforeach; ?>
                 </select>
             </div>
+
+            <!-- NEW: Moduli (opsional) – vetëm plan -->
+            <div class="col-md-8">
+                <label class="form-label">Moduli (opsional – vetëm plan)</label>
+                <select name="planned_course_id" class="form-select">
+                    <option value="">— Zgjidh —</option>
+                    <?php foreach ($courses as $c): ?>
+                        <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="form-text">Këtu i cakton vetëm modulin; grupi vendoset më vonë.</div>
+            </div>
         </div>
         <div class="form-text mt-2">
             Mund të krijosh student vetëm me <strong>Nr. Amzës</strong>. Fusha të tjera janë opsionale.
@@ -781,6 +819,31 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Shto student</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- MODAL: Zgjidh Modulin pas ndryshimit të AMZË-s -->
+<div class="modal fade" id="pickCourseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-journal-text me-1"></i> Zgjidh modulin për këtë AMZË</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <select id="pickCourseSelect" class="form-select">
+          <option value="">— S’dua modul tani —</option>
+          <?php foreach ($courses as $c): ?>
+            <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <div class="form-text mt-2">Ky hap vetëm e planifikon modulin; grupi caktohet më vonë.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnSkipCourse" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Më vonë</button>
+        <button type="button" id="btnSaveCourse" class="btn btn-primary btn-pill">Ruaj</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -850,15 +913,16 @@ function normalizeDateForServer(str) {
   throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
 }
 
-/* Ruajtje AJAX për inline */
-async function saveInline(studentId, field, value, cell, displayEl) {
+/* Ruajtje AJAX për inline – lejon 'extra' (p.sh. planned_course_id) */
+async function saveInline(studentId, field, value, cell, displayEl, extra={}) {
   if (!EDIT_MODE) return;
   try {
     cell.classList.add('cell-saving');
+    const payload = Object.assign({ csrf: CSRF, student_id: studentId, field, value }, extra || {});
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'Accept':'application/json'},
-      body: JSON.stringify({ csrf: CSRF, student_id: studentId, field, value })
+      body: JSON.stringify(payload)
     });
     const json = await res.json();
     cell.classList.remove('cell-saving');
@@ -879,7 +943,9 @@ async function saveInline(studentId, field, value, cell, displayEl) {
   }
 }
 
-/* Event për contenteditable (blur & Enter) */
+/* Event për contenteditable (blur & Enter) – me hook për nr_amze që të pyesë për modulin */
+let pendingAmzeChange = null; // {sid, field, newVal, cell, el}
+
 document.querySelectorAll('td.cell .editable').forEach(el => {
   let oldVal = el.textContent;
   if (!EDIT_MODE) el.setAttribute('contenteditable', 'false');
@@ -898,6 +964,19 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
       try { newVal = normalizeDateForServer(newVal); }
       catch (err) { el.textContent = oldVal; notify('danger', err.message || err); return; }
     }
+
+    // Nëse po ndryshohet nr_amze, ofro zgjedhje moduli (opsionale)
+    if (field === 'nr_amze') {
+      pendingAmzeChange = { sid, field, newVal, cell, el };
+      const pickModal = new bootstrap.Modal(document.getElementById('pickCourseModal'));
+      // reset selection
+      const sel = document.getElementById('pickCourseSelect');
+      if (sel) sel.value = '';
+      pickModal.show();
+      return; // mos ruaj direkt; prit zgjedhjen e modulit ose skip
+    }
+
+    // Fushat e tjera ruhen direkt
     saveInline(sid, field, newVal, cell, el);
   });
 });
@@ -1016,6 +1095,29 @@ document.querySelectorAll('td.cell[data-field="birth_date"] .editable')
 // 3b) Apliko maskë te input-i i modalit (bdInput)
 const bdInputEl = document.getElementById('bdInput');
 if (bdInputEl) attachDateMaskInput(bdInputEl);
+
+// ==== Modal për modulin pas ndërrimit të nr_amze ====
+const pickModalEl = document.getElementById('pickCourseModal');
+const pickCourseSelect = document.getElementById('pickCourseSelect');
+const pickModal = pickModalEl ? new bootstrap.Modal(pickModalEl) : null;
+
+document.getElementById('btnSaveCourse')?.addEventListener('click', () => {
+  if (!pendingAmzeChange) return;
+  const { sid, field, newVal, cell, el } = pendingAmzeChange;
+  const cid = (pickCourseSelect && pickCourseSelect.value) ? parseInt(pickCourseSelect.value, 10) : 0;
+  // Ruaj nr_amze + planned_course_id në të njëjtën thirrje
+  saveInline(sid, field, newVal, cell, el, cid > 0 ? { planned_course_id: cid } : {});
+  pendingAmzeChange = null;
+  pickModal?.hide();
+});
+
+document.getElementById('btnSkipCourse')?.addEventListener('click', () => {
+  if (!pendingAmzeChange) return;
+  const { sid, field, newVal, cell, el } = pendingAmzeChange;
+  // Ruaj vetëm nr_amze pa modul
+  saveInline(sid, field, newVal, cell, el);
+  pendingAmzeChange = null;
+});
 </script>
 </body>
 </html>

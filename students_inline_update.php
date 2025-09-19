@@ -209,6 +209,18 @@ try {
             if ((int)$c->fetchColumn() > 0) throw new RuntimeException('Nr. i amzës përdoret nga student tjetër.');
             $pdo->prepare("UPDATE students SET nr_amze=:v WHERE id=:sid")->execute([':v'=>$v, ':sid'=>$student_id]);
             $dispValue = $v;
+            $plannedCourseId = (int)($data['planned_course_id'] ?? 0);
+            if ($plannedCourseId > 0) {
+                $ok = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
+                $ok->execute([':id'=>$plannedCourseId]);
+                if ($ok->fetchColumn()) {
+                    $pdo->prepare("
+                    INSERT INTO student_course_plans (student_id, course_id, status, selected_by)
+                    VALUES (:sid, :cid, 'planned', :uid)
+                    ON DUPLICATE KEY UPDATE status='planned', selected_by=VALUES(selected_by)
+                    ")->execute([':sid'=>$student_id, ':cid'=>$plannedCourseId, ':uid'=>$_SESSION['user_id'] ?? null]);
+                }
+            }
         }
     }
     else {
