@@ -51,6 +51,7 @@ if ($active === null) {
         'groups.php'           => 'register_groups',
         'courses.php'          => 'courses',
         'profile.php'          => 'profile',
+        'students_without_groups.php' => 'students_without_groups',
     ];
     $active = $map[$script] ?? '';
 }
@@ -66,6 +67,7 @@ $isRegFull      = $active === 'register_full';
 $isRegGroups    = $active === 'register_groups';
 $isCourses      = $active === 'courses';
 $isProfile      = $active === 'profile';
+$isRegStudentsNoGroups = $active === 'students_without_groups';
 
 $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Editor');
 ?>
