@@ -151,6 +151,12 @@ $who = $currentUser['full_name'] ?: ($currentUser['email'] ?? 'Editor');
                 <i class="bi bi-people-fill me-2"></i>Regjistri me grupe
               </a>
             </li>
+            <li>
+              <a class="dropdown-item<?= $isRegStudentsNoGroups ? ' active' : '' ?>" <?= $isRegStudentsNoGroups ? 'aria-current="page"' : '' ?> href="students_without_groups.php">
+                <i class="bi bi-person-x me-2"></i>Studentët pa grupe
+              </a>
+            </li>
+
           </ul>
         </li>
 
