@@ -24,18 +24,6 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
 }
 
 /* ------------------------------
-   EDIT MODE toggle (persistohet në session)
-------------------------------- */
-if (isset($_GET['edit'])) {
-  $e = strtolower((string)$_GET['edit']);
-  $_SESSION['edit_mode'] = ($e === 'on');
-  $qs = $_GET; unset($qs['edit']);
-  $url = 'students_without_groups.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
-  header("Location: $url"); exit;
-}
-$EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
-
-/* ------------------------------
    CSRF
 ------------------------------- */
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
@@ -51,6 +39,141 @@ function fmt_dMY(?string $iso): string {
   $ts = strtotime($iso);
   return $ts ? date('d-m-Y', $ts) : '—';
 }
+function json_response(array $payload): void {
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+  exit;
+}
+
+/* ==========================================================
+   AJAX (POST JSON) — e trajtojmë këtu (nuk përdorim skedar tjetër)
+   Veprime:
+   - assign_to_group: vendos studentin në grup, heq çdo plan "planned"
+   - set_student_plan: ndërron/ vendos modulin "planned" (upsert)
+========================================================== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
+  $payload = json_decode(file_get_contents('php://input'), true) ?: [];
+  try {
+    if (empty($payload['csrf']) || !hash_equals($_SESSION['csrf_token'], (string)$payload['csrf'])) {
+      throw new RuntimeException('CSRF token mismatch.');
+    }
+    $action = (string)($payload['action'] ?? '');
+
+    /* --- Common checks/helpers --- */
+    $getPersonPN = $pdo->prepare("SELECT p.personal_number FROM students s JOIN persons p ON p.id=s.person_id WHERE s.id=:sid");
+    $hasAttendedCoursePN = function(int $course_id, ?string $pn) use ($pdo): bool {
+      if (!$pn) return false;
+      $q = $pdo->prepare("
+        SELECT 1
+        FROM course_group_students cgs
+        JOIN students s ON s.id=cgs.student_id
+        JOIN persons  p ON p.id=s.person_id
+        JOIN course_groups cg ON cg.id=cgs.group_id
+        WHERE cg.course_id=:c AND p.personal_number=:pn
+        LIMIT 1
+      ");
+      $q->execute([':c'=>$course_id, ':pn'=>$pn]);
+      return (bool)$q->fetchColumn();
+    };
+
+    if ($action === 'assign_to_group') {
+      $student_id = (int)($payload['student_id'] ?? 0);
+      $group_id   = (int)($payload['group_id']   ?? 0);
+      if ($student_id<=0 || $group_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+
+      // Group exists and capacity <10
+      $gq = $pdo->prepare("SELECT cg.course_id, cg.start_date, cg.end_date, COUNT(cgs.student_id) AS members
+                           FROM course_groups cg
+                           LEFT JOIN course_group_students cgs ON cgs.group_id=cg.id
+                           WHERE cg.id=:g GROUP BY cg.id");
+      $gq->execute([':g'=>$group_id]);
+      $g = $gq->fetch(PDO::FETCH_ASSOC);
+      if (!$g) throw new RuntimeException('Grupi nuk u gjet.');
+      if ((int)$g['members'] >= 10) throw new RuntimeException('Grupi është i mbushur (10/10).');
+
+      // Student not already in this group
+      $exists = $pdo->prepare("SELECT 1 FROM course_group_students WHERE group_id=:g AND student_id=:s");
+      $exists->execute([':g'=>$group_id, ':s'=>$student_id]);
+      if ($exists->fetchColumn()) throw new RuntimeException('Studenti është tashmë në këtë grup.');
+
+      // Ndalim: i njëjti person nuk duhet ta ketë ndjekur më parë këtë modul
+      $getPersonPN->execute([':sid'=>$student_id]);
+      $pn = $getPersonPN->fetchColumn();
+      if ($hasAttendedCoursePN((int)$g['course_id'], $pn)) {
+        throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul — nuk lejohet përsëritja.');
+      }
+
+      $pdo->beginTransaction();
+      // RULE: Një AMZË nuk duhet të jetë njëkohësisht me modul (plan) dhe në grup -> fshijmë çdo "planned"
+      $pdo->prepare("DELETE FROM student_course_plans WHERE student_id=:s AND status='planned'")->execute([':s'=>$student_id]);
+
+      // Vendos në grup
+      $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
+      $ins->execute([':g'=>$group_id, ':s'=>$student_id]);
+      $pdo->commit();
+
+      json_response(['ok'=>true, 'message'=>'U vendos në grup.']);
+    }
+
+    if ($action === 'set_student_plan') {
+    $student_id = (int)($payload['student_id'] ?? 0);
+    $course_id  = (int)($payload['course_id']  ?? 0);
+    if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+
+    // S’lejohet plan nëse studenti është në ndonjë grup
+    $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students WHERE student_id=:s LIMIT 1");
+    $inGroup->execute([':s'=>$student_id]);
+    if ($inGroup->fetchColumn()) {
+      throw new RuntimeException('Ky student është në një grup. Hiqe nga grupi përpara ndryshimit të modulit.');
+    }
+
+    // Ndalim: i njëjti person s’mund ta ketë ndjekur (në grupe) të njëjtin modul
+    $getPersonPN->execute([':sid'=>$student_id]);
+    $pn = $getPersonPN->fetchColumn();
+    if ($hasAttendedCoursePN($course_id, $pn)) {
+      throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul — nuk lejohet plan për të njëjtin modul.');
+    }
+
+    $pdo->beginTransaction();
+
+    // Hiq çdo plan TË TJERË (kurse të tjerë) që ka studenti,
+    // por mos prek rreshtin ekzistues për këtë kurs target (për të shmangur konfliktin unik).
+    $pdo->prepare("
+      DELETE FROM student_course_plans
+      WHERE student_id = :s AND status = 'planned' AND course_id <> :c
+    ")->execute([':s'=>$student_id, ':c'=>$course_id]);
+
+    // UPSERT: nëse ekziston rresht për (student_id, course_id), thjesht përditëso statusin në 'planned'
+    $upsert = $pdo->prepare("
+      INSERT INTO student_course_plans (student_id, course_id, status)
+      VALUES (:s, :c, 'planned')
+      ON DUPLICATE KEY UPDATE status = VALUES(status)
+    ");
+    $upsert->execute([':s'=>$student_id, ':c'=>$course_id]);
+
+    $pdo->commit();
+
+    json_response(['ok'=>true, 'message'=>'Moduli (plan) u përditësua.']);
+  }
+
+
+    throw new RuntimeException('Veprim i panjohur.');
+  } catch (Throwable $e) {
+    json_response(['ok'=>false, 'error'=>$e->getMessage()]);
+  }
+}
+
+/* ------------------------------
+   EDIT MODE toggle (persistohet në session)
+------------------------------- */
+if (isset($_GET['edit'])) {
+  $e = strtolower((string)$_GET['edit']);
+  $_SESSION['edit_mode'] = ($e === 'on');
+  $qs = $_GET; unset($qs['edit']);
+  $url = 'students_without_groups.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
+  header("Location: $url"); exit;
+}
+$EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 
 /* ------------------------------
    Filtro/Kërko
@@ -58,7 +181,7 @@ function fmt_dMY(?string $iso): string {
 $q = trim($_GET['q'] ?? '');
 $courseFilter = trim($_GET['course_id'] ?? '');  // opsional
 
-/* Dropdown kurse + grupe (me zënie) */
+/* Dropdown kurse */
 $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Info e grupeve (për dropdown/zgjedhje) */
@@ -67,7 +190,7 @@ $groupsMeta = $pdo->query("
     cg.id,
     cg.course_id,
     c.name AS course_name,
-    cg.start_date, cg.end_date, cg.is_completed,
+    cg.start_date, cg.end_date,
     COUNT(cgs.student_id) AS members
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
@@ -75,18 +198,11 @@ $groupsMeta = $pdo->query("
   GROUP BY cg.id
   ORDER BY c.name ASC, cg.start_date DESC, cg.id DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($groupsMeta as &$gm) { $gm['full'] = ((int)$gm['members'] >= 10); } unset($gm);
 
-// SHËNO edhe këtu në meta nëse grupi është mbushur (>=10)
-foreach ($groupsMeta as &$gm) {
-  $gm['full'] = ((int)$gm['members'] >= 10);
-}
-unset($gm);
-
-
-/* Harta: course_id => lista grupeve (me “members” dhe “full”) */
+/* Harta: course_id => lista grupeve */
 $groupsByCourse = [];
 foreach ($groupsMeta as $gm) {
-  $gm['full'] = ((int)$gm['members'] >= 10);
   $groupsByCourse[(int)$gm['course_id']][] = $gm;
 }
 
@@ -155,9 +271,7 @@ $sqlPlannedNoGroup = "
     s.id AS student_id,
     s.nr_amze,
     p.first_name, p.father_name, p.last_name,
-    p.personal_number, p.birth_date,
-    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-    el.code AS edu_code, el.label AS edu_label
+    p.personal_number
 
   FROM students s
   /* pa asnjë grup */
@@ -166,7 +280,6 @@ $sqlPlannedNoGroup = "
     ON scp.student_id = s.id AND scp.status = 'planned'
   JOIN courses c ON c.id = scp.course_id
   LEFT JOIN persons  p ON p.id = s.person_id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
 
   $whereMsql
   GROUP BY s.id, scp.course_id
@@ -208,20 +321,15 @@ $whereNsql = 'WHERE '.implode(' AND ', $whereN);
 $sqlNoPlanNoGroup = "
   SELECT
     s.id AS student_id, s.nr_amze,
-    p.first_name, p.father_name, p.last_name, p.personal_number, p.birth_date,
-    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-    el.code AS edu_code, el.label AS edu_label,
-
-    COUNT(DISTINCT scp.course_id) AS planned_count
+    p.first_name, p.father_name, p.last_name, p.personal_number
   FROM students s
   LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
   LEFT JOIN persons  p ON p.id = s.person_id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
   LEFT JOIN student_course_plans scp
          ON scp.student_id = s.id AND scp.status = 'planned'
   $whereNsql
   GROUP BY s.id
-  HAVING COUNT(cgs.group_id) = 0 AND planned_count = 0
+  HAVING COUNT(cgs.group_id) = 0 AND COUNT(scp.course_id) = 0
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
 ";
 $stn = $pdo->prepare($sqlNoPlanNoGroup);
@@ -268,7 +376,6 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
     .status-banner strong { font-size:1.05rem; }
     .status-banner .metric { display:flex; align-items:center; gap:.5rem; }
 
-    /* Toasts poshtë MAJTAS (si groups.php) */
     .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
     .toast.qta-toast .toast-header{ border-bottom:0; }
     .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
@@ -276,7 +383,6 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
     .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
     .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
 
-    /* FAB stack (si groups.php) */
     .fab-stack{ position:fixed; right:24px; bottom:24px; display:flex; flex-direction:column-reverse; gap:12px; z-index:1040; }
     .fab-stack .fab-btn{ align-self:flex-end; display:inline-flex; align-items:center; justify-content:center; gap:6px;
       min-height:52px; height:52px; width:52px; padding:0 14px; border-radius:999px; box-shadow:0 12px 20px rgba(2,6,23,.15);
@@ -298,9 +404,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Studentë pa grupe</h2>
-    <div class="d-flex flex-wrap align-items-center page-toolbar">
-      <!-- si groups.php – nuk ka formularë këtu -->
-    </div>
+    <div class="d-flex flex-wrap align-items-center page-toolbar"></div>
   </div>
 
   <div class="alert alert-primary status-banner d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
@@ -338,7 +442,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
     </div>
   </div>
 
-  <!-- ====== SEKSIONI A: Me modul (pa grup), i ndarë sipas modulit ====== -->
+  <!-- ====== A: Me modul (plan) por pa grup – i ndarë sipas modulit ====== -->
   <?php if (!empty($studentsByCourse)): ?>
     <?php foreach ($studentsByCourse as $cid => $bucket): $rows = $bucket['rows'] ?? []; $cname = $bucket['course_name'] ?? '—'; ?>
       <div class="card mb-4">
@@ -353,8 +457,6 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
                 <tr>
                   <th class="nowrap">AMZË</th>
                   <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                  <th class="nowrap">Mosha</th>
-                  <th class="nowrap">Arsimi</th>
                   <th class="nowrap">Zgjidh grup (<?= h($cname) ?>)</th>
                   <th class="nowrap">Ndrysho modul</th>
                 </tr>
@@ -373,8 +475,6 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
                     </div>
                     <div class="text-muted small"><?= h($r['personal_number'] ?? '') ?></div>
                   </td>
-                  <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                  <td><?= h(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
 
                   <td class="nowrap">
                     <div class="d-flex gap-2">
@@ -430,7 +530,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
     </div></div>
   <?php endif; ?>
 
-  <!-- ====== SEKSIONI B: Pa modul (pa grup) ====== -->
+  <!-- ====== B: Pa modul (pa grup) ====== -->
   <div class="card mb-4">
     <div class="card-header bg-white d-flex align-items-center justify-content-between">
       <h5 class="mb-0"><i class="bi bi-slash-circle me-2"></i>Studentë pa modul dhe pa grup</h5>
@@ -443,8 +543,6 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
             <tr>
               <th class="nowrap">AMZË</th>
               <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-              <th class="nowrap">Mosha</th>
-              <th class="nowrap">Arsimi</th>
               <th class="nowrap">Zgjidh grup (çdo modul)</th>
             </tr>
           </thead>
@@ -458,21 +556,17 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
                 </div>
                 <div class="text-muted small"><?= h($s['personal_number'] ?? '') ?></div>
               </td>
-              <td class="nowrap"><?= $s['age'] !== null ? (int)$s['age'] : '—' ?></td>
-              <td><?= h(($s['edu_code']? $s['edu_code'].' — ' : '').($s['edu_label'] ?? '—')) ?></td>
 
-              <!-- Zgjidh grup nga të gjithë grupet ekzistuese -->
               <td class="nowrap">
                 <div class="d-flex gap-2">
                   <select class="form-select form-select-sm" style="min-width:280px"
                           data-role="group-select-any" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
                     <option value="">— Zgjidh grup —</option>
-                    <?php foreach ($groupsMeta as $g): ?>
-                    <?php $isFull = ((int)$g['members'] >= 10); ?>
-                    <option value="<?= (int)$g['id'] ?>" <?= $isFull ? 'disabled' : '' ?>>
+                    <?php foreach ($groupsMeta as $g): $isFull = ((int)$g['members'] >= 10); ?>
+                      <option value="<?= (int)$g['id'] ?>" <?= $isFull ? 'disabled' : '' ?>>
                         #<?= (int)$g['id'] ?> • <?= h($g['course_name']) ?> • <?= h(fmt_dMY($g['start_date']).' → '.fmt_dMY($g['end_date'])) ?>
                         <?= $isFull ? ' — [Full]' : ' — ['.(int)$g['members'].'/10]' ?>
-                    </option>
+                      </option>
                     <?php endforeach; ?>
                   </select>
                   <button class="btn btn-primary btn-sm" data-role="assign-btn-any" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
@@ -482,7 +576,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
               </td>
             </tr>
           <?php endforeach; else: ?>
-            <tr><td colspan="6" class="text-center text-muted">Asnjë student pa modul & pa grup.</td></tr>
+            <tr><td colspan="3" class="text-center text-muted">Asnjë student pa modul & pa grup.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>
@@ -495,7 +589,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
   </div>
 </main>
 
-<!-- FAB stack: ToggleAll (nuk ka accordion këtu), Edit Mode -->
+<!-- FAB: Edit Mode -->
 <div class="fab-stack" role="group" aria-label="Veprime shpejta">
   <a id="editModeFab"
      class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
@@ -510,22 +604,18 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
-const ENDPOINT = 'students_without_groups_inline.php';
+/* Endpoint = kjo faqe */
+const ENDPOINT = 'students_without_groups.php';
 
-/* Toast helper – identik me groups.php */
+/* Toast helper */
 function notify(type, text, opts={}){
   const zone = document.getElementById('toastZone');
   const id = 't' + Date.now() + Math.random().toString(16).slice(2);
   const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
   const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
+  const title = opts.title ?? (type==='success' ? 'Sukses' : type==='danger' ? 'Gabim' : type==='warning' ? 'Kujdes' : 'Njoftim');
   const autohide = opts.autohide ?? true;
   const delay = opts.delay ?? 4500;
-
   const html = `
     <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
       <div class="toast-header">
@@ -563,8 +653,7 @@ document.querySelectorAll('[data-role="assign-btn"]').forEach(btn=>{
       btn.disabled = false;
       if (!json.ok) { notify('danger', json.error || 'Nuk u krye veprimi.'); return; }
       notify('success','U vendos në grup.');
-      const row = document.getElementById(`row_s${sid}_c${cid}`);
-      if (row) row.remove();
+      location.reload(); // rifresko bucket-ët
     }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
   });
 });
@@ -589,13 +678,12 @@ document.querySelectorAll('[data-role="assign-btn-any"]').forEach(btn=>{
       btn.disabled = false;
       if (!json.ok) { notify('danger', json.error || 'Nuk u krye veprimi.'); return; }
       notify('success','U vendos në grup.');
-      const row = document.getElementById(`row_s${sid}_noplan`);
-      if (row) row.remove();
+      location.reload();
     }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
   });
 });
 
-/* Ndrysho/ cakto modul (plan) – për të dy seksionet */
+/* Ndrysho/ cakto modul (plan) – upsert */
 document.querySelectorAll('[data-role="plan-btn"]').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     if (!EDIT_MODE) return;
@@ -615,6 +703,7 @@ document.querySelectorAll('[data-role="plan-btn"]').forEach(btn=>{
       btn.disabled = false;
       if (!json.ok) { notify('danger', json.error || 'Nuk u ruajt moduli.'); return; }
       notify('success','Moduli u përditësua.');
+      location.reload(); // rifresko bucket-ët sipas modulit
     }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
   });
 });
