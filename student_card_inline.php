@@ -362,6 +362,87 @@ try {
     echo json_encode(['ok'=>true]); exit;
   }
 
+    /* =========================================================
+     delete_participation (group | planned)
+  ========================================================== */
+  if ($action === 'delete_participation') {
+    // vetëm admin/editor + Edit Mode (e garanton $require_edit() më sipër)
+
+    $kind = (string)($data['kind'] ?? '');
+
+    if ($kind === 'group') {
+      $group_id   = (int)($data['group_id']   ?? 0);
+      $student_id = (int)($data['student_id'] ?? 0);
+      if ($group_id <= 0 || $student_id <= 0) {
+        throw new RuntimeException('Mungon group_id / student_id.');
+      }
+
+      // ekziston kjo pjesëmarrje?
+      $ex = $pdo->prepare("SELECT 1 FROM course_group_students WHERE group_id=:g AND student_id=:s LIMIT 1");
+      $ex->execute([':g'=>$group_id, ':s'=>$student_id]);
+      if (!$ex->fetchColumn()) {
+        throw new RuntimeException('Pjesëmarrja nuk u gjet.');
+      }
+
+      // fshi rreshtin
+      $del = $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g AND student_id=:s LIMIT 1");
+      $del->execute([':g'=>$group_id, ':s'=>$student_id]);
+
+      // audit (nëse ekziston funksioni)
+      if (function_exists('qta_audit')) {
+        qta_audit('group_participation.delete', [
+          'group_id'   => $group_id,
+          'student_id' => $student_id,
+          'by_user_id' => (int)$_SESSION['user_id'],
+        ]);
+      }
+
+      echo json_encode([
+        'ok'      => true,
+        'kind'    => 'group',
+        'removed' => ($del->rowCount() > 0)
+      ]); exit;
+    }
+
+    if ($kind === 'planned') {
+      $scp_id = (int)($data['scp_id'] ?? 0);
+      if ($scp_id <= 0) {
+        throw new RuntimeException('Mungon scp_id.');
+      }
+
+      // sigurohu që është "planned", pa grup
+      $ex = $pdo->prepare("
+        SELECT 1
+        FROM student_course_plans
+        WHERE id=:id AND group_id IS NULL AND status='planned'
+        LIMIT 1
+      ");
+      $ex->execute([':id'=>$scp_id]);
+      if (!$ex->fetchColumn()) {
+        throw new RuntimeException('Plani nuk u gjet ose s’është më “planned”.');
+      }
+
+      $del = $pdo->prepare("DELETE FROM student_course_plans WHERE id=:id LIMIT 1");
+      $del->execute([':id'=>$scp_id]);
+
+      if (function_exists('qta_audit')) {
+        qta_audit('planned.delete', [
+          'scp_id'     => $scp_id,
+          'by_user_id' => (int)$_SESSION['user_id'],
+        ]);
+      }
+
+      echo json_encode([
+        'ok'      => true,
+        'kind'    => 'planned',
+        'removed' => ($del->rowCount() > 0)
+      ]); exit;
+    }
+
+    throw new RuntimeException('Lloj i panjohur për fshirje.');
+  }
+
+
   /* =========================================================
      Nëse s’u kap asnjë action
   ========================================================== */

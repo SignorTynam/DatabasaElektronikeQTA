@@ -211,13 +211,21 @@ if ($pid > 0) {
 
         // Modulet e planifikuara (pa grup)
         $q5 = $pdo->prepare("
-          SELECT DISTINCT c.id AS course_id, c.code, c.name
+          SELECT
+            scp.id AS scp_id,
+            scp.student_id,
+            s.nr_amze,
+            c.id AS course_id,
+            c.code,
+            c.name
           FROM student_course_plans scp
-          JOIN courses c ON c.id = scp.course_id
+          JOIN students s ON s.id = scp.student_id
+          JOIN courses  c ON c.id = scp.course_id
           WHERE scp.student_id IN ($ph)
             AND scp.status = 'planned'
             AND scp.group_id IS NULL
-          ORDER BY c.name ASC
+          ORDER BY c.name ASC,
+                  CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
         ");
         $q5->execute($ids);
         $planned = $q5->fetchAll(PDO::FETCH_ASSOC);
@@ -785,6 +793,10 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                   <th class="nowrap">Datat</th>
                   <th class="nowrap">Testi</th>
                   <th class="nowrap">Pikët</th>
+                  <?php if ($CAN_EDIT && $EDIT_MODE): ?>
+                    <th class="text-end">Veprimi</th>
+                  <?php endif; ?>
+
                 </tr>
                 </thead>
                 <tbody>
@@ -793,13 +805,27 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                 <?php if (!empty($planned)): $hasRows=true; foreach($planned as $pl): ?>
                   <tr>
                     <td class="text-muted">—</td>
+                    <td class="nowrap"><?= h($pl['nr_amze'] ?? '—') ?></td>
+                    <td>
+                      <?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?>
+                      <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
+                    </td>
                     <td class="nowrap">—</td>
-                    <td><?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?></td>
                     <td class="nowrap">—</td>
                     <td class="nowrap">—</td>
-                    <td class="nowrap">—</td>
+                    <?php if ($CAN_EDIT && $EDIT_MODE): ?>
+                      <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger qta-del"
+                                data-kind="planned"
+                                data-scp-id="<?= (int)($pl['scp_id'] ?? 0) ?>"
+                                title="Fshi">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </td>
+                    <?php endif; ?>
                   </tr>
                 <?php endforeach; endif; ?>
+
 
                 <?php if (!empty($groups)): $hasRows=true; foreach($groups as $g): ?>
                   <tr>
@@ -809,6 +835,17 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                     <td class="nowrap"><?= h(fmt_dMY($g['start_date'])) ?> – <?= h(fmt_dMY($g['end_date'])) ?></td>
                     <td class="nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
                     <td class="nowrap"><?= $g['final_score']!==null ? h((string)$g['final_score']) : '—' ?></td>
+                    <?php if ($CAN_EDIT && $EDIT_MODE): ?>
+                      <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger qta-del"
+                                data-kind="group"
+                                data-group-id="<?= (int)$g['group_id'] ?>"
+                                data-student-id="<?= (int)$g['student_id'] ?>"
+                                title="Fshi">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </td>
+                    <?php endif; ?>
                   </tr>
                 <?php endforeach; endif; ?>
 
@@ -1133,6 +1170,49 @@ if (PERSON_QR_PAYLOAD) refreshQrUI();
   });
 })();
 <?php endif; ?>
+
+/* Fshi pjesëmarrje (group / planned) */
+document.querySelectorAll('.qta-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!CAN_EDIT || !EDIT_MODE) return;
+
+    const kind = btn.dataset.kind;
+    try {
+      if (kind === 'group') {
+        const group_id   = parseInt(btn.dataset.groupId || '0', 10);
+        const student_id = parseInt(btn.dataset.studentId || '0', 10);
+        if (!group_id || !student_id) return;
+        if (!confirm('Fshini pjesëmarrjen e këtij studenti nga ky grup?')) return;
+
+        await postJSON(INLINE, {
+          csrf: CSRF,
+          action: 'delete_participation',
+          kind: 'group',
+          group_id,
+          student_id
+        });
+        notify('success', 'Pjesëmarrja u fshi.');
+        btn.closest('tr')?.remove();
+
+      } else if (kind === 'planned') {
+        const scp_id = parseInt(btn.dataset.scpId || '0', 10);
+        if (!scp_id) return;
+        if (!confirm('Fshini këtë modul të planifikuar?')) return;
+
+        await postJSON(INLINE, {
+          csrf: CSRF,
+          action: 'delete_participation',
+          kind: 'planned',
+          scp_id
+        });
+        notify('success', 'Moduli (planned) u fshi.');
+        btn.closest('tr')?.remove();
+      }
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  });
+});
 </script>
 </body>
 </html>

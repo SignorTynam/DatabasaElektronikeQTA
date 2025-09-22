@@ -156,24 +156,46 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $qList->execute([':sid1'=>$sid, ':sid2'=>$sid]);
   $coursesList = $qList->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-  // Modulet & grupet (me AMZË për rresht – këtu është po i njëjti AMZË i studentit)
+  // Modulet & grupet (me AMZË për rresht) + PLANNED (pa grup)
   $qEnr = $pdo->prepare("
-    SELECT
-      cg.id     AS group_id,
-      c.code    AS course_code,
-      c.name    AS course_name,
-      cg.start_date, cg.end_date,
-      cgs.exam_date, cgs.final_score,
-      s.nr_amze AS amze
-    FROM course_group_students cgs
-    JOIN course_groups cg ON cg.id = cgs.group_id
-    JOIN courses c        ON c.id  = cg.course_id
-    JOIN students s       ON s.id  = cgs.student_id
-    WHERE cgs.student_id = :sid
-    ORDER BY cg.start_date DESC, cg.id DESC
-    LIMIT 120
+    SELECT * FROM (
+      SELECT
+        cg.id     AS group_id,
+        c.code    AS course_code,
+        c.name    AS course_name,
+        cg.start_date, cg.end_date,
+        cgs.exam_date, cgs.final_score,
+        s.nr_amze AS amze,
+        'group'   AS row_kind
+      FROM course_group_students cgs
+      JOIN course_groups cg ON cg.id = cgs.group_id
+      JOIN courses c        ON c.id  = cg.course_id
+      JOIN students s       ON s.id  = cgs.student_id
+      WHERE cgs.student_id = :sid1
+
+      UNION ALL
+
+      SELECT
+        NULL        AS group_id,
+        c.code      AS course_code,
+        c.name      AS course_name,
+        NULL        AS start_date,
+        NULL        AS end_date,
+        NULL        AS exam_date,
+        NULL        AS final_score,
+        s.nr_amze   AS amze,
+        'planned'   AS row_kind
+      FROM student_course_plans scp
+      JOIN students s ON s.id = scp.student_id
+      JOIN courses  c ON c.id = scp.course_id
+      WHERE scp.student_id = :sid2
+        AND scp.group_id IS NULL
+        AND scp.status = 'planned'
+    ) t
+    ORDER BY t.start_date DESC, t.group_id DESC, CAST(t.amze AS UNSIGNED) ASC, t.amze ASC
+    LIMIT 160
   ");
-  $qEnr->execute([':sid'=>$sid]);
+  $qEnr->execute([':sid1'=>$sid, ':sid2'=>$sid]);
   $groups = $qEnr->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   return [
@@ -303,22 +325,44 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
 
     // Modulet & grupet me AMZË për rresht
     $q6 = $pdo->prepare("
-      SELECT
-        cg.id     AS group_id,
-        c.code    AS course_code,
-        c.name    AS course_name,
-        cg.start_date, cg.end_date,
-        cgs.exam_date, cgs.final_score,
-        s.nr_amze AS amze
-      FROM course_group_students cgs
-      JOIN course_groups cg ON cg.id = cgs.group_id
-      JOIN courses c        ON c.id  = cg.course_id
-      JOIN students s       ON s.id  = cgs.student_id
-      WHERE cgs.student_id IN ($ph)
-      ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-      LIMIT 160
+      SELECT * FROM (
+        SELECT
+          cg.id     AS group_id,
+          c.code    AS course_code,
+          c.name    AS course_name,
+          cg.start_date, cg.end_date,
+          cgs.exam_date, cgs.final_score,
+          s.nr_amze AS amze,
+          'group'   AS row_kind
+        FROM course_group_students cgs
+        JOIN course_groups cg ON cg.id = cgs.group_id
+        JOIN courses c        ON c.id  = cg.course_id
+        JOIN students s       ON s.id  = cgs.student_id
+        WHERE cgs.student_id IN ($ph)
+
+        UNION ALL
+
+        SELECT
+          NULL        AS group_id,
+          c.code      AS course_code,
+          c.name      AS course_name,
+          NULL        AS start_date,
+          NULL        AS end_date,
+          NULL        AS exam_date,
+          NULL        AS final_score,
+          s.nr_amze   AS amze,
+          'planned'   AS row_kind
+        FROM student_course_plans scp
+        JOIN students s ON s.id = scp.student_id
+        JOIN courses  c ON c.id = scp.course_id
+        WHERE scp.student_id IN ($ph)
+          AND scp.group_id IS NULL
+          AND scp.status = 'planned'
+      ) t
+      ORDER BY t.start_date DESC, t.group_id DESC, CAST(t.amze AS UNSIGNED) ASC, t.amze ASC
+      LIMIT 220
     ");
-    $q6->execute($ids);
+    $q6->execute(array_merge($ids, $ids));
     $groups = $q6->fetchAll(PDO::FETCH_ASSOC) ?: [];
   }
 
@@ -589,9 +633,20 @@ $NAV_ACTIVE = 'verify';
                         <tbody>
                         <?php foreach ($pr['groups'] as $g): ?>
                           <tr>
-                            <td>#<?= (int)$g['group_id'] ?></td>
+                            <td class="text-nowrap">
+                              <?php if (!empty($g['group_id'])): ?>
+                                #<?= (int)$g['group_id'] ?>
+                              <?php else: ?>
+                                <span class="badge rounded-pill text-bg-warning-subtle text-warning-emphasis">Pa grup</span>
+                              <?php endif; ?>
+                            </td>
                             <td class="text-nowrap"><?= h($g['amze'] ?? '—') ?></td>
-                            <td><?= h(($g['course_code']??'').' · '.($g['course_name']??'')) ?></td>
+                            <td>
+                              <?= h(($g['course_code']??'').' · '.($g['course_name']??'')) ?>
+                              <?php if (($g['row_kind'] ?? '') === 'planned'): ?>
+                                <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
+                              <?php endif; ?>
+                            </td>
                             <td class="text-nowrap"><?= h(fmt_dMY($g['start_date'] ?? null)) ?> – <?= h(fmt_dMY($g['end_date'] ?? null)) ?></td>
                             <td class="text-nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
                             <td class="text-nowrap"><?= isset($g['final_score']) ? h((string)$g['final_score']) : '—' ?></td>
@@ -880,15 +935,23 @@ function renderResult(json, payloadUsed=''){
 
       let groupsHTML = '';
       if (Array.isArray(pr.groups) && pr.groups.length>0) {
-        groupsHTML = pr.groups.map(g => `
-          <tr>
-            <td>#${escapeHtml(String(g.group_id||''))}</td>
-            <td class="text-nowrap">${escapeHtml(g.amze||'—')}</td>
-            <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}</td>
-            <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
-            <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
-            <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
-          </tr>`).join('');
+        groupsHTML = pr.groups.map(g => {
+          const idCell = g.group_id
+            ? `#${escapeHtml(String(g.group_id))}`
+            : `<span class="badge rounded-pill text-bg-warning-subtle">Pa grup</span>`;
+          const plannedBadge = (g.row_kind === 'planned')
+            ? `<span class="badge bg-warning-subtle ms-1">Planuar</span>`
+            : '';
+          return `
+            <tr>
+              <td class="text-nowrap">${idCell}</td>
+              <td class="text-nowrap">${escapeHtml(g.amze||'—')}</td>
+              <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}${plannedBadge}</td>
+              <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
+              <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
+              <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
+            </tr>`;
+        }).join('');
       }
 
       let coursesList = '';
@@ -919,11 +982,6 @@ function renderResult(json, payloadUsed=''){
           <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0">${(pr.stats?.pass_rate ?? null) !== null ? pr.stats.pass_rate+'%' : '—'}</div></div></div>
         </div>
 
-        <div class="mb-3">
-          <div class="small text-muted mb-1">AMZË të lidhura:</div>
-          ${students.startsWith('<div') ? students : ('<ul class="list-group list-group-flush">'+students+'</ul>')}
-        </div>
-
         <div class="mt-3">
           <div class="small text-muted mb-1">Modulet & grupet</div>
           ${groupsHTML
@@ -933,15 +991,6 @@ function renderResult(json, payloadUsed=''){
                </table></div>`
             : `<div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>`}
         </div>
-
-        <div class="small text-muted mt-3">Kurset (max 6):</div>
-        <ul class="list-group list-group-flush">${coursesList}</ul>
-
-        <div class="alert alert-info mt-3">
-          <strong>Kujdes:</strong> Nëse emri këtu <u>nuk</u> përputhet me emrin në certifikatën fizike,
-          raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose
-          <a href="tel:+355698778837">+355 69 877 8837</a>.
-        </div>
       `;
 
     } else { // student
@@ -950,15 +999,23 @@ function renderResult(json, payloadUsed=''){
 
       let groupsHTML = '';
       if (Array.isArray(st.groups) && st.groups.length>0) {
-        groupsHTML = st.groups.map(g => `
-          <tr>
-            <td>#${escapeHtml(String(g.group_id||''))}</td>
-            <td class="text-nowrap">${escapeHtml(g.amze || st.amze || '—')}</td>
-            <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}</td>
-            <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
-            <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
-            <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
-          </tr>`).join('');
+        groupsHTML = st.groups.map(g => {
+          const idCell = g.group_id
+            ? `#${escapeHtml(String(g.group_id))}`
+            : `<span class="badge rounded-pill text-bg-warning-subtle">Pa grup</span>`;
+          const plannedBadge = (g.row_kind === 'planned')
+            ? `<span class="badge bg-warning-subtle ms-1">Planuar</span>`
+            : '';
+          return `
+            <tr>
+              <td class="text-nowrap">${idCell}</td>
+              <td class="text-nowrap">${escapeHtml(g.amze || st.amze || '—')}</td>
+              <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}${plannedBadge}</td>
+              <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
+              <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
+              <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
+            </tr>`;
+        }).join('');
       }
 
       let coursesList = '';
