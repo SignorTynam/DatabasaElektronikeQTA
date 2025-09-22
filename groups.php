@@ -123,9 +123,12 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, in
   return (int)$pdo->lastInsertId();
 }
 
-/* ------------------------------
+/* =========================
    POST: create/edit/update/delete
-------------------------------- */
+   (me politika të reja:
+    - kur shtojmë studentë në grup => FSHIJMË çdo 'planned' për ta
+    - ndalim që personi ta ndjekë të njëjtin modul dy herë)
+========================= */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $_POST['action'] ?? '';
 
@@ -167,58 +170,35 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         if (count($ids)>10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
 
         if ($ids) {
+          // Ndalim: të mos kenë ndjekur më parë këtë modul (sipas personal_number)
           $ph = implode(',', array_fill(0, count($ids), '?'));
-          $confQ = $pdo->prepare("
-            SELECT s.nr_amze, cg.id AS group_id, c.name AS course_name
+          $confPN = $pdo->prepare("
+            SELECT DISTINCT p.personal_number, s.nr_amze, cg.id AS group_id, c.name AS course_name
             FROM course_group_students cgs
+            JOIN students s ON s.id = cgs.student_id
+            JOIN persons  p ON p.id = s.person_id
             JOIN course_groups cg ON cg.id = cgs.group_id
             JOIN courses c ON c.id = cg.course_id
-            JOIN students s ON s.id = cgs.student_id
-            WHERE cgs.student_id IN ($ph) AND cg.course_id = ?
-          ");
-          $confQ->execute([...$ids, $course_id]);
-          $conf = $confQ->fetchAll(PDO::FETCH_ASSOC);
-          if ($conf) {
-            $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_name'].')', $conf);
-            throw new RuntimeException('Këta studentë e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
-          }
-        }
-
-        if ($ids) {
-          $phIds = implode(',', array_fill(0, count($ids), '?'));
-          $pnStmt = $pdo->prepare("
-            SELECT DISTINCT p.personal_number
-            FROM students s
-            JOIN persons  p ON p.id = s.person_id
-            WHERE s.id IN ($phIds)
+            WHERE cg.course_id = ?
               AND p.personal_number IS NOT NULL AND p.personal_number <> ''
+              AND s.id IN ($ph)
           ");
-          $pnStmt->execute($ids);
-          $pnList = $pnStmt->fetchAll(PDO::FETCH_COLUMN);
-
-          if ($pnList) {
-            $phPn = implode(',', array_fill(0, count($pnList), '?'));
-            $confPN = $pdo->prepare("
-              SELECT DISTINCT p.personal_number, s.nr_amze, cg.id AS group_id, c.name AS course_name
-              FROM course_group_students cgs
-              JOIN students s ON s.id = cgs.student_id
-              JOIN persons  p ON p.id = s.person_id
-              JOIN course_groups cg ON cg.id = cgs.group_id
-              JOIN courses c ON c.id = cg.course_id
-              WHERE cg.course_id = ?
-                AND p.personal_number IN ($phPn)
-            ");
-            $confPN->execute([$course_id, ...$pnList]);
-            $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
-            if ($hitPN) {
-              $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-              throw new RuntimeException('Disa persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
-            }
+          $confPN->execute([$course_id, ...$ids]);
+          $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
+          if ($hitPN) {
+            $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
+            throw new RuntimeException('Disa persona e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
           }
-        }
 
-        $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
-        foreach ($ids as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
+          // RREGULL: sëmund të jenë njëkohësisht "me modul (plan)" dhe "në grup"
+          $pdo->prepare("DELETE FROM student_course_plans WHERE status='planned' AND student_id IN ($ph)")->execute($ids);
+
+          // Kapaciteti i grupit (maks 10)
+          if (count($ids) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+
+          $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
+          foreach ($ids as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
+        }
       }
       $pdo->commit();
 
@@ -258,29 +238,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $q->execute([':id'=>$course_id]);
       if (!$q->fetchColumn()) throw new RuntimeException('Moduli i zgjedhur nuk ekziston.');
 
+      // Mbledh anëtarët aktualë
       $members = $pdo->prepare("SELECT student_id FROM course_group_students WHERE group_id=:g");
       $members->execute([':g'=>$group_id]);
       $toCheck = $members->fetchAll(PDO::FETCH_COLUMN, 0);
 
       if ($toCheck) {
-        $ph = implode(',', array_fill(0, count($toCheck), '?'));
-        $confQ = $pdo->prepare("
-          SELECT s.nr_amze, cg.id AS other_group_id, c.name AS course_name
-          FROM course_group_students cgs
-          JOIN course_groups cg ON cg.id = cgs.group_id
-          JOIN courses c ON c.id = cg.course_id
-          JOIN students s ON s.id = cgs.student_id
-          WHERE cgs.student_id IN ($ph)
-            AND cgs.group_id <> ?
-            AND cg.course_id = ?
-        ");
-        $confQ->execute([...$toCheck, $group_id, $course_id]);
-        $conf = $confQ->fetchAll(PDO::FETCH_ASSOC);
-        if ($conf) {
-          $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_name'].')', $conf);
-          throw new RuntimeException('Ndërrimi i modulit s’lejohet: disa studentë e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
-        }
-
+        // Kontroll sipas personal_number: të mos rezultojnë se e kanë ndjekur tashmë modul të ri
         $phIds = implode(',', array_fill(0, count($toCheck), '?'));
         $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
@@ -308,7 +272,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
           if ($hitPN) {
             $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-            throw new RuntimeException('Ndërrimi i modulit s’lejohet: persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
+            throw new RuntimeException('Ndërrimi i modulit s’lejohet: disa persona e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
           }
         }
       }
@@ -378,6 +342,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       }
 
       if ($toAdd) {
+        // Ndalim: studentët në $toAdd të mos e kenë ndjekur më parë këtë modul
         $ph = implode(',', array_fill(0, count($toAdd), '?'));
         $confQ = $pdo->prepare("
           SELECT s.nr_amze, cg.id AS group_id, c.name AS course_name
@@ -394,6 +359,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           throw new RuntimeException('Këta studentë e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
         }
 
+        // Kontroll sipas personal_number
         $phIds = implode(',', array_fill(0, count($toAdd), '?'));
         $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
@@ -424,9 +390,14 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           }
         }
 
+        // Kapacitet
         $cnt = (int)$pdo->query("SELECT COUNT(*) FROM course_group_students WHERE group_id=".(int)$group_id)->fetchColumn();
         if ($cnt + count($toAdd) > 10) throw new RuntimeException('Ky ndryshim tejkalon kufirin 10 për grup.');
 
+        // RREGULL: një AMZË s’mund të jetë njëkohësisht "me modul (plan)" dhe "në grup"
+        $pdo->prepare("DELETE FROM student_course_plans WHERE status='planned' AND student_id IN ($ph)")->execute($toAdd);
+
+        // Shto në grup
         $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
         foreach ($toAdd as $sid) $ins->execute([':g'=>$group_id, ':s'=>$sid]);
       }
@@ -544,7 +515,7 @@ foreach ($params as $k=>$v) $st->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO
 $st->execute();
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-/* Studentë pa grup */
+/* Studentë pa grup (për tabelën poshtë) */
 $w2 = ["1=1"];
 $params2 = [];
 if ($q !== '') {
@@ -611,7 +582,6 @@ try {
     WHERE cgs.student_id IS NULL
   ")->fetchColumn();
 } catch (Throwable $e) {
-  // Nëse mungon tabela student_course_plans, mos e prish faqen
   $countNoGroup = (int)($countNoGroup ?? 0);
   $countPlannedNoGroup = 0;
 }
@@ -709,63 +679,55 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
     .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
     @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
 
-/* ===== Floating action buttons (stacked) ===== */
-.fab-stack{
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  flex-direction: column-reverse; /* create on bottom, toggles above, then edit mode */
-  gap: 12px;
-  z-index: 1040;
-}
-
-.fab-stack .fab-btn{
-  align-self: flex-end;            /* expand left, stick to right edge */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 52px;
-  height: 52px;
-  width: 52px;                     /* compact (icon-only) by default */
-  padding: 0 14px;                 /* room for text when expanded */
-  border-radius: 999px;
-  box-shadow: 0 12px 20px rgba(2,6,23,.15);
-  transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
-  overflow: hidden;
-}
-
-.fab-stack .fab-btn .fab-text{
-  white-space: nowrap;
-  max-width: 0;
-  opacity: 0;
-  transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
-  margin-left: 0;
-}
-
-.fab-stack .fab-btn:hover,
-.fab-stack .fab-btn:focus{
-  width: auto;                     /* pill with label */
-  box-shadow: 0 16px 28px rgba(2,6,23,.22);
-}
-
-.fab-stack .fab-btn:hover .fab-text,
-.fab-stack .fab-btn:focus .fab-text{
-  max-width: 180px;
-  opacity: 1;
-  margin-left: 4px;
-}
-
-.fab-stack .fab-btn:active{ transform: translateY(1px); }
-
-@media (max-width: 575.98px){
-  .fab-stack{ right:16px; bottom:16px; gap:10px; }
-  .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
-}
-
-/* Optional: keep old .btn-fab buttons from overlapping if left in DOM */
-.btn-fab.fab-toggleall, .btn-fab.fab-editmode{ display:none !important; }
+    /* ===== Floating action buttons (stacked) ===== */
+    .fab-stack{
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 12px;
+      z-index: 1040;
+    }
+    .fab-stack .fab-btn{
+      align-self: flex-end;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 52px;
+      height: 52px;
+      width: 52px;
+      padding: 0 14px;
+      border-radius: 999px;
+      box-shadow: 0 12px 20px rgba(2,6,23,.15);
+      transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
+      overflow: hidden;
+    }
+    .fab-stack .fab-btn .fab-text{
+      white-space: nowrap;
+      max-width: 0;
+      opacity: 0;
+      transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
+      margin-left: 0;
+    }
+    .fab-stack .fab-btn:hover,
+    .fab-stack .fab-btn:focus{
+      width: auto;
+      box-shadow: 0 16px 28px rgba(2,6,23,.22);
+    }
+    .fab-stack .fab-btn:hover .fab-text,
+    .fab-stack .fab-btn:focus .fab-text{
+      max-width: 180px;
+      opacity: 1;
+      margin-left: 4px;
+    }
+    .fab-stack .fab-btn:active{ transform: translateY(1px); }
+    @media (max-width: 575.98px){
+      .fab-stack{ right:16px; bottom:16px; gap:10px; }
+      .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
+    }
+    .btn-fab.fab-toggleall, .btn-fab.fab-editmode{ display:none !important; }
 
     /* Toasts poshtë MAJTAS */
     .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
@@ -798,7 +760,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       <button class="btn btn-soft-danger btn-pill" data-bs-toggle="modal" data-bs-target="#form2Modal" data-bs-title="Shkarko listë studentësh sipas AMZË">
         <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
       </button>
-      <!-- U hoqën butonat Expand/Collapse dhe Edit Mode nga toolbar-i sipër -->
     </div>
   </div>
 
@@ -814,7 +775,6 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
       </div>
     </div>
   <?php endif; ?>
-
 
   <div class="card mb-3">
     <div class="card-body">
@@ -1028,6 +988,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
               Mund të shtosh ose heqësh AMZË. Nëse shkruan AMZË që s’ekziston, do të krijohet student i ri me të dhëna bosh.
               Kapaciteti maksimal: 10 studentë. <br>
               <strong>Rregull:</strong> i njëjti person (sipas ID personale) nuk mund të jetë dy herë në të njëjtin modul.
+              <br><strong>Shënim:</strong> në momentin e shtimit në grup, fshihen automatikisht të gjithë planët <em>planned</em> të studentit.
             </div>
           </div>
           <div class="modal-footer">
@@ -1153,7 +1114,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             </tr>
 
           <?php endforeach; else: ?>
-            <tr><td colspan="4" class="text-center text-muted">Të gjithë studentët janë në grupe.</td></tr>
+            <tr><td colspan="5" class="text-center text-muted">Të gjithë studentët janë në grupe.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>
@@ -1166,7 +1127,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   </div>
 </main>
 
-<!-- REPLACE the three floating buttons block with this stack -->
+<!-- Floating action buttons (stack) -->
 <div class="fab-stack" role="group" aria-label="Veprime shpejta">
   <!-- Toggle All -->
   <button id="toggleAllBtn" class="btn btn-soft-secondary fab-btn" type="button" title="Zgjero/Mbyll të gjitha">
@@ -1339,6 +1300,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <div class="form-text">
               Mund të shkruash intervale dhe vlera të ndara me presje. Maksimumi 10 studentë.
               <br><strong>Rregull:</strong> i njëjti person (sipas ID personale) nuk mund ta ndjekë dy herë të njëjtin modul.
+              <br><strong>Shënim:</strong> në momentin e shtimit në grup, fshihen automatikisht të gjithë planët <em>planned</em> të studentëve.
             </div>
           </div>
         </div>
@@ -1388,8 +1350,6 @@ function notify(type, text, opts={}){
         <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
       </div>
       <div class="toast-body">${text}</div>
-          </div>
-      <div class="toast-body">${text}</div>
     </div>`;
   zone.insertAdjacentHTML('beforeend', html);
   const el = document.getElementById(id);
@@ -1406,341 +1366,291 @@ function normalizeDateForServer(v){
   const s = clean(v);
   if (s === '' || s === '—') return '';
   const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-  if (!m) throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+  if (!m) throw new Error('Formati i datës duhet të jetë DD-MM-YYYY');
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-/* Konfirmim & vendos "force" për modale */
-function confirmIfCompleted(formEl, groupId){
-  if (!EDIT_MODE) return false;
-  const g = String(groupId);
-  const inp = formEl.querySelector('input[name="force"]');
-  if (GROUP_COMPLETED[g] == 1) {
-    if (!confirm('Ky grup është i përfunduar. Jeni i sigurt që doni të vazhdoni?')) {
-      if (inp) inp.value = '0';
-      return false;
-    }
-    if (inp) inp.value = '1';
-    return true;
+/* YYYY-MM-DD -> DD-MM-YYYY (për shfaqje) */
+function isoToDmy(iso){
+  if (!iso) return '—';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '—';
+  return `${m[2]}-${m[1]}-${m[0]}`;
+}
+
+/* Lexo datën e mbarimit të grupit nga header (DD-MM-YYYY -> ISO) */
+function getGroupEndIso(gid){
+  const span = document.querySelector(`.editable[data-field="end_date"][data-group="${gid}"]`);
+  if (!span) return '';
+  const txt = clean(span.textContent);
+  if (!txt || txt==='—') return '';
+  return normalizeDateForServer(txt);
+}
+
+/* POST JSON helper */
+async function postJSON(payload){
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  let json = null;
+  try{ json = await res.json(); }catch(_){ /* ignore */ }
+  if (!res.ok || !json || json.ok === false){
+    const msg = (json && json.error) ? json.error : 'Veprimi dështoi.';
+    throw new Error(msg);
   }
-  if (inp) inp.value = '0';
+  return json;
+}
+
+/* ===== Inline editing ===== */
+function startSaving(el){ el.classList.add('cell-saving'); }
+function stopSaving(el){ el.classList.remove('cell-saving'); }
+function flashOk(el){ el.classList.remove('cell-err'); el.classList.add('cell-ok'); setTimeout(()=>el.classList.remove('cell-ok'), 800); }
+function flashErr(el){ el.classList.remove('cell-ok'); el.classList.add('cell-err'); setTimeout(()=>el.classList.remove('cell-err'), 800); }
+
+/* Merre kontekstin: group_id, student_id, field nga struktura (td .cell ose span .cell-inline) */
+function getCellCtx(editable){
+  const cell = editable.closest('.cell');
+  if (cell){
+    return {
+      scope: 'row',
+      group_id: parseInt(cell.dataset.group,10)||0,
+      student_id: parseInt(cell.dataset.student,10)||0,
+      field: String(cell.dataset.field||'')
+    };
+  }
+  // header span (start_date / end_date)
+  return {
+    scope: 'header',
+    group_id: parseInt(editable.dataset.group,10)||0,
+    student_id: parseInt(editable.dataset.student,10)||0,
+    field: String(editable.dataset.field||'')
+  };
+}
+
+/* Validime + normalizime sipas fushës */
+function normalizeValueForField(field, rawValue, ctx){
+  const s = clean(rawValue);
+  if (s === '' || s === '—') return { value: '' , display:'—' };
+
+  if (field === 'final_score'){
+    const num = Number(String(s).replace(',', '.'));
+    if (!Number.isFinite(num)) throw new Error('Pikët duhet të jenë numër.');
+    if (num < 0 || num > 100) throw new Error('Pikët duhet të jenë midis 0–100.');
+    // shfaq pa zera të panevojshëm
+    return { value: num, display: String(num).replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1') };
+  }
+
+  if (field === 'exam_date' || field === 'start_date' || field === 'end_date'){
+    const iso = normalizeDateForServer(s);
+    // Rregull opsional: exam_date ≥ end_date (po të jetë e ditur)
+    if (field === 'exam_date'){
+      const endIso = getGroupEndIso(ctx.group_id);
+      if (endIso && iso < endIso) throw new Error('Data e testimit duhet të jetë ≥ datës së mbarimit të grupit.');
+    }
+    return { value: iso, display: s };
+  }
+
+  // Default: kthe si tekst i thjeshtë
+  return { value: s, display: s };
+}
+
+/* Ruaj një qelizë */
+async function saveEditable(editable){
+  if (!EDIT_MODE) return;
+  const ctx = getCellCtx(editable);
+  const prev = editable.dataset.prev ?? clean(editable.textContent);
+  const nowRaw = clean(editable.textContent);
+
+  // në contenteditable përdoruesi mund të fusë newline — pastrojmë
+  editable.textContent = nowRaw;
+
+  try{
+    const { value, display } = normalizeValueForField(ctx.field, nowRaw, ctx);
+    // nëse nuk ka ndryshim real, mos bëj asgjë
+    if (clean(prev) === display) return;
+
+    startSaving(editable);
+
+    // endpoint i përgjithshëm "update_cell" — backend duhet të dallojë nga field-i
+    await postJSON({
+      csrf: CSRF,
+      action: 'update_cell',
+      group_id: ctx.group_id,
+      student_id: ctx.student_id,
+      field: ctx.field,
+      value: value
+    });
+
+    // UI: përditëso
+    editable.textContent = display || '—';
+    editable.dataset.prev = editable.textContent;
+
+    // nëse u ndryshua end_date/start_date, nuk dëmton të rifreskosh “completed” validations e tjera
+    stopSaving(editable);
+    flashOk(editable);
+    notify('success','U ruajt.');
+  }catch(err){
+    stopSaving(editable);
+    flashErr(editable);
+    editable.textContent = prev || '—';
+    notify('danger', err.message || 'Nuk u ruajt ndryshimi.');
+  }
+}
+
+/* Binds për të gjitha .editable */
+document.querySelectorAll('.editable').forEach(ed=>{
+  // mos lejo Enter të fusë newline — me Enter bëjmë save
+  ed.addEventListener('keydown', (e)=>{
+    if (!EDIT_MODE) return;
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      ed.blur();
+    }
+    if (e.key === 'Escape'){
+      e.preventDefault();
+      ed.textContent = ed.dataset.prev ?? ed.textContent;
+      ed.blur();
+    }
+  });
+  ed.addEventListener('focus', ()=>{
+    ed.dataset.prev = clean(ed.textContent);
+  });
+  ed.addEventListener('paste', (e)=>{
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain') || '';
+    document.execCommand('insertText', false, clean(text));
+  });
+  ed.addEventListener('blur', ()=>{
+    if (!EDIT_MODE) return;
+    saveEditable(ed);
+  });
+});
+
+/* ===== Toggle “Përfunduar” (switch) ===== */
+document.querySelectorAll('.toggle-completed').forEach(sw=>{
+  sw.addEventListener('change', async ()=>{
+    if (!EDIT_MODE){ sw.checked = !sw.checked; return; }
+    const gid = parseInt(sw.dataset.group,10)||0;
+    const want = sw.checked ? 1 : 0;
+
+    try{
+      // konfirmo kur po e ç’përfundon
+      if (GROUP_COMPLETED[gid] == 1 && want === 0){
+        const ok = confirm('Ky grup është i përfunduar. E ç’përfundon?');
+        if (!ok){ sw.checked = true; return; }
+      }
+      // ose kur po e shënon si të përfunduar
+      if (GROUP_COMPLETED[gid] != 1 && want === 1){
+        const ok = confirm('Po e shënon grupin si të përfunduar. Vazhdo?');
+        if (!ok){ sw.checked = false; return; }
+      }
+
+      await postJSON({ csrf:CSRF, action:'set_group_completed', group_id:gid, is_completed:want });
+
+      GROUP_COMPLETED[gid] = want;
+
+      // UI badge + alert
+      const badge = document.querySelector(`.group-badge[data-group="${gid}"]`);
+      const alertBox = document.getElementById(`statusAlert_${gid}`);
+      if (badge){
+        badge.className = `badge ${want ? 'text-bg-success' : 'text-bg-danger'} group-badge`;
+        badge.textContent = want ? 'I përfunduar' : 'Jo i përfunduar';
+      }
+      if (alertBox){
+        alertBox.className = `status-alert alert ${want ? 'alert-success' : 'alert-danger'} py-2 mb-3 small`;
+        alertBox.innerHTML = want
+          ? `<i class="bi bi-check-circle me-1"></i> Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.`
+          : `<i class="bi bi-x-octagon me-1"></i> Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.`;
+      }
+
+      notify('success','Statusi u përditësua.');
+    }catch(err){
+      sw.checked = !sw.checked; // rikthe
+      notify('danger', err.message || 'Nuk u përditësua statusi.');
+    }
+  });
+});
+
+/* ===== Konfirmim për formularët kur grupi është i përfunduar ===== */
+function confirmIfCompleted(formEl, gid){
+  const isCompleted = Number(GROUP_COMPLETED[gid] || 0) === 1;
+  if (!isCompleted) return true;
+  const ok = confirm('Ky grup është i përfunduar. Vazhdo gjithsesi?');
+  if (!ok) return false;
+  const force = formEl.querySelector('input[name="force"]');
+  if (force) force.value = '1';
   return true;
 }
+window.confirmIfCompleted = confirmIfCompleted;
 
-/* Përditëso UI e statusit (badge + alert) */
-function updateStatusUI(gid, isCompleted){
-  const badge = document.querySelector(`.group-badge[data-group="${gid}"]`);
-  if (badge){
-    badge.textContent = isCompleted ? 'I përfunduar' : 'Jo i përfunduar';
-    badge.className = `badge ${isCompleted ? 'text-bg-success' : 'text-bg-danger'} group-badge`;
-  }
-  const alertBox = document.getElementById(`statusAlert_${gid}`);
-  if (alertBox){
-    alertBox.classList.remove('alert-success','alert-danger');
-    alertBox.classList.add(isCompleted ? 'alert-success' : 'alert-danger');
-    alertBox.innerHTML = isCompleted
-      ? `<i class="bi bi-check-circle me-1"></i> Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.`
-      : `<i class="bi bi-x-octagon me-1"></i> Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.`;
-  }
+/* ===== Toggle All (expand/collapse) ===== */
+let allOpen = false;
+const toggleAllBtn  = document.getElementById('toggleAllBtn');
+const toggleAllIcon = document.getElementById('toggleAllIcon');
+const toggleAllText = document.getElementById('toggleAllText');
+
+function setAll(open){
+  document.querySelectorAll('.group-body').forEach(el=>{
+    const c = bootstrap.Collapse.getOrCreateInstance(el, {toggle:false});
+    open ? c.show() : c.hide();
+  });
+  allOpen = !!open;
+  toggleAllIcon.className = allOpen ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand';
+  toggleAllText.textContent = allOpen ? 'Mbyll të gjitha' : 'Zgjero të gjitha';
+}
+if (toggleAllBtn){
+  toggleAllBtn.addEventListener('click', ()=> setAll(!allOpen));
 }
 
-/* AJAX helper */
-async function saveInline(payload, cell, displayEl, oldVal){
-  if (!EDIT_MODE) return;
-  try{
-    if (cell) cell.classList.add('cell-saving');
-    const res = await fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body: JSON.stringify({...payload, csrf: CSRF})
-    });
-    const json = await res.json();
-    if (cell) cell.classList.remove('cell-saving');
-
-    if(!json.ok){
-      if(displayEl) displayEl.textContent = oldVal;
-      if(cell){ cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200); }
-      showMsg('danger', json.error || 'Gabim i panjohur.');
-      return;
-    }
-
-    if (json.is_completed !== undefined) {
-      const gid = payload.group_id;
-      GROUP_COMPLETED[String(gid)] = json.is_completed ? 1 : 0;
-      updateStatusUI(gid, !!json.is_completed);
-    }
-
-    if(displayEl && json.display !== undefined){
-      displayEl.textContent = json.display;
-    }
-    if(cell){ cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800); }
-    notify('success','U ruajt me sukses.');
-  }catch(e){
-    console.error(e);
-    if(displayEl) displayEl.textContent = oldVal;
-    if(cell){ cell.classList.remove('cell-saving'); cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200); }
-    showMsg('danger','Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
-  }
-}
-
-/* Maskë DD-MM-YYYY për contenteditable dhe input */
-function maskToDDMMYYYY(input) {
-  const digits = String(input || '').replace(/\D/g, '').slice(0, 8);
-  const d = digits.slice(0, 2);
-  const m = digits.slice(2, 4);
-  const y = digits.slice(4, 8);
-  let out = d;
-  if (digits.length > 2) out += '-' + m;
-  if (digits.length > 4) out += '-' + y;
-  return out;
-}
-function placeCaretAtEnd(el) {
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  range.collapse(false);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-}
-function attachDateMaskContentEditable(el) {
-  el.addEventListener('input', () => {
-    const masked = maskToDDMMYYYY(el.textContent);
-    if (el.textContent !== masked) {
-      el.textContent = masked;
-      placeCaretAtEnd(el);
-    }
-  });
-  el.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const txt = (e.clipboardData || window.clipboardData).getData('text');
-    el.textContent = maskToDDMMYYYY(txt);
-    placeCaretAtEnd(el);
-  });
-}
-function applyDmyMask(el){
-  el.addEventListener('input', ()=>{
-    let v = el.value.replace(/[^\d]/g,'').slice(0,8);
-    if (v.length >= 5) v = v.slice(0,2)+'-'+v.slice(2,4)+'-'+v.slice(4);
-    else if (v.length >= 3) v = v.slice(0,2)+'-'+v.slice(2);
-    el.value = v;
-  });
-}
-
-/* Toggle Completed (AJAX) */
-document.querySelectorAll('.toggle-completed').forEach(chk=>{
-  chk.addEventListener('change', ()=>{
-    if (!EDIT_MODE) { chk.checked = !chk.checked; return; }
-    const gid = parseInt(chk.dataset.group,10);
-    const want = chk.checked ? 1 : 0;
-    if (GROUP_COMPLETED[String(gid)] == 1 && want === 0) {
-      if (!confirm('Ky grup është i përfunduar. Dëshiron të ndryshosh statusin?')) { chk.checked = true; return; }
-    }
-    saveInline({action:'set_group_completed', group_id:gid, is_completed:want, force:1}, null, null, null);
-  });
-});
-
-/* Inline në header-in e grupit (start/end) */
-document.querySelectorAll('.cell-inline.editable').forEach(el=>{
-  let oldVal = el.textContent;
-  if (!EDIT_MODE) el.setAttribute('contenteditable','false');
-
-  /* maskë për datë */
-  attachDateMaskContentEditable(el);
-
-  el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
-  el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
-  el.addEventListener('blur', ()=>{
-    if (!EDIT_MODE) return;
-    const gid = parseInt(el.dataset.group,10);
-    const field = el.dataset.field;
-    let newVal = clean(el.textContent);
-    if(newVal===clean(oldVal)) return;
-
-    if(['start_date','end_date'].includes(field)){
-      try { newVal = normalizeDateForServer(newVal); }
-      catch(err){ el.textContent = oldVal; el.classList.add('cell-err'); setTimeout(()=>el.classList.remove('cell-err'),1200); showMsg('danger', err.message || err); return; }
-      const payload = {action:(field==='start_date'?'update_group_start':'update_group_end'),
-                       student_id:0, group_id:gid, [field]:(newVal===''?null:newVal)};
-      if (GROUP_COMPLETED[String(gid)] == 1) { if (!confirm('Ky grup është i përfunduar. Jeni i sigurt?')) { el.textContent = oldVal; return; } payload.force = 1; }
-      saveInline(payload, null, el, oldVal);
-    }
-  });
-});
-
-/* Inline per student: exam_date & final_score */
-document.querySelectorAll('td.cell .editable').forEach(el=>{
-  let oldVal = el.textContent;
-  if (!EDIT_MODE) el.setAttribute('contenteditable','false');
-
-  /* maskë për exam_date */
-  const cell = el.closest('td.cell');
-  if (cell && cell.dataset.field === 'exam_date') attachDateMaskContentEditable(el);
-
-  el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
-  el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
-  el.addEventListener('blur', ()=>{
-    if (!EDIT_MODE) return;
-
-    const cell = el.closest('td.cell');
-    const field = cell.dataset.field;
-    const sid = parseInt(cell.dataset.student,10);
-    const gid = parseInt(cell.dataset.group,10);
-    let newVal = clean(el.textContent);
-    if(newVal===clean(oldVal)) return;
-
-    if(field==='exam_date'){
-      try { newVal = normalizeDateForServer(newVal); }
-      catch(err){ el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200); showMsg('danger', err.message || err); return; }
-      const payload = {action:'update_student_exam_date', student_id:sid, group_id:gid, exam_date:(newVal===''?null:newVal)};
-      if (GROUP_COMPLETED[String(gid)] == 1) { if (!confirm('Ky grup është i përfunduar. Jeni i sigurt?')) { el.textContent = oldVal; return; } payload.force = 1; }
-      saveInline(payload, cell, el, oldVal);
-      return;
-    }
-
-    if(field==='final_score'){
-      if(newVal===''){
-        const payload = {action:'update_final_score', student_id:sid, group_id:gid, final_score:null};
-        if (GROUP_COMPLETED[String(gid)] == 1) { if (!confirm('Ky grup është i përfunduar. Jeni i sigurt?')) { el.textContent = oldVal; return; } payload.force = 1; }
-        saveInline(payload, cell, el, oldVal);
-        return;
-      }
-      const n = newVal.replace(',','.');
-      if(isNaN(n)){ el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200); showMsg('danger','Nota duhet të jetë numër.'); return; }
-      const payload = {action:'update_final_score', student_id:sid, group_id:gid, final_score:n};
-      if (GROUP_COMPLETED[String(gid)] == 1) { if (!confirm('Ky grup është i përfunduar. Jeni i sigurt?')) { el.textContent = oldVal; return; } payload.force = 1; }
-      saveInline(payload, cell, el, oldVal);
-      return;
-    }
-  });
-});
-
-/* Hints për Formularin 1 */
-function updateHint(selId, hintId) {
-  const v = document.getElementById(selId)?.value;
-  const h = document.getElementById(hintId);
-  if (!v || !GROUP_AMZE[v]) { if(h) h.textContent='(AMZË: —)'; return; }
-  const mi = GROUP_AMZE[v]['amze_min'];
-  const ma = GROUP_AMZE[v]['amze_max'];
-  if (h) h.textContent = (mi === null || ma === null) ? '(AMZË: —)' : `(AMZË: ${mi} – ${ma})`;
+/* ===== Formulari nr.1 — Hints për AMZË & datat ===== */
+function updateForm1Hint(selId, hintId){
+  const sel  = document.getElementById(selId);
+  const hint = document.getElementById(hintId);
+  if (!sel || !hint) return;
+  const gid = sel.value ? Number(sel.value) : 0;
+  const meta = GROUP_AMZE[String(gid)] || null;
+  if (!gid || !meta){ hint.textContent = '(AMZË: —)'; return; }
+  const min = meta.amze_min ?? '—';
+  const max = meta.amze_max ?? '';
+  const range = (min==='—' ? '—' : (max ? `${min}–${max}` : `${min}`));
+  const s = `${isoToDmy(meta.start_date)} → ${isoToDmy(meta.end_date)}`;
+  hint.textContent = `(AMZË: ${range}; Datat: ${s})`;
 }
 ['gstart','gend'].forEach(id=>{
   const el = document.getElementById(id);
-  if (el) el.addEventListener('change', ()=>{
-    updateHint('gstart','gstartHint');
-    updateHint('gend','gendHint');
-  });
+  if (el){
+    el.addEventListener('change', ()=>{
+      updateForm1Hint('gstart','gstartHint');
+      updateForm1Hint('gend','gendHint');
+    });
+  }
 });
-updateHint('gstart','gstartHint');
-updateHint('gend','gendHint');
 
-/* Butonat e download-it për secilin formular */
+/* ===== Eksportet (format buttons) ===== */
 document.querySelectorAll('#form1Modal [data-dl]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    document.getElementById('form1Format').value = btn.dataset.dl;
+    const format = btn.getAttribute('data-dl');
+    document.getElementById('form1Format').value = format;
     document.getElementById('form1Export').submit();
   });
 });
 document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    document.getElementById('form2Format').value = btn.dataset.dl;
+    const format = btn.getAttribute('data-dl');
+    document.getElementById('form2Format').value = format;
     document.getElementById('form2Export').submit();
   });
 });
 
-/* Maskë për input-et DD-MM-YYYY në modal "Krijo grup" */
-document.querySelectorAll('input.dmy').forEach(applyDmyMask);
-const createForm = document.querySelector('#createGroupModal form');
-if (createForm){
-  createForm.addEventListener('submit', (ev)=>{
-    const s = createForm.querySelector('input[name="start_date"]');
-    const e = createForm.querySelector('input[name="end_date"]');
-    try{
-      s.value = normalizeDateForServer(s.value);
-      e.value = normalizeDateForServer(e.value);
-    }catch(err){
-      ev.preventDefault();
-      notify('danger', err.message || 'Formati i datës duhet të jetë DD-MM-YYYY.');
-    }
-  });
-}
-
-/* Accordion state me localStorage + ToggleAll i vetëm */
-const OPEN_KEY = 'qta_groups_open';
-function getOpenSet(){
-  try{ return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || '[]').map(String)); }
-  catch{ return new Set(); }
-}
-function saveOpenSet(set){
-  localStorage.setItem(OPEN_KEY, JSON.stringify(Array.from(set)));
-}
-function areAllOpen(){
-  const bodies = document.querySelectorAll('.group-body.collapse');
-  const open = Array.from(bodies).filter(b=>b.classList.contains('show')).length;
-  return open === bodies.length && bodies.length>0;
-}
-function updateToggleAllBtn(){
-  const btn = document.getElementById('toggleAllBtn');
-  const icon = document.getElementById('toggleAllIcon');
-  const txt = document.getElementById('toggleAllText');
-  if (!btn || !icon || !txt) return;
-  if (areAllOpen()){
-    icon.className = 'bi bi-arrows-angle-contract me-1';
-    txt.textContent = 'Mbyll të gjitha';
-  } else {
-    icon.className = 'bi bi-arrows-angle-expand me-1';
-    txt.textContent = 'Zgjero të gjitha';
-  }
-}
-
+/* Compact spacing */
 document.addEventListener('DOMContentLoaded', ()=>{
-  // compact mode
   document.body.classList.add('compact');
-
-  // accordion restore
-  const open = getOpenSet();
-  document.querySelectorAll('.group-body.collapse').forEach(el=>{
-    const gid = (el.id || '').replace('gBody_','');
-    const inst = new bootstrap.Collapse(el, { toggle:false });
-    if (open.has(String(gid))) inst.show();
-
-    el.addEventListener('shown.bs.collapse', ()=>{
-      open.add(String(gid)); saveOpenSet(open); updateToggleAllBtn();
-      const btn = document.querySelector(`.collapse-toggle[data-bs-target="#${el.id}"]`);
-      if (btn) btn.setAttribute('aria-expanded','true');
-    });
-    el.addEventListener('hidden.bs.collapse', ()=>{
-      open.delete(String(gid)); saveOpenSet(open); updateToggleAllBtn();
-      const btn = document.querySelector(`.collapse-toggle[data-bs-target="#${el.id}"]`);
-      if (btn) btn.setAttribute('aria-expanded','false');
-    });
-  });
-  updateToggleAllBtn();
-
-  // ToggleAll floating button
-  const toggleAll = document.getElementById('toggleAllBtn');
-  if (toggleAll){
-    toggleAll.addEventListener('click', ()=>{
-      const allBodies = document.querySelectorAll('.group-body.collapse');
-      const wantOpen = !areAllOpen();
-      allBodies.forEach(el=>{
-        new bootstrap.Collapse(el, { toggle:false })[wantOpen ? 'show' : 'hide']();
-        const gid = (el.id || '').replace('gBody_','');
-        const set = getOpenSet();
-        if (wantOpen) set.add(String(gid)); else set.delete(String(gid));
-        saveOpenSet(set);
-      });
-      updateToggleAllBtn();
-    });
-  }
+  // initialize default hints
+  updateForm1Hint('gstart','gstartHint');
+  updateForm1Hint('gend','gendHint');
 });
-
-<?php if ($flash_ok): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($flash_ok) ?>));
-<?php endif; ?>
-<?php if ($flash_err): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($flash_err) ?>));
-<?php endif; ?>
 </script>
 </body>
 </html>
-
