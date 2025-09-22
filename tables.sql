@@ -1076,3 +1076,32 @@ END $$
 
 DELIMITER ;
 
+
+DROP TABLE IF EXISTS person_qr_tokens;
+
+CREATE TABLE person_qr_tokens (
+  person_id INT         NOT NULL,
+  token     CHAR(32)    NOT NULL,                       -- bin2hex(random_bytes(16)) => 32 hex
+  created_at TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (person_id),
+  UNIQUE KEY uq_pqt_token (token),
+  CONSTRAINT fk_pqt_person
+    FOREIGN KEY (person_id) REFERENCES persons(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- b) Token 32-hex nga MD5(UUID() || RAND() || NOW() || person_id)
+INSERT INTO person_qr_tokens (person_id, token, created_at)
+SELECT p.id, LOWER(MD5(CONCAT(UUID(), RAND(), NOW(), p.id))), NOW()
+FROM persons p
+LEFT JOIN person_qr_tokens q ON q.person_id = p.id
+WHERE q.person_id IS NULL;
+
+INSERT IGNORE INTO person_qr_tokens (person_id, token, created_at)
+SELECT
+  s.person_id,
+  SUBSTRING_INDEX(GROUP_CONCAT(t.token ORDER BY t.created_at ASC SEPARATOR ','), ',', 1) AS token,
+  MIN(t.created_at) AS created_at
+FROM student_qr_tokens t
+JOIN students s ON s.id = t.student_id
+GROUP BY s.person_id;

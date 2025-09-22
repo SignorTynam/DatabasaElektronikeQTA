@@ -2,12 +2,19 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
-
 $pdo = getPDO();
 
-/* ========================= Helpers ========================= */
+/* ============== Helpers & Output ============== */
 function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 function json_out(array $x){ header('Content-Type: application/json; charset=utf-8'); echo json_encode($x); exit; }
+
+/* Datë DD-MM-YYYY nga ISO YYYY-MM-DD */
+function fmt_dMY(?string $iso): string {
+  if (!$iso) return '—';
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return h($iso);
+  $ts = strtotime($iso);
+  return $ts ? date('d-m-Y', $ts) : '—';
+}
 
 /* Masko ID personale (p.sh. ****123) */
 function mask_id(?string $s): string {
@@ -17,56 +24,58 @@ function mask_id(?string $s): string {
   return str_repeat('*', $len-3).substr($s, -3);
 }
 
-/* Parser payload-i nga QR */
+/* --------------- Parser i payload-it ---------------
+   Mbështet: URL ?sid=&t= ose ?pid=&t=,
+   QTA|SID:..|TOKEN:.. ose QTA|PID:..|TOKEN:..,
+   JSON {sid|pid, token},
+   "SID|TOKEN" / "PID|TOKEN".
+--------------------------------------------------- */
 function parse_payload(string $raw): array {
   $raw = trim($raw);
+  $sid = 0; $pid = 0; $token = '';
 
-  // 1) URL ?sid=...&t=...
+  // 1) URL me sid/pid & t/token
   if (filter_var($raw, FILTER_VALIDATE_URL)) {
     $q = parse_url($raw, PHP_URL_QUERY);
     parse_str($q ?? '', $arr);
-    $sid = isset($arr['sid']) && ctype_digit((string)$arr['sid']) ? (int)$arr['sid'] : 0;
-    $token = $arr['t'] ?? ($arr['token'] ?? '');
-    $token = is_string($token) ? trim($token) : '';
-    return ['sid'=>$sid, 'token'=>$token];
+    if (!empty($arr['sid']) && ctype_digit((string)$arr['sid'])) $sid = (int)$arr['sid'];
+    if (!empty($arr['pid']) && ctype_digit((string)$arr['pid'])) $pid = (int)$arr['pid'];
+    $token = (string)($arr['t'] ?? $arr['token'] ?? '');
+    return ['sid'=>$sid, 'pid'=>$pid, 'token'=>trim($token)];
   }
 
-  // 2) “QTA|SID:...|TOKEN:...” ose përzierje
-  if (stripos($raw, 'QTA|') === 0 || str_contains($raw, 'SID:') || str_contains($raw, 'TOKEN:')) {
-    $sid = 0; $token = '';
+  // 2) QTA|SID:...|TOKEN:... ose QTA|PID:...|TOKEN:...
+  if (stripos($raw, 'QTA|') === 0 || str_contains($raw, 'SID:') || str_contains($raw, 'PID:') || str_contains($raw, 'TOKEN:')) {
     if (preg_match('/SID\s*:\s*(\d+)/i', $raw, $m)) $sid = (int)$m[1];
-    if (preg_match('/TOKEN\s*:\s*([a-f0-9]{32,})/i', $raw, $m)) $token = strtolower($m[1]);
-    return ['sid'=>$sid, 'token'=>$token];
+    if (preg_match('/PID\s*:\s*(\d+)/i', $raw, $m)) $pid = (int)$m[1];
+    if (preg_match('/TOKEN\s*:\s*([a-f0-9]{16,})/i', $raw, $m)) $token = strtolower($m[1]);
+    return ['sid'=>$sid, 'pid'=>$pid, 'token'=>$token];
   }
 
-  // 3) JSON {sid, token}
+  // 3) JSON {sid|pid, token}
   if (($raw[0]??'') === '{') {
     $j = json_decode($raw, true);
     if (is_array($j)) {
-      $sid = isset($j['sid']) && ctype_digit((string)$j['sid']) ? (int)$j['sid'] : 0;
-      $token = isset($j['token']) && is_string($j['token']) ? trim($j['token']) : '';
-      return ['sid'=>$sid, 'token'=>$token];
+      if (isset($j['sid']) && ctype_digit((string)$j['sid'])) $sid=(int)$j['sid'];
+      if (isset($j['pid']) && ctype_digit((string)$j['pid'])) $pid=(int)$j['pid'];
+      if (isset($j['token']) && is_string($j['token'])) $token=trim($j['token']);
+      return ['sid'=>$sid, 'pid'=>$pid, 'token'=>$token];
     }
   }
 
-  // 4) “SID|TOKEN”
+  // 4) “PID|TOKEN” ose “SID|TOKEN” (heuristikë)
   if (str_contains($raw,'|')) {
     [$a,$b] = array_map('trim', explode('|',$raw,2));
-    $sid = ctype_digit($a) ? (int)$a : 0;
-    $token = $b;
-    return ['sid'=>$sid, 'token'=>$token];
+    if (strcasecmp($a,'PID')===0){ $pid = (int)preg_replace('/\D/','', $b); return ['sid'=>0,'pid'=>$pid,'token'=>$b]; }
+    if (strcasecmp($a,'SID')===0){ $sid = (int)preg_replace('/\D/','', $b); return ['sid'=>$sid,'pid'=>0,'token'=>$b]; }
+    // Nëse është thjesht "1234|token"
+    if (ctype_digit($a)) { $sid = (int)$a; $token=$b; return ['sid'=>$sid,'pid'=>0,'token'=>$token]; }
   }
 
-  return ['sid'=>0, 'token'=>''];
+  return ['sid'=>0, 'pid'=>0, 'token'=>''];
 }
 
-/* --------- Verifikimi (publik) ---------
-   - Nuk bën dallim “në grup/pa grup”
-   - Modulet merren si UNION nga:
-       a) course_group_students → course_groups → courses
-       b) student_course_plans → courses (çfarëdo statusi)
-   - Lista e kurseve: dedup, max 5, alfabetik
----------------------------------------- */
+/* --------------- Verifikimi: STUDENT --------------- */
 function verify_student(PDO $pdo, int $sid, string $token): array {
   if ($sid<=0 || $token==='') return ['valid'=>false, 'reason'=>'Mungon SID ose token.'];
 
@@ -76,16 +85,10 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
 
   $sql = "
     SELECT
-      s.id,
-      s.nr_amze,
-      u.created_at,
+      s.id, s.nr_amze, u.created_at,
       el.label AS edu_label,
-      ajs.agency_id,
-      ag.company_name AS agency_name,
-      p.first_name,
-      p.father_name,
-      p.last_name,
-      p.personal_number
+      ajs.agency_id, ag.company_name AS agency_name,
+      p.first_name, p.father_name, p.last_name, p.personal_number
     FROM students s
     JOIN users u    ON u.id = s.user_id
     JOIN persons p  ON p.id = s.person_id
@@ -99,9 +102,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $S = $st->fetch(PDO::FETCH_ASSOC);
   if (!$S) return ['valid'=>false, 'reason'=>'Studenti nuk u gjet.'];
 
-  /* ---- Statistika publikë ---- */
-
-  // # Modulet (UNION nga cgs dhe scp)
+  // # Modulet (UNION: cgs + scp)
   $qCourses = $pdo->prepare("
     SELECT COUNT(*) FROM (
       SELECT DISTINCT c.id
@@ -119,20 +120,23 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $qCourses->execute([':sid1'=>$sid, ':sid2'=>$sid]);
   $coursesCnt = (int)$qCourses->fetchColumn();
 
-  // # Grupe (numri i rreshtave në cgs)
+  // # Grupe
   $qGroups = $pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE student_id=:sid");
-  $qGroups->execute([':sid'=>$sid]); $groups = (int)$qGroups->fetchColumn();
+  $qGroups->execute([':sid'=>$sid]); $groupsCnt = (int)$qGroups->fetchColumn();
 
-  // Mesatare / kalueshmëri (vetëm kur ka nota reale → cgs)
+  // Mesatare / kalueshmëri
   $qAvg = $pdo->prepare("SELECT AVG(final_score) FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL");
   $qAvg->execute([':sid'=>$sid]); $avg = $qAvg->fetchColumn();
   $avgScore = $avg!==null ? round((float)$avg,1) : null;
 
-  $qPR = $pdo->prepare("SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100 FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL");
+  $qPR = $pdo->prepare("
+    SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100
+    FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL
+  ");
   $qPR->execute([':sid'=>$sid]); $pr = $qPR->fetchColumn();
   $passRate = $pr!==null ? round((float)$pr,1) : null;
 
-  // Lista e kurseve (UNION, dedup, max 5)
+  // Lista kurseve (max 5)
   $qList = $pdo->prepare("
     SELECT id, code, name FROM (
       SELECT DISTINCT c.id, c.code, c.name
@@ -152,8 +156,29 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $qList->execute([':sid1'=>$sid, ':sid2'=>$sid]);
   $coursesList = $qList->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+  // Modulet & grupet (me AMZË për rresht – këtu është po i njëjti AMZË i studentit)
+  $qEnr = $pdo->prepare("
+    SELECT
+      cg.id     AS group_id,
+      c.code    AS course_code,
+      c.name    AS course_name,
+      cg.start_date, cg.end_date,
+      cgs.exam_date, cgs.final_score,
+      s.nr_amze AS amze
+    FROM course_group_students cgs
+    JOIN course_groups cg ON cg.id = cgs.group_id
+    JOIN courses c        ON c.id  = cg.course_id
+    JOIN students s       ON s.id  = cgs.student_id
+    WHERE cgs.student_id = :sid
+    ORDER BY cg.start_date DESC, cg.id DESC
+    LIMIT 120
+  ");
+  $qEnr->execute([':sid'=>$sid]);
+  $groups = $qEnr->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
   return [
     'valid'=>true,
+    'kind'=>'student',
     'student'=>[
       'id'=>(int)$S['id'],
       'amze'=>$S['nr_amze'],
@@ -165,12 +190,155 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
       'agency'=>$S['agency_name'] ?? null,
       'created_at'=>$S['created_at'] ?? null,
       'stats'=>[
-        'courses'=>$coursesCnt,   // ← UNION (nuk bën dallim në grup/pa grup)
-        'groups'=>$groups,
+        'courses'=>$coursesCnt,
+        'groups'=>$groupsCnt,
         'avg_score'=>$avgScore,
         'pass_rate'=>$passRate
       ],
-      'courses_list'=>$coursesList
+      'courses_list'=>$coursesList,
+      'groups'=>$groups
+    ]
+  ];
+}
+
+/* --------------- Verifikimi: PERSON --------------- */
+function verify_person(PDO $pdo, int $pid, string $token): array {
+  if ($pid<=0 || $token==='') return ['valid'=>false, 'reason'=>'Mungon PID ose token.'];
+
+  $chk = $pdo->prepare("SELECT 1 FROM person_qr_tokens WHERE person_id=:pid AND token=:t LIMIT 1");
+  $chk->execute([':pid'=>$pid, ':t'=>$token]);
+  if (!$chk->fetchColumn()) return ['valid'=>false, 'reason'=>'Token i pavlefshëm ose nuk përputhet me këtë person.'];
+
+  // Person + lista e AMZË-ve
+  $p = $pdo->prepare("
+    SELECT p.id, p.first_name, p.father_name, p.last_name, p.personal_number
+    FROM persons p WHERE p.id = :pid LIMIT 1
+  ");
+  $p->execute([':pid'=>$pid]);
+  $P = $p->fetch(PDO::FETCH_ASSOC);
+  if (!$P) return ['valid'=>false, 'reason'=>'Personi nuk u gjet.'];
+
+  $st = $pdo->prepare("
+    SELECT s.id, s.nr_amze, el.label AS edu_label,
+           ag.company_name AS agency_name
+    FROM students s
+    LEFT JOIN education_levels el ON el.id = s.education_level_id
+    LEFT JOIN agency_students ajs  ON ajs.student_id = s.id
+    LEFT JOIN agencies ag          ON ag.id = ajs.agency_id
+    WHERE s.person_id = :pid
+    ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+  ");
+  $st->execute([':pid'=>$pid]);
+  $students = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  $ids = array_map(fn($r)=> (int)$r['id'], $students);
+  $stats = ['courses'=>0,'groups'=>0,'avg_score'=>null,'pass_rate'=>null];
+  $coursesList = [];
+  $groups = [];
+
+  if ($ids){
+    $ph = implode(',', array_fill(0,count($ids),'?'));
+
+    // # Modulet (UNION: cgs + scp)
+    $q1 = $pdo->prepare("
+      SELECT COUNT(*) FROM (
+        SELECT DISTINCT c.id
+        FROM course_group_students cgs
+        JOIN course_groups cg ON cg.id = cgs.group_id
+        JOIN courses c        ON c.id  = cg.course_id
+        WHERE cgs.student_id IN ($ph)
+        UNION
+        SELECT DISTINCT c.id
+        FROM student_course_plans scp
+        JOIN courses c ON c.id = scp.course_id
+        WHERE scp.student_id IN ($ph)
+      ) xx
+    ");
+    $q1->execute(array_merge($ids,$ids));
+    $stats['courses'] = (int)$q1->fetchColumn();
+
+    // # Grupe
+    $q2 = $pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE student_id IN ($ph)");
+    $q2->execute($ids);
+    $stats['groups'] = (int)$q2->fetchColumn();
+
+    // Mesatare / kalueshmëri
+    $q3 = $pdo->prepare("
+      SELECT AVG(final_score)
+      FROM course_group_students
+      WHERE student_id IN ($ph) AND final_score IS NOT NULL
+    ");
+    $q3->execute($ids);
+    $avg = $q3->fetchColumn();
+    $stats['avg_score'] = $avg!==null ? round((float)$avg,1) : null;
+
+    $q4 = $pdo->prepare("
+      SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100
+      FROM course_group_students
+      WHERE student_id IN ($ph) AND final_score IS NOT NULL
+    ");
+    $q4->execute($ids);
+    $pr = $q4->fetchColumn();
+    $stats['pass_rate'] = $pr!==null ? round((float)$pr,1) : null;
+
+    // Lista kurseve (max 6)
+    $q5 = $pdo->prepare("
+      SELECT id, code, name FROM (
+        SELECT DISTINCT c.id, c.code, c.name
+        FROM course_group_students cgs
+        JOIN course_groups cg ON cg.id = cgs.group_id
+        JOIN courses c        ON c.id  = cg.course_id
+        WHERE cgs.student_id IN ($ph)
+        UNION
+        SELECT DISTINCT c.id, c.code, c.name
+        FROM student_course_plans scp
+        JOIN courses c ON c.id = scp.course_id
+        WHERE scp.student_id IN ($ph)
+      ) xxx
+      ORDER BY name ASC
+      LIMIT 6
+    ");
+    $q5->execute(array_merge($ids,$ids));
+    $coursesList = $q5->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    // Modulet & grupet me AMZË për rresht
+    $q6 = $pdo->prepare("
+      SELECT
+        cg.id     AS group_id,
+        c.code    AS course_code,
+        c.name    AS course_name,
+        cg.start_date, cg.end_date,
+        cgs.exam_date, cgs.final_score,
+        s.nr_amze AS amze
+      FROM course_group_students cgs
+      JOIN course_groups cg ON cg.id = cgs.group_id
+      JOIN courses c        ON c.id  = cg.course_id
+      JOIN students s       ON s.id  = cgs.student_id
+      WHERE cgs.student_id IN ($ph)
+      ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+      LIMIT 160
+    ");
+    $q6->execute($ids);
+    $groups = $q6->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  }
+
+  return [
+    'valid'=>true,
+    'kind'=>'person',
+    'person'=>[
+      'id'=>(int)$P['id'],
+      'first_name'=>$P['first_name'],
+      'father_name'=>$P['father_name'],
+      'last_name'=>$P['last_name'],
+      'personal_number_masked'=>mask_id($P['personal_number'] ?? null),
+      'students'=>array_map(fn($r)=>[
+        'id'=>(int)$r['id'], 'amze'=>$r['nr_amze'],
+        'edu_label'=>$r['edu_label'] ?? null,
+        'agency'=>$r['agency_name'] ?? null
+      ], $students),
+      'stats'=>$stats,
+      'courses_list'=>$coursesList,
+      'groups'=>$groups
     ]
   ];
 }
@@ -183,24 +351,40 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
   $action = $json['action'] ?? '';
   if ($action==='verify') {
-    $payload = trim((string)($json['payload'] ?? ''));
-    $sid = (int)($_GET['sid'] ?? 0);
+    // Prefero parametrat direkt nga query nëse ekzistojnë
+    $sid = isset($_GET['sid']) && ctype_digit((string)$_GET['sid']) ? (int)$_GET['sid'] : 0;
+    $pid = isset($_GET['pid']) && ctype_digit((string)$_GET['pid']) ? (int)$_GET['pid'] : 0;
     $token = trim((string)($_GET['t'] ?? ($json['token'] ?? '')));
+    $payload = trim((string)($json['payload'] ?? ''));
 
-    if (!$sid || !$token) { $p = parse_payload($payload); $sid = $sid ?: (int)$p['sid']; $token = $token ?: (string)$p['token']; }
+    if ((!$sid && !$pid) || !$token) {
+      $p = parse_payload($payload);
+      $sid = $sid ?: (int)$p['sid'];
+      $pid = $pid ?: (int)$p['pid'];
+      $token = $token ?: (string)$p['token'];
+    }
 
-    $res = verify_student($pdo, (int)$sid, (string)$token);
-    json_out(['ok'=>true] + $res);
+    if ($pid>0 && $token!=='') {
+      $res = verify_person($pdo, $pid, $token);
+      json_out(['ok'=>true] + $res);
+    } elseif ($sid>0 && $token!=='') {
+      $res = verify_student($pdo, $sid, $token);
+      json_out(['ok'=>true] + $res);
+    } else {
+      json_out(['ok'=>true, 'valid'=>false, 'reason'=>'Nuk u gjet as PID as SID ose mungon token.']);
+    }
   }
   json_out(['ok'=>false, 'error'=>'Veprim i panjohur.']);
 }
 
 /* ==================== GET: Prefill (opsionale) ==================== */
 $prefillResult = null;
-if (isset($_GET['sid'], $_GET['t'])) {
-  $sid = ctype_digit((string)$_GET['sid']) ? (int)$_GET['sid'] : 0;
+if (isset($_GET['pid'], $_GET['t']) || isset($_GET['sid'], $_GET['t'])) {
+  $pid = isset($_GET['pid']) && ctype_digit((string)$_GET['pid']) ? (int)$_GET['pid'] : 0;
+  $sid = isset($_GET['sid']) && ctype_digit((string)$_GET['sid']) ? (int)$_GET['sid'] : 0;
   $token = trim((string)$_GET['t']);
-  $prefillResult = verify_student($pdo, $sid, $token);
+  if ($pid>0)      $prefillResult = verify_person($pdo, $pid, $token);
+  elseif ($sid>0)  $prefillResult = verify_student($pdo, $sid, $token);
 }
 
 $NAV_ACTIVE = 'verify';
@@ -209,36 +393,38 @@ $NAV_ACTIVE = 'verify';
 <html lang="sq">
 <head>
   <meta charset="UTF-8">
-  <title>Verifikim certifikate / QR – QTA</title>
+  <title>Verifikim – QTA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     :root{
-      --g1:#0ea5e9; --g2:#2563eb; --g3:#4f46e5;
-      --bg:#f6f8fc; --text:#0f172a; --muted:#64748b;
-      --glass:rgba(255,255,255,.82); --glass-b:rgba(255,255,255,.55);
-      --shadow:0 18px 40px rgba(2,6,23,.12);
-      --accent:#0ea5e9;
+      --bg:#f7f9fc; --text:#0f172a; --muted:#64748b;
+      --primary:#4f46e5; --primary2:#2563eb; --accent:#0ea5e9;
+      --card: #ffffff; --shadow:0 20px 45px rgba(2,6,23,.12);
     }
     body { background:var(--bg); color:var(--text); }
+    .hero {
+      background: linear-gradient(120deg, rgba(79,70,229,.12), rgba(14,165,233,.10));
+      border:1px solid rgba(79,70,229,.12); border-radius:1rem; padding:1rem 1.25rem;
+    }
     .card { border:none; border-radius:1rem; box-shadow:var(--shadow); }
-    .qr-shell{ background:#fff; border:1px dashed #e5e7eb; border-radius:.75rem; padding:.5rem; }
     .small-muted { color:var(--muted); font-size:.95rem; }
     .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
-    .btn-accent { background:var(--accent); border:none; color:#fff; }
-    .btn-accent:hover { filter:brightness(.95); }
-    .status-banner{ background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px); border-radius:1rem; padding:10px 14px; display:flex; align-items:center; gap:.5rem; }
-    .status-icon{ width:34px; height:34px; border-radius:.6rem; display:flex; align-items:center; justify-content:center; }
-    .status-valid{ border-left:6px solid #22c55e; }
-    .status-invalid{ border-left:6px solid #ef4444; }
+    .btn-accent { background:var(--primary); border:none; color:#fff; }
+    .btn-accent:hover { filter:brightness(.96); }
+    .status-banner{ background:#ffffff; border:1px solid #eef2ff; border-left-width:6px; border-radius:1rem; padding:10px 14px; display:flex; align-items:center; gap:.6rem; }
+    .status-valid { border-left-color:#22c55e; }
+    .status-invalid{ border-left-color:#ef4444; }
+    .status-pending{ border-left-color:#94a3b8; }
     #reader{ width:100%; height:320px; }
     #reader > div{ border-radius:.75rem !important; overflow:hidden; }
     #reader video{ width:100% !important; height:100% !important; object-fit:cover; border-radius:.75rem; }
     .tab-content{ min-height:380px; }
+    .fact { background:#f8fafc; border:1px solid #eef2ff; border-radius:.75rem; padding:.75rem; }
     @media print {
-      .navbar, .nav, .btn, .hero, footer, .theme-switch, #controlsBar { display:none !important; }
+      .navbar, .nav, .btn, .hero, footer, #controlsBar { display:none !important; }
       .card { box-shadow:none !important; border:1px solid #e5e7eb; }
       body { background:#fff !important; }
     }
@@ -246,19 +432,25 @@ $NAV_ACTIVE = 'verify';
 </head>
 <body>
 
-<?php require __DIR__ . '/navbarMain.php'; ?>
+<?php if (file_exists(__DIR__.'/navbarMain.php')) require __DIR__ . '/navbarMain.php'; ?>
 
 <div class="container my-4">
+  <div class="hero mb-3 d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-upc-scan fs-4 text-primary"></i>
+      <div>
+        <div class="fw-semibold">Verifikim QR / Link / Tekst</div>
+        <div class="small-muted">Mbështet QR të <strong>studentit (SID)</strong> dhe <strong>personit (PID)</strong>.</div>
+      </div>
+    </div>
+    <div class="small-muted d-none d-md-block">Publike</div>
+  </div>
+
   <div class="row g-4">
     <!-- LEFT: Scanner & Inputs -->
     <div class="col-lg-5">
       <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <strong><i class="bi bi-upc-scan me-1"></i>Verifikim QR / Link / Tekst</strong>
-          <span class="small text-muted">Publike</span>
-        </div>
         <div class="card-body">
-
           <ul class="nav nav-pills mb-3" role="tablist">
             <li class="nav-item me-1" role="presentation">
               <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pane-camera" type="button" role="tab">
@@ -280,14 +472,12 @@ $NAV_ACTIVE = 'verify';
           <div class="tab-content">
             <!-- Kamera -->
             <div class="tab-pane fade show active" id="pane-camera" role="tabpanel">
-              <div class="qr-shell mb-2"><div id="reader" aria-live="polite"></div></div>
-
-              <!-- Controls bar -->
+              <div class="border rounded-3 p-2 mb-2"><div id="reader" aria-live="polite"></div></div>
               <div id="controlsBar" class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="input-group input-group-sm" style="max-width:100%;">
                   <span class="input-group-text bg-light border-0"><i class="bi bi-camera"></i></span>
                   <select id="camSelect" class="form-select border-0"></select>
-                  <button class="btn btn-outline-secondary" id="btnFlip"><i class="bi bi-arrow-left-right me-1"></i>Kalo kamerën</button>
+                  <button class="btn btn-outline-secondary" id="btnFlip"><i class="bi bi-arrow-left-right me-1"></i>Kalo</button>
                   <button class="btn btn-outline-secondary" id="btnStopCam"><i class="bi bi-stop-circle me-1"></i>Ndalo</button>
                 </div>
                 <div class="small-muted ms-auto">Zgjidh “Back/Rear” për fokus më të mirë.</div>
@@ -297,7 +487,7 @@ $NAV_ACTIVE = 'verify';
             <!-- Foto -->
             <div class="tab-pane fade" id="pane-upload" role="tabpanel">
               <div id="file-reader" class="d-none"></div>
-              <div class="border rounded p-3 text-center mb-2">
+              <div class="fact text-center mb-2">
                 <i class="bi bi-image fs-4 d-block mb-2"></i>
                 Zgjidh një foto me QR:
                 <label class="btn btn-sm btn-accent ms-2">
@@ -323,7 +513,7 @@ $NAV_ACTIVE = 'verify';
                 <button id="btnPaste" class="btn btn-soft" title="Ngjit tekst"><i class="bi bi-clipboard2"></i></button>
                 <button id="btnClear" class="btn btn-outline-secondary">Pastro</button>
               </div>
-              <div class="small-muted">Pranohet: URL me ?sid=&t=, <code>QTA|SID:..|TOKEN:..</code>, JSON {"sid","token"} ose <code>SID|TOKEN</code>.</div>
+              <div class="small-muted">Pranohet: URL me <code>?sid=&t=</code> ose <code>?pid=&t=</code>, <code>QTA|SID:..|TOKEN:..</code>, <code>QTA|PID:..|TOKEN:..</code>, JSON {"sid|pid","token"} ose <code>SID|TOKEN</code>/<code>PID|TOKEN</code>.</div>
             </div>
           </div>
 
@@ -339,19 +529,25 @@ $NAV_ACTIVE = 'verify';
 
     <!-- RIGHT: Result -->
     <div class="col-lg-7">
-      <div class="status-banner mb-3 <?= $prefillResult ? ($prefillResult['valid']?'status-valid':'status-invalid') : '' ?>">
-        <div class="status-icon <?= $prefillResult ? ($prefillResult['valid']?'bg-success-subtle text-success':'bg-danger-subtle text-danger') : 'bg-secondary-subtle text-secondary' ?>">
-          <i id="statusIcon" class="bi <?= $prefillResult ? ($prefillResult['valid']?'bi-check2-circle':'bi-x-circle') : 'bi-shield-lock' ?>"></i>
-        </div>
+      <?php
+        $statusClass = 'status-pending';
+        $statusLabel = 'Gati për verifikim';
+        if ($prefillResult){
+          $statusClass = $prefillResult['valid'] ? 'status-valid' : 'status-invalid';
+          $statusLabel = $prefillResult['valid'] ? 'VALID' : 'INVALID';
+        }
+      ?>
+      <div class="status-banner mb-3 <?= h($statusClass) ?>">
+        <i id="statusIcon" class="bi me-2 <?= $prefillResult ? ($prefillResult['valid']?'bi-check2-circle text-success':'bi-x-circle text-danger') : 'bi-shield-lock text-secondary' ?>"></i>
         <div class="fw-semibold">Statusi:</div>
-        <div id="statusText"><?= $prefillResult ? ($prefillResult['valid']?'VALID':'INVALID') : 'Gati për verifikim' ?></div>
+        <div id="statusText"><?= h($statusLabel) ?></div>
         <div class="ms-auto d-none d-lg-flex gap-2">
           <button class="btn btn-soft btn-sm" id="btnShare" title="Krijo link verifikimi"><i class="bi bi-link-45deg"></i></button>
           <button class="btn btn-soft btn-sm" id="btnPrint" title="Printo rezultatin"><i class="bi bi-printer"></i></button>
         </div>
       </div>
 
-      <div id="resultCard" class="card <?= $prefillResult ? ($prefillResult['valid']?'status-valid':'status-invalid') : '' ?>">
+      <div id="resultCard" class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
           <strong><i class="bi bi-patch-check me-1"></i>Rezultati i verifikimit</strong>
           <span id="statusChip" class="badge <?= $prefillResult ? ($prefillResult['valid']?'text-bg-success':'text-bg-danger') : 'text-bg-secondary' ?>">
@@ -361,48 +557,117 @@ $NAV_ACTIVE = 'verify';
         <div class="card-body" id="resultBody" aria-live="polite">
           <?php if ($prefillResult): ?>
             <?php if ($prefillResult['valid']):
-              $st = $prefillResult['student'];
-              $full = trim(($st['first_name']??'').' '.(($st['father_name']??'')?($st['father_name'].' '):'').($st['last_name']??'')); ?>
-              <div class="d-flex align-items-center mb-3">
-                <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
-                  <i class="bi bi-person-badge fs-4 text-primary"></i>
+              if (($prefillResult['kind'] ?? '') === 'person'):
+                $pr = $prefillResult['person'];
+                $full = trim(($pr['first_name']??'').' '.(($pr['father_name']??'')?($pr['father_name'].' '):'').($pr['last_name']??'')); ?>
+                <div class="d-flex align-items-center mb-3">
+                  <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-people fs-4 text-primary"></i>
+                  </div>
+                  <div>
+                    <div class="h5 mb-0"><?= h($full ?: '—') ?></div>
+                    <div class="small text-muted">ID personale: <?= h($pr['personal_number_masked'] ?? '—') ?></div>
+                  </div>
                 </div>
-                <div>
-                  <div class="h5 mb-0"><?= h($full ?: '—') ?></div>
-                  <div class="small text-muted">AMZË: <strong><?= h($st['amze'] ?? '—') ?></strong> • ID personale: <?= h($st['personal_number_masked'] ?? '—') ?></div>
+
+                <div class="row g-3 mb-3">
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Modulet</div><div class="h5 mb-0"><?= (int)($pr['stats']['courses'] ?? 0) ?></div></div></div>
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Grupe</div><div class="h5 mb-0"><?= (int)($pr['stats']['groups'] ?? 0) ?></div></div></div>
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Mes. pikë</div><div class="h5 mb-0"><?= $pr['stats']['avg_score']!==null ? $pr['stats']['avg_score'] : '—' ?></div></div></div>
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0"><?= $pr['stats']['pass_rate']!==null ? ($pr['stats']['pass_rate'].'%') : '—' ?></div></div></div>
                 </div>
-              </div>
 
-              <div class="row g-3">
-                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-                  <div class="small text-muted">Modulet</div><div class="h5 mb-0"><?= (int)$st['stats']['courses'] ?></div></div></div>
-                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-                  <div class="small text-muted">Grupe</div><div class="h5 mb-0"><?= (int)$st['stats']['groups'] ?></div></div></div>
-                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-                  <div class="small text-muted">Mes. pikë</div><div class="h5 mb-0"><?= $st['stats']['avg_score']!==null ? $st['stats']['avg_score'] : '—' ?></div></div></div>
-                <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-                  <div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0"><?= $st['stats']['pass_rate']!==null ? ($st['stats']['pass_rate'].'%') : '—' ?></div></div></div>
-              </div>
+                <!-- Modulet & grupet (me AMZË në rresht) -->
+                <div class="mt-3">
+                  <div class="small text-muted mb-1">Modulet & grupet</div>
+                  <?php if (!empty($pr['groups'])): ?>
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                          <tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($pr['groups'] as $g): ?>
+                          <tr>
+                            <td>#<?= (int)$g['group_id'] ?></td>
+                            <td class="text-nowrap"><?= h($g['amze'] ?? '—') ?></td>
+                            <td><?= h(($g['course_code']??'').' · '.($g['course_name']??'')) ?></td>
+                            <td class="text-nowrap"><?= h(fmt_dMY($g['start_date'] ?? null)) ?> – <?= h(fmt_dMY($g['end_date'] ?? null)) ?></td>
+                            <td class="text-nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
+                            <td class="text-nowrap"><?= isset($g['final_score']) ? h((string)$g['final_score']) : '—' ?></td>
+                          </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                    </div>
+                  <?php else: ?>
+                    <div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>
+                  <?php endif; ?>
+                </div>
 
-              <hr>
-              <div class="row">
-                <div class="col-md-6"><div class="small text-muted">Edukimi</div><div class="fw-semibold mb-3"><?= h($st['edu_label'] ?? '—') ?></div></div>
-                <div class="col-md-6"><div class="small text-muted">Agjencia</div><div class="fw-semibold mb-3"><?= h($st['agency'] ?? '—') ?></div></div>
-              </div>
+              <?php else:
+                $st = $prefillResult['student'];
+                $full = trim(($st['first_name']??'').' '.(($st['father_name']??'')?($st['father_name'].' '):'').($st['last_name']??'')); ?>
+                <div class="d-flex align-items-center mb-3">
+                  <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-person-badge fs-4 text-primary"></i>
+                  </div>
+                  <div>
+                    <div class="h5 mb-0"><?= h($full ?: '—') ?></div>
+                    <div class="small text-muted">AMZË: <strong><?= h($st['amze'] ?? '—') ?></strong> • ID personale: <?= h($st['personal_number_masked'] ?? '—') ?></div>
+                  </div>
+                </div>
 
-              <div class="small text-muted">Kurset (max 5):</div>
-              <ul class="list-group list-group-flush">
-                <?php if (!empty($st['courses_list'])): foreach ($st['courses_list'] as $c): ?>
-                  <li class="list-group-item"><i class="bi bi-mortarboard me-2"></i><?= h(($c['code']??'').' · '.($c['name']??'')) ?></li>
-                <?php endforeach; else: ?>
-                  <li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>
-                <?php endif; ?>
-              </ul>
+                <div class="row g-3">
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Modulet</div><div class="h5 mb-0"><?= (int)$st['stats']['courses'] ?></div></div></div>
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Grupe</div><div class="h5 mb-0"><?= (int)$st['stats']['groups'] ?></div></div></div>
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Mes. pikë</div><div class="h5 mb-0"><?= $st['stats']['avg_score']!==null ? $st['stats']['avg_score'] : '—' ?></div></div></div>
+                  <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0"><?= $st['stats']['pass_rate']!==null ? ($st['stats']['pass_rate'].'%') : '—' ?></div></div></div>
+                </div>
 
-              <div class="alert alert-info mt-3">
-                <strong>Kujdes:</strong> Nëse emri në ekran <u>nuk</u> përputhet me emrin në certifikatën fizike,
-                raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose <a href="tel:+355698778837">+355 69 877 8837</a>.
-              </div>
+                <!-- Modulet & grupet (me AMZË në rresht) -->
+                <div class="mt-3">
+                  <div class="small text-muted mb-1">Modulet & grupet</div>
+                  <?php if (!empty($st['groups'])): ?>
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                          <tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($st['groups'] as $g): ?>
+                          <tr>
+                            <td>#<?= (int)$g['group_id'] ?></td>
+                            <td class="text-nowrap"><?= h($g['amze'] ?? ($st['amze'] ?? '—')) ?></td>
+                            <td><?= h(($g['course_code']??'').' · '.($g['course_name']??'')) ?></td>
+                            <td class="text-nowrap"><?= h(fmt_dMY($g['start_date'] ?? null)) ?> – <?= h(fmt_dMY($g['end_date'] ?? null)) ?></td>
+                            <td class="text-nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
+                            <td class="text-nowrap"><?= isset($g['final_score']) ? h((string)$g['final_score']) : '—' ?></td>
+                          </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                    </div>
+                  <?php else: ?>
+                    <div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>
+                  <?php endif; ?>
+                </div>
+
+                <hr>
+                <div class="row">
+                  <div class="col-md-6"><div class="small text-muted">Edukimi</div><div class="fw-semibold mb-3"><?= h($st['edu_label'] ?? '—') ?></div></div>
+                  <div class="col-md-6"><div class="small text-muted">Agjencia</div><div class="fw-semibold mb-3"><?= h($st['agency'] ?? '—') ?></div></div>
+                </div>
+
+                <div class="small text-muted">Kurset (max 5):</div>
+                <ul class="list-group list-group-flush">
+                  <?php if (!empty($st['courses_list'])): foreach ($st['courses_list'] as $c): ?>
+                    <li class="list-group-item"><i class="bi bi-mortarboard me-2"></i><?= h(($c['code']??'').' · '.($c['name']??'')) ?></li>
+                  <?php endforeach; else: ?>
+                    <li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>
+                  <?php endif; ?>
+                </ul>
+              <?php endif; ?>
             <?php else: ?>
               <div class="alert alert-danger mb-0">
                 <strong>INVALID:</strong> <?= h($prefillResult['reason'] ?? 'Token i pavlefshëm.') ?><br>
@@ -421,16 +686,15 @@ $NAV_ACTIVE = 'verify';
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 /* ========= State ========= */
-let camQr = null;                 // Html5Qrcode instance
+let camQr = null;               // Html5Qrcode instance
 let isCamRunning = false;
-let isBusy = false;               // debounce verification
+let isBusy = false;             // debounce verification
 let lastPayload = '';
-let cameras = [];                 // devices list
+let cameras = [];
 let currentCamIndex = -1;
 
 const statusBanner = document.querySelector('.status-banner');
 const statusText   = document.getElementById('statusText');
-const statusIcon   = document.getElementById('statusIcon');
 const camSelect    = document.getElementById('camSelect');
 
 function setStatus(label, variant){
@@ -438,24 +702,20 @@ function setStatus(label, variant){
   chip.className = 'badge text-bg-'+variant;
   chip.textContent = label;
   if (statusText) statusText.textContent = (label === '—' ? 'Gati për verifikim' : label);
-  statusBanner?.classList.remove('status-valid','status-invalid');
-  statusIcon?.classList.remove('bi-check2-circle','bi-x-circle','bi-shield-lock');
-  if (variant==='success'){ statusBanner?.classList.add('status-valid');  statusIcon?.classList.add('bi-check2-circle'); }
-  else if (variant==='danger'){ statusBanner?.classList.add('status-invalid'); statusIcon?.classList.add('bi-x-circle'); }
-  else { statusIcon?.classList.add('bi-shield-lock'); }
+  statusBanner?.classList.remove('status-valid','status-invalid','status-pending');
+  statusBanner?.classList.add(variant==='success' ? 'status-valid' : (variant==='danger' ? 'status-invalid' : 'status-pending'));
 }
 
 /* ========= Camera enumeration & switching ========= */
 async function enumerateCameras(){
   try {
-    const list = await Html5Qrcode.getCameras();   // [{id,label}]
+    const list = await Html5Qrcode.getCameras();
     cameras = Array.isArray(list) ? list : [];
     camSelect.innerHTML = '';
     if (!cameras.length){
       camSelect.innerHTML = '<option value="">Kamera nuk u gjet</option>';
       return;
     }
-    // Rendit “back/rear” para “front”
     cameras.sort((a,b)=>{
       const la = (a.label||'').toLowerCase(), lb=(b.label||'').toLowerCase();
       const aBack = la.includes('back') || la.includes('rear');
@@ -470,7 +730,6 @@ async function enumerateCameras(){
       opt.textContent = c.label || (idx===0?'Kamera 1':'Kamera '+(idx+1));
       camSelect.appendChild(opt);
     });
-    // Zgjidh preferueshem kamerën “back”
     currentCamIndex = 0;
     const firstBackIdx = cameras.findIndex(c => (c.label||'').toLowerCase().includes('back') || (c.label||'').toLowerCase().includes('rear'));
     if (firstBackIdx >= 0) currentCamIndex = firstBackIdx;
@@ -525,26 +784,11 @@ function onDecode(decodedText){
   if (isBusy) return;
   isBusy = true;
   lastPayload = decodedText;
-  stopCamera();                    // mbyll kamerën që të mos dërgojë skanime të tjera
+  stopCamera();
   setStatus('Duke verifikuar...', 'secondary');
   doVerify(decodedText).finally(()=>{ isBusy = false; });
 }
 function onDecodeError(_err){ /* silent */ }
-
-/* Handlers UI për kamerën */
-camSelect?.addEventListener('change', async (e)=>{
-  const idx = parseInt(e.target.value,10);
-  await stopCamera();
-  startCameraByIndex(idx);
-});
-document.getElementById('btnFlip')?.addEventListener('click', async ()=>{
-  if (!cameras.length) await enumerateCameras();
-  if (!cameras.length) return;
-  const next = (currentCamIndex + 1) % cameras.length;
-  await stopCamera();
-  startCameraByIndex(next);
-});
-document.getElementById('btnStopCam')?.addEventListener('click', async ()=>{ await stopCamera(); });
 
 /* ========= Upload / Paste ========= */
 let fileQr = null;
@@ -566,7 +810,6 @@ async function handleFile(file){
     await doVerify(decodedText);
     setUploadMsg('U lexua me sukses.', true);
   } catch(err){
-    console.error(err);
     setUploadMsg('Nuk u gjet QR në këtë imazh. Provo me foto më të qartë.');
   }
 }
@@ -598,20 +841,18 @@ async function doVerify(payload){
     const json = await res.json();
     renderResult(json, payload);
   }catch(e){
-    setStatus('Gabim', 'danger');
-    const body = document.getElementById('resultBody');
-    body.innerHTML = `<div class="alert alert-danger">Gabim gjatë verifikimit. Provo përsëri.</div>`;
+    setStatus('INVALID', 'danger');
+    document.getElementById('resultBody').innerHTML = `<div class="alert alert-danger">Gabim gjatë verifikimit. Provo përsëri.</div>`;
   }
 }
 
 function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
+function fmtDMY(iso){ if(!iso) return '—'; const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m?`${m[3]}-${m[2]}-${m[1]}`:'—'; }
 
 function renderResult(json, payloadUsed=''){
-  const card = document.getElementById('resultCard');
   const body = document.getElementById('resultBody');
   if(!json || json.ok!==true){
-    setStatus('Gabim', 'danger');
-    card.classList.remove('status-valid','status-invalid');
+    setStatus('INVALID', 'danger');
     body.innerHTML = `<div class="alert alert-danger">Gabim gjatë verifikimit. Provo përsëri.</div>`;
     return;
   }
@@ -619,61 +860,164 @@ function renderResult(json, payloadUsed=''){
 
   if(json.valid){
     setStatus('VALID', 'success');
-    card.classList.add('status-valid'); card.classList.remove('status-invalid');
 
-    const st = json.student || {};
-    const full = [st.first_name||'', st.father_name? (st.father_name+' ') : '', st.last_name||''].join('').trim();
+    if (json.kind === 'person') {
+      const pr = json.person || {};
+      const full = [pr.first_name||'', pr.father_name? (pr.father_name+' ') : '', pr.last_name||''].join('').trim();
 
-    let coursesList = '';
-    if (Array.isArray(st.courses_list) && st.courses_list.length>0){
-      coursesList = st.courses_list.map(c => {
-        const t = (c.code? c.code+' · ' : '') + (c.name||'');
-        return `<li class="list-group-item"><i class="bi bi-mortarboard me-2"></i>${escapeHtml(t)}</li>`;
-      }).join('');
-    } else {
-      coursesList = `<li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>`;
+      let students = '';
+      if (Array.isArray(pr.students) && pr.students.length>0){
+        students = pr.students.map(s => {
+          const meta = [(s.edu_label||'—'), (s.agency||'')].filter(Boolean).join(' · ');
+          return `<li class="list-group-item d-flex justify-content-between align-items-center">
+                  <div><i class="bi bi-hash me-2"></i><strong>${escapeHtml(s.amze||'—')}</strong></div>
+                  <div class="small text-muted">${escapeHtml(meta)}</div>
+                </li>`;
+        }).join('');
+      } else {
+        students = `<div class="text-muted">Ky person nuk ka ende asnjë AMZË.</div>`;
+      }
+
+      let groupsHTML = '';
+      if (Array.isArray(pr.groups) && pr.groups.length>0) {
+        groupsHTML = pr.groups.map(g => `
+          <tr>
+            <td>#${escapeHtml(String(g.group_id||''))}</td>
+            <td class="text-nowrap">${escapeHtml(g.amze||'—')}</td>
+            <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}</td>
+            <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
+            <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
+            <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
+          </tr>`).join('');
+      }
+
+      let coursesList = '';
+      if (Array.isArray(pr.courses_list) && pr.courses_list.length>0){
+        coursesList = pr.courses_list.map(c => {
+          const t = (c.code? c.code+' · ' : '') + (c.name||'');
+          return `<li class="list-group-item"><i class="bi bi-mortarboard me-2"></i>${escapeHtml(t)}</li>`;
+        }).join('');
+      } else {
+        coursesList = `<li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>`;
+      }
+
+      body.innerHTML = `
+        <div class="d-flex align-items-center mb-3">
+          <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
+            <i class="bi bi-people fs-4 text-primary"></i>
+          </div>
+          <div>
+            <div class="h5 mb-0">${escapeHtml(full || '—')}</div>
+            <div class="small text-muted">ID personale: ${escapeHtml(pr.personal_number_masked||'—')}</div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Modulet</div><div class="h5 mb-0">${pr.stats?.courses ?? 0}</div></div></div>
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Grupe</div><div class="h5 mb-0">${pr.stats?.groups ?? 0}</div></div></div>
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Mes. pikë</div><div class="h5 mb-0">${pr.stats?.avg_score ?? '—'}</div></div></div>
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0">${(pr.stats?.pass_rate ?? null) !== null ? pr.stats.pass_rate+'%' : '—'}</div></div></div>
+        </div>
+
+        <div class="mb-3">
+          <div class="small text-muted mb-1">AMZË të lidhura:</div>
+          ${students.startsWith('<div') ? students : ('<ul class="list-group list-group-flush">'+students+'</ul>')}
+        </div>
+
+        <div class="mt-3">
+          <div class="small text-muted mb-1">Modulet & grupet</div>
+          ${groupsHTML
+            ? `<div class="table-responsive"><table class="table table-sm align-middle">
+                 <thead class="table-light"><tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr></thead>
+                 <tbody>${groupsHTML}</tbody>
+               </table></div>`
+            : `<div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>`}
+        </div>
+
+        <div class="small text-muted mt-3">Kurset (max 6):</div>
+        <ul class="list-group list-group-flush">${coursesList}</ul>
+
+        <div class="alert alert-info mt-3">
+          <strong>Kujdes:</strong> Nëse emri këtu <u>nuk</u> përputhet me emrin në certifikatën fizike,
+          raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose
+          <a href="tel:+355698778837">+355 69 877 8837</a>.
+        </div>
+      `;
+
+    } else { // student
+      const st = json.student || {};
+      const full = [st.first_name||'', st.father_name? (st.father_name+' ') : '', st.last_name||''].join('');
+
+      let groupsHTML = '';
+      if (Array.isArray(st.groups) && st.groups.length>0) {
+        groupsHTML = st.groups.map(g => `
+          <tr>
+            <td>#${escapeHtml(String(g.group_id||''))}</td>
+            <td class="text-nowrap">${escapeHtml(g.amze || st.amze || '—')}</td>
+            <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}</td>
+            <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
+            <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
+            <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
+          </tr>`).join('');
+      }
+
+      let coursesList = '';
+      if (Array.isArray(st.courses_list) && st.courses_list.length>0){
+        coursesList = st.courses_list.map(c => {
+          const t = (c.code? c.code+' · ' : '') + (c.name||'');
+          return `<li class="list-group-item"><i class="bi bi-mortarboard me-2"></i>${escapeHtml(t)}</li>`;
+        }).join('');
+      } else {
+        coursesList = `<li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>`;
+      }
+
+      body.innerHTML = `
+        <div class="d-flex align-items-center mb-3">
+          <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
+            <i class="bi bi-person-badge fs-4 text-primary"></i>
+          </div>
+          <div>
+            <div class="h5 mb-0">${escapeHtml(full||'—')}</div>
+            <div class="small text-muted">AMZË: <strong>${escapeHtml(st.amze||'—')}</strong> • ID personale: ${escapeHtml(st.personal_number_masked||'—')}</div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Modulet</div><div class="h5 mb-0">${st.stats?.courses ?? 0}</div></div></div>
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Grupe</div><div class="h5 mb-0">${st.stats?.groups ?? 0}</div></div></div>
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Mes. pikë</div><div class="h5 mb-0">${st.stats?.avg_score ?? '—'}</div></div></div>
+          <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0">${(st.stats?.pass_rate ?? null) !== null ? st.stats.pass_rate+'%' : '—'}</div></div></div>
+        </div>
+
+        <div class="mt-3">
+          <div class="small text-muted mb-1">Modulet & grupet</div>
+          ${groupsHTML
+            ? `<div class="table-responsive"><table class="table table-sm align-middle">
+                 <thead class="table-light"><tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr></thead>
+                 <tbody>${groupsHTML}</tbody>
+               </table></div>`
+            : `<div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>`}
+        </div>
+
+        <hr>
+        <div class="row">
+          <div class="col-md-6"><div class="small text-muted">Edukimi</div><div class="fw-semibold mb-3">${escapeHtml(st.edu_label||'—')}</div></div>
+          <div class="col-md-6"><div class="small text-muted">Agjencia</div><div class="fw-semibold mb-3">${escapeHtml(st.agency||'—')}</div></div>
+        </div>
+
+        <div class="small text-muted">Kurset (max 5):</div>
+        <ul class="list-group list-group-flush">${coursesList}</ul>
+
+        <div class="alert alert-info mt-3">
+          <strong>Kujdes:</strong> Nëse emri këtu <u>nuk</u> përputhet me emrin në certifikatën fizike,
+          raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose
+          <a href="tel:+355698778837">+355 69 877 8837</a>.
+        </div>
+      `;
     }
 
-    body.innerHTML = `
-      <div class="d-flex align-items-center mb-3">
-        <div class="me-3" style="width:46px;height:46px;border-radius:.75rem;background:#eef2ff;display:flex;align-items:center;justify-content:center;">
-          <i class="bi bi-person-badge fs-4 text-primary"></i>
-        </div>
-        <div>
-          <div class="h5 mb-0">${escapeHtml(full||'—')}</div>
-          <div class="small text-muted">AMZË: <strong>${escapeHtml(st.amze||'—')}</strong> • ID personale: ${escapeHtml(st.personal_number_masked||'—')}</div>
-        </div>
-      </div>
-
-      <div class="row g-3">
-        <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-          <div class="small text-muted">Modulet</div><div class="h5 mb-0">${st.stats?.courses ?? 0}</div></div></div>
-        <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-          <div class="small text-muted">Grupe</div><div class="h5 mb-0">${st.stats?.groups ?? 0}</div></div></div>
-        <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-          <div class="small text-muted">Mes. pikë</div><div class="h5 mb-0">${st.stats?.avg_score ?? '—'}</div></div></div>
-        <div class="col-6 col-md-3"><div class="p-3 rounded" style="background:#f8fafc;">
-          <div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0">${(st.stats?.pass_rate ?? null) !== null ? st.stats.pass_rate+'%' : '—'}</div></div></div>
-      </div>
-
-      <hr>
-      <div class="row">
-        <div class="col-md-6"><div class="small text-muted">Edukimi</div><div class="fw-semibold mb-3">${escapeHtml(st.edu_label||'—')}</div></div>
-        <div class="col-md-6"><div class="small text-muted">Agjencia</div><div class="fw-semibold mb-3">${escapeHtml(st.agency||'—')}</div></div>
-      </div>
-
-      <div class="small text-muted">Kurset (max 5):</div>
-      <ul class="list-group list-group-flush">${coursesList}</ul>
-
-      <div class="alert alert-info mt-3">
-        <strong>Kujdes:</strong> Nëse emri këtu <u>nuk</u> përputhet me emrin në certifikatën fizike,
-        raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose
-        <a href="tel:+355698778837">+355 69 877 8837</a>.
-      </div>
-    `;
   } else {
     setStatus('INVALID', 'danger');
-    card.classList.add('status-invalid'); card.classList.remove('status-valid');
     const reason = json.reason || 'Token i pavlefshëm.';
     body.innerHTML = `
       <div class="alert alert-danger">
@@ -698,32 +1042,39 @@ document.getElementById('btnPaste')?.addEventListener('click', async ()=>{
     if (t){ document.getElementById('manualPayload').value = t; lastPayload = t; }
   }catch(e){}
 });
-document.getElementById('btnClear')?.addEventListener('click', async ()=>{
+document.getElementById('btnClear')?.addEventListener('click', ()=>{
   document.getElementById('manualPayload').value = '';
   lastPayload = '';
   setStatus('—','secondary');
   document.getElementById('resultBody').innerHTML = '<div class="text-muted">Skanoni QR, ngarkoni foto ose ngjisni vlerën për verifikim. Rezultati do të shfaqet këtu.</div>';
-  document.getElementById('resultCard').classList.remove('status-valid','status-invalid');
 });
 
+/* Ndërto link-share nga payload i fundit (mbështet pid/sid) */
 function buildShareFromPayload(raw){
   const s = String(raw||'');
-  let sid = 0, token = '';
+  let sid = 0, pid = 0, token = '';
   if (s.startsWith('http')){
     try{
       const url = new URL(s);
       sid = parseInt(url.searchParams.get('sid')||'0', 10) || 0;
+      pid = parseInt(url.searchParams.get('pid')||'0', 10) || 0;
       token = (url.searchParams.get('t') || url.searchParams.get('token') || '').trim();
     }catch(e){}
   }
-  if (!sid || !token){
+  if ((!sid && !pid) || !token){
     const mSid = s.match(/SID\s*:\s*(\d+)/i); if (mSid) sid = parseInt(mSid[1],10)||0;
-    const mTok = s.match(/TOKEN\s*:\s*([a-f0-9]{32,})/i); if (mTok) token = mTok[1].toLowerCase();
+    const mPid = s.match(/PID\s*:\s*(\d+)/i); if (mPid) pid = parseInt(mPid[1],10)||0;
+    const mTok = s.match(/TOKEN\s*:\s*([a-f0-9]{16,})/i); if (mTok) token = mTok[1].toLowerCase();
   }
-  if (!sid || !token){
-    const m = s.split('|'); if (m.length===2 && /^\d+$/.test(m[0])) { sid = parseInt(m[0],10); token = m[1].trim(); }
+  if ((!sid && !pid) || !token){
+    const parts = s.split('|');
+    if (parts.length===2 && /^\d+$/.test(parts[0])) { sid = parseInt(parts[0],10); token = parts[1].trim(); }
   }
-  if (sid && token){ const base = location.origin + location.pathname; return `${base}?sid=${sid}&t=${encodeURIComponent(token)}`; }
+  if ((pid||sid) && token){
+    const base = location.origin + location.pathname;
+    const qp = pid ? `pid=${pid}` : `sid=${sid}`;
+    return `${base}?${qp}&t=${encodeURIComponent(token)}`;
+  }
   return '';
 }
 document.getElementById('btnShare')?.addEventListener('click', async ()=>{
@@ -739,17 +1090,13 @@ document.getElementById('btnPrint')?.addEventListener('click', ()=> window.print
 document.addEventListener('shown.bs.tab', async (e)=>{
   const target = e.target?.getAttribute('data-bs-target');
   if (target === '#pane-camera'){
-    await stopCamera();
-    await enumerateCameras();
-    await startCameraByIndex(currentCamIndex>=0 ? currentCamIndex : 0);
-  } else {
-    await stopCamera();
-  }
+    await stopCamera(); await enumerateCameras(); await startCameraByIndex(currentCamIndex>=0 ? currentCamIndex : 0);
+  } else { await stopCamera(); }
 });
 window.addEventListener('beforeunload', ()=>{ try{ camQr?.stop(); camQr?.clear(); }catch(e){} });
 document.addEventListener('visibilitychange', async ()=>{ if (document.hidden) await stopCamera(); });
 
-/* ========= Start (kamera) ========= */
+/* ========= Start ========= */
 window.addEventListener('load', async ()=>{
   await enumerateCameras();
   const activePane = document.querySelector('#pane-camera');
@@ -759,7 +1106,6 @@ window.addEventListener('load', async ()=>{
 });
 </script>
 
-<?php require_once __DIR__ . '/footer.php'; ?>
-
+<?php if (file_exists(__DIR__.'/footer.php')) require __DIR__ . '/footer.php'; ?>
 </body>
 </html>
