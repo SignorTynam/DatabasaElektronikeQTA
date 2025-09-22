@@ -63,8 +63,40 @@ $outdatedCreds = (int)$pdo->query("
      OR last_password_change < DATE_SUB(NOW(), INTERVAL 180 DAY)
 ")->fetchColumn();
 
-/* ===== New Concepts: Distributions & Trends ===== */
+/* ===== NEW: Plans / Groups health ===== */
+$studentsNoGroup = (int)$pdo->query("
+  SELECT COUNT(*)
+  FROM students s
+  LEFT JOIN course_group_students cgs ON cgs.student_id=s.id
+  WHERE cgs.student_id IS NULL
+")->fetchColumn();
 
+$studentsNoPlan = (int)$pdo->query("
+  SELECT COUNT(*)
+  FROM students s
+  LEFT JOIN student_course_plans scp ON scp.student_id=s.id
+  WHERE scp.student_id IS NULL
+")->fetchColumn();
+
+$scpPlanned   = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='planned'")->fetchColumn();
+$scpAssigned  = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='assigned'")->fetchColumn();
+$scpCompleted = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='completed'")->fetchColumn();
+$scpCancelled = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='cancelled'")->fetchColumn();
+
+$pendingExams = (int)$pdo->query("
+  SELECT COUNT(*)
+  FROM course_group_students cgs
+  JOIN course_groups cg ON cg.id=cgs.group_id
+  WHERE cgs.exam_date IS NULL AND cg.end_date < CURDATE()
+")->fetchColumn();
+
+$groupsCompleted = (int)$pdo->query("SELECT COUNT(*) FROM course_groups WHERE is_completed=1")->fetchColumn();
+$groupsEndedNotCompleted = (int)$pdo->query("
+  SELECT COUNT(*) FROM course_groups
+  WHERE end_date < CURDATE() AND (is_completed=0 OR is_completed IS NULL)
+")->fetchColumn();
+
+/* ===== Distributions & Trends ===== */
 /* Funnel (students lifecycle) */
 $studentsInAnyGroup = (int)$pdo->query("SELECT COUNT(DISTINCT student_id) FROM course_group_students")->fetchColumn();
 $studentsInActiveGroups = (int)$pdo->query("
@@ -162,6 +194,17 @@ $utilByCourse = $pdo->query("
   LIMIT 6
 ")->fetchAll(PDO::FETCH_ASSOC);
 
+/* NEW: Top planned modules (backlog) */
+$plannedTop = $pdo->query("
+  SELECT c.code, c.name, COUNT(*) AS cnt
+  FROM student_course_plans scp
+  JOIN courses c ON c.id=scp.course_id
+  WHERE scp.status='planned'
+  GROUP BY c.id
+  ORDER BY cnt DESC, c.code ASC
+  LIMIT 6
+")->fetchAll(PDO::FETCH_ASSOC);
+
 /* Recent users (fresh activity) */
 $recentUsers = $pdo->query("
   SELECT u.full_name, u.email, u.created_at, r.name AS role_name
@@ -215,6 +258,10 @@ $funnel = [
   'Me kompani të caktuar'    => $studentsWithAgency,
 ];
 
+/* NEW: scp status chart data */
+$scpLabels = ['planned','assigned','completed','cancelled'];
+$scpCounts = [$scpPlanned,$scpAssigned,$scpCompleted,$scpCancelled];
+
 $NAV_ACTIVE = 'dashboard';
 require __DIR__ . '/inc/navbar.php';
 ?>
@@ -242,6 +289,7 @@ require __DIR__ . '/inc/navbar.php';
     .mini-table thead { background:#f1f5f9; }
     .progress { height:8px; }
     .soft { background:#f8fafc; border:1px solid #e2e8f0; border-radius:.75rem; padding:.5rem .75rem; }
+    .nowrap { white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -265,31 +313,35 @@ require __DIR__ . '/inc/navbar.php';
     </div>
   </section>
 
-  <!-- KPI row -->
+  <!-- KPI row (core) -->
   <section class="row g-4 mb-4 kpi">
     <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-mortarboard fs-4 text-primary"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Studentë</div>
-            <div class="h3 mb-1"><?= number_format($studentsTotal) ?></div>
-            <span class="small text-muted">Në grupe aktive sot: <?= number_format($studentsInActiveGroups) ?></span>
+      <a class="text-decoration-none text-reset" href="students.php">
+        <div class="card p-3 h-100">
+          <div class="d-flex align-items-center">
+            <div class="icon me-3"><i class="bi bi-mortarboard fs-4 text-primary"></i></div>
+            <div>
+              <div class="small text-muted text-uppercase">Studentë</div>
+              <div class="h3 mb-1"><?= number_format($studentsTotal) ?></div>
+              <span class="small text-muted">Në grupe aktive sot: <?= number_format($studentsInActiveGroups) ?></span>
+            </div>
           </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-collection fs-4 text-success"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Grupe aktive</div>
-            <div class="h3 mb-1"><?= number_format($activeGroups) ?></div>
-            <span class="small text-muted">Kapacitet: <?= number_format($capacitySeats) ?> vende</span>
+      <a class="text-decoration-none text-reset" href="groups.php">
+        <div class="card p-3 h-100">
+          <div class="d-flex align-items-center">
+            <div class="icon me-3"><i class="bi bi-collection fs-4 text-success"></i></div>
+            <div>
+              <div class="small text-muted text-uppercase">Grupe aktive</div>
+              <div class="h3 mb-1"><?= number_format($activeGroups) ?></div>
+              <span class="small text-muted">Kapacitet: <?= number_format($capacitySeats) ?> vende</span>
+            </div>
           </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-12 col-md-6 col-xl-3">
       <div class="card p-3 h-100">
@@ -304,13 +356,69 @@ require __DIR__ . '/inc/navbar.php';
       </div>
     </div>
     <div class="col-12 col-md-6 col-xl-3">
+      <a class="text-decoration-none text-reset" href="logs.php">
+        <div class="card p-3 h-100">
+          <div class="d-flex align-items-center">
+            <div class="icon me-3"><i class="bi bi-shield-check fs-4 text-danger"></i></div>
+            <div>
+              <div class="small text-muted text-uppercase">Audit (24h)</div>
+              <div class="h3 mb-1"><?= number_format($audit24h) ?></div>
+              <span class="small text-muted">Përdorues: <?= number_format($usersTotal) ?> • Kompani: <?= number_format($agenciesTotal) ?></span>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- KPI row (plans & gaps) -->
+  <section class="row g-4 mb-4 kpi">
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="text-decoration-none text-reset" href="students_without_groups.php">
+        <div class="card p-3 h-100">
+          <div class="d-flex align-items-center">
+            <div class="icon me-3"><i class="bi bi-people fs-4 text-secondary"></i></div>
+            <div>
+              <div class="small text-muted text-uppercase">Pa grup</div>
+              <div class="h3 mb-1"><?= number_format($studentsNoGroup) ?></div>
+              <span class="small text-muted">Studentë pa asnjë rresht në grupe</span>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
       <div class="card p-3 h-100">
         <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-shield-check fs-4 text-danger"></i></div>
+          <div class="icon me-3"><i class="bi bi-journal-minus fs-4 text-dark"></i></div>
           <div>
-            <div class="small text-muted text-uppercase">Audit (24h)</div>
-            <div class="h3 mb-1"><?= number_format($audit24h) ?></div>
-            <span class="small text-muted">Përdorues: <?= number_format($usersTotal) ?> • Kompani: <?= number_format($agenciesTotal) ?></span>
+            <div class="small text-muted text-uppercase">Pa modul (plan)</div>
+            <div class="h3 mb-1"><?= number_format($studentsNoPlan) ?></div>
+            <span class="small text-muted">S'kanë rresht në student_course_plans</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card p-3 h-100">
+        <div class="d-flex align-items-center">
+          <div class="icon me-3"><i class="bi bi-list-check fs-4 text-primary"></i></div>
+          <div>
+            <div class="small text-muted text-uppercase">Plane 'planned'</div>
+            <div class="h3 mb-1"><?= number_format($scpPlanned) ?></div>
+            <span class="small text-muted">Backlog i regjistrimeve</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card p-3 h-100">
+        <div class="d-flex align-items-center">
+          <div class="icon me-3"><i class="bi bi-clipboard-x fs-4 text-danger"></i></div>
+          <div>
+            <div class="small text-muted text-uppercase">Teste të papërcaktuara</div>
+            <div class="h3 mb-1"><?= number_format($pendingExams) ?></div>
+            <span class="small text-muted">Studentë me grup të mbyllur pa exam_date</span>
           </div>
         </div>
       </div>
@@ -355,9 +463,7 @@ require __DIR__ . '/inc/navbar.php';
                 <div class="small text-muted"><?= h($label) ?></div>
                 <div class="fw-semibold"><?= number_format($val) ?></div>
               </div>
-              <?php
-                $pct = ($studentsTotal>0) ? round(($val/$studentsTotal)*100) : 0;
-              ?>
+              <?php $pct = ($studentsTotal>0) ? round(($val/$studentsTotal)*100) : 0; ?>
               <div class="progress"><div class="progress-bar" style="width:<?= $pct ?>%"></div></div>
             </div>
           <?php endforeach; ?>
@@ -410,109 +516,67 @@ require __DIR__ . '/inc/navbar.php';
 
   <!-- Distributions row -->
   <section class="row g-4 mb-4">
-    <div class="col-12 col-xl-4">
+    <div class="col-12 col-xl-3">
       <div class="card h-100">
         <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-people me-2"></i>Role përdoruesish</h6></div>
         <div class="card-body"><canvas id="chartRoles" height="140"></canvas></div>
       </div>
     </div>
-    <div class="col-12 col-xl-4">
+    <div class="col-12 col-xl-3">
       <div class="card h-100">
         <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-gender-ambiguous me-2"></i>Gjinia (studentë)</h6></div>
         <div class="card-body"><canvas id="chartGender" height="140"></canvas></div>
       </div>
     </div>
-    <div class="col-12 col-xl-4">
+    <div class="col-12 col-xl-3">
       <div class="card h-100">
         <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-mortarboard-fill me-2"></i>Niveli arsimor</h6></div>
         <div class="card-body"><canvas id="chartEdu" height="140"></canvas></div>
       </div>
     </div>
-  </section>
-
-  <!-- Leaderboards & Milestones & Security -->
-  <section class="row g-4">
-    <div class="col-12 col-xl-5">
+    <div class="col-12 col-xl-3">
       <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-trophy me-2"></i>Kompani kryesuese</h5>
-          <span class="text-muted small">sip. studentëve të caktuar</span>
+        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-kanban me-2"></i>Statusi i planeve (SCP)</h6>
         </div>
         <div class="card-body">
-          <?php if ($agencyTop): ?>
+          <canvas id="chartPlans" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Plans status + Backlog + Milestones & Security -->
+  <section class="row g-4">
+    <div class="col-12 col-xl-7">
+      <div class="card h-100">
+        <div class="card-header bg-white d-flex align-items-center justify-content-between">
+          <h5 class="mb-0"><i class="bi bi-list-task me-2"></i>Modulet në pritje (planned)</h5>
+        </div>
+        <div class="card-body">
+          <?php if ($plannedTop): ?>
             <div class="table-responsive mini-table">
               <table class="table align-middle">
-                <thead class="table-light"><tr><th>Kompania</th><th>NIPT</th><th class="text-end">Studentë</th></tr></thead>
+                <thead class="table-light"><tr><th>Moduli</th><th class="text-end">Plane</th></tr></thead>
                 <tbody>
-                <?php foreach ($agencyTop as $a): ?>
+                <?php foreach ($plannedTop as $p): ?>
                   <tr>
-                    <td><?= h($a['company_name'] ?: '—') ?></td>
-                    <td><code><?= h($a['nip_t']) ?></code></td>
-                    <td class="text-end fw-semibold"><?= (int)$a['cnt'] ?></td>
+                    <td><?= h(($p['code']??'').' · '.($p['name']??'')) ?></td>
+                    <td class="text-end fw-semibold"><?= (int)$p['cnt'] ?></td>
                   </tr>
                 <?php endforeach; ?>
                 </tbody>
               </table>
             </div>
           <?php else: ?>
-            <p class="text-muted mb-0">S’ka të dhëna për kompanit.</p>
+            <p class="text-muted mb-0">S'ka backlog 'planned' aktualisht.</p>
           <?php endif; ?>
         </div>
       </div>
     </div>
 
-    <div class="col-12 col-xl-4">
+    <div class="col-12 col-xl-5">
       <div class="card h-100">
-        <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-calendar2-week me-2"></i>Milestones (30 ditë)</h5></div>
-        <div class="card-body">
-          <?php if ($milestones): ?>
-            <ul class="list-group list-group-flush">
-              <?php foreach ($milestones as $m): ?>
-                <li class="list-group-item d-flex justify-content-between align-items-start">
-                  <div>
-                    <div class="fw-semibold"><?= h(($m['code'] ?? '').' · '.($m['name'] ?? '')) ?></div>
-                    <div class="small text-muted"><?= h($m['type']) ?> • <?= h($m['d']) ?> • Grupi #<?= (int)$m['gid'] ?></div>
-                  </div>
-                  <span class="badge rounded-pill <?= $m['type']==='Fillim'?'text-bg-primary':'text-bg-success' ?>"><?= h($m['type']) ?></span>
-                </li>
-              <?php endforeach; ?>
-            </ul>
-          <?php else: ?>
-            <p class="text-muted mb-0">Asnjë milestone në 30 ditët e ardhshme.</p>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-xl-3">
-      <div class="card h-100">
-        <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Higjiena e llogarive</h5></div>
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="text-muted">Pa person të lidhur</span><span class="fw-semibold"><?= number_format($usersWithoutPerson) ?></span>
-          </div>
-          <div class="progress mb-3"><div class="progress-bar" style="width:<?= $usersTotal>0? round(($usersWithoutPerson/$usersTotal)*100):0 ?>%"></div></div>
-
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="text-muted">Pa kredenciale</span><span class="fw-semibold"><?= number_format($usersNoCredentials) ?></span>
-          </div>
-          <div class="progress mb-3"><div class="progress-bar" style="width:<?= $usersTotal>0? round(($usersNoCredentials/$usersTotal)*100):0 ?>%"></div></div>
-
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="text-muted">Fjalëkalim i vjetruar</span><span class="fw-semibold"><?= number_format($outdatedCreds) ?></span>
-          </div>
-          <div class="progress"><div class="progress-bar" style="width:<?= $usersTotal>0? round(($outdatedCreds/$usersTotal)*100):0 ?>%"></div></div>
-
-          <div class="small text-muted mt-3">Rekomandim: ndryshim çdo 180 ditë; lidh person-in kur të jetë e mundur.</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Recent users -->
-  <section class="row g-4 my-4">
-    <div class="col-12">
-      <div class="card">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
           <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Aktivitet i fundit (përdorues të rinj)</h5>
         </div>
@@ -541,6 +605,8 @@ require __DIR__ . '/inc/navbar.php';
     </div>
   </section>
 
+  <br>
+
   <div class="text-center text-muted small my-4">
     &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
   </div>
@@ -564,6 +630,10 @@ const genderLabels = <?= json_encode($genderLabels) ?>;
 const genderCounts = <?= json_encode($genderCounts) ?>;
 const eduLabels    = <?= json_encode($eduLabels) ?>;
 const eduCounts    = <?= json_encode($eduCounts) ?>;
+
+/* NEW: plans chart */
+const scpLabels = <?= json_encode($scpLabels) ?>;
+const scpCounts = <?= json_encode($scpCounts) ?>;
 
 /* Charts */
 (() => {
@@ -596,6 +666,9 @@ const eduCounts    = <?= json_encode($eduCounts) ?>;
 
   const ce = document.getElementById('chartEdu');
   if (ce) new Chart(ce, { type:'doughnut', data:{ labels: eduLabels, datasets:[{ data: eduCounts }] }, options:{ plugins:{ legend:{ position:'bottom' } } } });
+
+  const cp = document.getElementById('chartPlans');
+  if (cp) new Chart(cp, { type:'doughnut', data:{ labels: scpLabels, datasets:[{ data: scpCounts }] }, options:{ plugins:{ legend:{ position:'bottom' } } } });
 })();
 </script>
 </body>
