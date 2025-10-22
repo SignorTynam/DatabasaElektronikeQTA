@@ -22,7 +22,7 @@ $userStmt = $pdo->prepare("
     LIMIT 1
 ");
 $userStmt->execute([':uid' => $_SESSION['user_id']]);
-$currentUser = $userStmt->fetch();
+$currentUser = $userStmt->fetch(PDO::FETCH_ASSOC);
 
 $role = strtolower((string)($currentUser['role_name'] ?? ''));
 if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
@@ -54,7 +54,7 @@ function flash(string $key, ?string $msg=null) {
 }
 function require_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $token = $_POST['csrf'] ?? '';
+        $token = $_POST['csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         if (empty($token) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
             http_response_code(400); exit('CSRF token mismatch.');
         }
@@ -127,31 +127,49 @@ function fmt_dMY(?string $iso): string {
 }
 
 /* ------------------------------
-   Veprime POST: create student (me modul të planifikuar opsional)
+   Veprime POST: Create & Delete
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_csrf();
-    $action = $_POST['action'] ?? '';
+    // lexo raw JSON nëse vjen nga fetch()
+    $raw = file_get_contents('php://input');
+    $asJson = false;
+    $post = $_POST;
+    if (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json')) {
+        $tmp = json_decode($raw ?: '[]', true);
+        if (is_array($tmp)) { $post = $tmp; $asJson = true; }
+    }
+    // CSRF
+    if ($asJson) {
+        $tok = (string)($post['csrf'] ?? '');
+        if (empty($tok) || !hash_equals($_SESSION['csrf_token'], $tok)) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+        }
+    } else {
+        require_csrf();
+    }
+
+    $action = (string)($post['action'] ?? '');
 
     try {
+        /* --------- CREATE STUDENT --------- */
         if ($action === 'create_student') {
             if (!$EDIT_MODE) { throw new RuntimeException('Edit Mode është OFF. Aktivizo për të kryer ndryshime.'); }
 
-            $personal_number    = trim($_POST['personal_number'] ?? '');
-            $nr_amze            = trim($_POST['nr_amze'] ?? '');
-            $first_name         = trim($_POST['first_name'] ?? '');
-            $father_name        = trim($_POST['father_name'] ?? '');
-            $last_name          = trim($_POST['last_name'] ?? '');
-            $birth_date         = trim($_POST['birth_date'] ?? '');
-            $birth_place        = trim($_POST['birth_place'] ?? '');
-            $phone              = trim($_POST['phone'] ?? '');
-            $gender_id          = (int)($_POST['gender_id'] ?? 0);
-            $education_level_id = (int)($_POST['education_level_id'] ?? 0);
-            $planned_course_id  = (int)($_POST['planned_course_id'] ?? 0); // NEW
+            $personal_number    = trim($post['personal_number'] ?? '');
+            $nr_amze            = trim($post['nr_amze'] ?? '');
+            $first_name         = trim($post['first_name'] ?? '');
+            $father_name        = trim($post['father_name'] ?? '');
+            $last_name          = trim($post['last_name'] ?? '');
+            $birth_date         = trim($post['birth_date'] ?? '');
+            $birth_place        = trim($post['birth_place'] ?? '');
+            $phone              = trim($post['phone'] ?? '');
+            $gender_id          = (int)($post['gender_id'] ?? 0);
+            $education_level_id = (int)($post['education_level_id'] ?? 0);
+            $planned_course_id  = (int)($post['planned_course_id'] ?? 0);
 
-            if ($nr_amze === '') {
-                throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
-            }
+            if ($nr_amze === '') throw new RuntimeException('Nr. i amzës është i detyrueshëm.');
 
             $q1 = $pdo->prepare("SELECT COUNT(*) FROM students WHERE nr_amze = :x");
             $q1->execute([':x'=>$nr_amze]);
@@ -159,10 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($gender_id <= 0 && $maleId) { $gender_id = $maleId; }
 
-            // prano DD-MM-YYYY (preferuar) ose YYYY-MM-DD, por ruaj gjithmonë si YYYY-MM-DD
             if ($birth_date !== '') {
                 if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $birth_date)) {
-                    // DD-MM-YYYY -> YYYY-MM-DD
                     [$dd,$mm,$yy] = explode('-', $birth_date);
                     $birth_date = sprintf('%04d-%02d-%02d', (int)$yy, (int)$mm, (int)$dd);
                 } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
@@ -172,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
 
-            /* 1) PERSON */
+            // PERSON
             $personId = 0; $person = null;
             if ($personal_number !== '') {
                 $pSel = $pdo->prepare("SELECT id, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id FROM persons WHERE personal_number = :pn LIMIT 1");
@@ -224,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $person = $pSel2->fetch(PDO::FETCH_ASSOC);
             }
 
-            /* 2) USER me rol student */
+            // USER (rol student)
             $uSel = $pdo->prepare("SELECT id FROM users WHERE role_id = :rid AND person_id = :pid LIMIT 1");
             $uSel->execute([':rid'=>$studentRoleId, ':pid'=>$personId]);
             $userId = (int)($uSel->fetchColumn() ?: 0);
@@ -254,7 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            /* 3) STUDENT – nr_amze unik */
+            // STUDENT
             $insStud = $pdo->prepare("
                 INSERT INTO students (person_id, user_id, nr_amze, education_level_id)
                 VALUES (:pid, :uid, :amz, :edu)
@@ -265,7 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $newStudentId = (int)$pdo->lastInsertId();
 
-            /* 4) (NEW) Planifiko modul për këtë student, pa grup */
+            // Planifikim moduli (opsional)
             if ($planned_course_id > 0) {
                 $chk = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
                 $chk->execute([':id'=>$planned_course_id]);
@@ -283,19 +299,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $pdo->commit();
+
+            if ($asJson) {
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode(['ok'=>true, 'student_id'=>$newStudentId]); exit;
+            }
             flash('ok', 'Studenti u shtua me sukses.');
+            header('Location: students.php'); exit;
         }
+
+        /* --------- DELETE STUDENT (AMZË) --------- */
+        if ($action === 'delete_student') {
+            if (!$EDIT_MODE) { throw new RuntimeException('Edit Mode është OFF. Aktivizo për të fshirë.'); }
+
+            $student_id = (int)($post['student_id'] ?? 0);
+            $also_identity = (int)($post['also_delete_identity'] ?? 0) === 1;
+
+            if ($student_id <= 0) throw new RuntimeException('ID e studentit mungon.');
+
+            // lexo info (para fshirjes)
+            $sel = $pdo->prepare("
+                SELECT s.id, s.nr_amze, s.person_id, s.user_id,
+                       p.first_name, p.father_name, p.last_name
+                FROM students s
+                JOIN persons p ON p.id = s.person_id
+                WHERE s.id = :sid
+                LIMIT 1
+            ");
+            $sel->execute([':sid'=>$student_id]);
+            $st = $sel->fetch(PDO::FETCH_ASSOC);
+            if (!$st) throw new RuntimeException('Studenti nuk u gjet.');
+
+            $pid = (int)$st['person_id'];
+            $uid = (int)$st['user_id'];
+
+            $pdo->beginTransaction();
+
+            // fshi vetëm rreshtin e students — FK-të varëse (plans, group_members, agency_students, student_qr_tokens) do të pastrohen me ON DELETE CASCADE
+            $del = $pdo->prepare("DELETE FROM students WHERE id=:sid");
+            $del->execute([':sid'=>$student_id]);
+
+            $deleted_user = false;
+            $deleted_person = false;
+
+            if ($also_identity) {
+                // nëse personi nuk ka më studentë të tjerë, fshi user-in dhe më pas person-in
+                $cnt = $pdo->prepare("SELECT COUNT(*) FROM students WHERE person_id=:pid");
+                $cnt->execute([':pid'=>$pid]);
+                $left = (int)$cnt->fetchColumn();
+
+                if ($left === 0) {
+                    // fshi user-in (kaskadë te credentials)
+                    if ($uid > 0) {
+                        $pdo->prepare("DELETE FROM users WHERE id=:uid")->execute([':uid'=>$uid]);
+                        $deleted_user = true;
+                    }
+                    // fshi person-in (kaskadë te person_qr_tokens)
+                    if ($pid > 0) {
+                        $pdo->prepare("DELETE FROM persons WHERE id=:pid")->execute([':pid'=>$pid]);
+                        $deleted_person = true;
+                    }
+                }
+            }
+
+            $pdo->commit();
+
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode([
+                'ok'=>true,
+                'student_id'=>$student_id,
+                'nr_amze'=>$st['nr_amze'],
+                'deleted_user'=>$deleted_user,
+                'deleted_person'=>$deleted_person
+            ]);
+            exit;
+        }
+
+        // nëse arrihet këtu me action tjetër
+        if ($asJson) {
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['ok'=>false,'error'=>'Veprim i panjohur.']); exit;
+        }
+        header('Location: students.php'); exit;
 
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        if (isset($asJson) && $asJson) {
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
+        }
         flash('err', $e->getMessage());
+        header('Location: students.php'); exit;
     }
-
-    header('Location: students.php'); exit;
 }
 
 /* ------------------------------
-   Kërkim + Paginim (vetëm studentë) – renditje numerike sipas nr_amze
+   Kërkim + Paginim – vetëm studentë, sipas nr_amze (numeric)
 ------------------------------- */
 $q      = trim($_GET['q'] ?? '');
 $edu    = trim($_GET['edu'] ?? '');
@@ -358,7 +457,6 @@ $listStmt = $pdo->prepare("
         s.education_level_id AS edu_id,
         u.created_at,
 
-        /* nga persons */
         p.first_name,
         p.father_name,
         p.last_name,
@@ -370,10 +468,8 @@ $listStmt = $pdo->prepare("
         g.code  AS gender_code,
         g.label AS gender_label,
 
-        /* arsimi */
         el.code AS edu_code,
         el.label AS edu_label
-
     FROM students s
     JOIN users u   ON u.id = s.user_id
     JOIN persons p ON p.id = s.person_id
@@ -441,12 +537,11 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
         .inline-select { min-width: 160px; }
 
-        /* Edit Mode OFF visuals */
         .editing-off .editable { color:#6b7280; cursor:not-allowed; }
         .editing-off td.cell .inline-select:disabled { background:#f3f4f6; color:#6b7280; cursor:not-allowed; }
         .badge-edit { letter-spacing:.2px; }
 
-        /* --- Soft buttons & pills (UI e re) --- */
+        /* Soft buttons & pills */
         .btn-pill { border-radius:999px !important; }
         .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
         .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
@@ -457,7 +552,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
         .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-        /* ===== Floating action buttons (stacked) — identik me groups.php ===== */
+        /* FAB Stack */
         .fab-stack{
           position: fixed;
           right: 24px;
@@ -475,8 +570,8 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
           gap: 6px;
           min-height: 52px;
           height: 52px;
-          width: 52px;                 /* icon-only by default */
-          padding: 0 14px;             /* room for label when expanded */
+          width: 52px;
+          padding: 0 14px;
           border-radius: 999px;
           box-shadow: 0 12px 20px rgba(2,6,23,.15);
           transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
@@ -491,7 +586,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         }
         .fab-stack .fab-btn:hover,
         .fab-stack .fab-btn:focus{
-          width: auto;                 /* pill with label */
+          width: auto;
           box-shadow: 0 16px 28px rgba(2,6,23,.22);
         }
         .fab-stack .fab-btn:hover .fab-text,
@@ -501,15 +596,14 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
           margin-left: 4px;
         }
         .fab-stack .fab-btn:active{ transform: translateY(1px); }
+
         @media (max-width: 575.98px){
           .fab-stack{ right:16px; bottom:16px; gap:10px; }
           .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
         }
 
-        /* Fshih fallback-in e vjetër .btn-fab nëse mbetet në DOM */
         .btn-fab{ display:none !important; }
 
-        /* Toasts poshtë MAJTAS */
         .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
         .toast.qta-toast .toast-header{ border-bottom:0; }
         .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
@@ -517,8 +611,11 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
         .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
 
-        /* Compact paddings si te groups.php */
         .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
+
+        /* Veprime column */
+        .col-actions{ width: 72px; }
+        .btn-icon{ width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; }
     </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -533,178 +630,199 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="container-fluid px-3 px-md-4">
-    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-        <h2 class="mb-0">Studentët</h2>
-        <!-- Heqëm butonin e sipërm të Edit Mode; përdoret FAB poshtë djathtas -->
-        <div class="page-toolbar"></div>
-    </div>
+  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
+    <h2 class="mb-0">Studentët</h2>
+    <div class="page-toolbar"></div>
+  </div>
 
-    <!-- Kërkim + filtër edukimi -->
-    <div class="card mb-3">
-        <div class="card-body">
-            <form class="row g-2 align-items-end" method="get" action="students.php">
-                <div class="col-md-5">
-                    <div class="d-flex align-items-center">
-                        <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-                        <div class="input-group flex-grow-1">
-                            <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-                            <input type="text" name="q" class="form-control border-0"
-                                   placeholder="Emër/Atësi/Mbiemër, nr. amzës, nr. personal, tel., vendlindje..."
-                                   value="<?= htmlspecialchars($q) ?>">
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="d-flex align-items-center">
-                        <label class="form-label mb-0 me-2" style="min-width:70px;">Arsimi</label>
-                        <select name="edu" class="form-select flex-grow-1">
-                            <option value="">Të gjithë</option>
-                            <?php foreach ($eduLevels as $el): ?>
-                                <?php $val = (string)$el['id']; ?>
-                                <option value="<?= htmlspecialchars($val) ?>" <?= $edu===$val?'selected':'' ?>>
-                                    <?= htmlspecialchars($el['code'].' — '.$el['label']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="col-md-3 text-end">
-                    <button class="btn btn-soft-secondary btn-pill me-1" type="button"
-                            onclick="window.location='students.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-                    <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Tabela: inline-edit, renditur sipas nr_amze (numeric) -->
-    <div class="card">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0"><i class="bi bi-mortarboard me-2"></i>Lista e studentëve</h5>
-            <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive mini-table">
-                <table class="table align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="nowrap">Nr. Amzës</th>
-                            <th>Emër</th>
-                            <th>Atësi</th>
-                            <th>Mbiemër</th>
-                            <th class="nowrap">Nr. Personal</th>
-                            <th class="nowrap">Datëlindja</th>
-                            <th>Vendlindja</th>
-                            <th>Arsimi</th>
-                            <th class="nowrap">Gjinia</th>
-                            <th>Tel.</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php if ($students): ?>
-                        <?php foreach ($students as $s): $sid=(int)$s['student_id']; ?>
-                            <tr>
-                                <!-- nr_amze -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="nr_amze">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['nr_amze']) ?></span>
-                                </td>
-                                <!-- first_name -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="first_name">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['first_name'] ?: '—') ?></span>
-                                </td>
-                                <!-- father_name -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="father_name">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['father_name'] ?: '—') ?></span>
-                                </td>
-                                <!-- last_name -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="last_name">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['last_name'] ?: '—') ?></span>
-                                </td>
-                                <!-- personal_number -->
-                                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="personal_number">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['personal_number'] ?: '—') ?></span>
-                                </td>
-                                <!-- birth_date (display dd-mm-yyyy) -->
-                                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="DD-MM-YYYY">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($s['birth_date'])) ?></span>
-                                </td>
-                                <!-- birth_place -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="birth_place">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['birth_place'] ?: '—') ?></span>
-                                </td>
-                                <!-- education_level_id -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="education_level_id">
-                                    <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                                        <option value="">— Zgjidh —</option>
-                                        <?php foreach ($eduLevels as $el): ?>
-                                            <option value="<?= (int)$el['id'] ?>" <?= ((int)$s['edu_id'] === (int)$el['id']) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($el['code'].' — '.$el['label']) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </td>
-                                <!-- gender_id -->
-                                <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
-                                  <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                                    <?php foreach ($genders as $g): ?>
-                                      <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($g['label']) ?>
-                                      </option>
-                                    <?php endforeach; ?>
-                                  </select>
-                                </td>
-                                <!-- phone -->
-                                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['phone'] ?: '—') ?></span>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <tr><td colspan="10" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
-                    <?php endif; ?>
-                    </tbody>
-                </table>
+  <!-- Kërkim + filtër edukimi -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <form class="row g-2 align-items-end" method="get" action="students.php">
+        <div class="col-md-5">
+          <div class="d-flex align-items-center">
+            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
+            <div class="input-group flex-grow-1">
+              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
+              <input type="text" name="q" class="form-control border-0"
+                     placeholder="Emër/Atësi/Mbiemër, nr. amzës, nr. personal, tel., vendlindje..."
+                     value="<?= htmlspecialchars($q) ?>">
             </div>
+          </div>
         </div>
+        <div class="col-md-4">
+          <div class="d-flex align-items-center">
+            <label class="form-label mb-0 me-2" style="min-width:70px;">Arsimi</label>
+            <select name="edu" class="form-select flex-grow-1">
+              <option value="">Të gjithë</option>
+              <?php foreach ($eduLevels as $el): ?>
+                <?php $val = (string)$el['id']; ?>
+                <option value="<?= htmlspecialchars($val) ?>" <?= $edu===$val?'selected':'' ?>>
+                  <?= htmlspecialchars($el['code'].' — '.$el['label']) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+        <div class="col-md-3 text-end">
+          <button class="btn btn-soft-secondary btn-pill me-1" type="button"
+                  onclick="window.location='students.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
+          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-        <!-- Paginim -->
-        <?php if ($totalPages > 1): ?>
-        <div class="card-footer bg-white">
-            <nav aria-label="Page navigation">
-                <ul class="pagination mb-0 justify-content-end">
-                    <?php
-                    $base = 'students.php?'.http_build_query(array_filter([
-                        'q' => $q !== '' ? $q : null,
-                        'edu' => $edu !== '' ? $edu : null,
-                    ]));
-                    $prev = max(1, $page-1);
-                    $next = min($totalPages, $page+1);
-                    ?>
-                    <li class="page-item <?= $page<=1?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=1">«</a>
-                    </li>
-                    <li class="page-item <?= $page<=1?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $prev ?>">‹</a>
-                    </li>
-                    <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
-                    </li>
-                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
-                    </li>
-                </ul>
-            </nav>
-        </div>
-        <?php endif; ?>
+  <!-- Tabela -->
+  <div class="card">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between">
+      <h5 class="mb-0"><i class="bi bi-mortarboard me-2"></i>Lista e studentëve</h5>
+      <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive mini-table">
+        <table class="table align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="col-actions text-center">Veprime</th>
+              <th class="nowrap">Nr. Amzës</th>
+              <th>Emër</th>
+              <th>Atësi</th>
+              <th>Mbiemër</th>
+              <th class="nowrap">Nr. Personal</th>
+              <th class="nowrap">Datëlindja</th>
+              <th>Vendlindja</th>
+              <th>Arsimi</th>
+              <th class="nowrap">Gjinia</th>
+              <th>Tel.</th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php if ($students): ?>
+            <?php foreach ($students as $s):
+              $sid = (int)$s['student_id'];
+              $fullName = trim(($s['first_name'] ?: '').' '.($s['father_name'] ?: '').' '.($s['last_name'] ?: ''));
+            ?>
+              <tr id="row-<?= $sid ?>">
+                <!-- actions -->
+                <td class="text-center">
+                  <?php if ($EDIT_MODE): ?>
+                    <button type="button"
+                            class="btn btn-soft-danger btn-icon btn-delete"
+                            title="Fshi këtë AMZË"
+                            data-sid="<?= $sid ?>"
+                            data-amze="<?= htmlspecialchars($s['nr_amze']) ?>"
+                            data-name="<?= htmlspecialchars($fullName ?: '—') ?>">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  <?php else: ?>
+                    <button type="button" class="btn btn-soft-secondary btn-icon" disabled title="Edit Mode OFF">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  <?php endif; ?>
+                </td>
+
+                <!-- nr_amze -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="nr_amze">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['nr_amze']) ?></span>
+                </td>
+                <!-- first_name -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="first_name">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['first_name'] ?: '—') ?></span>
+                </td>
+                <!-- father_name -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="father_name">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['father_name'] ?: '—') ?></span>
+                </td>
+                <!-- last_name -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="last_name">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['last_name'] ?: '—') ?></span>
+                </td>
+                <!-- personal_number -->
+                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="personal_number">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['personal_number'] ?: '—') ?></span>
+                </td>
+                <!-- birth_date -->
+                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="DD-MM-YYYY">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($s['birth_date'])) ?></span>
+                </td>
+                <!-- birth_place -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="birth_place">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['birth_place'] ?: '—') ?></span>
+                </td>
+                <!-- education_level_id -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="education_level_id">
+                  <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                    <option value="">— Zgjidh —</option>
+                    <?php foreach ($eduLevels as $el): ?>
+                      <option value="<?= (int)$el['id'] ?>" <?= ((int)$s['edu_id'] === (int)$el['id']) ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($el['code'].' — '.$el['label']) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </td>
+                <!-- gender_id -->
+                <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
+                  <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                    <?php foreach ($genders as $g): ?>
+                      <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($g['label']) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </td>
+                <!-- phone -->
+                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['phone'] ?: '—') ?></span>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <tr><td colspan="11" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
+          <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="text-center text-muted small mt-4">
-        &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-    </div>
+    <!-- Paginim -->
+    <?php if ($totalPages > 1): ?>
+      <div class="card-footer bg-white">
+        <nav aria-label="Page navigation">
+          <ul class="pagination mb-0 justify-content-end">
+            <?php
+              $base = 'students.php?'.http_build_query(array_filter([
+                'q' => $q !== '' ? $q : null,
+                'edu' => $edu !== '' ? $edu : null,
+              ]));
+              $prev = max(1, $page-1);
+              $next = min($totalPages, $page+1);
+            ?>
+            <li class="page-item <?= $page<=1?'disabled':'' ?>">
+              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=1">«</a>
+            </li>
+            <li class="page-item <?= $page<=1?'disabled':'' ?>">
+              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $prev ?>">‹</a>
+            </li>
+            <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
+            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
+              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
+            </li>
+            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
+              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <div class="text-center text-muted small mt-4">
+    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
+  </div>
 </main>
 
-<!-- FAB Stack: Edit Mode + Student i ri (si te groups.php) -->
+<!-- FAB Stack: Edit Mode + Student i ri -->
 <div class="fab-stack" role="group" aria-label="Veprime shpejta">
   <!-- Edit Mode -->
   <a id="editModeFab"
@@ -740,78 +858,77 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
       </div>
       <div class="modal-body">
         <div class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label">Numri Personal <span class="text-muted">(opsional)</span></label>
-                <input type="text" name="personal_number" id="pnInput" class="form-control" placeholder="Opsional — për autoplotësim">
-                <div class="form-text">Nëse ekziston, të dhënat e tjera do të plotësohen automatikisht.</div>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Nr. Amzës *</label>
-                <input type="text" name="nr_amze" class="form-control" required>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Arsimi</label>
-                <select name="education_level_id" id="eduSelect" class="form-select">
-                    <option value="">— Zgjidh —</option>
-                    <?php foreach ($eduLevels as $el): ?>
-                        <option value="<?= (int)$el['id'] ?>"><?= htmlspecialchars($el['code'].' — '.$el['label']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+          <div class="col-md-4">
+            <label class="form-label">Numri Personal <span class="text-muted">(opsional)</span></label>
+            <input type="text" name="personal_number" id="pnInput" class="form-control" placeholder="Opsional — për autoplotësim">
+            <div class="form-text">Nëse ekziston, të dhënat e tjera do të plotësohen automatikisht.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Nr. Amzës *</label>
+            <input type="text" name="nr_amze" class="form-control" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Arsimi</label>
+            <select name="education_level_id" id="eduSelect" class="form-select">
+              <option value="">— Zgjidh —</option>
+              <?php foreach ($eduLevels as $el): ?>
+              <option value="<?= (int)$el['id'] ?>"><?= htmlspecialchars($el['code'].' — '.$el['label']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
 
-            <div class="col-md-4">
-                <label class="form-label">Emri <span class="text-muted">(opsional)</span></label>
-                <input type="text" name="first_name" id="fnInput" class="form-control" placeholder="Opsional">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Atësia</label>
-                <input type="text" name="father_name" id="fatInput" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Mbiemri <span class="text-muted">(opsional)</span></label>
-                <input type="text" name="last_name" id="lnInput" class="form-control" placeholder="Opsional">
-            </div>
+          <div class="col-md-4">
+            <label class="form-label">Emri <span class="text-muted">(opsional)</span></label>
+            <input type="text" name="first_name" id="fnInput" class="form-control" placeholder="Opsional">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Atësia</label>
+            <input type="text" name="father_name" id="fatInput" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Mbiemri <span class="text-muted">(opsional)</span></label>
+            <input type="text" name="last_name" id="lnInput" class="form-control" placeholder="Opsional">
+          </div>
 
-            <div class="col-md-4">
-                <label class="form-label">Datëlindja</label>
-                <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off">
-                <div class="form-text">Fjalëkalimi fillestar: <code>[Emri].[VitiLindjes]</code> (p.sh. <code>Ardit.1998</code>). Në mungesë vitit vendoset <code>0000</code>.</div>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Vendlindja</label>
-                <input type="text" name="birth_place" id="bpInput" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Tel.</label>
-                <input type="text" name="phone" id="phInput" class="form-control" placeholder="+355 ...">
-            </div>
+          <div class="col-md-4">
+            <label class="form-label">Datëlindja</label>
+            <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off">
+            <div class="form-text">Fjalëkalimi fillestar: <code>[Emri].[VitiLindjes]</code> (p.sh. <code>Ardit.1998</code>). Në mungesë vitit vendoset <code>0000</code>.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Vendlindja</label>
+            <input type="text" name="birth_place" id="bpInput" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Tel.</label>
+            <input type="text" name="phone" id="phInput" class="form-control" placeholder="+355 ...">
+          </div>
 
-            <div class="col-md-4">
-                <label class="form-label">Gjinia</label>
-                <select name="gender_id" id="genderSelect" class="form-select">
-                    <?php foreach ($genders as $g): ?>
-                        <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>>
-                            <?= htmlspecialchars($g['label']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+          <div class="col-md-4">
+            <label class="form-label">Gjinia</label>
+            <select name="gender_id" id="genderSelect" class="form-select">
+              <?php foreach ($genders as $g): ?>
+              <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>>
+                <?= htmlspecialchars($g['label']) ?>
+              </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
 
-            <!-- NEW: Moduli (opsional) – vetëm plan -->
-            <div class="col-md-8">
-                <label class="form-label">Moduli (opsional – vetëm plan)</label>
-                <select name="planned_course_id" class="form-select">
-                    <option value="">— Zgjidh —</option>
-                    <?php foreach ($courses as $c): ?>
-                        <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <div class="form-text">Këtu i cakton vetëm modulin; grupi vendoset më vonë.</div>
-            </div>
+          <div class="col-md-8">
+            <label class="form-label">Moduli (opsional – vetëm plan)</label>
+            <select name="planned_course_id" class="form-select">
+              <option value="">— Zgjidh —</option>
+              <?php foreach ($courses as $c): ?>
+              <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <div class="form-text">Këtu i cakton vetëm modulin; grupi vendoset më vonë.</div>
+          </div>
         </div>
         <div class="form-text mt-2">
-            Mund të krijosh student vetëm me <strong>Nr. Amzës</strong>. Fusha të tjera janë opsionale.
-            Krijohet/ri-përdoret <code>users</code> + <code>credentials</code> (password auto).
+          Mund të krijosh student vetëm me <strong>Nr. Amzës</strong>. Fusha të tjera janë opsionale.
+          Krijohet/ri-përdoret <code>users</code> + <code>credentials</code> (password auto).
         </div>
       </div>
       <div class="modal-footer">
@@ -834,7 +951,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         <select id="pickCourseSelect" class="form-select">
           <option value="">— S’dua modul tani —</option>
           <?php foreach ($courses as $c): ?>
-            <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+          <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
           <?php endforeach; ?>
         </select>
         <div class="form-text mt-2">Ky hap vetëm e planifikon modulin; grupi caktohet më vonë.</div>
@@ -847,6 +964,40 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
   </div>
 </div>
 
+<!-- MODAL: Fshij AMZË + të dhënat e lidhura -->
+<div class="modal fade" id="deleteStudentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title text-danger"><i class="bi bi-trash me-1"></i> Fshi studentin</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Je i sigurt që dëshiron të fshish këtë regjistrim (AMZË)?</p>
+        <ul class="mb-3">
+          <li><strong>Emri:</strong> <span id="delName">—</span></li>
+          <li><strong>Nr. Amzës:</strong> <span id="delAmze">—</span></li>
+        </ul>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="delAlsoIdentity">
+          <label class="form-check-label" for="delAlsoIdentity">
+            Fshi edhe identitetin (person + user) <span class="text-muted">(nëse nuk ka regjistrime të tjera)</span>
+          </label>
+        </div>
+        <div class="alert alert-warning mt-3 mb-0">
+          Ky veprim është i pakthyeshëm. Të gjitha të dhënat e lidhura (plane, anëtarësi grupesh, QR, etj.) do të fshihen nëpërmjet <em>ON DELETE CASCADE</em>.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" id="btnConfirmDelete" class="btn btn-danger btn-pill">
+          <i class="bi bi-trash me-1"></i> Fshi
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -854,11 +1005,11 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'students_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Compact mode si te groups.php */
+/* Compact mode */
 document.addEventListener('DOMContentLoaded', ()=>document.body.classList.add('compact'));
 
 /* Toast helper */
-function notify(type, text, opts={}){
+function notify(type, text, opts={}) {
   const zone = document.getElementById('toastZone');
   const id = 't' + Date.now() + Math.random().toString(16).slice(2);
   const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
@@ -888,70 +1039,54 @@ function notify(type, text, opts={}){
   t.show();
 }
 
-/* Helper: trim & normalizim “—” */
-function cleanText(s) {
-  const v = (s || '').replace(/\s+/g,' ').trim();
-  return (v === '—' ? '' : v);
-}
-
-/* Parse dhe normalizo vlerën e datës për server-in (YYYY-MM-DD) */
-function normalizeDateForServer(str) {
-  const v = (str || '').trim();
-  if (v === '' || v === '—') return '';
-  // dd-mm-yyyy
-  let m = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (m) {
-    const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yy = m[3];
-    return `${yy}-${mm}-${dd}`;
-  }
-  // yyyy-mm-dd
-  m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (m) {
-    const yy = m[1], mm = m[2].padStart(2,'0'), dd = m[3].padStart(2,'0');
-    return `${yy}-${mm}-${dd}`;
-  }
+/* Helpers */
+function cleanText(s){ const v=(s||'').replace(/\s+/g,' ').trim(); return (v==='—'?'':v); }
+function normalizeDateForServer(str){
+  const v=(str||'').trim();
+  if (v==='' || v==='—') return '';
+  let m=v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m){ const dd=m[1].padStart(2,'0'), mm=m[2].padStart(2,'0'), yy=m[3]; return `${yy}-${mm}-${dd}`; }
+  m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m){ const yy=m[1], mm=m[2].padStart(2,'0'), dd=m[3].padStart(2,'0'); return `${yy}-${mm}-${dd}`; }
   throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
 }
 
-/* Ruajtje AJAX për inline – lejon 'extra' (p.sh. planned_course_id) */
-async function saveInline(studentId, field, value, cell, displayEl, extra={}) {
+/* Save inline (lejon extra p.sh. planned_course_id) */
+async function saveInline(studentId, field, value, cell, displayEl, extra={}){
   if (!EDIT_MODE) return;
-  try {
+  try{
     cell.classList.add('cell-saving');
-    const payload = Object.assign({ csrf: CSRF, student_id: studentId, field, value }, extra || {});
+    const payload = Object.assign({ csrf: CSRF, student_id: studentId, field, value }, extra||{});
     const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+      headers: {'Content-Type':'application/json','Accept':'application/json'},
       body: JSON.stringify(payload)
     });
     const json = await res.json();
     cell.classList.remove('cell-saving');
     if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
-
     if (displayEl && field !== 'education_level_id' && field !== 'gender_id') {
       displayEl.textContent = json.display ?? (value || '—');
     }
-    cell.classList.add('cell-ok');
-    setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
     notify('success','U ruajt me sukses.');
-  } catch (e) {
+  }catch(e){
     console.error(e);
     notify('danger', e.message || 'Ndodhi një gabim.');
     cell.classList.remove('cell-saving');
-    cell.classList.add('cell-err');
-    setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+    cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
   }
 }
 
-/* Event për contenteditable (blur & Enter) – me hook për nr_amze që të pyesë për modulin */
-let pendingAmzeChange = null; // {sid, field, newVal, cell, el}
+/* contenteditable events + AMZE hook */
+let pendingAmzeChange = null;
 
 document.querySelectorAll('td.cell .editable').forEach(el => {
   let oldVal = el.textContent;
-  if (!EDIT_MODE) el.setAttribute('contenteditable', 'false');
+  if (!EDIT_MODE) el.setAttribute('contenteditable','false');
 
-  el.addEventListener('focus', () => { oldVal = el.textContent; });
-  el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
+  el.addEventListener('focus', ()=>{ oldVal = el.textContent; });
+  el.addEventListener('keydown', ev => { if (ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
   el.addEventListener('blur', () => {
     if (!EDIT_MODE) return;
     const cell = el.closest('td.cell');
@@ -962,162 +1097,152 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
 
     if (field === 'birth_date') {
       try { newVal = normalizeDateForServer(newVal); }
-      catch (err) { el.textContent = oldVal; notify('danger', err.message || err); return; }
+      catch(err){ el.textContent = oldVal; notify('danger', err.message || err); return; }
     }
 
-    // Nëse po ndryshohet nr_amze, ofro zgjedhje moduli (opsionale)
     if (field === 'nr_amze') {
       pendingAmzeChange = { sid, field, newVal, cell, el };
       const pickModal = new bootstrap.Modal(document.getElementById('pickCourseModal'));
-      // reset selection
-      const sel = document.getElementById('pickCourseSelect');
-      if (sel) sel.value = '';
-      pickModal.show();
-      return; // mos ruaj direkt; prit zgjedhjen e modulit ose skip
+      const sel = document.getElementById('pickCourseSelect'); if (sel) sel.value = '';
+      pickModal.show(); return;
     }
 
-    // Fushat e tjera ruhen direkt
     saveInline(sid, field, newVal, cell, el);
   });
 });
 
-/* Event për select (education_level_id, gender_id) */
-document.querySelectorAll('td.cell select.inline-select').forEach(sel => {
-  if (!EDIT_MODE) sel.setAttribute('disabled', 'disabled');
-  sel.addEventListener('change', () => {
+/* select events */
+document.querySelectorAll('td.cell select.inline-select').forEach(sel=>{
+  if (!EDIT_MODE) sel.setAttribute('disabled','disabled');
+  sel.addEventListener('change', ()=>{
     if (!EDIT_MODE) return;
-    const cell  = sel.closest('td.cell');
-    const sid   = parseInt(cell.dataset.id, 10);
-    const field = cell.dataset.field;
-    const val   = sel.value;
-    saveInline(sid, field, val, cell, null);
+    const cell = sel.closest('td.cell');
+    const sid  = parseInt(cell.dataset.id, 10);
+    const field= cell.dataset.field;
+    saveInline(sid, field, sel.value, cell, null);
   });
 });
 
-/* Autoplotësim nga Numri Personal (MODAL) */
-const pnInput = document.getElementById('pnInput');
-pnInput?.addEventListener('blur', async ()=>{
-  const pn = pnInput.value.trim();
+/* Autoplotësim nga Numri Personal (modal i shtimit) */
+function isoToDmy(iso){ if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return ''; const [y,m,d]=iso.split('-'); return `${d}-${m}-${y}`; }
+document.getElementById('pnInput')?.addEventListener('blur', async ()=>{
+  const pn = document.getElementById('pnInput').value.trim();
   if (!pn) return;
   try{
-    const res = await fetch(`students.php?action=lookup_person&personal_number=${encodeURIComponent(pn)}`, {
-      headers: {'Accept':'application/json'}
-    });
+    const res = await fetch(`students.php?action=lookup_person&personal_number=${encodeURIComponent(pn)}`, { headers:{'Accept':'application/json'} });
     const json = await res.json();
     if (!json.ok) { notify('danger', json.error || 'Gabim në kërkim.'); return; }
-
     const p = json.person;
-    if (p) {
+    if (p){
       document.getElementById('fnInput').value  = p.first_name ?? '';
       document.getElementById('fatInput').value = p.father_name ?? '';
       document.getElementById('lnInput').value  = p.last_name ?? '';
       document.getElementById('bdInput').value  = isoToDmy(p.birth_date) || '';
       document.getElementById('bpInput').value  = p.birth_place ?? '';
       document.getElementById('phInput').value  = p.phone ?? '';
-
-      const gsel = document.getElementById('genderSelect');
-      if (gsel && p.gender_id) gsel.value = String(p.gender_id);
-
-      const esel = document.getElementById('eduSelect');
-      if (esel && json.education_level_id) esel.value = String(json.education_level_id);
-
+      const gsel = document.getElementById('genderSelect'); if (gsel && p.gender_id) gsel.value = String(p.gender_id);
+      const esel = document.getElementById('eduSelect');    if (esel && json.education_level_id) esel.value = String(json.education_level_id);
       notify('info','Të dhënat u plotësuan nga numri personal.');
-    } else {
-      notify('warning','Nuk u gjet person me këtë numër personal.');
-    }
+    } else notify('warning','Nuk u gjet person me këtë numër personal.');
   }catch(e){ console.error(e); notify('danger','Gabim gjatë autoplotësimit.'); }
 });
 
-/* Flash -> Toast sapo ngarkohet faqja */
+/* DD-MM-YYYY mask */
+function maskToDDMMYYYY(input){
+  const digits=String(input||'').replace(/\D/g,'').slice(0,8);
+  const d=digits.slice(0,2), m=digits.slice(2,4), y=digits.slice(4,8);
+  let out=d; if (digits.length>2) out+='-'+m; if (digits.length>4) out+='-'+y; return out;
+}
+function placeCaretAtEnd(el){
+  const range=document.createRange(); range.selectNodeContents(el); range.collapse(false);
+  const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+}
+function attachDateMaskContentEditable(el){
+  el.addEventListener('input', ()=>{
+    const masked = maskToDDMMYYYY(el.textContent);
+    if (el.textContent !== masked){ el.textContent = masked; placeCaretAtEnd(el); }
+  });
+  el.addEventListener('paste', (e)=>{
+    e.preventDefault(); const txt=(e.clipboardData||window.clipboardData).getData('text');
+    el.textContent = maskToDDMMYYYY(txt); placeCaretAtEnd(el);
+  });
+}
+function attachDateMaskInput(inp){
+  const apply=()=>{ inp.value = maskToDDMMYYYY(inp.value); };
+  inp.addEventListener('input', apply);
+  inp.addEventListener('blur', apply);
+  inp.addEventListener('paste', (e)=>{
+    e.preventDefault(); const txt=(e.clipboardData||window.clipboardData).getData('text');
+    inp.value = maskToDDMMYYYY(txt);
+  });
+}
+document.querySelectorAll('td.cell[data-field="birth_date"] .editable').forEach(attachDateMaskContentEditable);
+const bdInputEl = document.getElementById('bdInput'); if (bdInputEl) attachDateMaskInput(bdInputEl);
+
+/* Modal e modulit pas ndryshimit të nr_amze */
+const pickCourseSelect = document.getElementById('pickCourseSelect');
+document.getElementById('btnSaveCourse')?.addEventListener('click', ()=>{
+  if (!pendingAmzeChange) return;
+  const { sid, field, newVal, cell, el } = pendingAmzeChange;
+  const cid = (pickCourseSelect && pickCourseSelect.value) ? parseInt(pickCourseSelect.value,10) : 0;
+  saveInline(sid, field, newVal, cell, el, cid>0 ? { planned_course_id: cid } : {});
+  pendingAmzeChange = null;
+  bootstrap.Modal.getInstance(document.getElementById('pickCourseModal'))?.hide();
+});
+document.getElementById('btnSkipCourse')?.addEventListener('click', ()=>{
+  if (!pendingAmzeChange) return;
+  const { sid, field, newVal, cell, el } = pendingAmzeChange;
+  saveInline(sid, field, newVal, cell, el);
+  pendingAmzeChange = null;
+});
+
+/* Delete flow */
+let deleteState = { sid:0, name:'', amze:'' };
+document.querySelectorAll('.btn-delete').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    deleteState.sid  = parseInt(btn.dataset.sid, 10);
+    deleteState.name = btn.dataset.name || '—';
+    deleteState.amze = btn.dataset.amze || '—';
+    document.getElementById('delName').textContent = deleteState.name;
+    document.getElementById('delAmze').textContent = deleteState.amze;
+    document.getElementById('delAlsoIdentity').checked = false;
+    new bootstrap.Modal(document.getElementById('deleteStudentModal')).show();
+  });
+});
+
+document.getElementById('btnConfirmDelete')?.addEventListener('click', async ()=>{
+  if (!deleteState.sid) return;
+  const also = document.getElementById('delAlsoIdentity').checked ? 1 : 0;
+  try{
+    const res = await fetch('students.php', {
+      method: 'POST',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body: JSON.stringify({
+        csrf: CSRF,
+        action: 'delete_student',
+        student_id: deleteState.sid,
+        also_delete_identity: also
+      })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Fshirja dështoi.');
+    // hiq rreshtin
+    document.getElementById(`row-${deleteState.sid}`)?.remove();
+    bootstrap.Modal.getInstance(document.getElementById('deleteStudentModal'))?.hide();
+    notify('success', `U fshi AMZË ${deleteState.amze}${json.deleted_person ? ' dhe identiteti' : ''}.`);
+  }catch(e){
+    console.error(e);
+    notify('danger', e.message || 'Gabim gjatë fshirjes.');
+  }
+});
+
+/* Flash -> Toast on load */
 <?php if ($m = flash('ok')): ?>
 document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($m) ?>));
 <?php endif; ?>
 <?php if ($m = flash('err')): ?>
 document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($m) ?>));
 <?php endif; ?>
-</script>
-<script>
-// === Maskë DD-MM-YYYY (auto-viza) për contenteditable & input tekst ===
-function maskToDDMMYYYY(input) {
-  const digits = String(input || '').replace(/\D/g, '').slice(0, 8); // max 8 shifra
-  const d = digits.slice(0, 2);
-  const m = digits.slice(2, 4);
-  const y = digits.slice(4, 8);
-  let out = d;
-  if (digits.length > 2) out += '-' + m;
-  if (digits.length > 4) out += '-' + y;
-  return out;
-}
-function placeCaretAtEnd(el) {
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  range.collapse(false);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-}
-function attachDateMaskContentEditable(el) {
-  el.addEventListener('input', () => {
-    const masked = maskToDDMMYYYY(el.textContent);
-    if (el.textContent !== masked) {
-      el.textContent = masked;
-      placeCaretAtEnd(el);
-    }
-  });
-  el.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const txt = (e.clipboardData || window.clipboardData).getData('text');
-    el.textContent = maskToDDMMYYYY(txt);
-    placeCaretAtEnd(el);
-  });
-}
-function attachDateMaskInput(inp) {
-  const apply = () => { inp.value = maskToDDMMYYYY(inp.value); };
-  inp.addEventListener('input', apply);
-  inp.addEventListener('blur', apply);
-  inp.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const txt = (e.clipboardData || window.clipboardData).getData('text');
-    inp.value = maskToDDMMYYYY(txt);
-  });
-}
-// ISO -> DD-MM-YYYY (p.sh. për autoplotësim)
-function isoToDmy(iso) {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
-  const [y,m,d] = iso.split('-');
-  return `${d}-${m}-${y}`;
-}
-
-// 3a) Apliko maskë në qelizat inline të birth_date
-document.querySelectorAll('td.cell[data-field="birth_date"] .editable')
-  .forEach(attachDateMaskContentEditable);
-
-// 3b) Apliko maskë te input-i i modalit (bdInput)
-const bdInputEl = document.getElementById('bdInput');
-if (bdInputEl) attachDateMaskInput(bdInputEl);
-
-// ==== Modal për modulin pas ndërrimit të nr_amze ====
-const pickModalEl = document.getElementById('pickCourseModal');
-const pickCourseSelect = document.getElementById('pickCourseSelect');
-const pickModal = pickModalEl ? new bootstrap.Modal(pickModalEl) : null;
-
-document.getElementById('btnSaveCourse')?.addEventListener('click', () => {
-  if (!pendingAmzeChange) return;
-  const { sid, field, newVal, cell, el } = pendingAmzeChange;
-  const cid = (pickCourseSelect && pickCourseSelect.value) ? parseInt(pickCourseSelect.value, 10) : 0;
-  // Ruaj nr_amze + planned_course_id në të njëjtën thirrje
-  saveInline(sid, field, newVal, cell, el, cid > 0 ? { planned_course_id: cid } : {});
-  pendingAmzeChange = null;
-  pickModal?.hide();
-});
-
-document.getElementById('btnSkipCourse')?.addEventListener('click', () => {
-  if (!pendingAmzeChange) return;
-  const { sid, field, newVal, cell, el } = pendingAmzeChange;
-  // Ruaj vetëm nr_amze pa modul
-  saveInline(sid, field, newVal, cell, el);
-  pendingAmzeChange = null;
-});
 </script>
 </body>
 </html>
