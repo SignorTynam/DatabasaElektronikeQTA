@@ -42,6 +42,10 @@ $NAV_ACTIVE = 'register';
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
 $CSRF = $_SESSION['csrf_token'];
 
+/* Flash mesazhe për toast pas redirect/operacioneve tjera */
+$flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
+$flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
+
 /* Helper: formatim datash për shfaqje (dd-mm-yyyy) */
 function fmt_dMY(?string $iso): string {
   if (!$iso) return '—';
@@ -196,7 +200,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
     .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-    /* ===== Floating action buttons (stacked) — IDENTIK me groups.php ===== */
+    /* ===== Floating action buttons (stacked) — identik me faqet e tjera ===== */
     .fab-stack{
       position: fixed;
       right: 24px;
@@ -253,7 +257,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
     .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
     .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
 
-    /* Compact paddings si te groups.php */
+    /* Compact paddings */
     .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
   </style>
 </head>
@@ -271,7 +275,6 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
 <main class="container-fluid px-3 px-md-4">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Regjistri i studentëve</h2>
-    <!-- Heqëm butona të tjerë — përdorim vetëm FAB për Edit Mode -->
   </div>
 
   <!-- Kërkim & Filtrim -->
@@ -415,7 +418,7 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
   </div>
 </main>
 
-<!-- FAB Stack: vetëm Edit Mode (dizajn identik me groups.php) -->
+<!-- FAB Stack: vetëm Edit Mode -->
 <div class="fab-stack" role="group" aria-label="Veprime shpejta">
   <a id="editModeFab"
      class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
@@ -432,10 +435,10 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'register_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Compact mode si te groups.php */
+/* Compact mode si te faqet e tjera */
 document.addEventListener('DOMContentLoaded', ()=>document.body.classList.add('compact'));
 
-/* Toast helper */
+/* Toast helper — identik me students_without_groups.php */
 function notify(type, text, opts={}){
   const zone = document.getElementById('toastZone');
   const id = 't' + Date.now() + Math.random().toString(16).slice(2);
@@ -471,7 +474,7 @@ function showMsg(type, text){ notify(type, text); }
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
-/* SI TEK groups.php: prano VETËM DD-MM-YYYY dhe kthe në YYYY-MM-DD për server */
+/* DD-MM-YYYY -> YYYY-MM-DD për server */
 function normalizeDateForServer(v){
   const s = clean(v);
   if (s === '' || s === '—') return '';
@@ -481,7 +484,7 @@ function normalizeDateForServer(v){
 }
 
 async function saveInline(payload, cell, displayEl, oldVal){
-  if (!EDIT_MODE) return; // hard stop
+  if (!EDIT_MODE) { notify('warning','Edit Mode është OFF.'); return; }
   try{
     cell.classList.add('cell-saving');
     const res = await fetch(ENDPOINT, {
@@ -578,7 +581,7 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
 });
 </script>
 <script>
-// === Auto-viza për datat (DD-MM-YYYY) në contenteditable ===
+/* === Auto-viza për datat (DD-MM-YYYY) në contenteditable === */
 function maskToDDMMYYYY(input) {
   const digits = String(input || '').replace(/\D/g, '').slice(0, 8); // max 8 shifra
   const d = digits.slice(0, 2);
@@ -598,7 +601,6 @@ function placeCaretAtEnd(el) {
   sel.addRange(range);
 }
 function attachDateMask(el) {
-  // mos lejo karaktere të tjerë; formo automatikisht vizat
   el.addEventListener('input', () => {
     const masked = maskToDDMMYYYY(el.textContent);
     if (el.textContent !== masked) {
@@ -606,7 +608,6 @@ function attachDateMask(el) {
       placeCaretAtEnd(el);
     }
   });
-  // paste → pastro & masko
   el.addEventListener('paste', (e) => {
     e.preventDefault();
     const txt = (e.clipboardData || window.clipboardData).getData('text');
@@ -615,12 +616,46 @@ function attachDateMask(el) {
   });
 }
 
-// Apliko maskën te të gjitha qelizat e datës
+/* === Maskë e thjeshtë për notën (lejo vetëm shifra dhe një presje/pikë) === */
+function attachScoreMask(el){
+  el.addEventListener('input', ()=>{
+    let t = el.textContent;
+    // Hiq çdo karakter që s’është shifër, presje apo pikë
+    t = t.replace(/[^0-9,\.]/g,'');
+    // Lejo vetëm një presje/pikë
+    const firstSep = t.search(/[,.]/);
+    if (firstSep !== -1){
+      const head = t.slice(0, firstSep + 1);
+      const tail = t.slice(firstSep + 1).replace(/[,.]/g,'');
+      t = head + tail;
+    }
+    if (el.textContent !== t){
+      el.textContent = t;
+      placeCaretAtEnd(el);
+    }
+  });
+}
+
 document.querySelectorAll(
   'td.cell[data-field="start_date"] .editable,' +
   'td.cell[data-field="end_date"] .editable,'  +
   'td.cell[data-field="exam_date"] .editable'
 ).forEach(attachDateMask);
+
+document.querySelectorAll('td.cell[data-field="final_score"] .editable').forEach(attachScoreMask);
+
+/* Shfaq toaste nga sesi (flash) ose gjendja e Edit Mode */
+<?php if ($flash_ok): ?>
+document.addEventListener('DOMContentLoaded', ()=> notify('success', <?= json_encode($flash_ok) ?>));
+<?php endif; ?>
+<?php if ($flash_err): ?>
+document.addEventListener('DOMContentLoaded', ()=> notify('danger', <?= json_encode($flash_err) ?>));
+<?php endif; ?>
+
+// Opsionale: informo për Edit Mode në hyrje (komentoje nëse s’e do)
+document.addEventListener('DOMContentLoaded', ()=>{
+  notify('info', 'Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?>', { delay: 2500 });
+});
 </script>
 
 </body>

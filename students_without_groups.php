@@ -50,6 +50,7 @@ function json_response(array $payload): void {
    Veprime:
    - assign_to_group: vendos studentin në grup, heq çdo plan "planned"
    - set_student_plan: ndërron/ vendos modulin "planned" (upsert)
+   - remove_student_plan: heq studentin nga një modul (fshin planin 'planned')
 ========================================================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
   $payload = json_decode(file_get_contents('php://input'), true) ?: [];
@@ -112,53 +113,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $ins->execute([':g'=>$group_id, ':s'=>$student_id]);
       $pdo->commit();
 
+      // Flash për toast pas rifreskimit
+      $_SESSION['flash_ok'] = 'U vendos në grup.';
       json_response(['ok'=>true, 'message'=>'U vendos në grup.']);
     }
 
     if ($action === 'set_student_plan') {
-    $student_id = (int)($payload['student_id'] ?? 0);
-    $course_id  = (int)($payload['course_id']  ?? 0);
-    if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+      $student_id = (int)($payload['student_id'] ?? 0);
+      $course_id  = (int)($payload['course_id']  ?? 0);
+      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
 
-    // S’lejohet plan nëse studenti është në ndonjë grup
-    $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students WHERE student_id=:s LIMIT 1");
-    $inGroup->execute([':s'=>$student_id]);
-    if ($inGroup->fetchColumn()) {
-      throw new RuntimeException('Ky student është në një grup. Hiqe nga grupi përpara ndryshimit të modulit.');
+      // S’lejohet plan nëse studenti është në ndonjë grup
+      $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students WHERE student_id=:s LIMIT 1");
+      $inGroup->execute([':s'=>$student_id]);
+      if ($inGroup->fetchColumn()) {
+        throw new RuntimeException('Ky student është në një grup. Hiqe nga grupi përpara ndryshimit të modulit.');
+      }
+
+      // Ndalim: i njëjti person s’mund ta ketë ndjekur (në grupe) të njëjtin modul
+      $getPersonPN->execute([':sid'=>$student_id]);
+      $pn = $getPersonPN->fetchColumn();
+      if ($hasAttendedCoursePN($course_id, $pn)) {
+        throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul — nuk lejohet plan për të njëjtin modul.');
+      }
+
+      $pdo->beginTransaction();
+
+      // Hiq çdo plan TË TJERË (kurse të tjerë) që ka studenti,
+      // por mos prek rreshtin ekzistues për këtë kurs target (për të shmangur konfliktin unik).
+      $pdo->prepare("
+        DELETE FROM student_course_plans
+        WHERE student_id = :s AND status = 'planned' AND course_id <> :c
+      ")->execute([':s'=>$student_id, ':c'=>$course_id]);
+
+      // UPSERT: nëse ekziston rresht për (student_id, course_id), thjesht përditëso statusin në 'planned'
+      $upsert = $pdo->prepare("
+        INSERT INTO student_course_plans (student_id, course_id, status)
+        VALUES (:s, :c, 'planned')
+        ON DUPLICATE KEY UPDATE status = VALUES(status)
+      ");
+      $upsert->execute([':s'=>$student_id, ':c'=>$course_id]);
+
+      $pdo->commit();
+
+      // Flash për toast pas rifreskimit
+      $_SESSION['flash_ok'] = 'Moduli (plan) u përditësua.';
+      json_response(['ok'=>true, 'message'=>'Moduli (plan) u përditësua.']);
     }
 
-    // Ndalim: i njëjti person s’mund ta ketë ndjekur (në grupe) të njëjtin modul
-    $getPersonPN->execute([':sid'=>$student_id]);
-    $pn = $getPersonPN->fetchColumn();
-    if ($hasAttendedCoursePN($course_id, $pn)) {
-      throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul — nuk lejohet plan për të njëjtin modul.');
+    /* NEW: Hiq studentin nga një modul (fshi planin e modulit) */
+    if ($action === 'remove_student_plan') {
+      $student_id = (int)($payload['student_id'] ?? 0);
+      $course_id  = (int)($payload['course_id']  ?? 0);
+      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+
+      // Student nuk duhet të jetë në ndonjë grup të këtij moduli
+      $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students cgs JOIN course_groups cg ON cg.id=cgs.group_id WHERE cgs.student_id=:s AND cg.course_id=:c LIMIT 1");
+      $inGroup->execute([':s'=>$student_id, ':c'=>$course_id]);
+      if ($inGroup->fetchColumn()) {
+        throw new RuntimeException('Ky student është i caktuar në një grup për këtë modul — hiqe nga grupi fillimisht.');
+      }
+
+      // Fshi vetëm planet 'planned' për këtë modul
+      $del = $pdo->prepare("DELETE FROM student_course_plans WHERE student_id=:s AND course_id=:c AND status='planned'");
+      $del->execute([':s'=>$student_id, ':c'=>$course_id]);
+
+      if ($del->rowCount() < 1) {
+        throw new RuntimeException('Nuk u gjet plan aktiv për këtë modul.');
+      }
+
+      // Flash për toast pas rifreskimit
+      $_SESSION['flash_ok'] = 'Plani i modulit u hoq.';
+      json_response(['ok'=>true, 'message'=>'Plani i modulit u hoq.']);
     }
-
-    $pdo->beginTransaction();
-
-    // Hiq çdo plan TË TJERË (kurse të tjerë) që ka studenti,
-    // por mos prek rreshtin ekzistues për këtë kurs target (për të shmangur konfliktin unik).
-    $pdo->prepare("
-      DELETE FROM student_course_plans
-      WHERE student_id = :s AND status = 'planned' AND course_id <> :c
-    ")->execute([':s'=>$student_id, ':c'=>$course_id]);
-
-    // UPSERT: nëse ekziston rresht për (student_id, course_id), thjesht përditëso statusin në 'planned'
-    $upsert = $pdo->prepare("
-      INSERT INTO student_course_plans (student_id, course_id, status)
-      VALUES (:s, :c, 'planned')
-      ON DUPLICATE KEY UPDATE status = VALUES(status)
-    ");
-    $upsert->execute([':s'=>$student_id, ':c'=>$course_id]);
-
-    $pdo->commit();
-
-    json_response(['ok'=>true, 'message'=>'Moduli (plan) u përditësua.']);
-  }
-
 
     throw new RuntimeException('Veprim i panjohur.');
   } catch (Throwable $e) {
+    // Për gabimet NUK vendosim flash_err, sepse s’po rifreskojmë faqen në frontend.
     json_response(['ok'=>false, 'error'=>$e->getMessage()]);
   }
 }
@@ -458,7 +489,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
                   <th class="nowrap">AMZË</th>
                   <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
                   <th class="nowrap">Zgjidh grup (<?= h($cname) ?>)</th>
-                  <th class="nowrap">Ndrysho modul</th>
+                  <th class="nowrap">Ndrysho / Hiq modul</th>
                 </tr>
               </thead>
               <tbody>
@@ -513,8 +544,13 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
                               data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
                         <i class="bi bi-arrow-repeat me-1"></i>Ruaj
                       </button>
+                      <!-- NEW: Hiq planin për këtë modul -->
+                      <button class="btn btn-outline-danger btn-sm" data-role="plan-remove"
+                              data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                        <i class="bi bi-trash me-1"></i>Hiq
+                      </button>
                     </div>
-                    <div class="small text-muted mt-1">Ndrysho modulin e planifikuar të studentit.</div>
+                    <div class="small text-muted mt-1">Ndrysho ose hiq modulin e planifikuar të studentit.</div>
                   </td>
                 </tr>
               <?php endforeach; ?>
@@ -652,8 +688,8 @@ document.querySelectorAll('[data-role="assign-btn"]').forEach(btn=>{
       const json = await res.json();
       btn.disabled = false;
       if (!json.ok) { notify('danger', json.error || 'Nuk u krye veprimi.'); return; }
-      notify('success','U vendos në grup.');
-      location.reload(); // rifresko bucket-ët
+      // Mos shfaq toast këtu; do shfaqet pas reload-it nga flash_ok
+      location.reload();
     }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
   });
 });
@@ -677,7 +713,7 @@ document.querySelectorAll('[data-role="assign-btn-any"]').forEach(btn=>{
       const json = await res.json();
       btn.disabled = false;
       if (!json.ok) { notify('danger', json.error || 'Nuk u krye veprimi.'); return; }
-      notify('success','U vendos në grup.');
+      // Toast shfaqet pas reload-it nga flash_ok
       location.reload();
     }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
   });
@@ -702,8 +738,33 @@ document.querySelectorAll('[data-role="plan-btn"]').forEach(btn=>{
       const json = await res.json();
       btn.disabled = false;
       if (!json.ok) { notify('danger', json.error || 'Nuk u ruajt moduli.'); return; }
-      notify('success','Moduli u përditësua.');
-      location.reload(); // rifresko bucket-ët sipas modulit
+      // Toast shfaqet pas reload-it nga flash_ok
+      location.reload();
+    }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
+  });
+});
+
+/* NEW: Hiq modulin (plan) për këtë student */
+document.querySelectorAll('[data-role="plan-remove"]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    if (!EDIT_MODE) return;
+    const sid = parseInt(btn.dataset.student,10);
+    const cid = parseInt(btn.dataset.course,10);
+    if (!sid || !cid) { notify('danger','Të dhëna të pavlefshme.'); return; }
+    if (!confirm('Je i sigurt që dëshiron të heqësh modulin e planifikuar për këtë student?')) return;
+
+    btn.disabled = true;
+    try{
+      const res = await fetch(ENDPOINT, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body: JSON.stringify({csrf:CSRF, action:'remove_student_plan', student_id:sid, course_id:cid})
+      });
+      const json = await res.json();
+      btn.disabled = false;
+      if (!json.ok) { notify('danger', json.error || 'Nuk u hoq plani i modulit.'); return; }
+      // Toast shfaqet pas reload-it nga flash_ok
+      location.reload();
     }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
   });
 });

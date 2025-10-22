@@ -8,7 +8,7 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
-/* Autoload i Composer (si te register_export.php) */
+/* ===== Composer autoload ===== */
 $autoloadCandidates = [
   __DIR__ . '/vendor/autoload.php',
   __DIR__ . '/../vendor/autoload.php',
@@ -24,64 +24,111 @@ if (!$autoloadLoaded) {
   exit;
 }
 
-/* Guard: admin OSE editor + CSRF */
+/* ===== Guard: admin/editor + CSRF ===== */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
-$u = $pdo->prepare("
-  SELECT u.id, r.name AS role_name
-  FROM users u JOIN roles r ON r.id=u.role_id
-  WHERE u.id=:id LIMIT 1
-");
+$u = $pdo->prepare("SELECT u.id, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=:id LIMIT 1");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $me = $u->fetch(PDO::FETCH_ASSOC);
-
 $role = strtolower((string)($me['role_name'] ?? ''));
-if (!$me || !in_array($role, ['administrator','editor'], true)) {
-  header('Location: selectProfile.php'); exit;
-}
+if (!$me || !in_array($role, ['administrator','editor'], true)) { header('Location: selectProfile.php'); exit; }
 
 $csrfSession = $_SESSION['csrf_token'] ?? '';
 $csrfQuery   = $_GET['csrf'] ?? '';
-if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
-  http_response_code(403); echo 'CSRF gabim ose mungon.'; exit;
-}
+if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) { http_response_code(403); echo 'CSRF gabim ose mungon.'; exit; }
 
-/* Parametra */
+/* ===== Parametra ===== */
 $type = strtolower(trim((string)($_GET['type'] ?? '')));
 $fmt  = strtolower(trim((string)($_GET['f'] ?? 'xlsx')));  // xlsx|pdf|docx
 
-/* Helpers export */
-function outXlsx(array $headers, array $rows, string $title, string $filename): void {
+/* ===== Opsione ekzekutimi ===== */
+@ini_set('memory_limit','512M');
+@set_time_limit(120);
+
+/* ===== Helpers të përgjithshëm ===== */
+function iso_to_dmy(?string $iso): string {
+  if (!$iso || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$iso)) return (string)$iso;
+  $ts = strtotime((string)$iso); return $ts ? date('d-m-Y', $ts) : (string)$iso;
+}
+
+/* Njoftim opsional për UI (cookie “file ready”) */
+function signal_download_ready(string $token='ok'): void {
+  header('X-File-Download: 1');
+  setcookie('qta_file_ready', $token, [
+    'expires'  => time()+60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+}
+
+/* Pastrim & stream i sigurt */
+function qta_prepare_output(): void {
+  if (function_exists('ini_get') && ini_get('zlib.output_compression')) {
+    @ini_set('zlib.output_compression', 'Off');
+  }
+  while (ob_get_level() > 0) { @ob_end_clean(); }
+}
+function qta_stream_file(string $tmpPath, string $mime, string $downloadName): void {
+  qta_prepare_output();
+  header('Content-Type: '.$mime);
+  header('Content-Disposition: attachment; filename="'.$downloadName.'"');
+  header('Content-Transfer-Encoding: binary');
+  header('Cache-Control: private, max-age=0, must-revalidate');
+  header('Pragma: public');
+  header('X-Accel-Buffering: no');
+  $size = @filesize($tmpPath);
+  if ($size !== false) header('Content-Length: '.$size);
+  $fh = fopen($tmpPath, 'rb');
+  fpassthru($fh);
+  fclose($fh);
+  @unlink($tmpPath);
+  exit;
+}
+
+/* ===== Exporters ===== */
+function outXlsx(array $headers, array $rows, string $title, string $filenameBase): void {
+  signal_download_ready();
   $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
   $sheet = $spreadsheet->getActiveSheet();
   $sheet->setTitle(mb_substr($title,0,31));
 
-  $col = 1;
+  // Header
+  $i = 1;
   foreach ($headers as $h) {
-    $cell = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col).'1';
-    $sheet->setCellValue($cell, $h);
-    $col++;
+    $addr = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i).'1';
+    $sheet->setCellValue($addr, $h);
+    $i++;
   }
-  $r=2;
+  $sheet->getStyle('1:1')->getFont()->setBold(true);
+
+  // Rows
+  $r = 2;
   foreach ($rows as $row) {
-    $c=1;
+    $c = 1;
     foreach ($row as $val) {
-      $cell = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c).$r;
-      $sheet->setCellValue($cell, $val);
+      $addr = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c).$r;
+      $sheet->setCellValueExplicit($addr, (string)$val, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
       $c++;
     }
     $r++;
   }
-  $highestCol = $sheet->getHighestColumn();
-  foreach (range('A',$highestCol) as $L) $sheet->getColumnDimension($L)->setAutoSize(true);
 
-  header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  header('Content-Disposition: attachment; filename="'.$filename.'.xlsx"');
-  header('Cache-Control: max-age=0');
-  ( \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet,'Xlsx') )->save('php://output');
-  exit;
+  // Autosize
+  $colCount = count($headers);
+  for ($ci = 1; $ci <= $colCount; $ci++) {
+    $colL = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($ci);
+    $sheet->getColumnDimension($colL)->setAutoSize(true);
+  }
+
+  $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet,'Xlsx');
+  $tmp = tempnam(sys_get_temp_dir(), 'qta_xlsx_');
+  $writer->save($tmp);
+  qta_stream_file($tmp, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $filenameBase.'.xlsx');
 }
 
-function outPdf(array $headers, array $rows, string $title, string $filename): void {
+function outPdf(array $headers, array $rows, string $title, string $filenameBase): void {
+  signal_download_ready();
   $e = fn($s)=>htmlspecialchars((string)$s, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
   ob_start(); ?>
   <html><head><meta charset="UTF-8" />
@@ -107,47 +154,113 @@ function outPdf(array $headers, array $rows, string $title, string $filename): v
   </body></html>
   <?php
   $html = ob_get_clean();
-  $dompdf = new \Dompdf\Dompdf((new \Dompdf\Options())->set('isRemoteEnabled', true));
+  $opt = new \Dompdf\Options();
+  $opt->set('isRemoteEnabled', true);
+  $opt->set('defaultFont', 'DejaVu Sans');
+  $dompdf = new \Dompdf\Dompdf($opt);
   $dompdf->loadHtml($html,'UTF-8');
   $dompdf->setPaper('A4','landscape');
   $dompdf->render();
-  $dompdf->stream($filename.'.pdf', ['Attachment'=>true]);
-  exit;
+
+  $tmp = tempnam(sys_get_temp_dir(), 'qta_pdf_');
+  file_put_contents($tmp, $dompdf->output());
+  qta_stream_file($tmp, 'application/pdf', $filenameBase.'.pdf');
 }
 
-function outDocx(array $headers, array $rows, string $title, string $filename): void {
-  $phpWord = new \PhpOffice\PhpWord\PhpWord();
-  $section = $phpWord->addSection(['orientation'=>'landscape','marginLeft'=>600,'marginRight'=>600,'marginTop'=>600,'marginBottom'=>600]);
-  $section->addText($title, ['bold'=>true,'size'=>14], ['spaceAfter'=>200]);
-  $styleTable = ['borderSize'=>6,'borderColor'=>'999999','cellMargin'=>80];
-  $styleFirst = ['bgColor'=>'F1F3F5'];
-  $phpWord->addTableStyle('tbl', $styleTable, $styleFirst);
-  $t = $section->addTable('tbl');
-  $t->addRow();
-  foreach($headers as $h) { $t->addCell()->addText($h, ['bold'=>true]); }
-  foreach($rows as $r) {
+/* Fallback për Word: .DOC (HTML) në LANDSCAPE – nuk kërkon ext-zip */
+function outWordHtml(array $headers, array $rows, string $title, string $filenameBase): void {
+  signal_download_ready();
+  $e = fn($s)=>htmlspecialchars((string)$s, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+  ob_start(); ?>
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title><?= $e($title) ?></title>
+    <style>
+      /* Word-friendly landscape */
+      @page { size: A4 landscape; margin: 1.5cm; }
+      @page Section1 { size: 841.9pt 595.3pt; mso-page-orientation: landscape; margin: 1.5cm; }
+      div.Section1 { page: Section1; }
+
+      * { font-family: DejaVu Sans, Calibri, Arial, sans-serif; font-size: 11pt; }
+      h3 { margin: 0 0 10px 0; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th,td { border: 1px solid #999; padding: 4px 6px; word-wrap: break-word; }
+      th { background: #f1f3f5; }
+    </style>
+  </head>
+  <body>
+    <div class="Section1">
+      <h3><?= $e($title) ?></h3>
+      <table>
+        <thead><tr>
+          <?php foreach($headers as $h): ?><th><?= $e($h) ?></th><?php endforeach; ?>
+        </tr></thead>
+        <tbody>
+          <?php foreach($rows as $r): ?><tr>
+            <?php foreach($r as $v): ?><td><?= $e($v) ?></td><?php endforeach; ?>
+          </tr><?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </body>
+  </html>
+  <?php
+  $html = ob_get_clean();
+  $tmp = tempnam(sys_get_temp_dir(), 'qta_doc_');
+  file_put_contents($tmp, $html);
+  qta_stream_file($tmp, 'application/msword', $filenameBase.'.doc');
+}
+
+
+function outDocx(array $headers, array $rows, string $title, string $filenameBase): void {
+  // Nëse s’ka ZipArchive, kalo automatikisht në .DOC (HTML)
+  if (!class_exists('ZipArchive')) { outWordHtml($headers,$rows,$title,$filenameBase); return; }
+
+  signal_download_ready();
+  try {
+    $phpWord = new \PhpOffice\PhpWord\PhpWord();
+    $phpWord->setDefaultFontName('DejaVu Sans');
+    $phpWord->setDefaultFontSize(10);
+
+    $section = $phpWord->addSection([
+      'orientation'=>'landscape',
+      'marginLeft'=>600,'marginRight'=>600,'marginTop'=>600,'marginBottom'=>600
+    ]);
+    $section->addText($title, ['bold'=>true,'size'=>14], ['spaceAfter'=>200]);
+
+    $phpWord->addTableStyle('tbl', ['borderSize'=>6,'borderColor'=>'999999','cellMargin'=>80], ['bgColor'=>'F1F3F5']);
+    $t = $section->addTable('tbl');
     $t->addRow();
-    foreach($r as $v) $t->addCell()->addText((string)$v);
+    foreach($headers as $h) $t->addCell()->addText((string)$h, ['bold'=>true]);
+    foreach($rows as $r) {
+      $t->addRow();
+      foreach($r as $v) $t->addCell()->addText((string)$v);
+    }
+
+    $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+    $tmp = tempnam(sys_get_temp_dir(), 'qta_docx_');
+    $writer->save($tmp);
+    qta_stream_file($tmp, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', $filenameBase.'.docx');
+  } catch (Throwable $e) {
+    // Nëse diçka shkon keq, kalo në .DOC (HTML)
+    outWordHtml($headers,$rows,$title,$filenameBase);
   }
-  header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  header('Content-Disposition: attachment; filename="'.$filename.'.docx"');
-  header('Cache-Control: max-age=0');
-  (\PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007'))->save('php://output');
-  exit;
 }
 
-function exportAny(array $headers, array $rows, string $title, string $filename, string $fmt): void {
+function exportAny(array $headers, array $rows, string $title, string $filenameBase, string $fmt): void {
   switch ($fmt) {
-    case 'xlsx': outXlsx($headers,$rows,$title,$filename); break;
-    case 'pdf' : outPdf($headers,$rows,$title,$filename); break;
-    case 'docx': outDocx($headers,$rows,$title,$filename); break;
+    case 'xlsx': outXlsx($headers,$rows,$title,$filenameBase); break;
+    case 'pdf' : outPdf($headers,$rows,$title,$filenameBase); break;
+    case 'docx': outDocx($headers,$rows,$title,$filenameBase); break; // auto-fallback në .doc
     default: http_response_code(400); echo 'Format i panjohur.'; exit;
   }
 }
 
-/* ------------------------------
-   FORM 1: grupi fillim…mbarim (PA kode kursi)
-------------------------------- */
+/* =========================================================
+   FORM 1: grupi fillim…mbarim (PA kode kursi) — datat DD-MM-YYYY
+   ========================================================= */
 if ($type === 'form1') {
   $gstart = (int)($_GET['gstart'] ?? 0);
   $gend   = (int)($_GET['gend'] ?? 0);
@@ -156,35 +269,16 @@ if ($type === 'form1') {
   $sql = "
     SELECT
       cg.id AS group_id,
-      c.name AS course_name,              -- vetëm emri, pa code
+      c.name AS course_name,
       cg.start_date, cg.end_date,
       COUNT(s.id) AS total,
-
-      /* Femra nga persons.gender_id -> genders.code = 'F' */
       SUM(CASE WHEN g.code='F' THEN 1 ELSE 0 END) AS females,
-
-      /* Grupmoshat nga persons.birth_date */
-      SUM(
-        CASE WHEN p.birth_date IS NOT NULL
-          AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) BETWEEN 16 AND 24
-        THEN 1 ELSE 0 END
-      ) AS age_16_24,
-      SUM(
-        CASE WHEN p.birth_date IS NOT NULL
-          AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) BETWEEN 25 AND 34
-        THEN 1 ELSE 0 END
-      ) AS age_25_34,
-      SUM(
-        CASE WHEN p.birth_date IS NOT NULL
-          AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) >= 35
-        THEN 1 ELSE 0 END
-      ) AS age_35_plus,
-
-      /* Arsimi nga students.education_level_id */
+      SUM(CASE WHEN p.birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) BETWEEN 16 AND 24 THEN 1 ELSE 0 END) AS age_16_24,
+      SUM(CASE WHEN p.birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) BETWEEN 25 AND 34 THEN 1 ELSE 0 END) AS age_25_34,
+      SUM(CASE WHEN p.birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) >= 35 THEN 1 ELSE 0 END) AS age_35_plus,
       SUM(CASE WHEN el.code='AU' THEN 1 ELSE 0 END) AS cnt_AU,
       SUM(CASE WHEN el.code='AM' THEN 1 ELSE 0 END) AS cnt_AM,
       SUM(CASE WHEN el.code='AL' THEN 1 ELSE 0 END) AS cnt_AL,
-
       MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
       MAX(CAST(s.nr_amze AS UNSIGNED)) AS amze_max
     FROM course_groups cg
@@ -211,9 +305,9 @@ if ($type === 'form1') {
     $amzeSpan = ($r['amze_min']===null || $r['amze_max']===null) ? '' : ($r['amze_min'].'–'.$r['amze_max']);
     $data[] = [
       (int)$r['group_id'],
-      $r['course_name'] ?? '',                 // vetëm emri i kursit
-      $r['start_date'] ?? '',
-      $r['end_date'] ?? '',
+      (string)($r['course_name'] ?? ''),
+      iso_to_dmy($r['start_date'] ?? ''),
+      iso_to_dmy($r['end_date'] ?? ''),
       (int)$r['total'],
       (int)$r['females'],
       (int)$r['age_16_24'],
@@ -230,9 +324,9 @@ if ($type === 'form1') {
   exit;
 }
 
-/* ------------------------------
+/* =========================================================
    FORM 2: AMZË fillim…mbarim (veç emrit të kursit të fundit)
-------------------------------- */
+   ========================================================= */
 if ($type === 'form2') {
   $a1 = (int)($_GET['amze_start'] ?? 0);
   $a2 = (int)($_GET['amze_end'] ?? 0);
@@ -246,8 +340,6 @@ if ($type === 'form2') {
       c.name AS course_name
     FROM students s
     JOIN persons p ON p.id = s.person_id
-
-    /* Grupi i fundit i studentit sipas start_date DESC (MySQL 8+) */
     LEFT JOIN (
       SELECT t.student_id, t.course_id
       FROM (
@@ -258,9 +350,7 @@ if ($type === 'form2') {
       ) t
       WHERE t.rn = 1
     ) lastg ON lastg.student_id = s.id
-
     LEFT JOIN courses c ON c.id = lastg.course_id
-
     WHERE CAST(s.nr_amze AS UNSIGNED) BETWEEN :a1 AND :a2
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC
   ";
@@ -272,12 +362,12 @@ if ($type === 'form2') {
   $data = [];
   foreach ($rows as $r) {
     $data[] = [
-      $r['nr_amze'] ?? '',
-      $r['first_name'] ?? '',
-      $r['father_name'] ?? '',
-      $r['last_name'] ?? '',
-      $r['birth_place'] ?? '',
-      $r['course_name'] ?? ''
+      (string)($r['nr_amze'] ?? ''),
+      (string)($r['first_name'] ?? ''),
+      (string)($r['father_name'] ?? ''),
+      (string)($r['last_name'] ?? ''),
+      (string)($r['birth_place'] ?? ''),
+      (string)($r['course_name'] ?? '')
     ];
   }
 

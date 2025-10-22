@@ -5,6 +5,9 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
+/* Helper për escape */
+function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+
 /* Nëse je i loguar, lexo përdoruesin aktual */
 $currentUser = null;
 if (!empty($_SESSION['user_id'])) {
@@ -19,8 +22,8 @@ if (!empty($_SESSION['user_id'])) {
     $currentUser = $stmt->fetch() ?: null;
 }
 
+/* Navbar kryesor */
 require_once __DIR__ . '/navbarMain.php';
-
 
 /* Statistika dinamike */
 $counts = [
@@ -35,34 +38,42 @@ $counts['agencies'] = (int)$pdo->query("SELECT COUNT(*) FROM agencies")->fetchCo
 $counts['users']    = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
 
 $adminCountStmt = $pdo->query("
-    SELECT COUNT(*) 
-    FROM users u 
-    JOIN roles r ON r.id = u.role_id 
+    SELECT COUNT(*)
+    FROM users u
+    JOIN roles r ON r.id = u.role_id
     WHERE r.name = 'administrator'
 ");
 $counts['admins'] = (int)$adminCountStmt->fetchColumn();
 
-/* (Opsionale) lista e fundit – shfaqet vetëm për admin që është loguar */
+/* (Opsionale) listat e fundit – vetëm për admin të loguar */
 $latestStudents = [];
 $latestAgencies = [];
-if ($currentUser && $currentUser['role_name'] === 'administrator') {
+$isAdmin = $currentUser && strtolower((string)$currentUser['role_name']) === 'administrator';
+
+if ($isAdmin) {
+    // Emrat nga persons; renditje sipas students.created_at
     $q = $pdo->query("
-        SELECT s.nr_amze, s.first_name, s.last_name, u.created_at
+        SELECT s.nr_amze,
+               p.first_name,
+               p.last_name,
+               p.personal_number,
+               s.created_at
         FROM students s
-        JOIN users u ON u.id = s.user_id
-        ORDER BY u.created_at DESC
+        JOIN persons p ON p.id = s.person_id
+        ORDER BY s.created_at DESC
         LIMIT 5
     ");
-    $latestStudents = $q->fetchAll();
+    $latestStudents = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    // Agjencitë e fundit: përdor users.created_at (agencies.created_at mund të mos ekzistojë)
     $q = $pdo->query("
         SELECT a.company_name, a.nip_t, u.created_at
         FROM agencies a
-        JOIN users u ON u.id = a.user_id
+        LEFT JOIN users u ON u.id = a.user_id
         ORDER BY u.created_at DESC
         LIMIT 5
     ");
-    $latestAgencies = $q->fetchAll();
+    $latestAgencies = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 ?>
 <!DOCTYPE html>
@@ -107,8 +118,10 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
             filter:blur(30px); opacity:.8;
         }
         .hero-card{
-            background:var(black); border:0.5px solid var(--glass-b);
-            border-radius:.5rem; box-shadow:var(--shadow);
+            background:var(--glass);
+            border:0.5px solid var(--glass-b);
+            border-radius:.75rem; box-shadow:var(--shadow);
+            backdrop-filter: blur(8px);
         }
 
         /* Cards & sections */
@@ -241,7 +254,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
 
             <!-- Steps -->
             <div class="row align-items-center g-4 mt-5">
-                <div class="col-lg-6">
+                <div class="col-lg-6 text-center text-lg-start">
                     <img src="image/logoPNG2.png" class="img-fluid" alt="QTA" style="max-width:360px; opacity:.9;">
                 </div>
                 <div class="col-lg-6">
@@ -296,7 +309,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                 </div>
             </div>
 
-            <?php if ($currentUser && $currentUser['role_name'] === 'administrator'): ?>
+            <?php if ($isAdmin): ?>
             <!-- Shkurtore Admin + Kërkim i shpejtë -->
             <div class="mt-5 admin-quick">
                 <div class="row g-4">
@@ -365,7 +378,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                         </div>
                     </div>
 
-                    <!-- Të fundit (vetëm për admin që janë loguar) -->
+                    <!-- Të fundit (vetëm për admin të loguar) -->
                     <div class="col-lg-4">
                         <div class="card mb-4">
                             <div class="card-header bg-white">
@@ -374,8 +387,10 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                             <ul class="list-group list-group-flush">
                                 <?php if ($latestStudents): foreach ($latestStudents as $s): ?>
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span><?= htmlspecialchars($s['first_name'].' '.$s['last_name']) ?></span>
-                                        <span class="badge text-bg-primary">Amza: <?= htmlspecialchars($s['nr_amze']) ?></span>
+                                        <span><?= h(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))) ?>
+                                            <span class="text-muted small d-block"><?= h($s['personal_number'] ?? '') ?></span>
+                                        </span>
+                                        <span class="badge text-bg-primary">AMZË: <?= h($s['nr_amze'] ?? '') ?></span>
                                     </li>
                                 <?php endforeach; else: ?>
                                     <li class="list-group-item text-muted">S’ka të dhëna.</li>
@@ -389,8 +404,8 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
                             <ul class="list-group list-group-flush">
                                 <?php if ($latestAgencies): foreach ($latestAgencies as $a): ?>
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span><?= htmlspecialchars($a['company_name'] ?: '—') ?></span>
-                                        <span class="badge text-bg-success"><?= htmlspecialchars($a['nip_t']) ?></span>
+                                        <span><?= h($a['company_name'] ?: '—') ?></span>
+                                        <span class="badge text-bg-success"><?= h($a['nip_t'] ?? '') ?></span>
                                     </li>
                                 <?php endforeach; else: ?>
                                     <li class="list-group-item text-muted">S’ka të dhëna.</li>
@@ -407,7 +422,7 @@ if ($currentUser && $currentUser['role_name'] === 'administrator') {
     <!-- JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // KPI animation using IntersectionObserver for smoothness
+        // KPI animation using IntersectionObserver
         const els = document.querySelectorAll('[data-kpi]');
         const animate = (el) => {
             const end = parseInt(el.getAttribute('data-kpi')||'0',10);

@@ -115,7 +115,7 @@ if ($pid > 0) {
   if (!$person) { flash('err','Personi nuk u gjet.'); $pid = 0; }
 
   if ($person) {
-    // Të gjitha AMZË (students) të këtij personi
+    // Të gjitha students (regjistrimet) të këtij personi – përdoren për statistika, nuk shfaqim listë AMZË-sh
     $sqlS = "
       SELECT
         s.id, s.nr_amze, s.education_level_id, el.code AS edu_code, el.label AS edu_label,
@@ -141,7 +141,7 @@ if ($pid > 0) {
     }
 
     if ($person) {
-      // Lexo 1 token QR për person
+      // Token & QR per person
       $qrP = $pdo->prepare("SELECT token, created_at FROM person_qr_tokens WHERE person_id = :pid");
       $qrP->execute([':pid'=>$pid]);
       if ($row = $qrP->fetch(PDO::FETCH_ASSOC)) {
@@ -198,13 +198,13 @@ if ($pid > 0) {
 
         // Të gjitha grupet
         $q4 = $pdo->prepare("
-          SELECT cgs.student_id, s.nr_amze, cg.id AS group_id, c.code, c.name, cg.start_date, cg.end_date, cgs.exam_date, cgs.final_score
+          SELECT cgs.student_id, cg.id AS group_id, c.code, c.name, cg.start_date, cg.end_date, cgs.exam_date, cgs.final_score
           FROM course_group_students cgs
           JOIN students s ON s.id = cgs.student_id
           JOIN course_groups cg ON cg.id = cgs.group_id
           JOIN courses c ON c.id = cg.course_id
           WHERE cgs.student_id IN ($ph)
-          ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+          ORDER BY cg.start_date DESC, cg.id DESC
         ");
         $q4->execute($ids);
         $groups = $q4->fetchAll(PDO::FETCH_ASSOC);
@@ -214,7 +214,6 @@ if ($pid > 0) {
           SELECT
             scp.id AS scp_id,
             scp.student_id,
-            s.nr_amze,
             c.id AS course_id,
             c.code,
             c.name
@@ -224,17 +223,15 @@ if ($pid > 0) {
           WHERE scp.student_id IN ($ph)
             AND scp.status = 'planned'
             AND scp.group_id IS NULL
-          ORDER BY c.name ASC,
-                  CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+          ORDER BY c.name ASC
         ");
         $q5->execute($ids);
         $planned = $q5->fetchAll(PDO::FETCH_ASSOC);
 
         // Provime të afërta (≥ sot)
         $q6 = $pdo->prepare("
-          SELECT DISTINCT s.nr_amze, c.code, c.name, cgs.exam_date
+          SELECT DISTINCT c.code, c.name, cgs.exam_date
           FROM course_group_students cgs
-          JOIN students s ON s.id = cgs.student_id
           JOIN course_groups cg ON cg.id = cgs.group_id
           JOIN courses c ON c.id = cg.course_id
           WHERE cgs.student_id IN ($ph)
@@ -269,10 +266,7 @@ if ($pid<=0 && $q!=='') {
     SELECT DISTINCT
       p.id AS person_id,
       p.first_name, p.father_name, p.last_name, p.personal_number,
-      s.id AS any_student_id,
-      MIN(CAST(s.nr_amze AS UNSIGNED)) AS min_amze,
-      MAX(CAST(s.nr_amze AS UNSIGNED)) AS max_amze,
-      COUNT(DISTINCT s.id) AS amze_count
+      COUNT(DISTINCT s.id) AS registrations
     FROM persons p
     LEFT JOIN students s ON s.person_id = p.id
     LEFT JOIN users u ON u.id = s.user_id
@@ -285,7 +279,6 @@ if ($pid<=0 && $q!=='') {
     OR u.email           LIKE :kw5
   )
   ";
-
   $params = [
     ':kw1' => '%'.$q.'%',
     ':kw2' => '%'.$q.'%',
@@ -298,7 +291,6 @@ if ($pid<=0 && $q!=='') {
     $sql .= " AND EXISTS (SELECT 1 FROM agency_students ajs WHERE ajs.student_id = s.id AND ajs.agency_id = :aid)";
     $params[':aid'] = $MY_AGENCY_ID;
   }
-
   $sql .= " GROUP BY p.id ORDER BY p.last_name, p.first_name LIMIT 40";
   $st = $pdo->prepare($sql); $st->execute($params);
   $results = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -321,7 +313,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
 <html lang="sq">
 <head>
   <meta charset="UTF-8" />
-  <title>Kartela e studentit – QTA</title>
+  <title>Profili i personit – QTA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
@@ -336,8 +328,6 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
     .avatar{ width:72px;height:72px;border-radius:1.25rem;background:linear-gradient(135deg,#eef2ff,#e0e7ff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#4338ca;font-size:1.25rem; }
     .soft { background:#f8fafc; border:1px solid #e5e7eb; }
     .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
-    .chip{ display:inline-flex; align-items:center; gap:.35rem; padding:.35rem .6rem; border-radius:999px; background:#f1f5f9; border:1px solid #e5e7eb; }
-    .chip .tag{ font-weight:600; }
     .hero { background: linear-gradient(180deg,#ffffff 0%, #f7f9fe 100%); border-radius:1rem; border:1px solid #eef2ff; }
     .stat { display:flex; align-items:center; gap:.9rem; }
     .stat i { font-size:1.4rem; }
@@ -364,6 +354,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
     .section-title{ display:flex; align-items:center; gap:.6rem; }
     .section-title i{ color:#4f46e5; }
     #qrBox canvas, #qrBox img { image-rendering: pixelated; }
+    .pill{ display:inline-block; padding:.3rem .6rem; border-radius:999px; background:#eef2ff; color:#4338ca; font-weight:600; font-size:.8rem; }
   </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -389,13 +380,13 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
   <div class="hero p-3 p-md-4 mb-3">
     <form class="row g-2 align-items-end" method="get" action="student_card.php">
       <div class="col-md-9">
-        <label class="form-label fs-5 mb-2">Kërko student / person</label>
+        <label class="form-label fs-5 mb-2">Kërko person / student</label>
         <div class="input-group input-group-lg">
           <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
           <input type="text" name="q" class="form-control border-0" placeholder="Emër, AMZË, ID personale, ID studenti ose email"
                  value="<?= h($q) ?>">
         </div>
-        <div class="form-text">Rezultatet kthehen sipas personit (kombinohen të gjitha AMZË të tij).</div>
+        <div class="form-text">Rezultatet kthehen sipas personit (të dhënat e kombinuara të regjistrimeve).</div>
       </div>
       <div class="col-md-3 text-end">
         <button class="btn btn-outline-secondary btn-lg me-2" type="button" onclick="window.location='student_card.php'">
@@ -418,7 +409,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
           <div class="table-responsive mini-table">
             <table class="table align-middle">
               <thead class="table-light"><tr>
-                <th>Personi</th><th class="nowrap">ID personale</th><th class="nowrap">AMZË</th><th class="text-end">Hap</th>
+                <th>Personi</th><th class="nowrap">ID personale</th><th class="text-end">Hap</th>
               </tr></thead>
               <tbody>
               <?php foreach ($results as $r):
@@ -434,14 +425,6 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                     </div>
                   </td>
                   <td class="nowrap"><?= h($r['personal_number'] ?? '—') ?></td>
-                  <td class="nowrap">
-                    <?php
-                      $a = (string)($r['min_amze'] ?? '');
-                      $b = (string)($r['max_amze'] ?? '');
-                      $range = ($a!=='' && $b!=='') ? ($a . ($a===$b?'':('–'.$b))) : '—';
-                      echo h($range) . ' ('.(int)$r['amze_count'].' AMZË)';
-                    ?>
-                  </td>
                   <td class="text-end">
                     <a class="btn btn-sm btn-primary" href="student_card.php?pid=<?= (int)$r['person_id'] ?>">
                       <i class="bi bi-box-arrow-in-right me-1"></i>Hap
@@ -593,34 +576,48 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
             </div>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- KPI -->
-    <section class="row g-3 mb-4">
-      <div class="col-12 col-sm-6 col-xxl-3">
-        <div class="card p-3 h-100"><div class="stat">
-          <i class="bi bi-journal-text text-primary"></i>
-          <div><div class="label">Modulet</div><div class="value"><?= number_format($stats['courses'] ?? 0) ?></div></div>
-        </div></div>
-      </div>
-      <div class="col-12 col-sm-6 col-xxl-3">
-        <div class="card p-3 h-100"><div class="stat">
-          <i class="bi bi-collection text-success"></i>
-          <div><div class="label">Grupe</div><div class="value"><?= number_format($stats['groups'] ?? 0) ?></div></div>
-        </div></div>
-      </div>
-      <div class="col-12 col-sm-6 col-xxl-3">
-        <div class="card p-3 h-100"><div class="stat">
-          <i class="bi bi-bar-chart-line text-danger"></i>
-          <div><div class="label">Mes. Pikë</div><div class="value"><?= $stats['avg_score']!==null ? $stats['avg_score'] : '—' ?></div></div>
-        </div></div>
-      </div>
-      <div class="col-12 col-sm-6 col-xxl-3">
-        <div class="card p-3 h-100"><div class="stat">
-          <i class="bi bi-clock-history text-primary"></i>
-          <div><div class="label">Orë studimi</div><div class="value"><?= number_format($stats['hours'] ?? 0) ?></div></div>
-        </div></div>
+        <div class="col-12 col-md-8">
+          <div class="soft p-3 rounded-3 h-100">
+            <div class="d-flex align-items-center justify-content-between">
+              <div class="text-muted small">Përmbledhje</div>
+              <?php if (($stats['pass_rate']??null)!==null): ?>
+                <span class="pill">Kalueshmëri: <?= (float)$stats['pass_rate'] ?>%</span>
+              <?php endif; ?>
+            </div>
+            <div class="row g-3 mt-1">
+              <div class="col-6 col-lg-3">
+                <div class="stat">
+                  <i class="bi bi-journal-text text-primary"></i>
+                  <div><div class="label">Modulet</div><div class="value"><?= number_format($stats['courses'] ?? 0) ?></div></div>
+                </div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="stat">
+                  <i class="bi bi-collection text-success"></i>
+                  <div><div class="label">Grupe</div><div class="value"><?= number_format($stats['groups'] ?? 0) ?></div></div>
+                </div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="stat">
+                  <i class="bi bi-bar-chart-line text-danger"></i>
+                  <div><div class="label">Mes. Pikë</div><div class="value"><?= $stats['avg_score']!==null ? $stats['avg_score'] : '—' ?></div></div>
+                </div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="stat">
+                  <i class="bi bi-clock-history text-primary"></i>
+                  <div><div class="label">Orë studimi</div><div class="value"><?= number_format($stats['hours'] ?? 0) ?></div></div>
+                </div>
+              </div>
+            </div>
+            <?php if (($stats['best']??null)!==null || ($stats['last']??null)!==null): ?>
+              <div class="text-muted small mt-2">
+                <span class="me-3">Më e mira: <strong><?= h((string)$stats['best']) ?></strong></span>
+                <span>E fundit: <strong><?= h((string)$stats['last']) ?></strong></span>
+              </div>
+            <?php endif; ?>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -645,7 +642,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                   <li class="list-group-item d-flex justify-content-between align-items-start">
                     <div>
                       <div class="fw-semibold"><?= h(($e['code'] ?? '').' · '.($e['name'] ?? '')) ?></div>
-                      <div class="small text-muted">AMZË: <?= h($e['nr_amze'] ?? '—') ?> • Data: <?= h(fmt_dMY($e['exam_date'] ?? null)) ?></div>
+                      <div class="small text-muted">Data: <?= h(fmt_dMY($e['exam_date'] ?? null)) ?></div>
                     </div>
                     <span class="badge rounded-pill text-bg-primary">Test</span>
                   </li>
@@ -659,203 +656,60 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
       </div>
     </section>
 
-    <!-- Kolonat kryesore -->
-    <section class="row g-3">
-      <!-- AMZË + QR per rresht (delegon te QR i personit) -->
-      <div class="col-12 col-xl-5">
-        <div class="card h-100">
-          <div class="card-header bg-white section-title"><i class="bi bi-hash"></i><span>AMZË të lidhura</span>
-            <span class="ms-auto text-muted small"><?= count($studentsOfPerson) ?> në total</span>
-          </div>
-          <div class="card-body">
-            <?php if ($studentsOfPerson): ?>
-              <div class="table-responsive mini-table">
-                <table class="table align-middle">
-                  <thead class="table-light"><tr>
-                    <th class="nowrap">AMZË</th>
-                    <th>Edukimi</th>
-                    <th>Agjencia</th>
-                    <th class="nowrap">QR</th>
-                    <th class="text-end"><?= $canInline ? 'Veprim' : '' ?></th>
-                  </tr></thead>
-                  <tbody>
-                  <?php foreach($studentsOfPerson as $sRow):
-                    $sidLocal = (int)$sRow['id'];
-                  ?>
-                    <tr>
-                      <td class="nowrap">
-                        <span class="editable"
-                              contenteditable="<?= $canInline ? 'true' : 'false' ?>"
-                              data-type="student" data-id="<?= $sidLocal ?>" data-field="nr_amze"
-                              title="AMZË"><?= h($sRow['nr_amze'] ?? '—') ?></span>
-                        <div class="small text-muted">ID studenti: #<?= $sidLocal ?></div>
-                      </td>
-                      <td style="min-width:220px;">
-                        <select class="form-select form-select-sm inline-select"
-                                data-type="student" data-id="<?= (int)$sidLocal ?>" data-field="education_level_id"
-                                <?= $canInline ? '' : 'disabled' ?>>
-                          <option value="">— Pa të dhëna —</option>
-                          <?php foreach ($eduLevels as $L): ?>
-                            <option value="<?= (int)$L['id'] ?>" <?= ((int)($sRow['education_level_id'] ?? 0)===(int)$L['id'])?'selected':'' ?>>
-                              <?= h(($L['code'] ? $L['code'].' — ' : '').($L['label'] ?? '')) ?>
-                            </option>
-                          <?php endforeach; ?>
-                        </select>
-                      </td>
-                      <td><?= h($sRow['agency_name'] ?? '—') ?></td>
-                      <td class="nowrap">
-                        <?php if (!empty($personQR['token'])): ?>
-                          <span class="badge text-bg-success">Ekziston</span>
-                          <div class="small text-muted"><?= h($personQR['created_at']) ?></div>
-                          <div class="d-grid gap-1 mt-1">
-                            <button class="btn btn-sm btn-soft" data-action="dlqr">
-                              <i class="bi bi-download me-1"></i>PNG
-                            </button>
-                            <?php if ($verifyURL): ?>
-                              <a class="btn btn-sm btn-outline-primary" href="<?= h($verifyURL) ?>" target="_blank">
-                                <i class="bi bi-box-arrow-up-right me-1"></i>Verify
-                              </a>
-                            <?php endif; ?>
-                          </div>
-                        <?php else: ?>
-                          <?php if ($CAN_EDIT): ?>
-                            <button class="btn btn-sm btn-primary" data-action="genqr-person">
-                              <i class="bi bi-magic me-1"></i>Gjenero
-                            </button>
-                          <?php else: ?>
-                            <span class="badge text-bg-secondary">—</span>
-                          <?php endif; ?>
-                        <?php endif; ?>
-                      </td>
-                      <td class="text-end">
-                        <?php if ($CAN_EDIT): ?>
-                          <button class="btn btn-sm btn-outline-danger" data-action="del-amze" data-sid="<?= $sidLocal ?>">
-                            <i class="bi bi-trash"></i>
-                          </button>
-                        <?php endif; ?>
-                      </td>
-                    </tr>
-                  <?php endforeach; ?>
-                  </tbody>
-                </table>
-              </div>
-
-              <?php if ($CAN_EDIT && $EDIT_MODE): ?>
-              <hr>
-              <form class="row g-2 align-items-end" id="formAddAmze">
-                <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
-                <input type="hidden" name="action" value="add_amze_for_person">
-                <input type="hidden" name="person_id" value="<?= (int)$pid ?>">
-                <div class="col-7">
-                  <label class="form-label">Shto AMZË të re për këtë person</label>
-                  <input class="form-control form-control-sm" name="nr_amze" placeholder="p.sh. 3407" required>
-                </div>
-                <div class="col-5 text-end">
-                  <button class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>Shto AMZË</button>
-                </div>
-              </form>
-              <?php endif; ?>
-
-            <?php else: ?>
-              <div class="alert alert-info">Ky person nuk ka ende asnjë AMZË (student).</div>
-              <?php if ($CAN_EDIT && $EDIT_MODE): ?>
-                <form class="row g-2 align-items-end" id="formAddAmzeEmpty">
-                  <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
-                  <input type="hidden" name="action" value="add_amze_for_person">
-                  <input type="hidden" name="person_id" value="<?= (int)$pid ?>">
-                  <div class="col-7"><input class="form-control form-control-sm" name="nr_amze" placeholder="p.sh. 3401" required></div>
-                  <div class="col-5 text-end"><button class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>Shto AMZË</button></div>
-                </form>
-              <?php endif; ?>
-            <?php endif; ?>
-          </div>
-        </div>
+    <!-- Aktiviteti mësimor (pa kolonë AMZË, pa veprime) -->
+    <section class="card mb-4">
+      <div class="card-header bg-white section-title">
+        <i class="bi bi-collection"></i><span>Modulet & grupet</span>
       </div>
-
-      <!-- Modulet & grupet -->
-      <div class="col-12 col-xl-7">
-        <div class="card h-100">
-          <div class="card-header bg-white section-title"><i class="bi bi-collection"></i><span>Modulet & grupet</span></div>
-          <div class="card-body">
-            <?php if (empty($groups) && !empty($planned)): ?>
-              <div class="alert alert-info py-2">
-                Ky person ende <strong>nuk ka marrë pjesë në asnjë grup</strong>, por ka module të planifikuara më poshtë.
-              </div>
-            <?php endif; ?>
-
-            <div class="table-responsive mini-table">
-              <table class="table align-middle">
-                <thead class="table-light">
-                <tr>
-                  <th>#</th>
-                  <th>AMZË</th>
-                  <th>Moduli</th>
-                  <th class="nowrap">Datat</th>
-                  <th class="nowrap">Testi</th>
-                  <th class="nowrap">Pikët</th>
-                  <?php if ($CAN_EDIT && $EDIT_MODE): ?>
-                    <th class="text-end">Veprimi</th>
-                  <?php endif; ?>
-
-                </tr>
-                </thead>
-                <tbody>
-                <?php $hasRows=false; ?>
-
-                <?php if (!empty($planned)): $hasRows=true; foreach($planned as $pl): ?>
-                  <tr>
-                    <td class="text-muted">—</td>
-                    <td class="nowrap"><?= h($pl['nr_amze'] ?? '—') ?></td>
-                    <td>
-                      <?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?>
-                      <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
-                    </td>
-                    <td class="nowrap">—</td>
-                    <td class="nowrap">—</td>
-                    <td class="nowrap">—</td>
-                    <?php if ($CAN_EDIT && $EDIT_MODE): ?>
-                      <td class="text-end">
-                        <button class="btn btn-sm btn-outline-danger qta-del"
-                                data-kind="planned"
-                                data-scp-id="<?= (int)($pl['scp_id'] ?? 0) ?>"
-                                title="Fshi">
-                          <i class="bi bi-trash"></i>
-                        </button>
-                      </td>
-                    <?php endif; ?>
-                  </tr>
-                <?php endforeach; endif; ?>
-
-
-                <?php if (!empty($groups)): $hasRows=true; foreach($groups as $g): ?>
-                  <tr>
-                    <td>#<?= (int)$g['group_id'] ?></td>
-                    <td class="nowrap"><?= h($g['nr_amze'] ?? '—') ?></td>
-                    <td><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></td>
-                    <td class="nowrap"><?= h(fmt_dMY($g['start_date'])) ?> – <?= h(fmt_dMY($g['end_date'])) ?></td>
-                    <td class="nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
-                    <td class="nowrap"><?= $g['final_score']!==null ? h((string)$g['final_score']) : '—' ?></td>
-                    <?php if ($CAN_EDIT && $EDIT_MODE): ?>
-                      <td class="text-end">
-                        <button class="btn btn-sm btn-outline-danger qta-del"
-                                data-kind="group"
-                                data-group-id="<?= (int)$g['group_id'] ?>"
-                                data-student-id="<?= (int)$g['student_id'] ?>"
-                                title="Fshi">
-                          <i class="bi bi-trash"></i>
-                        </button>
-                      </td>
-                    <?php endif; ?>
-                  </tr>
-                <?php endforeach; endif; ?>
-
-                <?php if (!$hasRows): ?>
-                  <tr><td colspan="6" class="text-center text-muted">Nuk ka ende të dhëna për module/grupe.</td></tr>
-                <?php endif; ?>
-                </tbody>
-              </table>
-            </div>
+      <div class="card-body">
+        <?php if (empty($groups) && !empty($planned)): ?>
+          <div class="alert alert-info py-2 mb-3">
+            Ky person ende <strong>nuk ka marrë pjesë në asnjë grup</strong>, por ka module të planifikuara më poshtë.
           </div>
+        <?php endif; ?>
+
+        <div class="table-responsive mini-table">
+          <table class="table align-middle">
+            <thead class="table-light">
+            <tr>
+              <th>#Grupi</th>
+              <th>Moduli</th>
+              <th class="nowrap">Datat</th>
+              <th class="nowrap">Testi</th>
+              <th class="nowrap">Pikët</th>
+            </tr>
+            </thead>
+            <tbody>
+            <?php $hasRows=false; ?>
+
+            <?php if (!empty($planned)): $hasRows=true; foreach($planned as $pl): ?>
+              <tr>
+                <td class="text-muted">—</td>
+                <td>
+                  <?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?>
+                  <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
+                </td>
+                <td class="nowrap">—</td>
+                <td class="nowrap">—</td>
+                <td class="nowrap">—</td>
+              </tr>
+            <?php endforeach; endif; ?>
+
+            <?php if (!empty($groups)): $hasRows=true; foreach($groups as $g): ?>
+              <tr>
+                <td>#<?= (int)$g['group_id'] ?></td>
+                <td><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></td>
+                <td class="nowrap"><?= h(fmt_dMY($g['start_date'])) ?> – <?= h(fmt_dMY($g['end_date'])) ?></td>
+                <td class="nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
+                <td class="nowrap"><?= $g['final_score']!==null ? h((string)$g['final_score']) : '—' ?></td>
+              </tr>
+            <?php endforeach; endif; ?>
+
+            <?php if (!$hasRows): ?>
+              <tr><td colspan="5" class="text-center text-muted">Nuk ka ende të dhëna për module/grupe.</td></tr>
+            <?php endif; ?>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -985,9 +839,6 @@ document.querySelectorAll('.editable[contenteditable="true"]').forEach(el=>{
       if (type==='person'){
         const res = await postJSON(INLINE, {csrf:CSRF, action:'set_person_field', person_id:id, field, value});
         el.innerText = res.display ?? value;
-      } else if (type==='student'){
-        const res = await postJSON(INLINE, {csrf:CSRF, action:'set_student_field', student_id:id, field, value});
-        el.innerText = res.display ?? value;
       }
       el.classList.add('cell-ok');
       notify('success','U ruajt.');
@@ -998,23 +849,16 @@ document.querySelectorAll('.editable[contenteditable="true"]').forEach(el=>{
   });
 });
 
-/* Helpers dmy */
-function isDmy(s){ return /^\d{2}-\d{2}-\d{4}$/.test((s||'').trim()); }
-
-/* Selects (gender_id / education_level_id) */
+/* Selects (gender_id) */
 document.querySelectorAll('.inline-select').forEach(sel=>{
   sel.addEventListener('change', async ()=>{
     if (!CAN_EDIT || !EDIT_MODE) return;
-    const type  = sel.dataset.type;
+    const type  = sel.dataset.type;   // person
     const id    = parseInt(sel.dataset.id||'0',10);
-    const field = sel.dataset.field;
+    const field = sel.dataset.field;  // gender_id
     const value = sel.value;
     try{
-      if (type==='person'){
-        await postJSON(INLINE, {csrf:CSRF, action:'set_person_field', person_id:id, field, value});
-      } else if (type==='student'){
-        await postJSON(INLINE, {csrf:CSRF, action:'set_student_field', student_id:id, field, value});
-      }
+      await postJSON(INLINE, {csrf:CSRF, action:'set_person_field', person_id:id, field, value});
       sel.classList.remove('is-invalid'); sel.classList.add('is-valid');
       setTimeout(()=> sel.classList.remove('is-valid'), 900);
       notify('success','U ruajt.');
@@ -1026,6 +870,7 @@ document.querySelectorAll('.inline-select').forEach(sel=>{
 });
 
 /* Datëlindja input (DD-MM-YYYY) */
+function isDmy(s){ return /^\d{2}-\d{2}-\d{4}$/.test((s||'').trim()); }
 document.querySelectorAll('.dmy-input').forEach(inp=>{
   inp.addEventListener('keydown', (e)=>{ if (e.key==='Enter'){ e.preventDefault(); inp.blur(); } });
   inp.addEventListener('blur', async ()=>{
@@ -1049,39 +894,7 @@ document.querySelectorAll('.dmy-input').forEach(inp=>{
   });
 });
 
-/* Add AMZË */
-for (const formId of ['formAddAmze','formAddAmzeEmpty']){
-  const f = document.getElementById(formId);
-  if (!f) continue;
-  f.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    if (!CAN_EDIT || !EDIT_MODE) return;
-    const fd = new FormData(e.currentTarget);
-    const payload = Object.fromEntries(fd.entries());
-    try{
-      const res = await postJSON(INLINE, payload);
-      notify('success', 'AMZË u shtua: #'+res.student_id+' ('+res.nr_amze+')');
-      location.reload();
-    } catch(err){ notify('danger', err.message); }
-  });
-}
-
-/* Delete AMZË (nëse e lejuar) */
-document.querySelectorAll('[data-action="del-amze"]').forEach(btn=>{
-  btn.addEventListener('click', async ()=>{
-    if (!CAN_EDIT || !EDIT_MODE) return;
-    const sid = parseInt(btn.dataset.sid||'0',10);
-    if (!sid) return;
-    if (!confirm('Fshi këtë AMZË? (Lejohet vetëm nëse s’ka grupe / plane)')) return;
-    try{
-      await postJSON(INLINE, {csrf:CSRF, action:'delete_amze', student_id:sid});
-      notify('success','AMZË u fshi.');
-      location.reload();
-    } catch(err){ notify('danger', err.message); }
-  });
-});
-
-/* Gjenero QR për PERSON (butoni në header) */
+/* Gjenero QR për PERSON */
 const btnGenQrPerson = document.getElementById('btnGenQrPerson');
 if (btnGenQrPerson){
   btnGenQrPerson.addEventListener('click', async ()=>{
@@ -1095,15 +908,7 @@ if (btnGenQrPerson){
   });
 }
 
-/* Gjenero QR për PERSON (butoni në rresht) */
-document.querySelectorAll('[data-action="genqr-person"]').forEach(btn=>{
-  btn.addEventListener('click', async ()=>{
-    const trigger = document.getElementById('btnGenQrPerson');
-    if (trigger) trigger.click();
-  });
-});
-
-/* Shkarko QR i personit (butoni në header) */
+/* Shkarko QR i personit */
 const btnDlQrPerson = document.getElementById('btnDlQrPerson');
 if (btnDlQrPerson){
   btnDlQrPerson.addEventListener('click', async ()=>{
@@ -1121,7 +926,7 @@ if (btnDlQrPerson){
   });
 }
 
-/* Shkarko QR i personit (butoni te box) */
+/* Shkarko (buton në box) */
 document.getElementById('btnDlQrPerson2')?.addEventListener('click', ()=>{
   document.getElementById('btnDlQrPerson')?.click();
 });
@@ -1137,13 +942,6 @@ document.getElementById('btnCopyPayload')?.addEventListener('click', async ()=>{
     await navigator.clipboard.writeText(PERSON_QR_PAYLOAD || '');
     notify('success','Payload u kopjua.');
   }catch{ notify('danger','S’u kopjua.'); }
-});
-
-/* Download QR PNG (nga rreshti – delego te butoni global) */
-document.querySelectorAll('[data-action="dlqr"]').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    document.getElementById('btnDlQrPerson')?.click();
-  });
 });
 
 /* Render inicial i QR */
@@ -1170,49 +968,6 @@ if (PERSON_QR_PAYLOAD) refreshQrUI();
   });
 })();
 <?php endif; ?>
-
-/* Fshi pjesëmarrje (group / planned) */
-document.querySelectorAll('.qta-del').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    if (!CAN_EDIT || !EDIT_MODE) return;
-
-    const kind = btn.dataset.kind;
-    try {
-      if (kind === 'group') {
-        const group_id   = parseInt(btn.dataset.groupId || '0', 10);
-        const student_id = parseInt(btn.dataset.studentId || '0', 10);
-        if (!group_id || !student_id) return;
-        if (!confirm('Fshini pjesëmarrjen e këtij studenti nga ky grup?')) return;
-
-        await postJSON(INLINE, {
-          csrf: CSRF,
-          action: 'delete_participation',
-          kind: 'group',
-          group_id,
-          student_id
-        });
-        notify('success', 'Pjesëmarrja u fshi.');
-        btn.closest('tr')?.remove();
-
-      } else if (kind === 'planned') {
-        const scp_id = parseInt(btn.dataset.scpId || '0', 10);
-        if (!scp_id) return;
-        if (!confirm('Fshini këtë modul të planifikuar?')) return;
-
-        await postJSON(INLINE, {
-          csrf: CSRF,
-          action: 'delete_participation',
-          kind: 'planned',
-          scp_id
-        });
-        notify('success', 'Moduli (planned) u fshi.');
-        btn.closest('tr')?.remove();
-      }
-    } catch (err) {
-      notify('danger', err.message);
-    }
-  });
-});
 </script>
 </body>
 </html>

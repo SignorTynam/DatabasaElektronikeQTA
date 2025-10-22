@@ -140,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     http_response_code(400); $_SESSION['flash_err'] = 'CSRF token mismatch.'; header('Location: groups.php'); exit;
   }
 
-  /* ===== Krijo grup ===== */
+  /* ===== Krijo grup (me ndarje inteligjente >10) ===== */
   if ($action==='create_group') {
     try {
       $course_id   = (int)($_POST['course_id'] ?? 0);
@@ -154,65 +154,112 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if (!$end_date   || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date))   throw new RuntimeException('Data e mbarimit duhet në formatin DD-MM-YYYY.');
       if ($end_date < $start_date) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
 
-      $pdo->beginTransaction();
-
-      $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed) VALUES (:c,:s,:e,:ic)");
-      $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':ic'=>$is_completed]);
-      $gid = (int)$pdo->lastInsertId();
-
+      // Përgatit listën e AMZË-ve -> student IDs
+      $ids = [];
       if ($amze_spec !== '') {
         $nums = parseAmzeRanges($amze_spec);
-        if (count($nums) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup. Redukto listën e AMZË-ve.');
-
-        $ids = [];
+        if (!$nums) throw new RuntimeException('Nuk u gjet asnjë AMZË e vlefshme.');
         foreach ($nums as $n) { $ids[] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n); }
         $ids = array_values(array_unique($ids));
-        if (count($ids)>10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+      }
 
-        if ($ids) {
-          // Ndalim: të mos kenë ndjekur më parë këtë modul (sipas personal_number)
-          $ph = implode(',', array_fill(0, count($ids), '?'));
-          $confPN = $pdo->prepare("
-            SELECT DISTINCT p.personal_number, s.nr_amze, cg.id AS group_id, c.name AS course_name
-            FROM course_group_students cgs
-            JOIN students s ON s.id = cgs.student_id
-            JOIN persons  p ON p.id = s.person_id
-            JOIN course_groups cg ON cg.id = cgs.group_id
-            JOIN courses c ON c.id = cg.course_id
-            WHERE cg.course_id = ?
-              AND p.personal_number IS NOT NULL AND p.personal_number <> ''
-              AND s.id IN ($ph)
-          ");
-          $confPN->execute([$course_id, ...$ids]);
-          $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
-          if ($hitPN) {
-            $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-            throw new RuntimeException('Disa persona e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
-          }
+      if (!$ids) {
+        // Krijo grup bosh
+        $pdo->beginTransaction();
+        $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed) VALUES (:c,:s,:e,:ic)");
+        $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':ic'=>$is_completed]);
+        $gid = (int)$pdo->lastInsertId();
+        $pdo->commit();
 
-          // RREGULL: sëmund të jenë njëkohësisht "me modul (plan)" dhe "në grup"
-          $pdo->prepare("DELETE FROM student_course_plans WHERE status='planned' AND student_id IN ($ph)")->execute($ids);
+        qta_audit_event('group.create', [
+          'group_id'=>$gid,'course_id'=>$course_id,'start_date'=>$start_date,'end_date'=>$end_date,'is_completed'=>$is_completed,
+          'actor_user_id'=>$_SESSION['user_id'] ?? null
+        ]);
+        $_SESSION['flash_ok'] = 'Grupi u krijua me sukses (pa studentë).';
+        header('Location: groups.php'); exit;
+      }
 
-          // Kapaciteti i grupit (maks 10)
-          if (count($ids) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+      // Ndalim: kontrolle sipas personal_number që të mos kenë ndjekur më parë po këtë modul
+      $phIds = implode(',', array_fill(0, count($ids), '?'));
+      $pnStmt = $pdo->prepare("
+        SELECT DISTINCT p.personal_number
+        FROM students s
+        JOIN persons  p ON p.id = s.person_id
+        WHERE s.id IN ($phIds)
+          AND p.personal_number IS NOT NULL AND p.personal_number <> ''
+      ");
+      $pnStmt->execute($ids);
+      $pnList = $pnStmt->fetchAll(PDO::FETCH_COLUMN);
 
-          $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
-          foreach ($ids as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
+      if ($pnList) {
+        $phPn = implode(',', array_fill(0, count($pnList), '?'));
+        $confPN = $pdo->prepare("
+          SELECT DISTINCT p.personal_number, s.nr_amze, cg.id AS group_id, c.name AS course_name
+          FROM course_group_students cgs
+          JOIN students s ON s.id = cgs.student_id
+          JOIN persons  p ON p.id = s.person_id
+          JOIN course_groups cg ON cg.id = cgs.group_id
+          JOIN courses c ON c.id = cg.course_id
+          WHERE cg.course_id = ?
+            AND p.personal_number IN ($phPn)
+        ");
+        $confPN->execute([$course_id, ...$pnList]);
+        $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
+        if ($hitPN) {
+          $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
+          throw new RuntimeException('Disa persona e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
         }
       }
+
+      // Fshi "planned" për këta studentë (në çdo rast, para regjistrimit në grupe)
+      $pdo->prepare("DELETE FROM student_course_plans WHERE status='planned' AND student_id IN ($phIds)")->execute($ids);
+
+      // ==== Ndarja inteligjente në grupe (kapacitet 10) ====
+      $total = count($ids);
+      $groupsNeeded = (int)ceil($total / 10);
+      $base = (int)floor($total / $groupsNeeded);
+      $rem  = $total % $groupsNeeded; // grupet e para 'rem' do kenë (base+1) studentë
+
+      $chunks = [];
+      $cursor = 0;
+      for ($g=0; $g<$groupsNeeded; $g++){
+        $size = $base + ($g < $rem ? 1 : 0);
+        $chunks[] = array_slice($ids, $cursor, $size);
+        $cursor += $size;
+      }
+
+      $pdo->beginTransaction();
+
+      $created = []; // [[gid=>.., count=>..], ...]
+      foreach ($chunks as $i => $chunk) {
+        if (!$chunk) continue;
+        if (count($chunk) > 10) { throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10).'); }
+
+        $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed) VALUES (:c,:s,:e,:ic)");
+        $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':ic'=>$is_completed]);
+        $gid = (int)$pdo->lastInsertId();
+
+        $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
+        foreach ($chunk as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
+
+        $created[] = ['group_id'=>$gid, 'count'=>count($chunk)];
+
+        // AUDIT per grup
+        qta_audit_event('group.create', [
+          'group_id'=>$gid,'course_id'=>$course_id,'start_date'=>$start_date,'end_date'=>$end_date,'is_completed'=>$is_completed,
+          'actor_user_id'=>$_SESSION['user_id'] ?? null
+        ]);
+      }
+
       $pdo->commit();
 
-      // AUDIT
-      qta_audit_event('group.create', [
-        'group_id'=>$gid,
-        'course_id'=>$course_id,
-        'start_date'=>$start_date,
-        'end_date'=>$end_date,
-        'is_completed'=>$is_completed,
-        'actor_user_id'=>$_SESSION['user_id'] ?? null
-      ]);
+      if (count($created) === 1) {
+        $_SESSION['flash_ok'] = 'Grupi u krijua me sukses. ('.($created[0]['count']).' studentë)';
+      } else {
+        $parts = array_map(fn($r)=>'#'.$r['group_id'].' ('.$r['count'].')', $created);
+        $_SESSION['flash_ok'] = 'U krijuan '.count($created).' grupe: '.implode(', ', $parts);
+      }
 
-      $_SESSION['flash_ok'] = 'Grupi u krijua me sukses.';
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
       $_SESSION['flash_err'] = $e->getMessage();
@@ -605,6 +652,7 @@ $groupInfo = $pdo->query("
 /* Flash mesazhe */
 $flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
 $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
+$flash_js = ['ok'=>$flash_ok, 'err'=>$flash_err];
 
 /* Navbar */
 $NAV_ACTIVE = 'groups';
@@ -1157,98 +1205,9 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   <?php endif; ?>
 </div>
 
-<!-- MODAL: Formulari nr. 1 -->
-<div class="modal fade" id="form1Modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" id="form1Export" method="get" action="groups_export.php">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-      <input type="hidden" name="type" value="form1">
-      <input type="hidden" name="f" value="xlsx" id="form1Format">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label">Grupi i fillimit</label>
-          <select name="gstart" id="gstart" class="form-select" required>
-            <option value="">— Zgjidh —</option>
-            <?php foreach($groupInfo as $gi): ?>
-              <option value="<?= (int)$gi['id'] ?>">
-                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name']) ?>
-                (<?= htmlspecialchars(fmt_dMY($gi['start_date']).' → '.fmt_dMY($gi['end_date'])) ?>)
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <div class="form-text" id="gstartHint">(AMZË: —)</div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Grupi i mbarimit</label>
-          <select name="gend" id="gend" class="form-select" required>
-            <option value="">— Zgjidh —</option>
-            <?php foreach($groupInfo as $gi): ?>
-              <option value="<?= (int)$gi['id'] ?>">
-                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name']) ?>
-                (<?= htmlspecialchars(fmt_dMY($gi['start_date']).' → '.fmt_dMY($gi['end_date'])) ?>)
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <div class="form-text" id="gendHint">(AMZË: —)</div>
-        </div>
-        <div class="small text-muted">
-          Për çdo grup në intervalin [fillim…mbarim] shkarkohet: Emri i kursit, Fillimi, Mbarimi, Totale,
-          Femra (kur gjinia të jetë e plotë), moshat 16–24, 25–34, 35+, si dhe AU/AM/AL.
-        </div>
-      </div>
-      <div class="modal-footer">
-        <div class="btn-group me-auto">
-          <button type="button" class="btn btn-soft-success btn-pill" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-          <button type="button" class="btn btn-soft-danger btn-pill" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
-          <button type="button" class="btn btn-soft-primary btn-pill" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
-        </div>
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- MODAL: Formulari nr. 2 -->
-<div class="modal fade" id="form2Modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" id="form2Export" method="get" action="groups_export.php">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-      <input type="hidden" name="type" value="form2">
-      <input type="hidden" name="f" value="xlsx" id="form2Format">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">AMZË e fillimit</label>
-            <input type="number" name="amze_start" class="form-control" placeholder="p.sh. 3400" required>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">AMZË e mbarimit</label>
-            <input type="number" name="amze_end" class="form-control" placeholder="p.sh. 3499" required>
-          </div>
-        </div>
-        <div class="small text-muted mt-2">
-          Shkarkohet: AMZË, Emër-Atësi-Mbiemër, vendlindja, dhe emri i kursit (nga grupi më i fundit të studentit).
-        </div>
-      </div>
-      <div class="modal-footer">
-        <div class="btn-group me-auto">
-          <button type="button" class="btn btn-soft-success btn-pill" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-          <button type="button" class="btn btn-soft-danger btn-pill" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
-          <button type="button" class="btn btn-soft-primary btn-pill" data-dl="docx"><i class="bi bi-file-earmark-word me-1"></i> Word</button>
-        </div>
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
-      </div>
-    </form>
-  </div>
-</div>
+<!-- ===== Modalet e formularëve në partiale ===== -->
+<?php require __DIR__ . '/partials/form1_modal.php'; ?>
+<?php require __DIR__ . '/partials/form2_modal.php'; ?>
 
 <!-- MODAL: Krijo grup -->
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
@@ -1295,10 +1254,11 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
           </div>
 
           <div class="col-12">
-            <label class="form-label">AMZË për këtë grup (deri në 10)</label>
+            <label class="form-label">AMZË për këtë grup (mund të kalojë 10 – do ndahen automatikisht)</label>
             <textarea name="amze_spec" class="form-control" rows="2" placeholder="p.sh. 3400-3403, 3409" <?= $EDIT_MODE ? '' : 'disabled' ?>></textarea>
             <div class="form-text">
-              Mund të shkruash intervale dhe vlera të ndara me presje. Maksimumi 10 studentë.
+              Mund të shkruash intervale dhe vlera të ndara me presje. Nëse janë më shumë se 10,
+              do krijohen disa grupe të balancuara automatikisht.
               <br><strong>Rregull:</strong> i njëjti person (sipas ID personale) nuk mund ta ndjekë dy herë të njëjtin modul.
               <br><strong>Shënim:</strong> në momentin e shtimit në grup, fshihen automatikisht të gjithë planët <em>planned</em> të studentëve.
             </div>
@@ -1308,7 +1268,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 
       <div class="modal-footer">
         <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Krijo grup</button>
+        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Krijo grup(et)</button>
       </div>
     </form>
   </div>
@@ -1357,6 +1317,11 @@ function notify(type, text, opts={}){
   el.addEventListener('hidden.bs.toast', ()=> el.remove());
   t.show();
 }
+
+/* === Flash -> Toast (nga serveri pas POST/redirect) === */
+const FLASH = <?= json_encode($flash_js, JSON_UNESCAPED_UNICODE) ?>;
+if (FLASH && FLASH.ok)  notify('success', FLASH.ok);
+if (FLASH && FLASH.err) notify('danger',  FLASH.err);
 
 /* showMsg wrapper */
 function showMsg(type, text){ notify(type, text); }
@@ -1487,7 +1452,6 @@ async function saveEditable(editable){
     editable.textContent = display || '—';
     editable.dataset.prev = editable.textContent;
 
-    // nëse u ndryshua end_date/start_date, nuk dëmton të rifreskosh “completed” validations e tjera
     stopSaving(editable);
     flashOk(editable);
     notify('success','U ruajt.');
@@ -1628,11 +1592,12 @@ function updateForm1Hint(selId, hintId){
   }
 });
 
-/* ===== Eksportet (format buttons) ===== */
+/* ===== Eksportet (format buttons) + toast ===== */
 document.querySelectorAll('#form1Modal [data-dl]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const format = btn.getAttribute('data-dl');
     document.getElementById('form1Format').value = format;
+    notify('success', 'Shkarkimi po përgatitet (Formulari 1 · ' + format.toUpperCase() + ').');
     document.getElementById('form1Export').submit();
   });
 });
@@ -1640,6 +1605,7 @@ document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const format = btn.getAttribute('data-dl');
     document.getElementById('form2Format').value = format;
+    notify('success', 'Shkarkimi po përgatitet (Formulari 2 · ' + format.toUpperCase() + ').');
     document.getElementById('form2Export').submit();
   });
 });

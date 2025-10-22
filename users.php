@@ -7,12 +7,23 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
+/* -------------------------------------------------
+   Toggle: Edit Mode (ruhet në session)
+-------------------------------------------------- */
+if (isset($_GET['edit'])) {
+    $_SESSION['users_edit_mode'] = ($_GET['edit'] === '1');
+    // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
+    $qs = $_GET; unset($qs['edit']);
+    $redir = 'users.php' . ($qs ? ('?' . http_build_query($qs)) : '');
+    header('Location: ' . $redir);
+    exit;
+}
+$EDIT_MODE = !empty($_SESSION['users_edit_mode']);
+
 /* ------------------------------
    Guard: vetëm admin i loguar
 ------------------------------- */
-if (!isset($_SESSION['user_id'])) {
-    header('Location: selectProfile.php'); exit;
-}
+if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 
 $userStmt = $pdo->prepare("
     SELECT u.id, u.full_name, u.email, r.name AS role_name
@@ -24,7 +35,7 @@ $userStmt = $pdo->prepare("
 $userStmt->execute([':uid' => $_SESSION['user_id']]);
 $currentUser = $userStmt->fetch();
 
-if (!$currentUser || $currentUser['role_name'] !== 'administrator') {
+if (!$currentUser || strtolower((string)($currentUser['role_name'] ?? '')) !== 'administrator') {
     header('Location: selectProfile.php'); exit;
 }
 
@@ -38,7 +49,6 @@ function flash(string $key, ?string $msg=null) {
     }
     $_SESSION['flash'][$key] = $msg;
 }
-
 function require_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = $_POST['csrf'] ?? '';
@@ -47,7 +57,6 @@ function require_csrf(): void {
         }
     }
 }
-
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(24));
 }
@@ -58,14 +67,20 @@ $CSRF = $_SESSION['csrf_token'];
 ------------------------------- */
 $roles = $pdo->query("SELECT id, name FROM roles ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 $adminRoleId = null;
-foreach ($roles as $r) if ($r['name'] === 'administrator') { $adminRoleId = (int)$r['id']; break; }
+foreach ($roles as $r) if (strtolower($r['name']) === 'administrator') { $adminRoleId = (int)$r['id']; break; }
 if ($adminRoleId === null) { exit('Konfigurim i mangët: roli "administrator" mungon në tabelën roles.'); }
 
 /* ------------------------------
    Veprime POST (create/reset/delete)
+   → Lejohen vetëm kur Edit Mode është ON
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
+    if (!$EDIT_MODE) {
+        flash('err','Aktivizo <strong>Mënyrën e redaktimit</strong> për të bërë ndryshime.');
+        header('Location: users.php'); exit;
+    }
+
     $action = $_POST['action'] ?? '';
 
     try {
@@ -245,19 +260,17 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .navbar-brand img { height:28px; }
         .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
         .mini-table thead { background:#f1f5f9; }
-        .kpi-icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#eef2ff; }
         .form-control::placeholder { color:#9ca3af; }
         .pagination .page-link { border-radius:.5rem; }
         .nowrap { white-space:nowrap; }
         @media (max-width:575.98px){ .navbar-text{ display:none; } }
 
-        /* Inline-edit styles */
-        .editable {
-          display:inline-block; min-width:120px; padding:.35rem .5rem;
-          border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
-        }
-        .editable:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; }
-        .editable:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        /* Editable cells */
+        .editable { display:inline-block; min-width:120px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
+        .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
+        .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
+        .editable[contenteditable="false"] { opacity:.7; cursor:not-allowed; }
+
         .cell-saving { position:relative; }
         .cell-saving::after {
           content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
@@ -270,12 +283,16 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .cell-err { animation: flashErr 1.2s ease; }
         @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
 
-        /* UI i ri – soft & pill */
+        /* Edit Mode OFF visuals */
+        .editing-off .editable { color:#6b7280; cursor:not-allowed; }
+        .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
+
+        /* Soft buttons & pills */
         .btn-pill { border-radius:999px !important; }
         .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
         .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
 
-        /* FAB: rrethi me + në cep të faqes (poshtë DJATHTAS) */
+        /* FAB (+) poshtë DJATHTAS */
         .btn-fab{
           position: fixed;
           right: 24px;
@@ -288,7 +305,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
         @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
 
-        /* Toasts të buta (poshtë MAJTAS) */
+        /* Toasts poshtë MAJTAS */
         .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
         .toast.qta-toast .toast-header{ border-bottom:0; }
         .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
@@ -297,14 +314,35 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
     </style>
 </head>
-<body>
+<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 <?php $NAV_ACTIVE = 'users_admins'; require __DIR__ . '/inc/navbar.php'; ?>
 
 <main class="container-fluid px-3 px-md-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Menaxhimi i administratorëve</h2>
-        <!-- Butoni + është një FAB poshtë djathtas -->
+
+        <!-- Page toolbar: Edit Mode toggle -->
+        <div class="d-flex align-items-center">
+            <?php
+                $qs = $_GET;
+                $qs['edit'] = $EDIT_MODE ? '0' : '1';
+                $toggleUrl = 'users.php' . ($qs ? ('?' . http_build_query($qs)) : '');
+            ?>
+            <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
+               title="Ndrysho gjendjen e Edit Mode">
+                <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
+                Edit Mode:
+                <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
+            </a>
+        </div>
     </div>
+
+    <?php if (!$EDIT_MODE): ?>
+        <div class="alert alert-secondary py-2">
+            <i class="bi bi-info-circle me-1"></i>
+            Aktivizo <strong>Mënyrën e redaktimit</strong> për të ndryshuar qelizat, për të shtuar administratorë, ose për të fshirë/resetuar fjalëkalime.
+        </div>
+    <?php endif; ?>
 
     <!-- Kërkim -->
     <div class="card mb-3">
@@ -357,12 +395,16 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <!-- full_name (inline) -->
                                 <td class="cell" data-id="<?= (int)$u['id'] ?>" data-field="full_name">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($u['full_name'] ?: '—') ?></span>
+                                    <span class="editable"
+                                          contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                                          tabindex="<?= $EDIT_MODE ? 0 : -1 ?>"><?= htmlspecialchars($u['full_name'] ?: '—') ?></span>
                                 </td>
 
                                 <!-- email (inline) -->
                                 <td class="cell nowrap" data-id="<?= (int)$u['id'] ?>" data-field="email">
-                                    <span class="editable" contenteditable="true"><?= htmlspecialchars($u['email'] ?: '—') ?></span>
+                                    <span class="editable"
+                                          contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                                          tabindex="<?= $EDIT_MODE ? 0 : -1 ?>"><?= htmlspecialchars($u['email'] ?: '—') ?></span>
                                 </td>
 
                                 <td><span class="badge rounded-pill text-bg-danger">Administrator</span></td>
@@ -372,15 +414,18 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                                     <button class="btn btn-sm btn-outline-secondary me-1"
                                             data-bs-toggle="modal" data-bs-target="#resetPassModal"
                                             data-user-id="<?= (int)$u['id'] ?>"
-                                            data-user-name="<?= htmlspecialchars($u['full_name'] ?: ($u['email'] ?? 'Administrator'), ENT_QUOTES) ?>">
+                                            data-user-name="<?= htmlspecialchars($u['full_name'] ?: ($u['email'] ?? 'Administrator'), ENT_QUOTES) ?>"
+                                            <?= $EDIT_MODE ? '' : 'disabled' ?>
+                                            title="<?= $EDIT_MODE ? 'Ndrysho fjalëkalimin' : 'Aktivizo Edit Mode për të resetuar' ?>">
                                         <i class="bi bi-key me-1"></i>Reset
                                     </button>
                                     <!-- Delete -->
-                                    <form class="d-inline" method="post" onsubmit="return confirm('Fshini këtë administrator?');">
+                                    <form class="d-inline" method="post" action="users.php" onsubmit="return <?= $EDIT_MODE ? 'confirm(\'Fshini këtë administrator?\')' : '(notify(\"warning\",\"Aktivizo Edit Mode për të fshirë.\"), false)' ?>;">
                                         <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
                                         <input type="hidden" name="action" value="delete_user">
                                         <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                                        <button class="btn btn-sm btn-outline-danger">
+                                        <button class="btn btn-sm btn-outline-danger" <?= $EDIT_MODE ? '' : 'disabled' ?>
+                                                title="<?= $EDIT_MODE ? 'Fshi këtë administrator' : 'Aktivizo Edit Mode për të fshirë' ?>">
                                             <i class="bi bi-trash me-1"></i>Fshi
                                         </button>
                                     </form>
@@ -401,7 +446,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
             <nav aria-label="Page navigation">
                 <ul class="pagination mb-0 justify-content-end">
                     <?php
-                    $base = 'users.php?'.http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
+                    $base = 'users.php?'.http_build_query(array_filter(['q' => $q !== '' ? $q : null, 'edit' => $EDIT_MODE ? '1' : '0']));
                     $prev = max(1, $page-1);
                     $next = min($totalPages, $page+1);
                     ?>
@@ -429,14 +474,21 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </main>
 
-<!-- Floating Action Button (FAB) – poshtë djathtas -->
+<!-- FAB: Shto administrator (poshtë djathtas) -->
+<?php if ($EDIT_MODE): ?>
 <button class="btn btn-primary btn-fab" type="button"
         data-bs-toggle="modal" data-bs-target="#addAdminModal"
-        aria-label="Shto administrator">
+        aria-label="Shto administrator" title="Shto administrator">
   <i class="bi bi-plus-lg"></i>
 </button>
+<?php else: ?>
+<button class="btn btn-soft-secondary btn-fab" type="button" disabled
+        title="Aktivizo Edit Mode për të shtuar administrator">
+  <i class="bi bi-plus-lg"></i>
+</button>
+<?php endif; ?>
 
-<!-- Toasts: poshtë MAJTAS (që të mos bllokohen nga FAB i djathtë) -->
+<!-- Toasts -->
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <!-- MODALS -->
@@ -454,20 +506,20 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
       <div class="modal-body">
         <div class="mb-3">
             <label class="form-label">Emri i plotë</label>
-            <input type="text" name="full_name" class="form-control" required placeholder="P.sh. Arben Hoxha">
+            <input type="text" name="full_name" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?> placeholder="P.sh. Arben Hoxha">
         </div>
         <div class="mb-3">
             <label class="form-label">Email (unik)</label>
-            <input type="email" name="email" class="form-control" required placeholder="admin@qta.al">
+            <input type="email" name="email" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?> placeholder="admin@qta.al">
         </div>
         <div class="row g-2">
             <div class="col-12 col-md-6">
                 <label class="form-label">Fjalëkalimi</label>
-                <input type="password" name="password" class="form-control" required>
+                <input type="password" name="password" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
             </div>
             <div class="col-12 col-md-6">
                 <label class="form-label">Përsërit fjalëkalimin</label>
-                <input type="password" name="password2" class="form-control" required>
+                <input type="password" name="password2" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
             </div>
         </div>
         <div class="form-text mt-2">
@@ -476,7 +528,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
       </div>
       <div class="modal-footer">
         <button class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit">Ruaj</button>
+        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
       </div>
     </form>
   </div>
@@ -501,18 +553,18 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="row g-2">
             <div class="col-md-6">
                 <label class="form-label">Fjalëkalimi i ri</label>
-                <input type="password" name="new_password" class="form-control" required>
+                <input type="password" name="new_password" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Përsërit fjalëkalimin</label>
-                <input type="password" name="new_password2" class="form-control" required>
+                <input type="password" name="new_password2" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
             </div>
         </div>
         <div class="form-text">Fjalëkalimi ruhet i hash-uar me <code>PASSWORD_BCRYPT</code>.</div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit">Ruaj</button>
+        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
       </div>
     </form>
   </div>
@@ -523,6 +575,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'user_inline.php';
+const EDIT_ENABLED = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
 /* Toast helper */
 function notify(type, text, opts={}){
@@ -548,7 +601,6 @@ function notify(type, text, opts={}){
       <div class="toast-body">${text}</div>
     </div>`;
   zone.insertAdjacentHTML('beforeend', html);
-
   const el = document.getElementById(id);
   const t = new bootstrap.Toast(el, { autohide, delay });
   el.addEventListener('hidden.bs.toast', ()=> el.remove());
@@ -576,52 +628,50 @@ async function saveInline(userId, field, value, cell, displayEl) {
     const json = await res.json();
     cell.classList.remove('cell-saving');
     if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
-    if (displayEl) {
-      displayEl.textContent = json.display ?? (value || '—');
-    }
-    cell.classList.add('cell-ok');
-    setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    if (displayEl) { displayEl.textContent = json.display ?? (value || '—'); }
+    cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+    notify('success','U ruajt me sukses.');
   } catch (e) {
     console.error(e);
-    if (displayEl) displayEl.textContent = displayEl.dataset.old || displayEl.textContent;
-    cell.classList.remove('cell-saving');
-    cell.classList.add('cell-err');
+    cell.classList.remove('cell-saving'); cell.classList.add('cell-err');
     setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-    showMsg('danger', e.message || 'Ndodhi një gabim.');
+    notify('danger', e.message || 'Ndodhi një gabim.');
   }
 }
 
-/* Inline për contenteditable (Emër & Email) */
-document.querySelectorAll('td.cell .editable').forEach(el => {
-  let oldVal = el.textContent;
-  el.dataset.old = oldVal;
-  el.addEventListener('focus', () => { oldVal = el.textContent; el.dataset.old = oldVal; });
-  el.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
+/* Inline-edit: vetëm kur Edit Mode është ON */
+if (EDIT_ENABLED) {
+  document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el => {
+    let oldVal = el.textContent;
+    el.addEventListener('focus', () => { oldVal = el.textContent; });
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
+    el.addEventListener('blur', () => {
+      const cell = el.closest('td.cell');
+      const field = cell.dataset.field;
+      const uid = parseInt(cell.dataset.id, 10);
+      const newVal = cleanText(el.textContent);
+      if (newVal === cleanText(oldVal)) return;
+
+      // Validime front
+      if (field === 'email') {
+        if (newVal === '') { notify('warning','Email-i është i detyrueshëm.'); el.textContent = oldVal; return; }
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!re.test(newVal)) { notify('warning','Email i pavlefshëm.'); el.textContent = oldVal; return; }
+      }
+      if (field === 'full_name' && newVal === '') {
+        notify('warning','Emri nuk mund të jetë bosh.'); el.textContent = oldVal; return;
+      }
+
+      saveInline(uid, field, newVal, cell, el);
+    });
   });
-  el.addEventListener('blur', () => {
-    const cell = el.closest('td.cell');
-    const field = cell.dataset.field;
-    const uid = parseInt(cell.dataset.id, 10);
-    const newVal = cleanText(el.textContent);
-
-    if (newVal === cleanText(oldVal)) return;
-
-    // Validime në front
-    if (field === 'email') {
-      if (newVal === '') { showMsg('danger','Email-i është i detyrueshëm.'); el.textContent = oldVal; return; }
-      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!re.test(newVal)) { showMsg('danger','Email i pavlefshëm.'); el.textContent = oldVal; return; }
-    }
-
-    saveInline(uid, field, newVal, cell, el);
-  });
-});
+}
 
 /* Reset Password modal fill */
 const resetModal = document.getElementById('resetPassModal');
 resetModal?.addEventListener('show.bs.modal', event => {
     const btn = event.relatedTarget;
+    if (!btn || btn.hasAttribute('disabled')) { event.preventDefault(); return; }
     document.getElementById('reset_user_id').value = btn.getAttribute('data-user-id');
     document.getElementById('reset_user_name').value = btn.getAttribute('data-user-name');
 });

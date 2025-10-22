@@ -24,12 +24,24 @@ function mask_id(?string $s): string {
   return str_repeat('*', $len-3).substr($s, -3);
 }
 
-/* --------------- Parser i payload-it ---------------
-   Mbështet: URL ?sid=&t= ose ?pid=&t=,
-   QTA|SID:..|TOKEN:.. ose QTA|PID:..|TOKEN:..,
-   JSON {sid|pid, token},
-   "SID|TOKEN" / "PID|TOKEN".
---------------------------------------------------- */
+/* ============== Lexo përdoruesin e loguar (për navbar) ============== */
+$currentUser = null;
+$roleName = '';
+
+if (!empty($_SESSION['user_id'])) {
+  $stmt = $pdo->prepare("
+    SELECT u.id, u.full_name, u.email, r.name AS role_name
+    FROM users u
+    JOIN roles r ON r.id = u.role_id
+    WHERE u.id = :uid
+    LIMIT 1
+  ");
+  $stmt->execute([':uid' => $_SESSION['user_id']]);
+  $currentUser = $stmt->fetch() ?: null;
+  $roleName = strtolower((string)($currentUser['role_name'] ?? ''));
+}
+
+/* --------------- Parser i payload-it --------------- */
 function parse_payload(string $raw): array {
   $raw = trim($raw);
   $sid = 0; $pid = 0; $token = '';
@@ -63,12 +75,11 @@ function parse_payload(string $raw): array {
     }
   }
 
-  // 4) “PID|TOKEN” ose “SID|TOKEN” (heuristikë)
+  // 4) “PID|TOKEN” ose “SID|TOKEN”
   if (str_contains($raw,'|')) {
     [$a,$b] = array_map('trim', explode('|',$raw,2));
     if (strcasecmp($a,'PID')===0){ $pid = (int)preg_replace('/\D/','', $b); return ['sid'=>0,'pid'=>$pid,'token'=>$b]; }
     if (strcasecmp($a,'SID')===0){ $sid = (int)preg_replace('/\D/','', $b); return ['sid'=>$sid,'pid'=>0,'token'=>$b]; }
-    // Nëse është thjesht "1234|token"
     if (ctype_digit($a)) { $sid = (int)$a; $token=$b; return ['sid'=>$sid,'pid'=>0,'token'=>$token]; }
   }
 
@@ -156,15 +167,13 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $qList->execute([':sid1'=>$sid, ':sid2'=>$sid]);
   $coursesList = $qList->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-  // Modulet & grupet (me AMZË për rresht) + PLANNED (pa grup)
+  // Modulet & grupet (vetëm për listim, do të shfaqim vetëm AMZË + Moduli)
   $qEnr = $pdo->prepare("
     SELECT * FROM (
       SELECT
         cg.id     AS group_id,
         c.code    AS course_code,
         c.name    AS course_name,
-        cg.start_date, cg.end_date,
-        cgs.exam_date, cgs.final_score,
         s.nr_amze AS amze,
         'group'   AS row_kind
       FROM course_group_students cgs
@@ -179,10 +188,6 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
         NULL        AS group_id,
         c.code      AS course_code,
         c.name      AS course_name,
-        NULL        AS start_date,
-        NULL        AS end_date,
-        NULL        AS exam_date,
-        NULL        AS final_score,
         s.nr_amze   AS amze,
         'planned'   AS row_kind
       FROM student_course_plans scp
@@ -192,7 +197,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
         AND scp.group_id IS NULL
         AND scp.status = 'planned'
     ) t
-    ORDER BY t.start_date DESC, t.group_id DESC, CAST(t.amze AS UNSIGNED) ASC, t.amze ASC
+    ORDER BY t.group_id DESC, CAST(t.amze AS UNSIGNED) ASC, t.amze ASC
     LIMIT 160
   ");
   $qEnr->execute([':sid1'=>$sid, ':sid2'=>$sid]);
@@ -323,15 +328,13 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
     $q5->execute(array_merge($ids,$ids));
     $coursesList = $q5->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    // Modulet & grupet me AMZË për rresht
+    // Modulet & grupet (vetëm për listim, do të shfaqim vetëm AMZË + Moduli)
     $q6 = $pdo->prepare("
       SELECT * FROM (
         SELECT
           cg.id     AS group_id,
           c.code    AS course_code,
           c.name    AS course_name,
-          cg.start_date, cg.end_date,
-          cgs.exam_date, cgs.final_score,
           s.nr_amze AS amze,
           'group'   AS row_kind
         FROM course_group_students cgs
@@ -346,10 +349,6 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
           NULL        AS group_id,
           c.code      AS course_code,
           c.name      AS course_name,
-          NULL        AS start_date,
-          NULL        AS end_date,
-          NULL        AS exam_date,
-          NULL        AS final_score,
           s.nr_amze   AS amze,
           'planned'   AS row_kind
         FROM student_course_plans scp
@@ -359,7 +358,7 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
           AND scp.group_id IS NULL
           AND scp.status = 'planned'
       ) t
-      ORDER BY t.start_date DESC, t.group_id DESC, CAST(t.amze AS UNSIGNED) ASC, t.amze ASC
+      ORDER BY t.group_id DESC, CAST(t.amze AS UNSIGNED) ASC, t.amze ASC
       LIMIT 220
     ");
     $q6->execute(array_merge($ids, $ids));
@@ -445,8 +444,8 @@ $NAV_ACTIVE = 'verify';
   <style>
     :root{
       --bg:#f7f9fc; --text:#0f172a; --muted:#64748b;
-      --primary:#4f46e5; --primary2:#2563eb; --accent:#0ea5e9;
-      --card: #ffffff; --shadow:0 20px 45px rgba(2,6,23,.12);
+      --primary:#4f46e5; --accent:#0ea5e9;
+      --card:#ffffff; --shadow:0 20px 45px rgba(2,6,23,.12);
     }
     body { background:var(--bg); color:var(--text); }
     .hero {
@@ -467,6 +466,7 @@ $NAV_ACTIVE = 'verify';
     #reader video{ width:100% !important; height:100% !important; object-fit:cover; border-radius:.75rem; }
     .tab-content{ min-height:380px; }
     .fact { background:#f8fafc; border:1px solid #eef2ff; border-radius:.75rem; padding:.75rem; }
+    .table-min th, .table-min td { padding:.5rem .75rem; }
     @media print {
       .navbar, .nav, .btn, .hero, footer, #controlsBar { display:none !important; }
       .card { box-shadow:none !important; border:1px solid #e5e7eb; }
@@ -476,7 +476,10 @@ $NAV_ACTIVE = 'verify';
 </head>
 <body>
 
-<?php if (file_exists(__DIR__.'/navbarMain.php')) require __DIR__ . '/navbarMain.php'; ?>
+<?php
+/* Navbar kryesor */
+require_once __DIR__ . '/navbarMain.php';
+?>
 
 <div class="container my-4">
   <div class="hero mb-3 d-flex align-items-center justify-content-between">
@@ -621,42 +624,27 @@ $NAV_ACTIVE = 'verify';
                   <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0"><?= $pr['stats']['pass_rate']!==null ? ($pr['stats']['pass_rate'].'%') : '—' ?></div></div></div>
                 </div>
 
-                <!-- Modulet & grupet (me AMZË në rresht) -->
+                <!-- Modulet & grupet (VETËM AMZË + MODULI) -->
                 <div class="mt-3">
                   <div class="small text-muted mb-1">Modulet & grupet</div>
                   <?php if (!empty($pr['groups'])): ?>
                     <div class="table-responsive">
-                      <table class="table table-sm align-middle">
+                      <table class="table table-sm table-min align-middle">
                         <thead class="table-light">
-                          <tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr>
+                          <tr><th>AMZË</th><th>Moduli</th></tr>
                         </thead>
                         <tbody>
                         <?php foreach ($pr['groups'] as $g): ?>
                           <tr>
-                            <td class="text-nowrap">
-                              <?php if (!empty($g['group_id'])): ?>
-                                #<?= (int)$g['group_id'] ?>
-                              <?php else: ?>
-                                <span class="badge rounded-pill text-bg-warning-subtle text-warning-emphasis">Pa grup</span>
-                              <?php endif; ?>
-                            </td>
                             <td class="text-nowrap"><?= h($g['amze'] ?? '—') ?></td>
-                            <td>
-                              <?= h(($g['course_code']??'').' · '.($g['course_name']??'')) ?>
-                              <?php if (($g['row_kind'] ?? '') === 'planned'): ?>
-                                <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
-                              <?php endif; ?>
-                            </td>
-                            <td class="text-nowrap"><?= h(fmt_dMY($g['start_date'] ?? null)) ?> – <?= h(fmt_dMY($g['end_date'] ?? null)) ?></td>
-                            <td class="text-nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
-                            <td class="text-nowrap"><?= isset($g['final_score']) ? h((string)$g['final_score']) : '—' ?></td>
+                            <td><?= h(($g['course_code'] ?? '').($g['course_code']?' · ':'').($g['course_name'] ?? '')) ?></td>
                           </tr>
                         <?php endforeach; ?>
                         </tbody>
                       </table>
                     </div>
                   <?php else: ?>
-                    <div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>
+                    <div class="text-muted">Nuk ka ende të dhëna.</div>
                   <?php endif; ?>
                 </div>
 
@@ -680,31 +668,27 @@ $NAV_ACTIVE = 'verify';
                   <div class="col-6 col-md-3"><div class="fact"><div class="small text-muted">Kalueshmëria</div><div class="h5 mb-0"><?= $st['stats']['pass_rate']!==null ? ($st['stats']['pass_rate'].'%') : '—' ?></div></div></div>
                 </div>
 
-                <!-- Modulet & grupet (me AMZË në rresht) -->
+                <!-- Modulet & grupet (VETËM AMZË + MODULI) -->
                 <div class="mt-3">
                   <div class="small text-muted mb-1">Modulet & grupet</div>
                   <?php if (!empty($st['groups'])): ?>
                     <div class="table-responsive">
-                      <table class="table table-sm align-middle">
+                      <table class="table table-sm table-min align-middle">
                         <thead class="table-light">
-                          <tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr>
+                          <tr><th>AMZË</th><th>Moduli</th></tr>
                         </thead>
                         <tbody>
                         <?php foreach ($st['groups'] as $g): ?>
                           <tr>
-                            <td>#<?= (int)$g['group_id'] ?></td>
                             <td class="text-nowrap"><?= h($g['amze'] ?? ($st['amze'] ?? '—')) ?></td>
-                            <td><?= h(($g['course_code']??'').' · '.($g['course_name']??'')) ?></td>
-                            <td class="text-nowrap"><?= h(fmt_dMY($g['start_date'] ?? null)) ?> – <?= h(fmt_dMY($g['end_date'] ?? null)) ?></td>
-                            <td class="text-nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
-                            <td class="text-nowrap"><?= isset($g['final_score']) ? h((string)$g['final_score']) : '—' ?></td>
+                            <td><?= h(($g['course_code'] ?? '').($g['course_code']?' · ':'').($g['course_name'] ?? '')) ?></td>
                           </tr>
                         <?php endforeach; ?>
                         </tbody>
                       </table>
                     </div>
                   <?php else: ?>
-                    <div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>
+                    <div class="text-muted">Nuk ka ende të dhëna.</div>
                   <?php endif; ?>
                 </div>
 
@@ -902,8 +886,8 @@ async function doVerify(payload){
 }
 
 function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
-function fmtDMY(iso){ if(!iso) return '—'; const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m?`${m[3]}-${m[2]}-${m[1]}`:'—'; }
 
+/* === Render minimal për “Modulet & grupet”: vetëm AMZË + Moduli === */
 function renderResult(json, payloadUsed=''){
   const body = document.getElementById('resultBody');
   if(!json || json.ok!==true){
@@ -920,48 +904,14 @@ function renderResult(json, payloadUsed=''){
       const pr = json.person || {};
       const full = [pr.first_name||'', pr.father_name? (pr.father_name+' ') : '', pr.last_name||''].join('').trim();
 
-      let students = '';
-      if (Array.isArray(pr.students) && pr.students.length>0){
-        students = pr.students.map(s => {
-          const meta = [(s.edu_label||'—'), (s.agency||'')].filter(Boolean).join(' · ');
-          return `<li class="list-group-item d-flex justify-content-between align-items-center">
-                  <div><i class="bi bi-hash me-2"></i><strong>${escapeHtml(s.amze||'—')}</strong></div>
-                  <div class="small text-muted">${escapeHtml(meta)}</div>
-                </li>`;
-        }).join('');
-      } else {
-        students = `<div class="text-muted">Ky person nuk ka ende asnjë AMZË.</div>`;
-      }
-
-      let groupsHTML = '';
+      // Tabela minimale
+      let rows = '';
       if (Array.isArray(pr.groups) && pr.groups.length>0) {
-        groupsHTML = pr.groups.map(g => {
-          const idCell = g.group_id
-            ? `#${escapeHtml(String(g.group_id))}`
-            : `<span class="badge rounded-pill text-bg-warning-subtle">Pa grup</span>`;
-          const plannedBadge = (g.row_kind === 'planned')
-            ? `<span class="badge bg-warning-subtle ms-1">Planuar</span>`
-            : '';
-          return `
-            <tr>
-              <td class="text-nowrap">${idCell}</td>
-              <td class="text-nowrap">${escapeHtml(g.amze||'—')}</td>
-              <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}${plannedBadge}</td>
-              <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
-              <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
-              <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
-            </tr>`;
+        rows = pr.groups.map(g => {
+          const amze = g.amze || '—';
+          const title = (g.course_code ? g.course_code+' · ' : '') + (g.course_name || '');
+          return `<tr><td class="text-nowrap">${escapeHtml(amze)}</td><td>${escapeHtml(title)}</td></tr>`;
         }).join('');
-      }
-
-      let coursesList = '';
-      if (Array.isArray(pr.courses_list) && pr.courses_list.length>0){
-        coursesList = pr.courses_list.map(c => {
-          const t = (c.code? c.code+' · ' : '') + (c.name||'');
-          return `<li class="list-group-item"><i class="bi bi-mortarboard me-2"></i>${escapeHtml(t)}</li>`;
-        }).join('');
-      } else {
-        coursesList = `<li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>`;
       }
 
       body.innerHTML = `
@@ -984,12 +934,12 @@ function renderResult(json, payloadUsed=''){
 
         <div class="mt-3">
           <div class="small text-muted mb-1">Modulet & grupet</div>
-          ${groupsHTML
-            ? `<div class="table-responsive"><table class="table table-sm align-middle">
-                 <thead class="table-light"><tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr></thead>
-                 <tbody>${groupsHTML}</tbody>
+          ${rows
+            ? `<div class="table-responsive"><table class="table table-sm table-min align-middle">
+                 <thead class="table-light"><tr><th>AMZË</th><th>Moduli</th></tr></thead>
+                 <tbody>${rows}</tbody>
                </table></div>`
-            : `<div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>`}
+            : `<div class="text-muted">Nuk ka ende të dhëna.</div>`}
         </div>
       `;
 
@@ -997,35 +947,14 @@ function renderResult(json, payloadUsed=''){
       const st = json.student || {};
       const full = [st.first_name||'', st.father_name? (st.father_name+' ') : '', st.last_name||''].join('');
 
-      let groupsHTML = '';
+      // Tabela minimale
+      let rows = '';
       if (Array.isArray(st.groups) && st.groups.length>0) {
-        groupsHTML = st.groups.map(g => {
-          const idCell = g.group_id
-            ? `#${escapeHtml(String(g.group_id))}`
-            : `<span class="badge rounded-pill text-bg-warning-subtle">Pa grup</span>`;
-          const plannedBadge = (g.row_kind === 'planned')
-            ? `<span class="badge bg-warning-subtle ms-1">Planuar</span>`
-            : '';
-          return `
-            <tr>
-              <td class="text-nowrap">${idCell}</td>
-              <td class="text-nowrap">${escapeHtml(g.amze || st.amze || '—')}</td>
-              <td>${escapeHtml((g.course_code? g.course_code+' · ' : '') + (g.course_name||''))}${plannedBadge}</td>
-              <td class="text-nowrap">${fmtDMY(g.start_date)} – ${fmtDMY(g.end_date)}</td>
-              <td class="text-nowrap">${fmtDMY(g.exam_date)}</td>
-              <td class="text-nowrap">${g.final_score!=null ? escapeHtml(String(g.final_score)) : '—'}</td>
-            </tr>`;
+        rows = st.groups.map(g => {
+          const amze = g.amze || st.amze || '—';
+          const title = (g.course_code ? g.course_code+' · ' : '') + (g.course_name || '');
+          return `<tr><td class="text-nowrap">${escapeHtml(amze)}</td><td>${escapeHtml(title)}</td></tr>`;
         }).join('');
-      }
-
-      let coursesList = '';
-      if (Array.isArray(st.courses_list) && st.courses_list.length>0){
-        coursesList = st.courses_list.map(c => {
-          const t = (c.code? c.code+' · ' : '') + (c.name||'');
-          return `<li class="list-group-item"><i class="bi bi-mortarboard me-2"></i>${escapeHtml(t)}</li>`;
-        }).join('');
-      } else {
-        coursesList = `<li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>`;
       }
 
       body.innerHTML = `
@@ -1048,12 +977,12 @@ function renderResult(json, payloadUsed=''){
 
         <div class="mt-3">
           <div class="small text-muted mb-1">Modulet & grupet</div>
-          ${groupsHTML
-            ? `<div class="table-responsive"><table class="table table-sm align-middle">
-                 <thead class="table-light"><tr><th>#</th><th>AMZË</th><th>Moduli</th><th>Datat</th><th>Testi</th><th>Pikët</th></tr></thead>
-                 <tbody>${groupsHTML}</tbody>
+          ${rows
+            ? `<div class="table-responsive"><table class="table table-sm table-min align-middle">
+                 <thead class="table-light"><tr><th>AMZË</th><th>Moduli</th></tr></thead>
+                 <tbody>${rows}</tbody>
                </table></div>`
-            : `<div class="text-muted">Nuk ka ende të dhëna për module/grupe.</div>`}
+            : `<div class="text-muted">Nuk ka ende të dhëna.</div>`}
         </div>
 
         <hr>
@@ -1063,13 +992,14 @@ function renderResult(json, payloadUsed=''){
         </div>
 
         <div class="small text-muted">Kurset (max 5):</div>
-        <ul class="list-group list-group-flush">${coursesList}</ul>
-
-        <div class="alert alert-info mt-3">
-          <strong>Kujdes:</strong> Nëse emri këtu <u>nuk</u> përputhet me emrin në certifikatën fizike,
-          raportoni menjëherë te <a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a> ose
-          <a href="tel:+355698778837">+355 69 877 8837</a>.
-        </div>
+        <ul class="list-group list-group-flush">${
+          (Array.isArray(st.courses_list) && st.courses_list.length>0)
+            ? st.courses_list.map(c => {
+                const t = (c.code? c.code+' · ' : '') + (c.name||'');
+                return `<li class="list-group-item"><i class="bi bi-mortarboard me-2"></i>${escapeHtml(t)}</li>`;
+              }).join('')
+            : '<li class="list-group-item text-muted">Nuk u gjet listë kursesh.</li>'
+        }</ul>
       `;
     }
 
@@ -1161,6 +1091,14 @@ window.addEventListener('load', async ()=>{
     await startCameraByIndex(currentCamIndex>=0 ? currentCamIndex : 0);
   }
 });
+
+/* ========= Controls: flip/stop ========= */
+document.getElementById('btnFlip')?.addEventListener('click', async ()=>{
+  if (!cameras.length) return;
+  currentCamIndex = (currentCamIndex + 1) % cameras.length;
+  await stopCamera(); await startCameraByIndex(currentCamIndex);
+});
+document.getElementById('btnStopCam')?.addEventListener('click', async ()=>{ await stopCamera(); });
 </script>
 
 <?php if (file_exists(__DIR__.'/footer.php')) require __DIR__ . '/footer.php'; ?>

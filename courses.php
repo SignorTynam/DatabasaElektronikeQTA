@@ -32,7 +32,7 @@ $userStmt = $pdo->prepare("
     LIMIT 1
 ");
 $userStmt->execute([':uid' => $_SESSION['user_id']]);
-$currentUser = $userStmt->fetch();
+$currentUser = $userStmt->fetch(PDO::FETCH_ASSOC);
 
 $roleName  = strtolower((string)($currentUser['role_name'] ?? ''));
 $isAdmin   = ($roleName === 'administrator');
@@ -125,6 +125,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ------------------------------
+   Helpers
+------------------------------- */
+function fmt_dmy(?string $iso): string {
+    if (!$iso) return '—';
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars((string)$iso, ENT_QUOTES, 'UTF-8');
+    $ts = strtotime($iso);
+    return $ts ? date('d-m-Y', $ts) : '—';
+}
+
+/* ------------------------------
    Kërkim + Paginim
 ------------------------------- */
 $q      = trim($_GET['q'] ?? '');
@@ -159,6 +169,38 @@ $listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
 $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
 $listStmt->execute();
 $courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+
+/* Kurse për target (select në modalin “Zhvendos grupin”) */
+$allCourses = $pdo->query("SELECT id, code, name FROM courses ORDER BY code ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
+$allCoursesMap = [];
+foreach ($allCourses as $ac) { $allCoursesMap[(int)$ac['id']] = $ac; }
+
+/* Grupe për kurset e faqes (summary + numer i anëtarëve) */
+$groupsByCourse = [];
+if ($courses) {
+    $ids = array_column($courses, 'course_id');
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if ($ids) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $gq = $pdo->prepare("
+            SELECT
+              cg.id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
+              COUNT(cgs.student_id) AS members
+            FROM course_groups cg
+            LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
+            WHERE cg.course_id IN ($ph)
+            GROUP BY cg.id
+            ORDER BY cg.start_date DESC, cg.id DESC
+        ");
+        $gq->execute($ids);
+        $grs = $gq->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($grs as $g) {
+            $cid = (int)$g['course_id'];
+            if (!isset($groupsByCourse[$cid])) $groupsByCourse[$cid] = [];
+            $groupsByCourse[$cid][] = $g;
+        }
+    }
+}
 
 $ok  = flash('ok');
 $err = flash('err');
@@ -222,19 +264,6 @@ $NAV_ACTIVE = 'courses';
         .page-toolbar { gap:.5rem; }
         .page-toolbar .btn { padding:.4rem .75rem; }
 
-        /* FAB (+) poshtë DJATHTAS */
-        .btn-fab{
-          position: fixed;
-          right: 24px;
-          bottom: 24px;
-          width: 56px; height: 56px; border-radius: 50%;
-          display:flex; align-items:center; justify-content:center;
-          z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
-        }
-        .btn-fab i{ font-size:1.25rem; line-height:1; }
-        .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
-        @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
-
         /* Toasts poshtë MAJTAS */
         .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
         .toast.qta-toast .toast-header{ border-bottom:0; }
@@ -242,6 +271,10 @@ $NAV_ACTIVE = 'courses';
         .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
         .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
         .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
+
+        /* Collapse caret */
+        .btn-toggle-groups .bi { transition: transform .2s ease; }
+        .btn-toggle-groups[aria-expanded="true"] .bi { transform: rotate(180deg); }
     </style>
 </head>
 <body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
@@ -281,7 +314,7 @@ $NAV_ACTIVE = 'courses';
     <?php if (!$EDIT_MODE): ?>
         <div class="alert alert-secondary py-2">
             <i class="bi bi-info-circle me-1"></i>
-            Aktivizo <strong>Mënyrën e redaktimit</strong> për të ndryshuar qelizat, për të shtuar ose fshirë module.
+            Aktivizo <strong>Mënyrën e redaktimit</strong> për të ndryshuar qelizat, për të shtuar ose fshirë module dhe për të zhvendosur grupe.
         </div>
     <?php endif; ?>
 
@@ -330,6 +363,10 @@ $NAV_ACTIVE = 'courses';
                     <tbody>
                     <?php if ($courses): ?>
                         <?php foreach ($courses as $c): $cid=(int)$c['course_id']; ?>
+                            <?php
+                              $grList = $groupsByCourse[$cid] ?? [];
+                              $grCount = count($grList);
+                            ?>
                             <tr>
                                 <td class="cell" data-id="<?= $cid ?>" data-field="code">
                                     <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= htmlspecialchars($c['code']) ?></span>
@@ -342,7 +379,20 @@ $NAV_ACTIVE = 'courses';
                                 </td>
                                 <td class="text-muted small nowrap"><?= htmlspecialchars($c['created_at']) ?></td>
                                 <td class="text-end">
-                                    <button
+                                    <div class="btn-group">
+                                      <button
+                                        class="btn btn-soft-secondary btn-pill btn-toggle-groups"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#courseGroups_<?= $cid ?>"
+                                        aria-expanded="false"
+                                        aria-controls="courseGroups_<?= $cid ?>"
+                                      >
+                                        <i class="bi bi-chevron-down me-1"></i>
+                                        Grupe <span class="badge bg-secondary align-text-bottom"><?= $grCount ?></span>
+                                      </button>
+
+                                      <button
                                         type="button"
                                         class="btn btn-outline-danger btn-sm"
                                         data-bs-toggle="modal"
@@ -352,10 +402,75 @@ $NAV_ACTIVE = 'courses';
                                         data-course-name="<?= htmlspecialchars($c['name'], ENT_QUOTES) ?>"
                                         <?= $EDIT_MODE?'':'disabled' ?>
                                         title="<?= $EDIT_MODE?'Fshi këtë modul':'Aktivizo Edit Mode për të fshirë' ?>"
-                                    >
+                                      >
                                         <i class="bi bi-trash me-1"></i> Fshi
-                                    </button>
+                                      </button>
+                                    </div>
                                 </td>
+                            </tr>
+
+                            <!-- Row i grupeve (collapse) -->
+                            <tr class="collapse" id="courseGroups_<?= $cid ?>">
+                              <td colspan="5" class="bg-light">
+                                <div class="p-3">
+                                  <?php if ($grList): ?>
+                                    <div class="table-responsive">
+                                      <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                          <tr>
+                                            <th class="nowrap">Grup</th>
+                                            <th>Datat</th>
+                                            <th class="nowrap">Anëtarë</th>
+                                            <th class="nowrap">Status</th>
+                                            <th class="text-end nowrap">Veprime</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody id="groupsBody_<?= $cid ?>">
+                                          <?php foreach ($grList as $g): ?>
+                                            <?php
+                                              $gid = (int)$g['id'];
+                                              $completed = (int)$g['is_completed'] === 1;
+                                              $dates = fmt_dmy($g['start_date']).' → '.fmt_dmy($g['end_date']);
+                                            ?>
+                                            <tr id="groupRow_<?= $gid ?>">
+                                              <td class="nowrap">
+                                                <i class="bi bi-collection me-1"></i>
+                                                Grup #<?= $gid ?>
+                                              </td>
+                                              <td><?= htmlspecialchars($dates) ?></td>
+                                              <td class="nowrap"><?= (int)$g['members'] ?></td>
+                                              <td>
+                                                <span class="badge <?= $completed?'text-bg-success':'text-bg-danger' ?>">
+                                                  <?= $completed?'I përfunduar':'Jo i përfunduar' ?>
+                                                </span>
+                                              </td>
+                                              <td class="text-end">
+                                                <button
+                                                  class="btn btn-soft-primary btn-sm btn-pill"
+                                                  type="button"
+                                                  data-bs-toggle="modal"
+                                                  data-bs-target="#moveGroupModal"
+                                                  data-group-id="<?= $gid ?>"
+                                                  data-current-course="<?= $cid ?>"
+                                                  <?= $EDIT_MODE ? '' : 'disabled' ?>
+                                                  title="Zhvendos këtë grup te modul tjetër"
+                                                >
+                                                  <i class="bi bi-arrows-move me-1"></i> Zhvendos grupin
+                                                </button>
+                                                <a class="btn btn-outline-secondary btn-sm" href="groups.php?q=&course_id=<?= $cid ?>#gBody_<?= $gid ?>" target="_blank">
+                                                  <i class="bi bi-box-arrow-up-right me-1"></i> Hap te “Grupe”
+                                                </a>
+                                              </td>
+                                            </tr>
+                                          <?php endforeach; ?>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  <?php else: ?>
+                                    <div class="text-muted small">Nuk ka grupe për këtë modul.</div>
+                                  <?php endif; ?>
+                                </div>
+                              </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -385,7 +500,7 @@ $NAV_ACTIVE = 'courses';
                     <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
                         <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
                     </li>
-                    <li class="page-item <?= $page>>= $totalPages?'disabled':'' ?>">
+                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
                         <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
                     </li>
                 </ul>
@@ -469,12 +584,44 @@ $NAV_ACTIVE = 'courses';
         </ul>
         <div class="alert alert-warning small mb-0">
           <i class="bi bi-exclamation-triangle me-1"></i>
-          <strong>Kujdes:</strong> Fshirja do të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul.
+          <strong>Kujdes:</strong> Fshirja mund të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul (nëse FK janë ON).
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
         <button class="btn btn-danger btn-pill" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Po, fshije</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Zhvendos grupin te modul tjetër -->
+<div class="modal fade" id="moveGroupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="moveGroupForm" onsubmit="return false;">
+      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+      <input type="hidden" name="group_id" id="mv_group_id" value="">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrows-move me-1"></i> Zhvendos grupin</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Moduli i ri</label>
+          <select id="mv_target_course" class="form-select" required <?= $EDIT_MODE?'':'disabled' ?>>
+            <option value="">— Zgjidh modul —</option>
+            <?php foreach ($allCourses as $ac): ?>
+              <option value="<?= (int)$ac['id'] ?>">
+                <?= htmlspecialchars($ac['code'].' — '.$ac['name']) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <div class="form-text">Grupi do të lidhet me modulin e zgjedhur.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-soft-secondary btn-pill" type="button" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary btn-pill" type="submit" id="mv_submit" <?= $EDIT_MODE?'':'disabled' ?>>Zhvendos</button>
       </div>
     </form>
   </div>
@@ -519,13 +666,14 @@ function notify(type, text, opts={}){
 
 function cleanText(s) { return (s || '').replace(/\s+/g,' ').trim(); }
 
+/* ===== Inline save për fushat e modulit ===== */
 async function saveInline(courseId, field, value, cell, displayEl) {
   try {
     cell.classList.add('cell-saving');
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'Accept':'application/json'},
-      body: JSON.stringify({ csrf: CSRF, course_id: courseId, field, value })
+      body: JSON.stringify({ action: 'update_field', csrf: CSRF, course_id: courseId, field, value })
     });
     const json = await res.json();
     cell.classList.remove('cell-saving');
@@ -541,12 +689,55 @@ async function saveInline(courseId, field, value, cell, displayEl) {
   }
 }
 
+/* ===== Navigim me TAB ndër qeliza (spreadsheet-like) ===== */
+function getEditableList(){
+  return Array.from(document.querySelectorAll('td.cell .editable[contenteditable="true"]'));
+}
+function focusNeighbor(current, backwards=false){
+  const list = getEditableList();
+  const idx = list.indexOf(current);
+  if (idx === -1) return;
+  const nextIdx = backwards ? Math.max(0, idx-1) : Math.min(list.length-1, idx+1);
+  const target = list[nextIdx];
+  if (target && target !== current){
+    target.focus();
+    // Vendos caret në fund
+    const r = document.createRange(); const s = window.getSelection();
+    r.selectNodeContents(target); r.collapse(false); s.removeAllRanges(); s.addRange(r);
+  }
+}
+
 /* Inline editing: vetëm kur Edit Mode është ON */
 if (EDIT_ENABLED) {
   document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el => {
     let oldVal = el.textContent;
-    el.addEventListener('focus', () => { oldVal = el.textContent; });
-    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }});
+
+    el.addEventListener('focus', () => { oldVal = el.textContent; el.dataset.prev = oldVal; });
+
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
+      if (ev.key === 'Tab') {
+        ev.preventDefault();
+        const cell = el.closest('td.cell');
+        const field = cell.dataset.field;
+        const cid = parseInt(cell.dataset.id, 10);
+        const newVal = cleanText(el.textContent);
+        if (newVal !== cleanText(oldVal)) {
+          // ruaj para se të lëvizë fokusi
+          saveInline(cid, field, newVal, cell, el).finally(()=>{
+            setTimeout(()=> focusNeighbor(el, ev.shiftKey), 0);
+          });
+        } else {
+          setTimeout(()=> focusNeighbor(el, ev.shiftKey), 0);
+        }
+      }
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        el.textContent = el.dataset.prev || oldVal;
+        el.blur();
+      }
+    });
+
     el.addEventListener('blur', () => {
       const cell = el.closest('td.cell');
       const field = cell.dataset.field;
@@ -590,6 +781,67 @@ if (deleteModal) {
     document.getElementById('deleteCourseId').value = id;
     document.getElementById('delCode').textContent  = code;
     document.getElementById('delName').textContent  = name;
+  });
+}
+
+/* Modal: Zhvendos grupin */
+const moveModal = document.getElementById('moveGroupModal');
+let MV_groupId = null;
+let MV_currentCourse = null;
+if (moveModal){
+  moveModal.addEventListener('show.bs.modal', (ev)=>{
+    const btn = ev.relatedTarget;
+    if (!btn || btn.hasAttribute('disabled')) { ev.preventDefault(); return; }
+    MV_groupId = parseInt(btn.getAttribute('data-group-id')||'0',10)||0;
+    MV_currentCourse = parseInt(btn.getAttribute('data-current-course')||'0',10)||0;
+
+    document.getElementById('mv_group_id').value = MV_groupId;
+    const sel = document.getElementById('mv_target_course');
+    if (sel) {
+      Array.from(sel.options).forEach(opt=>{
+        if (parseInt(opt.value,10) === MV_currentCourse) opt.disabled = true;
+        else opt.disabled = false;
+      });
+      sel.value = '';
+    }
+  });
+
+  document.getElementById('mv_submit')?.addEventListener('click', async ()=>{
+    const sel = document.getElementById('mv_target_course');
+    const newCourse = parseInt(sel.value||'0',10)||0;
+    if (!MV_groupId || !newCourse || newCourse === MV_currentCourse){
+      notify('warning','Zgjidh një modul të vlefshëm.'); return;
+    }
+    try{
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Accept':'application/json'},
+        body: JSON.stringify({
+          action: 'move_group_course',
+          csrf: CSRF,
+          group_id: MV_groupId,
+          new_course_id: newCourse
+        })
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Nuk u zhvendos.');
+      // Hiq rreshtin e grupit nga lista aktuale
+      const row = document.getElementById('groupRow_'+MV_groupId);
+      row?.parentElement?.removeChild(row);
+
+      // Përditëso badge e numrit të grupeve në buton
+      const wrap = document.getElementById('groupsBody_'+MV_currentCourse);
+      const btn = document.querySelector(`[data-bs-target="#courseGroups_${MV_currentCourse}"] .badge`);
+      if (wrap && btn){
+        const left = wrap.querySelectorAll('tr').length;
+        btn.textContent = left;
+      }
+
+      bootstrap.Modal.getInstance(moveModal)?.hide();
+      notify('success','Grupi u zhvendos me sukses.');
+    }catch(err){
+      notify('danger', err.message || 'Zhvendosja dështoi.');
+    }
   });
 }
 

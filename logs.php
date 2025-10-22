@@ -17,7 +17,7 @@ $u = $pdo->prepare("
 ");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $currentUser = $u->fetch(PDO::FETCH_ASSOC);
-if (!$currentUser || ($currentUser['role_name']??'')!=='administrator') { header('Location: selectProfile.php'); exit; }
+if (!$currentUser || strtolower((string)($currentUser['role_name']??''))!=='administrator') { header('Location: selectProfile.php'); exit; }
 
 /* ===== Helpers ===== */
 function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
@@ -74,6 +74,18 @@ $columnLabels = [
   ],
 ];
 
+/* ===== Ikona për zona (UI) ===== */
+$tableIcons = [
+  'users' => 'person-badge',
+  'roles' => 'award',
+  'persons' => 'person',
+  'students' => 'mortarboard',
+  'agencies' => 'building',
+  'courses' => 'book',
+  'course_groups' => 'collection',
+  'course_group_students' => 'people',
+];
+
 /* ===== Lookups me cache ===== */
 function lookup(PDO $pdo, string $what, $id): ?string {
   static $cache = [];
@@ -128,6 +140,7 @@ function subjectFor(PDO $pdo, string $table, array $pk, array $tableLabels): str
       case 'users':
         $row = $pdo->prepare("SELECT COALESCE(NULLIF(full_name,''), email, CONCAT('User #',id)) FROM users WHERE id=?");
         $row->execute([(int)($pk['id'] ?? 0)]); $t = $row->fetchColumn(); return $label.': '.($t ?: ('#'.((int)($pk['id'] ?? 0))));
+// ... (pjesët e tjera si më parë)
       case 'persons':
         $row = $pdo->prepare("SELECT TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(father_name,''),' ',COALESCE(last_name,''))) FROM persons WHERE id=?");
         $row->execute([(int)($pk['id'] ?? 0)]); $t = $row->fetchColumn(); return $label.': '.(nonEmpty($t)?$t:('#'.((int)($pk['id'] ?? 0))));
@@ -168,7 +181,8 @@ $page    = max(1, (int)($_GET['page'] ?? 1));
 $perPage = min(100, max(10, (int)($_GET['per'] ?? 25)));
 $offset  = ($page - 1) * $perPage;
 
-$where = []; $params = [];
+$where = [];
+$params = [];
 if ($action) { $where[] = "ae.action = :action"; $params[':action'] = $action; }
 if ($table)  { $where[] = "ae.table_name = :table"; $params[':table'] = $table; }
 if ($from)   { $where[] = "ae.happened_at >= :from"; $params[':from'] = $from.' 00:00:00'; }
@@ -191,7 +205,7 @@ $st = $pdo->prepare("
   LEFT JOIN users u ON u.id=ae.user_id
   LEFT JOIN roles r ON r.id=u.role_id
   $whereSql
-  ORDER BY ae.id DESC
+  ORDER BY ae.happened_at DESC, ae.id DESC
   LIMIT $perPageI OFFSET $offsetI
 ");
 foreach ($params as $k=>$v) { $st->bindValue($k,$v); }
@@ -208,6 +222,59 @@ if ($ids) {
   while ($row = $fs->fetch(PDO::FETCH_ASSOC)) { $fields[(int)$row['event_id']][] = $row; }
 }
 
+/* ===== Statistika për kartat (brenda filtrave) ===== */
+$stats = ['total'=>$total,'ins'=>0,'upd'=>0,'del'=>0];
+$stc = $pdo->prepare("SELECT action, COUNT(*) c FROM audit_events ae LEFT JOIN users u ON u.id=ae.user_id $whereSql GROUP BY action");
+foreach ($params as $k=>$v) { $stc->bindValue($k,$v); }
+$stc->execute();
+while ($r = $stc->fetch(PDO::FETCH_ASSOC)) {
+  if ($r['action']==='INSERT') $stats['ins']=(int)$r['c'];
+  elseif ($r['action']==='UPDATE') $stats['upd']=(int)$r['c'];
+  elseif ($r['action']==='DELETE') $stats['del']=(int)$r['c'];
+}
+
+/* Top tabela */
+$topTables=[];
+$stt = $pdo->prepare("SELECT ae.table_name, COUNT(*) c FROM audit_events ae LEFT JOIN users u ON u.id=ae.user_id $whereSql GROUP BY ae.table_name ORDER BY c DESC LIMIT 5");
+foreach ($params as $k=>$v) { $stt->bindValue($k,$v); }
+$stt->execute(); $topTables=$stt->fetchAll(PDO::FETCH_ASSOC);
+
+/* Top përdorues */
+$topUsers=[];
+$stu = $pdo->prepare("SELECT COALESCE(NULLIF(u.full_name,''), u.email, CONCAT('User #',u.id)) nm, COUNT(*) c
+  FROM audit_events ae LEFT JOIN users u ON u.id=ae.user_id $whereSql GROUP BY nm ORDER BY c DESC LIMIT 5");
+foreach ($params as $k=>$v) { $stu->bindValue($k,$v); }
+$stu->execute(); $topUsers=$stu->fetchAll(PDO::FETCH_ASSOC);
+
+/* ===== Eksport CSV (opsional) ===== */
+if (isset($_GET['export']) && $_GET['export']==='csv') {
+  header('Content-Type: text/csv; charset=UTF-8');
+  header('Content-Disposition: attachment; filename="auditime_'.date('Ymd_His').'.csv"');
+  $out = fopen('php://output','w');
+  fputcsv($out, ['ID','Kur','Veprimi','Zona','Subjekti','Kush','IP','Përmbledhje']);
+  foreach ($events as $ev) {
+    $eid = (int)$ev['id'];
+    $pk  = json_decode($ev['row_pk'] ?? 'null', true) ?: [];
+    $subject = subjectFor($pdo, (string)$ev['table_name'], $pk, $tableLabels);
+    $diffs = $fields[$eid] ?? [];
+    $human=[];
+    $translated = $columnLabels[$ev['table_name']] ?? [];
+    foreach ($diffs as $f) {
+      $col=(string)$f['column_name'];
+      $label=$translated[$col] ?? ucfirst(str_replace('_',' ',$col));
+      $old = prettyValue($pdo, $ev['table_name'], $col, $f['old_value']);
+      $new = prettyValue($pdo, $ev['table_name'], $col, $f['new_value']);
+      if ($ev['action']==='INSERT') $human[]="$label: $new";
+      elseif ($ev['action']==='DELETE') $human[]="$label: $old";
+      else $human[]="$label: $old → $new";
+    }
+    $summary = $human ? implode('; ', $human) : '—';
+    $who = $ev['full_name'] ?: ($ev['email'] ?? '—');
+    fputcsv($out, [$eid, $ev['happened_at'], $ev['action'], ($tableLabels[$ev['table_name']] ?? $ev['table_name']), $subject, $who, ($ev['ip_address'] ?? ''), $summary]);
+  }
+  fclose($out); exit;
+}
+
 $NAV_ACTIVE = 'logs';
 require __DIR__ . '/inc/navbar.php';
 ?>
@@ -222,66 +289,161 @@ require __DIR__ . '/inc/navbar.php';
   <style>
     body { background:#f5f7fb; padding-top:72px; }
     .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-
-    /* ===== Timeline ===== */
-    .timeline { position:relative; margin-left:.75rem; padding-left:1.5rem; }
-    .timeline::before {
-      content:''; position:absolute; left:10px; top:0; bottom:0; width:2px; background:#e5e7eb;
-    }
-    .tl-item { position:relative; margin-bottom:1rem; }
-    .tl-dot {
-      position:absolute; left:4px; top:18px; width:14px; height:14px; border-radius:50%; background:#cbd5e1;
-      border:2px solid #fff; box-shadow:0 0 0 3px rgba(203,213,225,.5);
-    }
-    .tl-dot.insert { background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.2); }
-    .tl-dot.update { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.2); }
-    .tl-dot.delete { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.2); }
-
-    .ev-card { border-radius:1rem; }
-    .ev-border-success { border-left:6px solid #22c55e !important; }
-    .ev-border-warning { border-left:6px solid #f59e0b !important; }
-    .ev-border-danger  { border-left:6px solid #ef4444 !important; }
-    .muted-pill { background:#eef2ff; color:#334155; border-radius:999px; padding:.15rem .5rem; font-size:.75rem; }
-    .badge-action { text-transform:uppercase; letter-spacing:.02em; }
     .nowrap { white-space:nowrap; }
+    .chip { background:#eef2ff; color:#1f2937; border:1px solid #e5e7eb; border-radius:999px; padding:.25rem .6rem; font-size:.85rem; }
+    .help-box { background:#eff6ff; border:1px solid #dbeafe; border-radius:.75rem; }
 
-    /* Diff colors */
-    .diff-old { background:#fff1f2; }
-    .diff-new { background:#ecfdf5; }
+    /* Karta statistike */
+    .stat-card { border-radius:1rem; }
+    .stat-icon { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f8fafc; }
 
-    /* Filters card tweaks */
-    .chip { background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px; padding:.25rem .65rem; font-size:.875rem; }
+    /* Ngjarje */
+    .ev { border-left:6px solid transparent; border-radius:1rem; }
+    .ev-insert { border-left-color:#22c55e; background:#f0fdf4; }
+    .ev-update { border-left-color:#f59e0b; background:#fffbeb; }
+    .ev-delete { border-left-color:#ef4444; background:#fef2f2; }
+    .ev + .ev { margin-top: .75rem; }
 
-    /* Floating Refresh Button (FAB) */
-    .fab-refresh {
-      position:fixed; bottom:24px; right:24px; width:56px; height:56px;
-      border-radius:50%; display:flex; align-items:center; justify-content:center;
+    .diff-badge { font-size:.75rem; border-radius:.5rem; padding:.15rem .4rem; }
+    .diff-old { background:#fee2e2; }
+    .diff-new { background:#dcfce7; }
+
+    /* Datat si seksione */
+    .day-header { position:sticky; top:64px; z-index:5; background:#f5f7fb; padding:.35rem 0; }
+
+    /* FAB export/refresh */
+    .fab {
+      position: fixed; bottom: 24px; right: 24px; width:56px; height:56px;
+      border-radius: 50%; display:flex; align-items:center; justify-content:center;
       box-shadow:0 12px 24px rgba(2,6,23,.18); z-index:1055;
     }
+    .fab-secondary { right: 92px; }
 
     @media (max-width: 575.98px){
-      .timeline { margin-left: .5rem; padding-left: 1.25rem; }
-      .tl-dot { left:3px; }
+      .day-header { top:56px; }
     }
   </style>
 </head>
 <body>
 
 <main class="container-fluid px-3 px-md-4">
-  <!-- Top bar -->
+
+  <!-- Header i thjeshtë -->
   <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
     <div class="d-flex align-items-center gap-3">
       <h2 class="mb-0">Auditime</h2>
-      <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
-    </div>
-    <div class="d-flex align-items-center gap-2">
-      <a class="btn btn-outline-dark btn-sm chip" href="logs.php?from=<?= date('Y-m-d') ?>&to=<?= date('Y-m-d') ?>">Sot</a>
-      <a class="btn btn-outline-dark btn-sm chip" href="logs.php?from=<?= date('Y-m-d',strtotime('-7 days')) ?>&to=<?= date('Y-m-d') ?>">7 ditë</a>
-      <a class="btn btn-outline-dark btn-sm chip" href="logs.php?from=<?= date('Y-m-d',strtotime('-30 days')) ?>&to=<?= date('Y-m-d') ?>">30 ditë</a>
+      <span class="text-muted small"><?= number_format($total) ?> ngjarje</span>
     </div>
   </div>
 
-  <!-- Filters -->
+  <!-- Ndihmë e shpejtë -->
+  <div class="help-box p-3 mb-3">
+    <div class="d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-info-circle"></i>
+        <strong>Çfarë shoh këtu?</strong>
+      </div>
+      <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#helpBody">Shpjego</button>
+    </div>
+    <div id="helpBody" class="collapse mt-2">
+      <ul class="mb-0">
+        <li><span class="text-success fw-semibold">E gjelbër</span> = <strong>Shtim</strong> (u krijua diçka e re)</li>
+        <li><span class="text-warning fw-semibold">E verdhë</span> = <strong>Ndryshim</strong> (diçka u përditësua)</li>
+        <li><span class="text-danger fw-semibold">E kuqe</span> = <strong>Fshirje</strong></li>
+      </ul>
+      <div class="small text-muted mt-2">Detajet teknike (JSON, IP, etj.) janë të fshehura – kliko “Detaje” te çdo rresht për t’i parë.</div>
+    </div>
+  </div>
+
+  <!-- Karta statistike -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon"><i class="bi bi-activity"></i></div>
+          <div>
+            <div class="text-muted small">Ngjarje gjithsej</div>
+            <div class="fs-4 fw-bold"><?= number_format($stats['total']) ?></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-4 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon"><i class="bi bi-plus-circle text-success"></i></div>
+          <div>
+            <div class="text-muted small">Shtime</div>
+            <div class="fs-5 fw-bold text-success"><?= number_format($stats['ins']) ?></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-4 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon"><i class="bi bi-arrow-repeat text-warning"></i></div>
+          <div>
+            <div class="text-muted small">Ndryshime</div>
+            <div class="fs-5 fw-bold text-warning"><?= number_format($stats['upd']) ?></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-4 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon"><i class="bi bi-trash text-danger"></i></div>
+          <div>
+            <div class="text-muted small">Fshirje</div>
+            <div class="fs-5 fw-bold text-danger"><?= number_format($stats['del']) ?></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top-5 (opsionale) -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <strong>Zona më aktive</strong>
+          <span class="small text-muted">brenda filtrave</span>
+        </div>
+        <div class="mt-2">
+          <?php if (!$topTables): ?>
+            <div class="text-muted small">—</div>
+          <?php else: foreach ($topTables as $tt): ?>
+            <div class="d-flex align-items-center justify-content-between py-1">
+              <div><i class="bi bi-<?= h($tableIcons[$tt['table_name']] ?? 'grid') ?> me-1"></i> <?= h($tableLabels[$tt['table_name']] ?? $tt['table_name']) ?></div>
+              <div class="badge text-bg-secondary"><?= (int)$tt['c'] ?></div>
+            </div>
+          <?php endforeach; endif; ?>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <strong>Aktiviteti sipas përdoruesve</strong>
+          <span class="small text-muted">brenda filtrave</span>
+        </div>
+        <div class="mt-2">
+          <?php if (!$topUsers): ?>
+            <div class="text-muted small">—</div>
+          <?php else: foreach ($topUsers as $tu): ?>
+            <div class="d-flex align-items-center justify-content-between py-1">
+              <div><i class="bi bi-person-circle me-1"></i> <?= h($tu['nm']) ?></div>
+              <div class="badge text-bg-secondary"><?= (int)$tu['c'] ?></div>
+            </div>
+          <?php endforeach; endif; ?>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtrat -->
   <div class="card mb-4">
     <div class="card-body">
       <form class="row g-3 align-items-end" method="get" action="logs.php">
@@ -311,188 +473,171 @@ require __DIR__ . '/inc/navbar.php';
           <label class="form-label">Deri më</label>
           <input type="date" class="form-control" name="to" value="<?= h($to) ?>">
         </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label">Kërko</label>
-          <input type="text" class="form-control" name="q" value="<?= h($q) ?>" placeholder="Emër, email ose ID">
-        </div>
-        <div class="col-6 col-md-1">
-          <label class="form-label">/faqe</label>
-          <input type="number" class="form-control" name="per" min="10" max="100" value="<?= (int)$perPage ?>">
+        <div class="col-12 col-md-3">
+          <label class="form-label">Kërko (emër, email, AMZË, ID)</label>
+          <input type="text" class="form-control" name="q" value="<?= h($q) ?>" placeholder="p.sh. Arben, 12345, QTA-ALGO">
         </div>
         <div class="col-12 d-flex gap-2">
-          <button class="btn btn-primary"><i class="bi bi-filter me-1"></i>Filtro</button>
-          <a class="btn btn-outline-secondary" href="logs.php"><i class="bi bi-x-circle me-1"></i>Fshij filtrat</a>
+          <button class="btn btn-primary"><i class="bi bi-filter me-1"></i>Zbato filtrat</button>
+          <a class="btn btn-outline-secondary" href="logs.php"><i class="bi bi-x-circle me-1"></i>Pastro</a>
+          <a class="btn btn-outline-success" href="<?= 'logs.php?'.h(http_build_query(array_merge($_GET, ['export'=>'csv']))) ?>">
+            <i class="bi bi-download me-1"></i>Eksporto CSV
+          </a>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Timeline -->
-  <div class="timeline">
-    <?php if (!$events): ?>
-      <div class="text-center text-muted py-5">S’ka rezultate për filtrat e zgjedhur.</div>
-    <?php else: foreach ($events as $ev):
-      $eid = (int)$ev['id'];
-      $pk  = json_decode($ev['row_pk'] ?? 'null', true) ?: [];
-      $act = $ev['action'];
-      $stripe = $act==='INSERT' ? 'ev-border-success' : ($act==='UPDATE' ? 'ev-border-warning' : 'ev-border-danger');
-      $dot   = $act==='INSERT' ? 'insert' : ($act==='UPDATE' ? 'update' : 'delete');
-      $badge = $act==='INSERT' ? 'success' : ($act==='UPDATE' ? 'warning' : 'danger');
+  <!-- Ngjarje, të grupuara sipas datës -->
+  <?php
+    // grupim sipas ditës
+    $byDay = [];
+    foreach ($events as $ev) {
+      $day = substr((string)$ev['happened_at'], 0, 10);
+      $byDay[$day][] = $ev;
+    }
+  ?>
 
-      $subject = subjectFor($pdo, (string)$ev['table_name'], $pk, $tableLabels);
+  <?php if (!$events): ?>
+    <div class="text-center text-muted py-5">S’ka rezultate për filtrat e zgjedhur.</div>
+  <?php else: ?>
+    <?php foreach ($byDay as $day => $rows): ?>
+      <div class="day-header d-flex align-items-center gap-2 mt-2 mb-1">
+        <i class="bi bi-calendar3"></i>
+        <strong><?= fmtDate($day) ?></strong>
+        <span class="badge text-bg-secondary"><?= count($rows) ?></span>
+      </div>
 
-      $diffs = $fields[$eid] ?? [];
-      $human = [];
-      $translated = $columnLabels[$ev['table_name']] ?? [];
-      foreach ($diffs as $f) {
-        $col = (string)$f['column_name'];
-        $label = $translated[$col] ?? ucfirst(str_replace('_',' ',$col));
-        $old = prettyValue($pdo, $ev['table_name'], $col, $f['old_value']);
-        $new = prettyValue($pdo, $ev['table_name'], $col, $f['new_value']);
-        if ($act==='INSERT') $human[] = "$label: $new";
-        elseif ($act==='DELETE') $human[] = "$label: $old";
-        else $human[] = "$label: nga \"$old\" në \"$new\"";
-      }
-      if (!$human) {
-        $j = $pdo->prepare("SELECT old_data, new_data FROM audit_events WHERE id=?");
-        $j->execute([$eid]); $jd = $j->fetch(PDO::FETCH_ASSOC) ?: [];
-        $oldJ = json_decode($jd['old_data'] ?? 'null', true) ?: [];
-        $newJ = json_decode($jd['new_data'] ?? 'null', true) ?: [];
-        if ($oldJ || $newJ) {
-          $keys = array_unique(array_merge(array_keys($oldJ), array_keys($newJ)));
-          foreach ($keys as $k) {
-            $ov = array_key_exists($k,$oldJ)?$oldJ[$k]:null;
-            $nv = array_key_exists($k,$newJ)?$newJ[$k]:null;
-            if ($ov === $nv) continue;
-            $label = $translated[$k] ?? ucfirst(str_replace('_',' ',$k));
-            $oldPretty = prettyValue($pdo, (string)$ev['table_name'], $k, $ov === null ? null : (string)$ov);
-            $newPretty = prettyValue($pdo, (string)$ev['table_name'], $k, $nv === null ? null : (string)$nv);
-            if ($act==='INSERT') $human[]="$label: $newPretty";
-            elseif ($act==='DELETE') $human[]="$label: $oldPretty";
-            else $human[]="$label: nga \"$oldPretty\" në \"$newPretty\"";
-          }
+      <?php foreach ($rows as $ev):
+        $eid = (int)$ev['id'];
+        $pk  = json_decode($ev['row_pk'] ?? 'null', true) ?: [];
+        $act = $ev['action'];
+        $class = $act==='INSERT' ? 'ev-insert' : ($act==='UPDATE' ? 'ev-update' : 'ev-delete');
+        $icon  = $act==='INSERT' ? 'plus-circle' : ($act==='UPDATE' ? 'arrow-repeat' : 'trash');
+        $labelAct = $act==='INSERT' ? 'shtoi' : ($act==='UPDATE' ? 'ndryshoi' : 'fshiu');
+
+        $subject = subjectFor($pdo, (string)$ev['table_name'], $pk, $tableLabels);
+        $who = $ev['full_name'] ?: ($ev['email'] ?? '—');
+        $zoneLabel = $tableLabels[$ev['table_name']] ?? $ev['table_name'];
+        $zoneIcon  = $tableIcons[$ev['table_name']] ?? 'grid';
+
+        // përmbledhje njerëzore e ndryshimeve
+        $diffs = $fields[$eid] ?? [];
+        $translated = $columnLabels[$ev['table_name']] ?? [];
+        $human = [];
+        foreach ($diffs as $f) {
+          $col = (string)$f['column_name'];
+          $label = $translated[$col] ?? ucfirst(str_replace('_',' ',$col));
+          $old = prettyValue($pdo, $ev['table_name'], $col, $f['old_value']);
+          $new = prettyValue($pdo, $ev['table_name'], $col, $f['new_value']);
+          if ($act==='INSERT') $human[] = "<span class=\"diff-badge diff-new\">$label: $new</span>";
+          elseif ($act==='DELETE') $human[] = "<span class=\"diff-badge diff-old\">$label: $old</span>";
+          else $human[] = "<span class=\"diff-badge diff-old\">$label: $old</span> → <span class=\"diff-badge diff-new\">$new</span>";
         }
-      }
-      $summary = $human ? implode('; ', array_slice($human,0,4)).(count($human)>4?'…':'') : '—';
-      $who = $ev['full_name'] ?: ($ev['email'] ?? '—');
-      $role = $ev['role_name'] ?? null;
-      $collapseId = 'ev'.$eid;
-      $jsonId = 'raw'.$eid;
-    ?>
-      <div class="tl-item">
-        <span class="tl-dot <?= $dot ?>"></span>
-        <div class="card ev-card mb-3 <?= $stripe ?>">
-          <div class="card-body">
-            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-              <div class="d-flex flex-column">
-                <div class="d-flex align-items-center gap-2">
-                  <span class="fw-semibold">#<?= $eid ?></span>
-                  <span class="badge badge-action text-bg-<?= $badge ?>">
-                    <?= $act==='INSERT'?'Shtim':($act==='UPDATE'?'Ndryshim':'Fshirje') ?>
-                  </span>
+        $summaryHtml = $human ? implode(' &nbsp; ', array_slice($human,0,6)).(count($human)>6?' …':'') : '—';
+        $collapseId = 'ev'.$eid;
+        $jsonId = 'raw'.$eid;
+      ?>
+        <div class="ev <?= $class ?> p-3">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div class="d-flex align-items-start gap-2">
+              <div class="mt-1"><i class="bi bi-<?= $icon ?>"></i></div>
+              <div>
+                <div class="fw-semibold">
+                  <?= h($who) ?> <span class="text-muted fw-normal"><?= $labelAct ?></span>
+                  <span class="fw-semibold"><?= h($zoneLabel) ?></span>
                 </div>
-                <div class="text-muted small mt-1">
-                  <?= h($ev['happened_at']) ?> • <span class="muted-pill"><?= h(timeAgo($ev['happened_at'])) ?></span>
+                <div class="small text-muted">
+                  <?= h($subject) ?> • <?= h($ev['happened_at']) ?> (<?= h(timeAgo($ev['happened_at'])) ?>)
                 </div>
               </div>
-              <div class="text-end">
-                <div class="fw-semibold"><?= h($tableLabels[$ev['table_name']] ?? ucfirst($ev['table_name'])) ?></div>
-                <div class="small text-muted"><?= h($subject) ?></div>
-              </div>
             </div>
 
-            <hr class="my-3">
-
-            <div class="row g-3">
-              <div class="col-md-8">
-                <div class="small text-muted mb-1">Përmbledhje</div>
-                <div><?= h($summary) ?></div>
-              </div>
-              <div class="col-md-4">
-                <div class="small text-muted mb-1">Kush</div>
-                <div class="fw-semibold"><?= h($who) ?></div>
-                <div class="small text-muted"><?= h($role ?? '') ?></div>
-                <div class="small mt-2"><span class="text-muted">IP:</span> <code><?= h($ev['ip_address'] ?? '—') ?></code></div>
-              </div>
+            <div class="text-end small">
+              <div class="text-muted"><i class="bi bi-<?= $zoneIcon ?>"></i> <?= h($zoneLabel) ?></div>
+              <div class="mt-1"><span class="text-muted">IP:</span> <code><?= h($ev['ip_address'] ?? '—') ?></code></div>
+              <div class="mt-1"><span class="text-muted">ID:</span> <code>#<?= $eid ?></code></div>
             </div>
+          </div>
 
-            <div class="mt-3 text-end">
-              <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#<?= $collapseId ?>">
-                <i class="bi bi-chevron-down me-1"></i>Detaje
-              </button>
-            </div>
+          <div class="mt-2"><?= $summaryHtml ?></div>
 
-            <div class="collapse mt-3" id="<?= $collapseId ?>">
-              <div class="row g-3">
-                <div class="col-lg-7">
-                  <div class="border rounded p-2">
-                    <div class="small text-muted mb-2"><i class="bi bi-list-check me-1"></i>Ndryshimet fushë-për-fushë</div>
-                    <div class="table-responsive">
-                      <table class="table table-sm">
-                        <thead class="table-light">
-                          <tr><th>Fusha</th><th class="w-50">Vlera e vjetër</th><th class="w-50">Vlera e re</th></tr>
-                        </thead>
-                        <tbody>
+          <div class="mt-2 text-end">
+            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#<?= $collapseId ?>">
+              <i class="bi bi-chevron-down me-1"></i>Detaje
+            </button>
+          </div>
+
+          <div class="collapse mt-2" id="<?= $collapseId ?>">
+            <div class="row g-2">
+              <div class="col-lg-7">
+                <div class="border rounded p-2 bg-white">
+                  <div class="small text-muted mb-2"><i class="bi bi-list-check me-1"></i>Ndryshimet fushë-për-fushë</div>
+                  <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                      <thead class="table-light">
+                        <tr><th>Fusha</th><th class="w-50">Vlera e vjetër</th><th class="w-50">Vlera e re</th></tr>
+                      </thead>
+                      <tbody>
                         <?php if ($diffs): foreach ($diffs as $f):
                           $col = (string)$f['column_name'];
                           $label = ($columnLabels[$ev['table_name']][$col] ?? ucfirst(str_replace('_',' ',$col)));
                           $old = prettyValue($pdo, $ev['table_name'], $col, $f['old_value']);
                           $new = prettyValue($pdo, $ev['table_name'], $col, $f['new_value']);
                         ?>
-                          <tr>
-                            <td class="small"><?= h($label) ?></td>
-                            <td class="small diff-old"><?= $ev['action']==='INSERT' ? '—' : $old ?></td>
-                            <td class="small diff-new"><?= $ev['action']==='DELETE' ? '—' : $new ?></td>
-                          </tr>
+                        <tr>
+                          <td class="small"><?= h($label) ?></td>
+                          <td class="small"><?= $ev['action']==='INSERT' ? '—' : $old ?></td>
+                          <td class="small"><?= $ev['action']==='DELETE' ? '—' : $new ?></td>
+                        </tr>
                         <?php endforeach; else: ?>
-                          <tr><td colspan="3" class="text-muted">S’ka diferenca të regjistruara.</td></tr>
+                        <tr><td colspan="3" class="text-muted">S’ka diferenca të regjistruara.</td></tr>
                         <?php endif; ?>
-                        </tbody>
-                      </table>
-                    </div>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-                <div class="col-lg-5">
-                  <div class="border rounded p-2">
-                    <div class="d-flex align-items-center justify-content-between">
-                      <div class="small text-muted"><i class="bi bi-gear-wide-connected me-1"></i>Detaje teknike (opsionale)</div>
-                      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $jsonId ?>">
-                        Shfaq/Fsheh JSON
-                      </button>
-                    </div>
-                    <?php
-                      $j = $pdo->prepare("SELECT old_data, new_data, user_agent FROM audit_events WHERE id = ?");
-                      $j->execute([$eid]); $jd = $j->fetch(PDO::FETCH_ASSOC) ?: [];
-                    ?>
-                    <div class="collapse mt-2" id="<?= $jsonId ?>">
-                      <div class="small mb-1"><span class="badge text-bg-secondary">UA</span> <?= h($jd['user_agent'] ?? '') ?></div>
-                      <div class="row g-2">
-                        <div class="col-md-6">
-                          <div class="small text-muted mb-1">old_data</div>
-                          <pre class="mb-0" style="white-space:pre-wrap; font-family:ui-monospace; font-size:.8rem;"><?= h($jd['old_data'] ?: 'null') ?></pre>
-                        </div>
-                        <div class="col-md-6">
-                          <div class="small text-muted mb-1">new_data</div>
-                          <pre class="mb-0" style="white-space:pre-wrap; font-family:ui-monospace; font-size:.8rem;"><?= h($jd['new_data'] ?: 'null') ?></pre>
-                        </div>
+              </div>
+              <div class="col-lg-5">
+                <div class="border rounded p-2 bg-white">
+                  <div class="d-flex align-items-center justify-content-between">
+                    <div class="small text-muted"><i class="bi bi-gear-wide-connected me-1"></i>Detaje teknike (opsionale)</div>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $jsonId ?>">
+                      Shfaq/Fsheh JSON
+                    </button>
+                  </div>
+                  <?php
+                    $j = $pdo->prepare("SELECT old_data, new_data, user_agent FROM audit_events WHERE id = ?");
+                    $j->execute([$eid]); $jd = $j->fetch(PDO::FETCH_ASSOC) ?: [];
+                  ?>
+                  <div class="collapse mt-2" id="<?= $jsonId ?>">
+                    <div class="small mb-1"><span class="badge text-bg-secondary">UA</span> <?= h($jd['user_agent'] ?? '') ?></div>
+                    <div class="row g-2">
+                      <div class="col-md-6">
+                        <div class="small text-muted mb-1">old_data</div>
+                        <pre class="mb-0" style="white-space:pre-wrap; font-family:ui-monospace; font-size:.8rem;"><?= h($jd['old_data'] ?: 'null') ?></pre>
+                      </div>
+                      <div class="col-md-6">
+                        <div class="small text-muted mb-1">new_data</div>
+                        <pre class="mb-0" style="white-space:pre-wrap; font-family:ui-monospace; font-size:.8rem;"><?= h($jd['new_data'] ?: 'null') ?></pre>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div> <!-- /row -->
-            </div> <!-- /collapse -->
-          </div>
+              </div>
+            </div><!-- /row -->
+          </div><!-- /collapse -->
         </div>
-      </div>
-    <?php endforeach; endif; ?>
-  </div>
+      <?php endforeach; ?>
+    <?php endforeach; ?>
+  <?php endif; ?>
 
   <!-- Pagination -->
   <?php
     $pages = max(1, (int)ceil($total / $perPage));
     $qs = $_GET; unset($qs['page']);
     $base = 'logs.php?'.http_build_query($qs);
-    if ($base === 'logs.php?') { $base = 'logs.php?'; } // ensure '?' present
+    if ($base === 'logs.php?') { $base = 'logs.php?'; }
     $prev = max(1, $page-1); $next = min($pages, $page+1);
   ?>
   <div class="d-flex align-items-center justify-content-end mt-3">
@@ -516,8 +661,12 @@ require __DIR__ . '/inc/navbar.php';
   // URL për FAB rifresko (ruan filtrat, kthen te faqja 1)
   $fabUrl = 'logs.php?'.http_build_query(array_merge($_GET ?? [], ['page'=>1]));
   if ($fabUrl === 'logs.php?') { $fabUrl = 'logs.php?'; }
+  $csvUrl = 'logs.php?'.http_build_query(array_merge($_GET ?? [], ['export'=>'csv']));
 ?>
-<a href="<?= h($fabUrl) ?>" class="btn btn-primary fab-refresh" aria-label="Rifresko">
+<a href="<?= h($csvUrl) ?>" class="btn btn-success fab fab-secondary" title="Eksporto CSV" aria-label="Eksporto CSV">
+  <i class="bi bi-download"></i>
+</a>
+<a href="<?= h($fabUrl) ?>" class="btn btn-primary fab" aria-label="Rifresko" title="Rifresko">
   <i class="bi bi-arrow-repeat"></i>
 </a>
 

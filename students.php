@@ -614,7 +614,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
 
         /* Veprime column */
-        .col-actions{ width: 72px; }
+        .col-actions{ width: 92px; } /* rritur pak që të zërë dy butona */
         .btn-icon{ width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; }
     </style>
 </head>
@@ -684,7 +684,6 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
         <table class="table align-middle mb-0">
           <thead class="table-light">
             <tr>
-              <th class="col-actions text-center">Veprime</th>
               <th class="nowrap">Nr. Amzës</th>
               <th>Emër</th>
               <th>Atësi</th>
@@ -695,6 +694,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
               <th>Arsimi</th>
               <th class="nowrap">Gjinia</th>
               <th>Tel.</th>
+              <th class="col-actions text-center">Veprime</th>
             </tr>
           </thead>
           <tbody>
@@ -704,24 +704,6 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
               $fullName = trim(($s['first_name'] ?: '').' '.($s['father_name'] ?: '').' '.($s['last_name'] ?: ''));
             ?>
               <tr id="row-<?= $sid ?>">
-                <!-- actions -->
-                <td class="text-center">
-                  <?php if ($EDIT_MODE): ?>
-                    <button type="button"
-                            class="btn btn-soft-danger btn-icon btn-delete"
-                            title="Fshi këtë AMZË"
-                            data-sid="<?= $sid ?>"
-                            data-amze="<?= htmlspecialchars($s['nr_amze']) ?>"
-                            data-name="<?= htmlspecialchars($fullName ?: '—') ?>">
-                      <i class="bi bi-trash"></i>
-                    </button>
-                  <?php else: ?>
-                    <button type="button" class="btn btn-soft-secondary btn-icon" disabled title="Edit Mode OFF">
-                      <i class="bi bi-trash"></i>
-                    </button>
-                  <?php endif; ?>
-                </td>
-
                 <!-- nr_amze -->
                 <td class="cell" data-id="<?= $sid ?>" data-field="nr_amze">
                   <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['nr_amze']) ?></span>
@@ -774,6 +756,33 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
                 <!-- phone -->
                 <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
                   <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['phone'] ?: '—') ?></span>
+                </td>
+                <!-- actions -->
+                <td class="text-center">
+                  <div class="d-inline-flex gap-1">
+                    <!-- FUNKSIONALITET I RI: HAP KARTELËN -->
+                    <a href="student_card.php?sid=<?= $sid ?>"
+                       class="btn btn-soft-primary btn-icon"
+                       title="Hap kartelën e studentit">
+                      <i class="bi bi-person-lines-fill"></i>
+                    </a>
+
+                    <!-- ekzistuese: fshi -->
+                    <?php if ($EDIT_MODE): ?>
+                      <button type="button"
+                              class="btn btn-soft-danger btn-icon btn-delete"
+                              title="Fshi këtë AMZË"
+                              data-sid="<?= $sid ?>"
+                              data-amze="<?= htmlspecialchars($s['nr_amze']) ?>"
+                              data-name="<?= htmlspecialchars($fullName ?: '—') ?>">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    <?php else: ?>
+                      <button type="button" class="btn btn-soft-secondary btn-icon" disabled title="Edit Mode OFF">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    <?php endif; ?>
+                  </div>
                 </td>
               </tr>
             <?php endforeach; ?>
