@@ -263,7 +263,7 @@ $scpLabels = ['planned','assigned','completed','cancelled'];
 $scpCounts = [$scpPlanned,$scpAssigned,$scpCompleted,$scpCancelled];
 
 $NAV_ACTIVE = 'dashboard';
-require __DIR__ . '/inc/navbar.php';
+require __DIR__ . '/inc/navbar4.php';
 ?>
 <!DOCTYPE html>
 <html lang="sq">
