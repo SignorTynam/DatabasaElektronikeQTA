@@ -141,131 +141,280 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   }
 
   /* ===== Krijo grup (me ndarje inteligjente >10) ===== */
+    /* ===== Krijo grup (me ndarje inteligjente >10) ===== */
+  /* ===== Krijo grup (me ndarje inteligjente >10) ===== */
   if ($action==='create_group') {
     try {
-      $course_id   = (int)($_POST['course_id'] ?? 0);
-      $start_date  = dmy_to_iso((string)($_POST['start_date'] ?? ''));
-      $end_date    = dmy_to_iso((string)($_POST['end_date'] ?? ''));
-      $amze_spec   = trim((string)($_POST['amze_spec'] ?? ''));
-      $is_completed = isset($_POST['is_completed']) && $_POST['is_completed']=='1' ? 1 : 0;
+      $course_id    = (int)($_POST['course_id'] ?? 0);
+      $start_date   = dmy_to_iso((string)($_POST['start_date'] ?? ''));
+      $end_date     = dmy_to_iso((string)($_POST['end_date'] ?? ''));
+      $amze_spec    = trim((string)($_POST['amze_spec'] ?? ''));
+      $is_completed = isset($_POST['is_completed']) && $_POST['is_completed'] == '1' ? 1 : 0;
 
-      if ($course_id<=0) throw new RuntimeException('Zgjidh një modul.');
-      if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) throw new RuntimeException('Data e fillimit duhet në formatin DD-MM-YYYY.');
-      if (!$end_date   || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date))   throw new RuntimeException('Data e mbarimit duhet në formatin DD-MM-YYYY.');
-      if ($end_date < $start_date) throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
-
-      // Përgatit listën e AMZË-ve -> student IDs
-      $ids = [];
-      if ($amze_spec !== '') {
-        $nums = parseAmzeRanges($amze_spec);
-        if (!$nums) throw new RuntimeException('Nuk u gjet asnjë AMZË e vlefshme.');
-        foreach ($nums as $n) { $ids[] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n); }
-        $ids = array_values(array_unique($ids));
+      if ($course_id <= 0) {
+        throw new RuntimeException('Zgjidh një modul.');
+      }
+      if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) {
+        throw new RuntimeException('Data e fillimit duhet në formatin DD-MM-YYYY.');
+      }
+      if (!$end_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) {
+        throw new RuntimeException('Data e mbarimit duhet në formatin DD-MM-YYYY.');
+      }
+      if ($end_date < $start_date) {
+        throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
       }
 
-      if (!$ids) {
-        // Krijo grup bosh
+      // ---------------------------------------------------
+      // Përgatit listën e AMZË-ve -> student IDs (të renditura sipas AMZË)
+      // ---------------------------------------------------
+      $amzeList   = [];
+      $studentIds = [];
+
+      if ($amze_spec !== '') {
+        $nums = parseAmzeRanges($amze_spec); // tashmë të renditura dhe unike
+        if (!$nums) {
+          throw new RuntimeException('Nuk u gjet asnjë AMZË e vlefshme.');
+        }
+
+        $amzeToStudent = [];
+        foreach ($nums as $n) {
+          // siguro studentin për çdo AMZË
+          $amzeToStudent[$n] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n);
+        }
+
+        // garanto renditjen sipas numrit të AMZË-s (edhe nëse dicka ndryshon më vonë te parseAmzeRanges)
+        ksort($amzeToStudent, SORT_NUMERIC);
+        $amzeList   = array_keys($amzeToStudent);   // [1000,1001,...]
+        $studentIds = array_values($amzeToStudent); // [sid1000, sid1001,...] në të njëjtin rend
+      }
+
+      // ---------------------------------------------------
+      // NEW: Nëse këto AMZË janë tashmë në ÇFARËDO grupi, ndalo krijimin
+      // ---------------------------------------------------
+      if ($studentIds) {
+        $phDup   = implode(',', array_fill(0, count($studentIds), '?'));
+        $dupStmt = $pdo->prepare("
+          SELECT DISTINCT
+            s.nr_amze,
+            cg.id   AS group_id,
+            c.name  AS course_name
+          FROM course_group_students cgs
+          JOIN students      s  ON s.id  = cgs.student_id
+          JOIN course_groups cg ON cg.id = cgs.group_id
+          JOIN courses       c  ON c.id  = cg.course_id
+          WHERE cgs.student_id IN ($phDup)
+        ");
+        $dupStmt->execute($studentIds);
+        $dupRows = $dupStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($dupRows) {
+          $items = array_map(
+            fn($r) => $r['nr_amze'] . ' (Grup #' . $r['group_id'] . ', ' . $r['course_name'] . ')',
+            $dupRows
+          );
+          throw new RuntimeException(
+            'Procesi u ndërpre: këto AMZË janë tashmë pjesë e një grupi: ' . implode(', ', $items)
+          );
+        }
+      }
+
+      // Nëse s’ka studentë fare => krijo vetëm grup bosh
+      if (!$studentIds) {
         $pdo->beginTransaction();
-        $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed) VALUES (:c,:s,:e,:ic)");
-        $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':ic'=>$is_completed]);
+        $st = $pdo->prepare("
+          INSERT INTO course_groups (course_id, start_date, end_date, is_completed)
+          VALUES (:c,:s,:e,:ic)
+        ");
+        $st->execute([
+          ':c'  => $course_id,
+          ':s'  => $start_date,
+          ':e'  => $end_date,
+          ':ic' => $is_completed
+        ]);
         $gid = (int)$pdo->lastInsertId();
         $pdo->commit();
 
         qta_audit_event('group.create', [
-          'group_id'=>$gid,'course_id'=>$course_id,'start_date'=>$start_date,'end_date'=>$end_date,'is_completed'=>$is_completed,
-          'actor_user_id'=>$_SESSION['user_id'] ?? null
+          'group_id'      => $gid,
+          'course_id'     => $course_id,
+          'start_date'    => $start_date,
+          'end_date'      => $end_date,
+          'is_completed'  => $is_completed,
+          'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
+
         $_SESSION['flash_ok'] = 'Grupi u krijua me sukses (pa studentë).';
-        header('Location: groups.php'); exit;
+        header('Location: groups.php');
+        exit;
       }
 
-      // Ndalim: kontrolle sipas personal_number që të mos kenë ndjekur më parë po këtë modul
-      $phIds = implode(',', array_fill(0, count($ids), '?'));
+      // ---------------------------------------------------
+      // Ndalim: sipas personal_number që të mos kenë ndjekur më parë po këtë modul
+      // ---------------------------------------------------
+      $phIds  = implode(',', array_fill(0, count($studentIds), '?'));
       $pnStmt = $pdo->prepare("
         SELECT DISTINCT p.personal_number
         FROM students s
         JOIN persons  p ON p.id = s.person_id
         WHERE s.id IN ($phIds)
-          AND p.personal_number IS NOT NULL AND p.personal_number <> ''
+          AND p.personal_number IS NOT NULL
+          AND p.personal_number <> ''
       ");
-      $pnStmt->execute($ids);
+      $pnStmt->execute($studentIds);
       $pnList = $pnStmt->fetchAll(PDO::FETCH_COLUMN);
 
       if ($pnList) {
-        $phPn = implode(',', array_fill(0, count($pnList), '?'));
+        $phPn   = implode(',', array_fill(0, count($pnList), '?'));
         $confPN = $pdo->prepare("
-          SELECT DISTINCT p.personal_number, s.nr_amze, cg.id AS group_id, c.name AS course_name
+          SELECT DISTINCT
+            p.personal_number,
+            s.nr_amze,
+            cg.id   AS group_id,
+            c.name  AS course_name
           FROM course_group_students cgs
-          JOIN students s ON s.id = cgs.student_id
-          JOIN persons  p ON p.id = s.person_id
+          JOIN students      s  ON s.id  = cgs.student_id
+          JOIN persons       p  ON p.id  = s.person_id
           JOIN course_groups cg ON cg.id = cgs.group_id
-          JOIN courses c ON c.id = cg.course_id
+          JOIN courses       c  ON c.id  = cg.course_id
           WHERE cg.course_id = ?
             AND p.personal_number IN ($phPn)
         ");
         $confPN->execute([$course_id, ...$pnList]);
         $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
+
         if ($hitPN) {
-          $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-          throw new RuntimeException('Disa persona e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
+          $items = array_map(
+            fn($r) => ($r['nr_amze'] ?: $r['personal_number']) . ' (Grup #' . $r['group_id'] . ', ' . $r['course_name'] . ')',
+            $hitPN
+          );
+          throw new RuntimeException(
+            'Disa persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: ' . implode(', ', $items)
+          );
         }
       }
 
-      // Fshi "planned" për këta studentë (në çdo rast, para regjistrimit në grupe)
-      $pdo->prepare("DELETE FROM student_course_plans WHERE status='planned' AND student_id IN ($phIds)")->execute($ids);
+      // ---------------------------------------------------
+      // Fshi "planned" për këta studentë përpara regjistrimit në grupe
+      // ---------------------------------------------------
+      $pdo->prepare("
+        DELETE FROM student_course_plans
+        WHERE status = 'planned'
+          AND student_id IN ($phIds)
+      ")->execute($studentIds);
 
-      // ==== Ndarja inteligjente në grupe (kapacitet 10) ====
-      $total = count($ids);
+      // ---------------------------------------------------
+      // Ndarja inteligjente në grupe (kapacitet 10, duke ruajtur rendin e AMZË-ve)
+      // ---------------------------------------------------
+      $total        = count($studentIds);
       $groupsNeeded = (int)ceil($total / 10);
-      $base = (int)floor($total / $groupsNeeded);
-      $rem  = $total % $groupsNeeded; // grupet e para 'rem' do kenë (base+1) studentë
+      $base         = (int)floor($total / $groupsNeeded);
+      $rem          = $total % $groupsNeeded; // grupet e para 'rem' do kenë (base+1) studentë
 
       $chunks = [];
       $cursor = 0;
-      for ($g=0; $g<$groupsNeeded; $g++){
+
+      for ($g = 0; $g < $groupsNeeded; $g++) {
         $size = $base + ($g < $rem ? 1 : 0);
-        $chunks[] = array_slice($ids, $cursor, $size);
-        $cursor += $size;
+        if ($size <= 0) {
+          continue;
+        }
+
+        // gjithmonë segmente të VAZHDUESHME sipas rendit të AMZË-ve
+        $chunkIds  = array_slice($studentIds, $cursor, $size);
+        $chunkAmze = array_slice($amzeList,   $cursor, $size);
+        $cursor   += $size;
+
+        if (!$chunkIds) {
+          continue;
+        }
+
+        $chunks[] = [
+          'ids'      => $chunkIds,
+          'amze_min' => $chunkAmze ? min($chunkAmze) : null,
+          'amze_max' => $chunkAmze ? max($chunkAmze) : null,
+        ];
       }
 
       $pdo->beginTransaction();
 
-      $created = []; // [[gid=>.., count=>..], ...]
-      foreach ($chunks as $i => $chunk) {
-        if (!$chunk) continue;
-        if (count($chunk) > 10) { throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10).'); }
+      $created = []; // [[group_id=>.., count=>.., amze_min=>.., amze_max=>..], ...]
+      foreach ($chunks as $chunkInfo) {
+        $chunk = $chunkInfo['ids'];
+        if (!$chunk) {
+          continue;
+        }
+        if (count($chunk) > 10) {
+          throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10).');
+        }
 
-        $st = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed) VALUES (:c,:s,:e,:ic)");
-        $st->execute([':c'=>$course_id, ':s'=>$start_date, ':e'=>$end_date, ':ic'=>$is_completed]);
+        $st = $pdo->prepare("
+          INSERT INTO course_groups (course_id, start_date, end_date, is_completed)
+          VALUES (:c,:s,:e,:ic)
+        ");
+        $st->execute([
+          ':c'  => $course_id,
+          ':s'  => $start_date,
+          ':e'  => $end_date,
+          ':ic' => $is_completed
+        ]);
         $gid = (int)$pdo->lastInsertId();
 
-        $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
-        foreach ($chunk as $sid) { $ins->execute([':g'=>$gid, ':s'=>$sid]); }
+        $ins = $pdo->prepare("
+          INSERT INTO course_group_students (group_id, student_id)
+          VALUES (:g,:s)
+        ");
+        foreach ($chunk as $sid) {
+          $ins->execute([':g' => $gid, ':s' => $sid]);
+        }
 
-        $created[] = ['group_id'=>$gid, 'count'=>count($chunk)];
+        $created[] = [
+          'group_id' => $gid,
+          'count'    => count($chunk),
+          'amze_min' => $chunkInfo['amze_min'],
+          'amze_max' => $chunkInfo['amze_max'],
+        ];
 
         // AUDIT per grup
         qta_audit_event('group.create', [
-          'group_id'=>$gid,'course_id'=>$course_id,'start_date'=>$start_date,'end_date'=>$end_date,'is_completed'=>$is_completed,
-          'actor_user_id'=>$_SESSION['user_id'] ?? null
+          'group_id'      => $gid,
+          'course_id'     => $course_id,
+          'start_date'    => $start_date,
+          'end_date'      => $end_date,
+          'is_completed'  => $is_completed,
+          'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
       }
 
       $pdo->commit();
 
+      // Mesazh më i pasur (me range AMZË-sh)
       if (count($created) === 1) {
-        $_SESSION['flash_ok'] = 'Grupi u krijua me sukses. ('.($created[0]['count']).' studentë)';
+        $c     = $created[0];
+        $range = ($c['amze_min'] !== null)
+          ? ' (AMZË ' . $c['amze_min'] . ($c['amze_max'] && $c['amze_max'] !== $c['amze_min'] ? '–' . $c['amze_max'] : '') . ')'
+          : '';
+        $_SESSION['flash_ok'] = 'Grupi u krijua me sukses. (' . $c['count'] . ' studentë)' . $range;
       } else {
-        $parts = array_map(fn($r)=>'#'.$r['group_id'].' ('.$r['count'].')', $created);
-        $_SESSION['flash_ok'] = 'U krijuan '.count($created).' grupe: '.implode(', ', $parts);
+        $parts = array_map(function ($r) {
+          $range = ($r['amze_min'] !== null)
+            ? ' [' . $r['amze_min'] . ($r['amze_max'] && $r['amze_max'] !== $r['amze_min'] ? '–' . $r['amze_max'] : '') . ']'
+            : '';
+          return '#' . $r['group_id'] . ' (' . $r['count'] . ')' . $range;
+        }, $created);
+        $_SESSION['flash_ok'] = 'U krijuan ' . count($created) . ' grupe: ' . implode(', ', $parts);
       }
 
     } catch (Throwable $e) {
-      if ($pdo->inTransaction()) $pdo->rollBack();
+      if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+      }
       $_SESSION['flash_err'] = $e->getMessage();
     }
-    header('Location: groups.php'); exit;
+
+    header('Location: groups.php');
+    exit;
   }
+
 
   /* ===== Ndrysho modulin e grupit ===== */
   if ($action==='update_group_course') {
@@ -343,128 +492,357 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
   /* ===== Modifiko anëtarët ===== */
   if ($action==='edit_members') {
-    $group_id = (int)($_POST['group_id'] ?? 0);
+    $group_id          = (int)($_POST['group_id'] ?? 0);
     $amze_spec_members = trim((string)($_POST['amze_spec_members'] ?? ''));
-    $force     = (int)($_POST['force'] ?? 0);
+    $force             = (int)($_POST['force'] ?? 0);
 
     try {
-      if ($group_id<=0) throw new RuntimeException('Grup i pavlefshëm.');
+      if ($group_id <= 0) {
+        throw new RuntimeException('Grup i pavlefshëm.');
+      }
 
-      $gRow = $pdo->prepare("SELECT is_completed, course_id FROM course_groups WHERE id=:g");
-      $gRow->execute([':g'=>$group_id]);
-      $gRowData = $gRow->fetch(PDO::FETCH_ASSOC);
+      // Marrim të dhënat bazë të grupit (për kopjim në grupet e reja)
+      $gRow = $pdo->prepare("
+        SELECT is_completed, course_id, start_date, end_date
+        FROM course_groups
+        WHERE id = :g
+      ");
+      $gRow->execute([':g' => $group_id]);
+      $gRowData     = $gRow->fetch(PDO::FETCH_ASSOC);
       $is_completed = (int)($gRowData['is_completed'] ?? 0);
       $gidCourseId  = (int)($gRowData['course_id'] ?? 0);
-      if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i përfunduar. Konfirmo ndryshimin.'); }
 
+      if (!$gRowData) {
+        throw new RuntimeException('Grupi nuk u gjet.');
+      }
+
+      if ($is_completed && !$force) {
+        throw new RuntimeException('Ky grup është i përfunduar. Konfirmo ndryshimin.');
+      }
+
+      // Anëtarët ekzistues të grupit
       $q = $pdo->prepare("
-        SELECT s.id AS student_id, CAST(s.nr_amze AS UNSIGNED) AS amznum
+        SELECT
+          s.id AS student_id,
+          CAST(s.nr_amze AS UNSIGNED) AS amznum
         FROM course_group_students cgs
         JOIN students s ON s.id = cgs.student_id
         WHERE cgs.group_id = :gid
         ORDER BY amznum
       ");
-      $q->execute([':gid'=>$group_id]);
+      $q->execute([':gid' => $group_id]);
       $existing = $q->fetchAll(PDO::FETCH_ASSOC);
-      $existMap = [];
-      foreach ($existing as $row) $existMap[(int)$row['amznum']] = (int)$row['student_id'];
 
+      $existMap = [];
+      foreach ($existing as $row) {
+        if ($row['amznum'] === null) continue;
+        $existMap[(int)$row['amznum']] = (int)$row['student_id'];
+      }
+
+      // Target AMZË nga input-i
       $targetNums = ($amze_spec_members === '') ? [] : parseAmzeRanges($amze_spec_members);
-      if (count($targetNums) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
 
       $targetMap = [];
-      foreach ($targetNums as $n) { $targetMap[$n] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n); }
-      if (count($targetMap) > 10) throw new RuntimeException('Maksimumi 10 studentë për grup.');
+      foreach ($targetNums as $n) {
+        $targetMap[$n] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n);
+      }
 
+      // Llogarisim cilët hiqen dhe cilët shtohen (por nuk veprojmë ende)
       $toRemove = [];
-      foreach ($existMap as $amz=>$sid) if (!array_key_exists($amz, $targetMap)) $toRemove[] = $sid;
+      foreach ($existMap as $amz => $sid) {
+        if (!array_key_exists($amz, $targetMap)) {
+          $toRemove[] = $sid;
+        }
+      }
+
       $toAdd = [];
-      foreach ($targetMap as $amz=>$sid) if (!array_key_exists($amz, $existMap)) $toAdd[] = $sid;
+      foreach ($targetMap as $amz => $sid) {
+        if (!array_key_exists($amz, $existMap)) {
+          $toAdd[] = $sid;
+        }
+      }
+
+      $totalTarget = count($targetMap);
+
+      // Nëse nuk ka fare target -> thjesht boshatis grupin (por pa krijuar të rinj)
+      if ($totalTarget === 0) {
+        $pdo->beginTransaction();
+
+        // Fshijmë të gjithë anëtarët aktualë të grupit
+        $pdo->prepare("
+          DELETE FROM course_group_students
+          WHERE group_id = :g
+        ")->execute([':g' => $group_id]);
+
+        $pdo->commit();
+
+        qta_audit_event('group.update_members', [
+          'group_id'      => $group_id,
+          'added'         => [],
+          'removed'       => $toRemove,
+          'actor_user_id' => $_SESSION['user_id'] ?? null
+        ]);
+
+        $_SESSION['flash_ok'] = 'Grupi u boshatis.';
+        header('Location: groups.php');
+        exit;
+      }
 
       $pdo->beginTransaction();
 
-      if ($toRemove) {
-        $del = $pdo->prepare("DELETE FROM course_group_students WHERE group_id=:g AND student_id=:s");
-        foreach ($toRemove as $sid) { $del->execute([':g'=>$group_id, ':s'=>$sid]); }
-      }
-
       if ($toAdd) {
-        // Ndalim: studentët në $toAdd të mos e kenë ndjekur më parë këtë modul
-        $ph = implode(',', array_fill(0, count($toAdd), '?'));
+        // ---------------------------------------------------
+        // Ndalim: studentët në $toAdd të mos jenë tashmë në ASNJË grup tjetër
+        // ---------------------------------------------------
+        $ph    = implode(',', array_fill(0, count($toAdd), '?'));
         $confQ = $pdo->prepare("
-          SELECT s.nr_amze, cg.id AS group_id, c.name AS course_name
+          SELECT
+            s.nr_amze,
+            cg.id   AS group_id,
+            c.name  AS course_name
           FROM course_group_students cgs
           JOIN course_groups cg ON cg.id = cgs.group_id
-          JOIN courses c ON c.id = cg.course_id
-          JOIN students s ON s.id = cgs.student_id
-          WHERE cgs.student_id IN ($ph) AND cg.course_id = ?
+          JOIN courses      c  ON c.id = cg.course_id
+          JOIN students     s  ON s.id = cgs.student_id
+          WHERE cgs.student_id IN ($ph)
         ");
-        $confQ->execute([...$toAdd, $gidCourseId]);
+        $confQ->execute($toAdd);
         $conf = $confQ->fetchAll(PDO::FETCH_ASSOC);
+
         if ($conf) {
-          $items = array_map(fn($r)=> $r['nr_amze'].' ('.$r['course_name'].')', $conf);
-          throw new RuntimeException('Këta studentë e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
+          $items = array_map(
+            fn($r) => $r['nr_amze'] . ' (Grup #' . $r['group_id'] . ', ' . $r['course_name'] . ')',
+            $conf
+          );
+          throw new RuntimeException(
+            'Procesi u ndërpre: këta studentë janë tashmë pjesë e një grupi tjetër: ' . implode(', ', $items)
+          );
         }
 
-        // Kontroll sipas personal_number
-        $phIds = implode(',', array_fill(0, count($toAdd), '?'));
+        // ---------------------------------------------------
+        // Kontroll sipas personal_number (ndalim që i njëjti person ta ndjekë modul dy herë)
+        // ---------------------------------------------------
+        $phIds  = implode(',', array_fill(0, count($toAdd), '?'));
         $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
           FROM students s
           JOIN persons  p ON p.id = s.person_id
           WHERE s.id IN ($phIds)
-            AND p.personal_number IS NOT NULL AND p.personal_number <> ''
+            AND p.personal_number IS NOT NULL
+            AND p.personal_number <> ''
         ");
         $pnStmt->execute($toAdd);
         $pnList = $pnStmt->fetchAll(PDO::FETCH_COLUMN);
+
         if ($pnList) {
-          $phPn = implode(',', array_fill(0, count($pnList), '?'));
+          $phPn   = implode(',', array_fill(0, count($pnList), '?'));
           $confPN = $pdo->prepare("
-            SELECT DISTINCT p.personal_number, s.nr_amze, cg.id AS group_id, c.name AS course_name
+            SELECT DISTINCT
+              p.personal_number,
+              s.nr_amze,
+              cg.id   AS group_id,
+              c.name  AS course_name
             FROM course_group_students cgs
-            JOIN students s ON s.id = cgs.student_id
-            JOIN persons  p ON p.id = s.person_id
+            JOIN students      s  ON s.id  = cgs.student_id
+            JOIN persons       p  ON p.id  = s.person_id
             JOIN course_groups cg ON cg.id = cgs.group_id
-            JOIN courses c ON c.id = cg.course_id
+            JOIN courses       c  ON c.id  = cg.course_id
             WHERE cg.course_id = ?
               AND p.personal_number IN ($phPn)
           ");
           $confPN->execute([$gidCourseId, ...$pnList]);
           $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
+
           if ($hitPN) {
-            $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-            throw new RuntimeException('Disa persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
+            $items = array_map(
+              fn($r) => ($r['nr_amze'] ?: $r['personal_number']) .
+                        ' (Grup #' . $r['group_id'] . ', ' . $r['course_name'] . ')',
+              $hitPN
+            );
+            throw new RuntimeException(
+              'Disa persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: ' . implode(', ', $items)
+            );
           }
         }
 
-        // Kapacitet
-        $cnt = (int)$pdo->query("SELECT COUNT(*) FROM course_group_students WHERE group_id=".(int)$group_id)->fetchColumn();
-        if ($cnt + count($toAdd) > 10) throw new RuntimeException('Ky ndryshim tejkalon kufirin 10 për grup.');
-
+        // ---------------------------------------------------
         // RREGULL: një AMZË s’mund të jetë njëkohësisht "me modul (plan)" dhe "në grup"
-        $pdo->prepare("DELETE FROM student_course_plans WHERE status='planned' AND student_id IN ($ph)")->execute($toAdd);
-
-        // Shto në grup
-        $ins = $pdo->prepare("INSERT INTO course_group_students (group_id, student_id) VALUES (:g,:s)");
-        foreach ($toAdd as $sid) $ins->execute([':g'=>$group_id, ':s'=>$sid]);
+        // ---------------------------------------------------
+        $pdo->prepare("
+          DELETE FROM student_course_plans
+          WHERE status = 'planned'
+            AND student_id IN ($ph)
+        ")->execute($toAdd);
       }
 
-      $pdo->commit();
+      // Tani kemi targetMap si lista përfundimtare e studentëve të grupit (mund të jenë > 10)
 
-      // AUDIT
-      qta_audit_event('group.update_members', [
-        'group_id'=>$group_id,
-        'added'=>$toAdd,
-        'removed'=>$toRemove,
-        'actor_user_id'=>$_SESSION['user_id'] ?? null
-      ]);
+      if ($totalTarget <= 10) {
+        // === Rast klasik: maksimumi 10 studentë në këtë grup ===
 
-      $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
+        // Hiq anëtarët që s’janë më
+        if ($toRemove) {
+          $del = $pdo->prepare("
+            DELETE FROM course_group_students
+            WHERE group_id = :g
+              AND student_id = :s
+          ");
+          foreach ($toRemove as $sid) {
+            $del->execute([':g' => $group_id, ':s' => $sid]);
+          }
+        }
+
+        // Shto anëtarët e rinj
+        if ($toAdd) {
+          $ins = $pdo->prepare("
+            INSERT INTO course_group_students (group_id, student_id)
+            VALUES (:g,:s)
+          ");
+          foreach ($toAdd as $sid) {
+            $ins->execute([':g' => $group_id, ':s' => $sid]);
+          }
+        }
+
+        $pdo->commit();
+
+        qta_audit_event('group.update_members', [
+          'group_id'      => $group_id,
+          'added'         => $toAdd,
+          'removed'       => $toRemove,
+          'actor_user_id' => $_SESSION['user_id'] ?? null
+        ]);
+
+        $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
+      } else {
+        // === Rast i RI: më shumë se 10 studentë -> nda grupin në disa grupe (<=10 secili) ===
+
+        // Përgatit listën e AMZË-ve dhe ID-ve të studentëve sipas rendit të AMZË
+        $amzeList = array_map('intval', array_keys($targetMap));
+        sort($amzeList, SORT_NUMERIC);
+        $studentIdsOrdered = [];
+        foreach ($amzeList as $n) {
+          $studentIdsOrdered[] = $targetMap[$n];
+        }
+
+        $total        = count($studentIdsOrdered);   // i njëjti me $totalTarget
+        $groupsNeeded = (int)ceil($total / 10);
+        if ($groupsNeeded < 1) { $groupsNeeded = 1; }
+
+        $base = (int)floor($total / $groupsNeeded);
+        $rem  = $total % $groupsNeeded;
+
+        $chunks = [];
+        $cursor = 0;
+        for ($gIndex = 0; $gIndex < $groupsNeeded; $gIndex++) {
+          $size = $base + ($gIndex < $rem ? 1 : 0);
+          if ($size <= 0) continue;
+
+          $chunkIds  = array_slice($studentIdsOrdered, $cursor, $size);
+          $chunkAmze = array_slice($amzeList,          $cursor, $size);
+          $cursor   += $size;
+
+          if (!$chunkIds) continue;
+          if (count($chunkIds) > 10) {
+            throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10 në një grup).');
+          }
+
+          $chunks[] = [
+            'ids'      => $chunkIds,
+            'amze_min' => $chunkAmze ? min($chunkAmze) : null,
+            'amze_max' => $chunkAmze ? max($chunkAmze) : null,
+          ];
+        }
+
+        if (!$chunks) {
+          throw new RuntimeException('Ndërprerë: nuk u arrit të ndahen anëtarët në grupe.');
+        }
+
+        // Fshi ANËTARËT aktualë të grupit ekzistues (jo vetë grupin)
+        $pdo->prepare("
+          DELETE FROM course_group_students
+          WHERE group_id = :g
+        ")->execute([':g' => $group_id]);
+
+        $created      = [];
+        $insMember    = $pdo->prepare("
+          INSERT INTO course_group_students (group_id, student_id)
+          VALUES (:g,:s)
+        ");
+        $insGroupStmt = $pdo->prepare("
+          INSERT INTO course_groups (course_id, start_date, end_date, is_completed)
+          VALUES (:c,:s,:e,:ic)
+        ");
+
+        foreach ($chunks as $idx => $chunkInfo) {
+          if ($idx === 0) {
+            $gidUse = $group_id; // grupi ekzistues merr chunk-un e parë
+          } else {
+            // krijo grup të ri me të njëjtin modul dhe data
+            $insGroupStmt->execute([
+              ':c'  => $gidCourseId,
+              ':s'  => $gRowData['start_date'],
+              ':e'  => $gRowData['end_date'],
+              ':ic' => $is_completed
+            ]);
+            $gidUse = (int)$pdo->lastInsertId();
+
+            qta_audit_event('group.create', [
+              'group_id'         => $gidUse,
+              'course_id'        => $gidCourseId,
+              'start_date'       => $gRowData['start_date'],
+              'end_date'         => $gRowData['end_date'],
+              'is_completed'     => $is_completed,
+              'actor_user_id'    => $_SESSION['user_id'] ?? null,
+              'source_split_from'=> $group_id
+            ]);
+          }
+
+          foreach ($chunkInfo['ids'] as $sid) {
+            $insMember->execute([':g' => $gidUse, ':s' => $sid]);
+          }
+
+          $created[] = [
+            'group_id' => $gidUse,
+            'count'    => count($chunkInfo['ids']),
+            'amze_min' => $chunkInfo['amze_min'],
+            'amze_max' => $chunkInfo['amze_max'],
+          ];
+        }
+
+        $pdo->commit();
+
+        qta_audit_event('group.update_members', [
+          'group_id'      => $group_id,
+          'added'         => $toAdd,
+          'removed'       => $toRemove,
+          'actor_user_id' => $_SESSION['user_id'] ?? null,
+          'split_created' => array_slice(array_column($created, 'group_id'), 1),
+          'split_summary' => $created
+        ]);
+
+        // Mesazh përfundimtar
+        if (count($created) === 1) {
+          $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
+        } else {
+          $parts = array_map(function ($r) {
+            $range = ($r['amze_min'] !== null)
+              ? ' [' . $r['amze_min'] . ($r['amze_max'] && $r['amze_max'] !== $r['amze_min'] ? '–' . $r['amze_max'] : '') . ']'
+              : '';
+            return '#' . $r['group_id'] . ' (' . $r['count'] . ')' . $range;
+          }, $created);
+          $_SESSION['flash_ok'] = 'Grupi u nda në ' . count($created) . ' grupe: ' . implode(', ', $parts);
+        }
+      }
+
     } catch (Throwable $e) {
-      if ($pdo->inTransaction()) $pdo->rollBack();
+      if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+      }
       $_SESSION['flash_err'] = $e->getMessage();
     }
-    header('Location: groups.php'); exit;
+
+    header('Location: groups.php');
+    exit;
   }
 
   /* ===== Fshi grupin ===== */
@@ -1613,9 +1991,97 @@ document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
 /* Compact spacing */
 document.addEventListener('DOMContentLoaded', ()=>{
   document.body.classList.add('compact');
-  // initialize default hints
+  // initialize default hints për Formularin 1
   updateForm1Hint('gstart','gstartHint');
   updateForm1Hint('gend','gendHint');
+
+  function parseAmzeRangesClient(s){
+    const out = new Set();
+    (s || '').split(',').forEach(raw => {
+      const tok = raw.trim();
+      if (!tok) return;
+
+      // interval p.sh. 1000-1012
+      const rangeMatch = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (rangeMatch) {
+        let a = parseInt(rangeMatch[1],10);
+        let b = parseInt(rangeMatch[2],10);
+        if (Number.isNaN(a) || Number.isNaN(b)) return;
+        if (a > b){ const t=a; a=b; b=t; }
+        for (let i=a; i<=b; i++) out.add(i);
+        return;
+      }
+
+      // numër i vetëm p.sh. 3409
+      const singleMatch = tok.match(/^\d+$/);
+      if (singleMatch) {
+        out.add(parseInt(singleMatch[0],10));
+      }
+    });
+    return Array.from(out).sort((a,b)=>a-b);
+  }
+
+  function attachCreateGroupWarning(){
+    const modal = document.getElementById('createGroupModal');
+    if (!modal) return;
+    const form = modal.querySelector('form');
+    if (!form) return;
+
+    form.addEventListener('submit', function(e){
+      // nëse Edit Mode është OFF, nuk bën sens të kontrollojmë
+      if (!EDIT_MODE) return;
+
+      const textarea = form.querySelector('textarea[name="amze_spec"]');
+      if (!textarea) return;
+
+      const nums = parseAmzeRangesClient(textarea.value);
+      if (nums.length <= 10) return; // 1 grup, asnjë paralajmërim i veçantë
+
+      const total        = nums.length;
+      const groupsNeeded = Math.ceil(total / 10);
+      if (groupsNeeded <= 1) return;
+
+      const base = Math.floor(total / groupsNeeded);
+      const rem  = total % groupsNeeded;
+
+      let cursor = 0;
+      const parts = [];
+
+      for (let g=0; g<groupsNeeded; g++){
+        const size = base + (g < rem ? 1 : 0);
+        if (size <= 0) continue;
+        const chunk = nums.slice(cursor, cursor + size);
+        cursor += size;
+        if (!chunk.length) continue;
+
+        const min = chunk[0];
+        const max = chunk[chunk.length-1];
+        parts.push({
+          index: g+1,
+          count: chunk.length,
+          min,
+          max
+        });
+      }
+
+      if (!parts.length) return;
+
+      let msg = 'Kujdes: Kjo komandë do të krijojë ' + parts.length + ' grupe:\n\n';
+      parts.forEach(p => {
+        msg += 'Grupi ' + p.index + ' — ' + p.count + ' studentë, AMZË ' +
+              p.min + (p.max !== p.min ? '–' + p.max : '') + '\n';
+      });
+      msg += '\nVazhdo?';
+
+      if (!confirm(msg)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    });
+  }
+
+  attachCreateGroupWarning();
 });
 </script>
 </body>
