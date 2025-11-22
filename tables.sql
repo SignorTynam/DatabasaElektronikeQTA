@@ -1105,3 +1105,135 @@ SELECT
 FROM student_qr_tokens t
 JOIN students s ON s.id = t.student_id
 GROUP BY s.person_id;
+
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS trg_audit_cg_ai $$
+DROP TRIGGER IF EXISTS trg_audit_cg_au $$
+DROP TRIGGER IF EXISTS trg_audit_cg_ad $$
+
+/* INSERT */
+CREATE TRIGGER trg_audit_cg_ai
+AFTER INSERT ON course_groups
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_groups','INSERT',
+    JSON_OBJECT('id', NEW.id),
+    NULL,
+    JSON_OBJECT(
+      'id', NEW.id,
+      'course_id', NEW.course_id,
+      'start_date', NEW.start_date,
+      'end_date', NEW.end_date,
+      'is_completed', NEW.is_completed,
+      'exam_date', NEW.exam_date,
+      'created_at', NEW.created_at
+    )
+  );
+  SET @e := @last_audit_event_id;
+
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',NULL,NEW.id),
+    (@e,'course_id',NULL,NEW.course_id),
+    (@e,'start_date',NULL,NEW.start_date),
+    (@e,'end_date',NULL,NEW.end_date),
+    (@e,'is_completed',NULL,NEW.is_completed),
+    (@e,'exam_date',NULL,NEW.exam_date),
+    (@e,'created_at',NULL,NEW.created_at);
+END $$
+
+/* UPDATE */
+CREATE TRIGGER trg_audit_cg_au
+AFTER UPDATE ON course_groups
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_groups','UPDATE',
+    JSON_OBJECT('id', NEW.id),
+    JSON_OBJECT(
+      'id', OLD.id,
+      'course_id', OLD.course_id,
+      'start_date', OLD.start_date,
+      'end_date', OLD.end_date,
+      'is_completed', OLD.is_completed,
+      'exam_date', OLD.exam_date,
+      'created_at', OLD.created_at
+    ),
+    JSON_OBJECT(
+      'id', NEW.id,
+      'course_id', NEW.course_id,
+      'start_date', NEW.start_date,
+      'end_date', NEW.end_date,
+      'is_completed', NEW.is_completed,
+      'exam_date', NEW.exam_date,
+      'created_at', NEW.created_at
+    )
+  );
+  SET @e := @last_audit_event_id;
+
+  IF NOT (OLD.course_id    <=> NEW.course_id)    THEN
+    INSERT INTO audit_event_fields VALUES (NULL,@e,'course_id',    OLD.course_id,    NEW.course_id);
+  END IF;
+  IF NOT (OLD.start_date   <=> NEW.start_date)   THEN
+    INSERT INTO audit_event_fields VALUES (NULL,@e,'start_date',   OLD.start_date,   NEW.start_date);
+  END IF;
+  IF NOT (OLD.end_date     <=> NEW.end_date)     THEN
+    INSERT INTO audit_event_fields VALUES (NULL,@e,'end_date',     OLD.end_date,     NEW.end_date);
+  END IF;
+  IF NOT (OLD.is_completed <=> NEW.is_completed) THEN
+    INSERT INTO audit_event_fields VALUES (NULL,@e,'is_completed', OLD.is_completed, NEW.is_completed);
+  END IF;
+  IF NOT (OLD.exam_date    <=> NEW.exam_date)    THEN
+    INSERT INTO audit_event_fields VALUES (NULL,@e,'exam_date',    OLD.exam_date,    NEW.exam_date);
+  END IF;
+END $$
+
+/* DELETE */
+CREATE TRIGGER trg_audit_cg_ad
+AFTER DELETE ON course_groups
+FOR EACH ROW
+BEGIN
+  CALL audit_capture(
+    'course_groups','DELETE',
+    JSON_OBJECT('id', OLD.id),
+    JSON_OBJECT(
+      'id', OLD.id,
+      'course_id', OLD.course_id,
+      'start_date', OLD.start_date,
+      'end_date', OLD.end_date,
+      'is_completed', OLD.is_completed,
+      'exam_date', OLD.exam_date,
+      'created_at', OLD.created_at
+    ),
+    NULL
+  );
+  SET @e := @last_audit_event_id;
+
+  INSERT INTO audit_event_fields (event_id, column_name, old_value, new_value) VALUES
+    (@e,'id',OLD.id,NULL),
+    (@e,'course_id',OLD.course_id,NULL),
+    (@e,'start_date',OLD.start_date,NULL),
+    (@e,'end_date',OLD.end_date,NULL),
+    (@e,'is_completed',OLD.is_completed,NULL),
+    (@e,'exam_date',OLD.exam_date,NULL),
+    (@e,'created_at',OLD.created_at,NULL);
+END $$
+
+DELIMITER ;
+
+DELIMITER $$
+DROP TRIGGER IF EXISTS trg_cgs_unique_student_all_groups $$
+CREATE TRIGGER trg_cgs_unique_student_all_groups
+BEFORE INSERT ON course_group_students
+FOR EACH ROW
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM course_group_students
+    WHERE student_id = NEW.student_id
+  ) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Ky student është tashmë në një grup tjetër. Nuk mund të shtohet përsëri.';
+  END IF;
+END $$
+DELIMITER ;

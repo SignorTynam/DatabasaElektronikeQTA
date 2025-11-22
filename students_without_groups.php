@@ -579,6 +579,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
             <tr>
               <th class="nowrap">AMZË</th>
               <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
+              <th class="nowrap">Vendos modul (plan)</th>
               <th class="nowrap">Zgjidh grup (çdo modul)</th>
             </tr>
           </thead>
@@ -593,6 +594,27 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
                 <div class="text-muted small"><?= h($s['personal_number'] ?? '') ?></div>
               </td>
 
+              <!-- Vendos modul (plan) -->
+              <td class="nowrap">
+                <div class="d-flex gap-2">
+                  <select class="form-select form-select-sm" style="min-width:260px"
+                          data-role="plan-select" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                    <option value="">— Zgjidh modul —</option>
+                    <?php foreach ($courses as $c): ?>
+                      <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                  <button class="btn btn-soft-secondary btn-sm" data-role="plan-btn"
+                          data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                    <i class="bi bi-arrow-repeat me-1"></i>Ruaj
+                  </button>
+                </div>
+                <div class="small text-muted mt-1">
+                  Cakto modulin e planifikuar për studentin (pa grup).
+                </div>
+              </td>
+
+              <!-- Zgjidh grup (çdo modul) -->
               <td class="nowrap">
                 <div class="d-flex gap-2">
                   <select class="form-select form-select-sm" style="min-width:280px"
@@ -612,7 +634,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
               </td>
             </tr>
           <?php endforeach; else: ?>
-            <tr><td colspan="3" class="text-center text-muted">Asnjë student pa modul & pa grup.</td></tr>
+            <tr><td colspan="4" class="text-center text-muted">Asnjë student pa modul & pa grup.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>

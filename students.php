@@ -281,8 +281,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $newStudentId = (int)$pdo->lastInsertId();
 
-            // Planifikim moduli (opsional)
+            /*
+            * Planifikim moduli (opsional)
+            * -----------------------------------------------
+            * MOS LEJO: që i njëjti PERSON të marrë përsëri
+            * të njëjtin modul (edhe nëse është AMZË tjetër).
+            */
             if ($planned_course_id > 0) {
+
+                if ($personId > 0) {
+                    // Shiko nëse ky person ka tashmë këtë modul
+                    $dup = $pdo->prepare("
+                        SELECT 1
+                        FROM student_course_plans scp
+                        JOIN students s2 ON s2.id = scp.student_id
+                        WHERE s2.person_id = :pid
+                          AND scp.course_id = :cid
+                        LIMIT 1
+                    ");
+                    $dup->execute([
+                        ':pid' => $personId,
+                        ':cid' => $planned_course_id,
+                    ]);
+
+                    if ($dup->fetchColumn()) {
+                        // Ky person ka bërë / po bën këtë modul me një AMZË tjetër
+                        throw new RuntimeException(
+                            'Ky student ka tashmë një regjistrim për këtë modul (në një AMZË tjetër). '
+                            .'Ju lutem zgjidh një modul tjetër ose lëre bosh.'
+                        );
+                    }
+                }
+
+                // Nëse nuk ka conflict, vazhdo si më parë
                 $chk = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
                 $chk->execute([':id'=>$planned_course_id]);
                 if ($chk->fetchColumn()) {
@@ -396,11 +427,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 /* ------------------------------
    Kërkim + Paginim – vetëm studentë, sipas nr_amze (numeric)
 ------------------------------- */
-$q      = trim($_GET['q'] ?? '');
-$edu    = trim($_GET['edu'] ?? '');
-$page   = max(1, (int)($_GET['page'] ?? 1));
-$limit  = 20;
-$offset = ($page - 1) * $limit;
+$q         = trim($_GET['q'] ?? '');
+$edu       = trim($_GET['edu'] ?? '');
+$incomplete = isset($_GET['incomplete']) && $_GET['incomplete'] === '1'; // NEW
+$page      = max(1, (int)($_GET['page'] ?? 1));
+$limit     = 20;
+$offset    = ($page - 1) * $limit;
 
 $where  = ["u.role_id = :studentRole"];
 $params = [':studentRole' => $studentRoleId];
@@ -433,6 +465,24 @@ if ($edu !== '') {
         $params[':educode'] = $edu;
     }
 }
+
+/*
+ * Filtro vetëm studentët që kanë TË PAKTËN një fushë bosh
+ * (TEL injorohet qëllimisht)
+ */
+if ($incomplete) {
+    $where[] = "(
+        p.personal_number IS NULL OR p.personal_number = '' OR
+        p.first_name      IS NULL OR p.first_name      = '' OR
+        p.father_name     IS NULL OR p.father_name     = '' OR
+        p.last_name       IS NULL OR p.last_name       = '' OR
+        p.birth_date      IS NULL OR p.birth_date      = '0000-00-00' OR
+        p.birth_place     IS NULL OR p.birth_place     = '' OR
+        s.education_level_id IS NULL OR
+        p.gender_id       IS NULL
+    )";
+}
+
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
 /* Numri total */
@@ -469,7 +519,46 @@ $listStmt = $pdo->prepare("
         g.label AS gender_label,
 
         el.code AS edu_code,
-        el.label AS edu_label
+        el.label AS edu_label,
+
+        /* Grupi (nëse ekziston) – përdor course_group_students + course_groups + courses */
+        (
+          SELECT c.name
+          FROM course_group_students cgs
+          JOIN course_groups cg ON cg.id = cgs.group_id
+          JOIN courses c        ON c.id = cg.course_id
+          WHERE cgs.student_id = s.id
+          ORDER BY cg.start_date DESC, cg.id DESC
+          LIMIT 1
+        ) AS group_name,
+        (
+          SELECT cg.start_date
+          FROM course_group_students cgs
+          JOIN course_groups cg ON cg.id = cgs.group_id
+          WHERE cgs.student_id = s.id
+          ORDER BY cg.start_date DESC, cg.id DESC
+          LIMIT 1
+        ) AS group_start_date,
+        (
+          SELECT cg.end_date
+          FROM course_group_students cgs
+          JOIN course_groups cg ON cg.id = cgs.group_id
+          WHERE cgs.student_id = s.id
+          ORDER BY cg.start_date DESC, cg.id DESC
+          LIMIT 1
+        ) AS group_end_date,
+
+
+        /* Moduli i planifikuar (nëse nuk ka grup) */
+        (
+          SELECT c.name
+          FROM student_course_plans scp
+          JOIN courses c ON c.id = scp.course_id
+          WHERE scp.student_id = s.id
+          ORDER BY scp.id DESC
+          LIMIT 1
+        ) AS planned_course_name
+
     FROM students s
     JOIN users u   ON u.id = s.user_id
     JOIN persons p ON p.id = s.person_id
@@ -479,6 +568,7 @@ $listStmt = $pdo->prepare("
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
     LIMIT :lim OFFSET :off
 ");
+
 foreach ($params as $k => $v) {
     $listStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
 }
@@ -488,12 +578,23 @@ $listStmt->execute();
 $students = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
 /* Build toggle URL që ruan q/edu/page */
+/* Build toggle URL që ruan q/edu/incomplete/page */
 $toggleUrl = 'students.php?' . http_build_query(array_filter([
-    'q' => ($q !== '' ? $q : null),
-    'edu' => ($edu !== '' ? $edu : null),
-    'page' => ($page > 1 ? $page : null),
-    'edit' => ($EDIT_MODE ? 'off' : 'on')
+    'q'          => ($q !== '' ? $q : null),
+    'edu'        => ($edu !== '' ? $edu : null),
+    'incomplete' => ($incomplete ? '1' : null),
+    'page'       => ($page > 1 ? $page : null),
+    'edit'       => ($EDIT_MODE ? 'off' : 'on')
 ]));
+
+$exportBase = 'students_export.php?' . http_build_query(array_filter([
+    'csrf'       => $CSRF,
+    'q'          => ($q !== '' ? $q : null),
+    'edu'        => ($edu !== '' ? $edu : null),
+    'incomplete' => ($incomplete ? '1' : null),
+    // pagen NUK e dërgojmë që eksporti të marrë gjithçka, jo vetëm faqen aktuale
+]));
+
 ?>
 <!DOCTYPE html>
 <html lang="sq">
@@ -639,18 +740,21 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
   <div class="card mb-3">
     <div class="card-body">
       <form class="row g-2 align-items-end" method="get" action="students.php">
+        <!-- Kërkimi -->
         <div class="col-md-5">
           <div class="d-flex align-items-center">
             <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
             <div class="input-group flex-grow-1">
               <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
               <input type="text" name="q" class="form-control border-0"
-                     placeholder="Emër/Atësi/Mbiemër, nr. amzës, nr. personal, tel., vendlindje..."
-                     value="<?= htmlspecialchars($q) ?>">
+                    placeholder="Emër/Atësi/Mbiemër, nr. amzës, nr. personal, tel., vendlindje..."
+                    value="<?= htmlspecialchars($q) ?>">
             </div>
           </div>
         </div>
-        <div class="col-md-4">
+
+        <!-- Arsimi -->
+        <div class="col-md-3">
           <div class="d-flex align-items-center">
             <label class="form-label mb-0 me-2" style="min-width:70px;">Arsimi</label>
             <select name="edu" class="form-select flex-grow-1">
@@ -664,10 +768,30 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
             </select>
           </div>
         </div>
-        <div class="col-md-3 text-end">
+
+        <!-- Vetëm me të dhëna mungese -->
+        <div class="col-md-2">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox"
+                  id="onlyIncomplete"
+                  name="incomplete"
+                  value="1"
+                  <?= $incomplete ? 'checked' : '' ?>>
+            <label class="form-check-label" for="onlyIncomplete">
+              Shfaq të dhënat që mungojnë
+            </label>
+          </div>
+        </div>
+
+        <!-- Butonat -->
+        <div class="col-md-2 text-end">
           <button class="btn btn-soft-secondary btn-pill me-1" type="button"
-                  onclick="window.location='students.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+                  onclick="window.location='students.php'">
+            <i class="bi bi-x-circle me-1"></i>Pastro
+          </button>
+          <button class="btn btn-primary btn-pill" type="submit">
+            <i class="bi bi-funnel me-1"></i>Apliko
+          </button>
         </div>
       </form>
     </div>
@@ -675,10 +799,38 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
 
   <!-- Tabela -->
   <div class="card">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-mortarboard me-2"></i>Lista e studentëve</h5>
-      <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
+    <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <h5 class="mb-0 d-flex align-items-center gap-2">
+        <i class="bi bi-mortarboard"></i>
+        <span>Lista e studentëve</span>
+        <?php if ($incomplete): ?>
+          <span class="badge text-bg-warning">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Janë shfaqur vetëm të dhënat që mungojnë
+          </span>
+        <?php endif; ?>
+      </h5>
+
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
+
+        <div class="btn-group" role="group">
+          <a class="btn btn-soft-success btn-pill"
+             href="<?= $exportBase . '&f=xlsx' ?>">
+            <i class="bi bi-file-earmark-excel me-1"></i> Excel
+          </a>
+          <a class="btn btn-soft-danger btn-pill"
+             href="<?= $exportBase . '&f=pdf' ?>">
+            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+          </a>
+          <a class="btn btn-soft-primary btn-pill"
+             href="<?= $exportBase . '&f=docx' ?>">
+            <i class="bi bi-file-earmark-word me-1"></i> Word
+          </a>
+        </div>
+      </div>
     </div>
+
     <div class="card-body">
       <div class="table-responsive mini-table">
         <table class="table align-middle mb-0">
@@ -692,6 +844,8 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
               <th class="nowrap">Datëlindja</th>
               <th>Vendlindja</th>
               <th>Arsimi</th>
+              <th>Moduli</th>
+              <th class="nowrap">Datat e modulit</th>
               <th class="nowrap">Gjinia</th>
               <th>Tel.</th>
               <th class="col-actions text-center">Veprime</th>
@@ -743,6 +897,36 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
                     <?php endforeach; ?>
                   </select>
                 </td>
+                <!-- Moduli (emri i grupit ose i modulit) -->
+                <td class="nowrap">
+                  <?php
+                    // Nëse studenti është në një grup, shfaq emrin e grupit;
+                    // përndryshe, shfaq modul nga student_course_plans
+                    $moduleName = $s['group_name'] ?: $s['planned_course_name'] ?: '—';
+                    echo htmlspecialchars($moduleName, ENT_QUOTES, 'UTF-8');
+                  ?>
+                </td>
+
+                <!-- Datat e modulit (vetëm nëse ka grup) -->
+                <td class="nowrap">
+                  <?php
+                    $datesLabel = '—';
+                    if (!empty($s['group_start_date']) || !empty($s['group_end_date'])) {
+                        $from = fmt_dMY($s['group_start_date'] ?? null);
+                        $to   = fmt_dMY($s['group_end_date'] ?? null);
+
+                        if ($from !== '—' && $to !== '—') {
+                            $datesLabel = $from . ' - ' . $to;
+                        } elseif ($from !== '—') {
+                            $datesLabel = $from;
+                        } elseif ($to !== '—') {
+                            $datesLabel = $to;
+                        }
+                    }
+                    echo htmlspecialchars($datesLabel, ENT_QUOTES, 'UTF-8');
+                  ?>
+                </td>
+
                 <!-- gender_id -->
                 <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
                   <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
@@ -787,7 +971,7 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
               </tr>
             <?php endforeach; ?>
           <?php else: ?>
-            <tr><td colspan="11" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
+            <tr><td colspan="13" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>
@@ -801,8 +985,9 @@ $toggleUrl = 'students.php?' . http_build_query(array_filter([
           <ul class="pagination mb-0 justify-content-end">
             <?php
               $base = 'students.php?'.http_build_query(array_filter([
-                'q' => $q !== '' ? $q : null,
-                'edu' => $edu !== '' ? $edu : null,
+                'q'          => $q !== '' ? $q : null,
+                'edu'        => $edu !== '' ? $edu : null,
+                'incomplete' => $incomplete ? '1' : null,
               ]));
               $prev = max(1, $page-1);
               $next = min($totalPages, $page+1);

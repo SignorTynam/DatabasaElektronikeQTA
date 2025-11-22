@@ -198,7 +198,16 @@ if ($pid > 0) {
 
         // Të gjitha grupet
         $q4 = $pdo->prepare("
-          SELECT cgs.student_id, cg.id AS group_id, c.code, c.name, cg.start_date, cg.end_date, cgs.exam_date, cgs.final_score
+          SELECT
+            cgs.student_id,
+            s.nr_amze,
+            cg.id AS group_id,
+            c.code,
+            c.name,
+            cg.start_date,
+            cg.end_date,
+            cgs.exam_date,
+            cgs.final_score
           FROM course_group_students cgs
           JOIN students s ON s.id = cgs.student_id
           JOIN course_groups cg ON cg.id = cgs.group_id
@@ -214,6 +223,7 @@ if ($pid > 0) {
           SELECT
             scp.id AS scp_id,
             scp.student_id,
+            s.nr_amze,
             c.id AS course_id,
             c.code,
             c.name
@@ -262,11 +272,12 @@ if ($pid > 0) {
 /* Rezultatet e kërkimit kur s’është zgjedhur personi */
 $results = [];
 if ($pid<=0 && $q!=='') {
-  $sql = "
-    SELECT DISTINCT
+$sql = "
+    SELECT
       p.id AS person_id,
       p.first_name, p.father_name, p.last_name, p.personal_number,
-      COUNT(DISTINCT s.id) AS registrations
+      COUNT(DISTINCT s.id) AS registrations,
+      GROUP_CONCAT(DISTINCT s.nr_amze ORDER BY CAST(s.nr_amze AS UNSIGNED), s.nr_amze SEPARATOR ', ') AS amze_list
     FROM persons p
     LEFT JOIN students s ON s.person_id = p.id
     LEFT JOIN users u ON u.id = s.user_id
@@ -408,9 +419,12 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
         <?php if ($results): ?>
           <div class="table-responsive mini-table">
             <table class="table align-middle">
-              <thead class="table-light"><tr>
-                <th>Personi</th><th class="nowrap">ID personale</th><th class="text-end">Hap</th>
-              </tr></thead>
+                <thead class="table-light"><tr>
+                  <th>Personi</th>
+                  <th class="nowrap">ID personale</th>
+                  <th class="nowrap">AMZË</th>
+                  <th class="text-end">Hap</th>
+                </tr></thead>
               <tbody>
               <?php foreach ($results as $r):
                 $full = trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??'')); ?>
@@ -425,6 +439,9 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                     </div>
                   </td>
                   <td class="nowrap"><?= h($r['personal_number'] ?? '—') ?></td>
+                  <td class="nowrap">
+                    <?= h($r['amze_list'] ?? '—') ?>
+                  </td>
                   <td class="text-end">
                     <a class="btn btn-sm btn-primary" href="student_card.php?pid=<?= (int)$r['person_id'] ?>">
                       <i class="bi bi-box-arrow-in-right me-1"></i>Hap
@@ -450,6 +467,12 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
       $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
       $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
       $verifyURL = $personQR['token'] ? ($scheme.$host.$base.'/verify.php?pid='.$pid.'&t='.$personQR['token']) : null;
+
+      // Lista e të gjitha AMZË-ve të personit (pa dublikatë)
+      $amzeListForPerson = [];
+      if (!empty($studentsOfPerson)) {
+        $amzeListForPerson = array_values(array_unique(array_filter(array_column($studentsOfPerson, 'nr_amze'))));
+      }
     ?>
 
     <!-- Header i personit -->
@@ -473,6 +496,15 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
                     title="Mbiemri"><?= h($person['last_name'] ?? '—') ?></span>
             </div>
             <div class="text-muted small">Person ID: <strong>#<?= (int)$pid ?></strong></div>
+
+            <?php if (!empty($amzeListForPerson)): ?>
+              <div class="text-muted small mt-1">
+                AMZË:
+                <?php foreach ($amzeListForPerson as $amze): ?>
+                  <span class="badge bg-light text-secondary border me-1"><?= h($amze) ?></span>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
           </div>
         </div>
 
@@ -670,21 +702,23 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
 
         <div class="table-responsive mini-table">
           <table class="table align-middle">
-            <thead class="table-light">
-            <tr>
-              <th>#Grupi</th>
-              <th>Moduli</th>
-              <th class="nowrap">Datat</th>
-              <th class="nowrap">Testi</th>
-              <th class="nowrap">Pikët</th>
-            </tr>
-            </thead>
+              <thead class="table-light">
+                <tr>
+                  <th>#Grupi</th>
+                  <th class="nowrap">AMZË</th>
+                  <th>Moduli</th>
+                  <th class="nowrap">Datat</th>
+                  <th class="nowrap">Testi</th>
+                  <th class="nowrap">Pikët</th>
+                </tr>
+              </thead>
             <tbody>
             <?php $hasRows=false; ?>
 
             <?php if (!empty($planned)): $hasRows=true; foreach($planned as $pl): ?>
               <tr>
                 <td class="text-muted">—</td>
+                <td class="nowrap"><?= h($pl['nr_amze'] ?? '—') ?></td>
                 <td>
                   <?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?>
                   <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
@@ -698,6 +732,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
             <?php if (!empty($groups)): $hasRows=true; foreach($groups as $g): ?>
               <tr>
                 <td>#<?= (int)$g['group_id'] ?></td>
+                <td class="nowrap"><?= h($g['nr_amze'] ?? '—') ?></td>
                 <td><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></td>
                 <td class="nowrap"><?= h(fmt_dMY($g['start_date'])) ?> – <?= h(fmt_dMY($g['end_date'])) ?></td>
                 <td class="nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
@@ -706,7 +741,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
             <?php endforeach; endif; ?>
 
             <?php if (!$hasRows): ?>
-              <tr><td colspan="5" class="text-center text-muted">Nuk ka ende të dhëna për module/grupe.</td></tr>
+              <tr><td colspan="6" class="text-center text-muted">Nuk ka ende të dhëna për module/grupe.</td></tr>
             <?php endif; ?>
             </tbody>
           </table>
