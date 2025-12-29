@@ -62,6 +62,22 @@ function signal_download_ready(string $token='ok'): void {
   ]);
 }
 
+function get_group_amze_min(PDO $pdo, int $gid): ?int {
+  $st = $pdo->prepare("
+    SELECT MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min
+    FROM course_groups cg
+    LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
+    LEFT JOIN students s ON s.id = cgs.student_id
+    WHERE cg.id = :gid
+    GROUP BY cg.id
+    LIMIT 1
+  ");
+  $st->execute([':gid' => $gid]);
+  $v = $st->fetchColumn();
+  if ($v === false || $v === null) return null;
+  return (int)$v;
+}
+
 /* Pastrim & stream i sigurt */
 function qta_prepare_output(): void {
   if (function_exists('ini_get') && ini_get('zlib.output_compression')) {
@@ -264,7 +280,32 @@ function exportAny(array $headers, array $rows, string $title, string $filenameB
 if ($type === 'form1') {
   $gstart = (int)($_GET['gstart'] ?? 0);
   $gend   = (int)($_GET['gend'] ?? 0);
-  if ($gstart<=0 || $gend<=0 || $gstart>$gend) { http_response_code(400); echo 'Interval grupe i pavlefshëm.'; exit; }
+
+  if ($gstart <= 0 || $gend <= 0) {
+    http_response_code(400);
+    echo 'Interval grupe i pavlefshëm.';
+    exit;
+  }
+
+  // NEW: validim sipas AMZË (jo sipas ID)
+  $amzeStart = get_group_amze_min($pdo, $gstart);
+  $amzeEnd   = get_group_amze_min($pdo, $gend);
+
+  if ($amzeStart === null) {
+    http_response_code(400);
+    echo 'Grupi i fillimit nuk ka AMZË (nuk ka studentë) ose nuk u gjet.';
+    exit;
+  }
+  if ($amzeEnd === null) {
+    http_response_code(400);
+    echo 'Grupi i mbarimit nuk ka AMZË (nuk ka studentë) ose nuk u gjet.';
+    exit;
+  }
+  if ($amzeEnd < $amzeStart) {
+    http_response_code(400);
+    echo 'Interval grupe i pavlefshëm: AMZË e mbarimit duhet të jetë ≥ AMZË e fillimit.';
+    exit;
+  }
 
   $sql = "
     SELECT
@@ -288,18 +329,23 @@ if ($type === 'form1') {
     LEFT JOIN persons  p ON p.id = s.person_id
     LEFT JOIN genders  g ON g.id = p.gender_id
     LEFT JOIN education_levels el ON el.id = s.education_level_id
-    WHERE cg.id BETWEEN :gs AND :ge
     GROUP BY cg.id
-    ORDER BY cg.id ASC
+    HAVING MIN(CAST(s.nr_amze AS UNSIGNED)) BETWEEN :a1 AND :a2
+    ORDER BY
+      (MIN(CAST(s.nr_amze AS UNSIGNED)) IS NULL) ASC,
+      MIN(CAST(s.nr_amze AS UNSIGNED)) ASC,
+      cg.id ASC
   ";
+
   $st = $pdo->prepare($sql);
-  $st->execute([':gs'=>$gstart, ':ge'=>$gend]);
+  $st->execute([':a1' => $amzeStart, ':a2' => $amzeEnd]);
   $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
   $headers = [
     'Grup ID','Kursi','Fillimi','Mbarimi','Totale','Femra',
     '16–24','25–34','35+','AU','AM','AL','AMZË (min–max)'
   ];
+
   $data = [];
   foreach ($rows as $r) {
     $amzeSpan = ($r['amze_min']===null || $r['amze_max']===null) ? '' : ($r['amze_min'].'–'.$r['amze_max']);
@@ -323,6 +369,7 @@ if ($type === 'form1') {
   exportAny($headers, $data, 'Formulari nr. 1 — Grupe', 'form1_grupe_'.date('Ymd_His'), $fmt);
   exit;
 }
+
 
 /* =========================================================
    FORM 2: AMZË fillim…mbarim (veç emrit të kursit të fundit)
