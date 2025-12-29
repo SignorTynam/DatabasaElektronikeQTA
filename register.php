@@ -105,6 +105,7 @@ $sqlBase = "
   ) lastg ON lastg.student_id = s.id
   LEFT JOIN course_group_students cgs ON cgs.group_id = lastg.group_id AND cgs.student_id = s.id
   LEFT JOIN course_groups cg ON cg.id = lastg.group_id
+  LEFT JOIN courses c ON c.id = cg.course_id
   $whereSql
 ";
 
@@ -129,11 +130,26 @@ $list = $pdo->prepare("
     /* arsimi */
     el.code AS edu_code, el.label AS edu_label,
 
+    /* ===== MODULI =====
+       - nese ka grup (lastg.group_id) → course_name (nga courses)
+       - nese s'ka grup → planned_course_name (nga student_course_plans)
+    */
+    c.name AS course_name,
+    (
+      SELECT c2.name
+      FROM student_course_plans scp
+      JOIN courses c2 ON c2.id = scp.course_id
+      WHERE scp.student_id = s.id
+      ORDER BY scp.id DESC
+      LIMIT 1
+    ) AS planned_course_name,
+
     /* grupi i fundit */
     lastg.group_id,
     cg.start_date, cg.end_date,
     cgs.exam_date AS exam_date,        -- EXAM PER-STUDENT
     cgs.final_score
+
   ".$sqlBase."
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT :lim OFFSET :off
@@ -331,9 +347,10 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
           <tr>
             <th class="nowrap">AMZË</th>
             <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-            <th class="nowrap">Datë fillimi (grup)</th>
-            <th class="nowrap">Datë mbarimi (grup)</th>
-            <th class="nowrap">Datë testimi (student)</th>
+            <th>Moduli</th>
+            <th class="nowrap">Datë fillimi</th>
+            <th class="nowrap">Datë mbarimi</th>
+            <th class="nowrap">Datë testimi</th>
             <th class="nowrap">Pikët përfundimtare</th>
             <th class="nowrap">Mosha</th>
             <th class="nowrap">Arsimi</th>
@@ -351,6 +368,29 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
               <td>
                 <div class="fw-semibold"><?= htmlspecialchars($full) ?></div>
                 <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '—') ?></div>
+              </td>
+
+              <td class="nowrap">
+                <?php
+                  $moduleLabel = '—';
+
+                  // Nëse ka grup të fundit, shfaq kursin + (opsional) grupin
+                  if (!empty($r['group_id'])) {
+                    $course = $r['course_name'] ?? '';
+                    $gname  = $r['group_name'] ?? '';
+
+                    if ($course !== '' && $gname !== '') $moduleLabel = $course.' — '.$gname;
+                    elseif ($course !== '')              $moduleLabel = $course;
+                    elseif ($gname !== '')               $moduleLabel = $gname;
+                    else                                 $moduleLabel = '—';
+                  } else {
+                    // Nëse s’ka grup, shfaq planin (nëse ekziston)
+                    $moduleLabel = $r['planned_course_name'] ?? '—';
+                    if (trim((string)$moduleLabel) === '') $moduleLabel = '—';
+                  }
+
+                  echo htmlspecialchars($moduleLabel, ENT_QUOTES, 'UTF-8');
+                ?>
               </td>
 
               <!-- start_date (inline grup) -->
