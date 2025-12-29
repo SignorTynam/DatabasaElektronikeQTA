@@ -42,6 +42,7 @@ $data = json_decode($raw, true);
 if (!is_array($data)) $data = $_POST;
 
 $csrf       = $data['csrf'] ?? '';
+$action     = trim((string)($data['action'] ?? '')); // NEW
 $student_id = (int)($data['student_id'] ?? 0);
 $field      = trim((string)($data['field'] ?? ''));
 $value      = $data['value'] ?? null;
@@ -50,6 +51,247 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csr
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
 }
+
+/* ==============================
+   ACTION: check_amze (lookup)
+============================== */
+if ($action === 'check_amze') {
+    $amze = trim((string)($data['nr_amze'] ?? ''));
+    if ($amze === '' || !preg_match('/^\d+$/', $amze)) {
+        echo json_encode(['ok'=>true,'exists'=>false]); exit;
+    }
+
+    $q = $pdo->prepare("
+        SELECT
+            s.id AS student_id,
+            s.nr_amze,
+            CONCAT_WS(' ', p.first_name, NULLIF(p.father_name,''), p.last_name) AS full_name,
+            p.personal_number,
+            p.phone,
+            p.birth_date,
+            DATE_FORMAT(p.birth_date, '%d-%m-%Y') AS birth_date_dmy
+        FROM students s
+        JOIN persons p ON p.id = s.person_id
+        WHERE s.nr_amze = :amze
+        LIMIT 1
+    ");
+    $q->execute([':amze'=>$amze]);
+    $st = $q->fetch(PDO::FETCH_ASSOC);
+
+    if ($st) {
+        echo json_encode(['ok'=>true,'exists'=>true,'student'=>$st]); exit;
+    }
+    echo json_encode(['ok'=>true,'exists'=>false]); exit;
+}
+
+/* ==============================
+   ACTION: merge_students (opsionale)
+   - Bashkon duplikatin (source) te target
+============================== */
+if ($action === 'merge_students') {
+    $source = (int)($data['source_student_id'] ?? 0);
+    $target = (int)($data['target_student_id'] ?? 0);
+
+    if ($source <= 0 || $target <= 0 || $source === $target) {
+        http_response_code(400);
+        echo json_encode(['ok'=>false,'error'=>'Parametra merge të pavlefshëm.']); exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Siguro që ekzistojnë
+        $chk = $pdo->prepare("SELECT 1 FROM students WHERE id=:id");
+        $chk->execute([':id'=>$source]);
+        if (!$chk->fetchColumn()) throw new RuntimeException('Source student nuk ekziston.');
+        $chk->execute([':id'=>$target]);
+        if (!$chk->fetchColumn()) throw new RuntimeException('Target student nuk ekziston.');
+
+        // student_course_plans (nëse ekziston)
+        try {
+            $pdo->prepare("
+              INSERT IGNORE INTO student_course_plans (student_id, course_id, status, selected_by)
+              SELECT :target, course_id, status, selected_by
+              FROM student_course_plans
+              WHERE student_id = :source
+            ")->execute([':target'=>$target, ':source'=>$source]);
+            $pdo->prepare("DELETE FROM student_course_plans WHERE student_id=:source")
+                ->execute([':source'=>$source]);
+        } catch (Throwable $e) { /* ignore */ }
+
+        // course_group_students (nëse ekziston)
+        try {
+            $pdo->prepare("
+              INSERT IGNORE INTO course_group_students (group_id, student_id)
+              SELECT group_id, :target
+              FROM course_group_students
+              WHERE student_id = :source
+            ")->execute([':target'=>$target, ':source'=>$source]);
+            $pdo->prepare("DELETE FROM course_group_students WHERE student_id=:source")
+                ->execute([':source'=>$source]);
+        } catch (Throwable $e) { /* ignore */ }
+
+        // agency_students (nëse ekziston)
+        try {
+            $pdo->prepare("UPDATE agency_students SET student_id=:target WHERE student_id=:source")
+                ->execute([':target'=>$target, ':source'=>$source]);
+        } catch (Throwable $e) { /* ignore */ }
+
+        // student_qr_tokens (nëse ekziston)
+        try {
+            $pdo->prepare("UPDATE student_qr_tokens SET student_id=:target WHERE student_id=:source")
+                ->execute([':target'=>$target, ':source'=>$source]);
+        } catch (Throwable $e) { /* ignore */ }
+
+        // Në fund: fshi duplikatin (source)
+        $pdo->prepare("DELETE FROM students WHERE id=:id")->execute([':id'=>$source]);
+
+        $pdo->commit();
+        echo json_encode(['ok'=>true,'target_student_id'=>$target]); exit;
+
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        http_response_code(400);
+        echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
+    }
+}
+
+/* ==============================
+   ACTION: link_person_by_pn
+   - Lidh këtë AMZË (student_id) me personin ekzistues sipas PN
+   - Pastaj kthen të dhënat për UI (autofill)
+============================== */
+if ($action === 'link_person_by_pn') {
+    $sid = (int)($data['student_id'] ?? 0);
+    $pn  = trim((string)($data['personal_number'] ?? ''));
+
+    if ($sid <= 0 || $pn === '') {
+        http_response_code(400);
+        echo json_encode(['ok'=>false,'error'=>'Parametra të pavlefshëm.']); exit;
+    }
+
+    // gjej rolin student
+    $studentRoleId = (int)($pdo->query("SELECT id FROM roles WHERE name='student' LIMIT 1")->fetchColumn() ?: 0);
+    if ($studentRoleId <= 0) {
+        http_response_code(500);
+        echo json_encode(['ok'=>false,'error'=>'Roli student mungon.']); exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // studenti aktual (AMZË) + lidhjet e vjetra
+        $cur = $pdo->prepare("SELECT id, person_id, user_id, education_level_id FROM students WHERE id=:sid LIMIT 1");
+        $cur->execute([':sid'=>$sid]);
+        $curRow = $cur->fetch(PDO::FETCH_ASSOC);
+        if (!$curRow) throw new RuntimeException('Studenti nuk u gjet.');
+
+        $oldPid = (int)$curRow['person_id'];
+        $oldUid = (int)$curRow['user_id'];
+        $oldEdu = $curRow['education_level_id'] ?? null;
+
+        // personi ekzistues sipas PN
+        $pSel = $pdo->prepare("
+            SELECT id, personal_number, first_name, father_name, last_name, birth_date, birth_place, phone, gender_id
+            FROM persons
+            WHERE personal_number = :pn
+            LIMIT 1
+        ");
+        $pSel->execute([':pn'=>$pn]);
+        $p = $pSel->fetch(PDO::FETCH_ASSOC);
+        if (!$p) throw new RuntimeException('Nuk u gjet person me këtë numër personal.');
+
+        $newPid = (int)$p['id'];
+
+        // gjej / krijo user-in student për këtë person
+        $uSel = $pdo->prepare("SELECT id FROM users WHERE role_id=:rid AND person_id=:pid LIMIT 1");
+        $uSel->execute([':rid'=>$studentRoleId, ':pid'=>$newPid]);
+        $newUid = (int)($uSel->fetchColumn() ?: 0);
+
+        if ($newUid <= 0) {
+            $full = trim(($p['first_name'] ?? '').' '.(($p['father_name'] ?? '') ? ($p['father_name'].' ') : '').($p['last_name'] ?? ''));
+            $pdo->prepare("INSERT INTO users (role_id, person_id, full_name, email) VALUES (:rid,:pid,:fn,NULL)")
+                ->execute([':rid'=>$studentRoleId, ':pid'=>$newPid, ':fn'=>($full!==''?$full:null)]);
+            $newUid = (int)$pdo->lastInsertId();
+
+            // krijo credentials nëse s’ka
+            $plain = qta_make_initial_password((string)($p['first_name'] ?? ''), $p['birth_date'] ?? null);
+            $hash  = password_hash($plain, PASSWORD_BCRYPT);
+            $pdo->prepare("INSERT INTO credentials (user_id, password_hash, last_password_change) VALUES (:uid,:ph,NOW())")
+                ->execute([':uid'=>$newUid, ':ph'=>$hash]);
+        }
+
+        // Lidh AMZË me personin ekzistues
+        $pdo->prepare("UPDATE students SET person_id=:pid, user_id=:uid WHERE id=:sid")
+            ->execute([':pid'=>$newPid, ':uid'=>$newUid, ':sid'=>$sid]);
+
+        // Edu: nëse AMZË aktual s’ka edu, merre nga studentët e tjerë të këtij personi (më i fundit)
+        $eduId = null;
+        $eduQ = $pdo->prepare("
+            SELECT education_level_id
+            FROM students
+            WHERE person_id=:pid AND id<>:sid AND education_level_id IS NOT NULL
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $eduQ->execute([':pid'=>$newPid, ':sid'=>$sid]);
+        $eduId = $eduQ->fetchColumn() ?: null;
+
+        if (($oldEdu === null || $oldEdu === '') && $eduId !== null) {
+            $pdo->prepare("UPDATE students SET education_level_id=:ed WHERE id=:sid")
+                ->execute([':ed'=>(int)$eduId, ':sid'=>$sid]);
+        }
+
+        // Cleanup: nëse personi i vjetër (bosh) nuk ka më studentë, fshije (dhe user-in e vjetër nëse s’përdoret)
+        if ($oldPid > 0 && $oldPid !== $newPid) {
+            $cnt = $pdo->prepare("SELECT COUNT(*) FROM students WHERE person_id=:pid");
+            $cnt->execute([':pid'=>$oldPid]);
+            $left = (int)$cnt->fetchColumn();
+
+            if ($left === 0) {
+                if ($oldUid > 0 && $oldUid !== $newUid) {
+                    $cntU = $pdo->prepare("SELECT COUNT(*) FROM students WHERE user_id=:uid");
+                    $cntU->execute([':uid'=>$oldUid]);
+                    if ((int)$cntU->fetchColumn() === 0) {
+                        $pdo->prepare("DELETE FROM users WHERE id=:uid")->execute([':uid'=>$oldUid]);
+                    }
+                }
+                $pdo->prepare("DELETE FROM persons WHERE id=:pid")->execute([':pid'=>$oldPid]);
+            }
+        }
+
+        $pdo->commit();
+
+        // kthe të dhëna për autofill
+        $birthDmy = (!empty($p['birth_date']) ? date('d-m-Y', strtotime((string)$p['birth_date'])) : '—');
+        echo json_encode([
+            'ok'=>true,
+            'person'=>[
+                'personal_number'=>$p['personal_number'],
+                'first_name'=>$p['first_name'] ?? '',
+                'father_name'=>$p['father_name'] ?? '',
+                'last_name'=>$p['last_name'] ?? '',
+                'birth_date_dmy'=>$birthDmy,
+                'birth_place'=>$p['birth_place'] ?? '',
+                'phone'=>$p['phone'] ?? '',
+                'gender_id'=>(int)($p['gender_id'] ?? 0),
+            ],
+            'education_level_id'=>($eduId !== null ? (int)$eduId : null),
+            'student_id'=>$sid
+        ]);
+        exit;
+
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        http_response_code(400);
+        echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
+    }
+}
+
+/* ==============================
+   Pastaj vazhdon kodi ekzistues i update
+============================== */
+
 if ($student_id <= 0) {
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'ID studenti e pavlefshme.']); exit;
@@ -147,24 +389,48 @@ try {
             $dispValue = $iso ? fmt_dMY($iso) : '—';
         }
         elseif ($field === 'personal_number') {
-            $v = trim((string)$value);
-            if ($v === '') {
-                // Lejo bosh sipas skemës së re (NULL)
-                $pdo->prepare("UPDATE persons SET personal_number=NULL WHERE id=:pid")
-                    ->execute([':pid'=>$person_id]);
-                $dispValue = '—';
-            } else {
-                /* Unike në persons */
-                $c = $pdo->prepare("SELECT COUNT(*) FROM persons WHERE personal_number=:v AND id<>:pid");
-                $c->execute([':v'=>$v, ':pid'=>$person_id]);
-                if ((int)$c->fetchColumn() > 0) {
-                    throw new RuntimeException('Numri Personal përdoret nga një person tjetër.');
+                    $v = trim((string)$value);
+
+                    if ($v === '') {
+                        $pdo->prepare("UPDATE persons SET personal_number=NULL WHERE id=:pid")
+                            ->execute([':pid'=>$person_id]);
+                        $dispValue = '—';
+                    } else {
+                        // nëse PN ekziston te një person tjetër → mos e trajto si gabim toast,
+                        // por kthe info që UI të hapë modal dhe të ofrojë "Lidhe AMZË"
+                        $ex = $pdo->prepare("
+                            SELECT
+                            p.id AS person_id,
+                            CONCAT_WS(' ', p.first_name, NULLIF(p.father_name,''), p.last_name) AS full_name,
+                            p.personal_number,
+                            p.phone,
+                            p.birth_date,
+                            DATE_FORMAT(p.birth_date, '%d-%m-%Y') AS birth_date_dmy
+                            FROM persons p
+                            WHERE p.personal_number = :pn AND p.id <> :pid
+                            LIMIT 1
+                        ");
+                        $ex->execute([':pn'=>$v, ':pid'=>$person_id]);
+                        $exist = $ex->fetch(PDO::FETCH_ASSOC);
+
+                        if ($exist) {
+                            $pdo->rollBack();
+                            http_response_code(409);
+                            echo json_encode([
+                                'ok'=>false,
+                                'code'=>'PERSONAL_EXISTS',
+                                'error'=>'Ky numër personal ekziston. Zgjidh “Lidhe këtë AMZË” për ta përdorur.',
+                                'person'=>$exist
+                            ]);
+                            exit;
+                        }
+
+                        $q = $pdo->prepare("UPDATE persons SET personal_number=:v WHERE id=:pid");
+                        $q->execute([':v'=>$v, ':pid'=>$person_id]);
+                        $dispValue = $v;
+                    }
                 }
-                $q = $pdo->prepare("UPDATE persons SET personal_number=:v WHERE id=:pid");
-                $q->execute([':v'=>$v, ':pid'=>$person_id]);
-                $dispValue = $v;
-            }
-        }
+
         else {
             /* first_name, father_name, last_name, birth_place, phone */
             $v = trim((string)$value);

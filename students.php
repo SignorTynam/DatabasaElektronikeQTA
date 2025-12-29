@@ -494,6 +494,92 @@ $countStmt = $pdo->prepare("
     LEFT JOIN education_levels el ON el.id = s.education_level_id
     $whereSql
 ");
+
+/* ------------------------------
+   Kontroll: AMZË të munguar midis min & max (numerike)
+   - Respekton filtrat aktualë (q/edu/incomplete) përmes $whereSql/$params
+   - Nuk ndikohet nga paginimi
+------------------------------- */
+$amzeCheck = [
+    'min' => null,
+    'max' => null,
+    'missing' => [],
+    'missing_count' => 0,
+    'truncated' => false,
+];
+
+try {
+    $amzeStmt = $pdo->prepare("
+        SELECT CAST(s.nr_amze AS UNSIGNED) AS amze
+        FROM students s
+        JOIN users u   ON u.id = s.user_id
+        JOIN persons p ON p.id = s.person_id
+        LEFT JOIN education_levels el ON el.id = s.education_level_id
+        $whereSql
+          AND s.nr_amze REGEXP '^[0-9]+$'
+        ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC
+    ");
+
+    foreach ($params as $k => $v) {
+        $amzeStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    }
+    $amzeStmt->execute();
+
+    $amzeList = $amzeStmt->fetchAll(PDO::FETCH_COLUMN, 0);
+    $amzeList = array_map('intval', $amzeList);
+
+    if (!empty($amzeList)) {
+        $minAmze = $amzeList[0];
+        $maxAmze = $amzeList[count($amzeList) - 1];
+
+        $missing = [];
+        $missingCount = 0;
+
+        // sa numra të munguar të shfaqim në banner (për të mos e bërë faqen “miles”)
+        $SHOW_LIMIT = 250;
+
+        $expected = $minAmze;
+
+        foreach ($amzeList as $a) {
+            if ($a < $expected) {
+                // mbulon raste të rralla duplikimi pas CAST (p.sh. '001' dhe '1')
+                continue;
+            }
+
+            if ($a > $expected) {
+                $gap = $a - $expected;       // sa AMZË mungojnë në këtë interval
+                $missingCount += $gap;
+
+                // ruaj vetëm të parat SHOW_LIMIT për t’i shfaqur
+                $toStore = min($gap, $SHOW_LIMIT - count($missing));
+                for ($i = 0; $i < $toStore; $i++) {
+                    $missing[] = $expected + $i;
+                }
+            }
+
+            $expected = $a + 1;
+        }
+
+        $amzeCheck = [
+            'min' => $minAmze,
+            'max' => $maxAmze,
+            'missing' => $missing,
+            'missing_count' => $missingCount,
+            'truncated' => ($missingCount > $SHOW_LIMIT),
+        ];
+    }
+} catch (Throwable $e) {
+    // nëse ndodh ndonjë problem, thjesht mos e shfaq banner-in (pa e prishur faqen)
+    $amzeCheck = [
+        'min' => null,
+        'max' => null,
+        'missing' => [],
+        'missing_count' => 0,
+        'truncated' => false,
+    ];
+}
+
+
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
@@ -796,6 +882,26 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
       </form>
     </div>
   </div>
+
+  <?php if ($amzeCheck['min'] !== null && $amzeCheck['max'] !== null && $amzeCheck['missing_count'] > 0): ?>
+    <div class="alert alert-warning alert-dismissible fade show d-flex align-items-start gap-2 mb-3" role="alert">
+      <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+      <div>
+        <div class="fw-semibold">
+          AMZË të paplota në intervalin <?= (int)$amzeCheck['min'] ?> – <?= (int)$amzeCheck['max'] ?>.
+        </div>
+        <div class="small">
+          Gjithsej mungojnë: <strong><?= (int)$amzeCheck['missing_count'] ?></strong>.
+          <?php if (!empty($amzeCheck['missing'])): ?>
+            <br>
+            Mungojnë AMZË: <?= htmlspecialchars(implode(', ', $amzeCheck['missing']), ENT_QUOTES, 'UTF-8') ?>
+            <?= $amzeCheck['truncated'] ? ' …' : '' ?>
+          <?php endif; ?>
+        </div>
+      </div>
+      <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Mbyll"></button>
+    </div>
+  <?php endif; ?>
 
   <!-- Tabela -->
   <div class="card">
@@ -1192,6 +1298,86 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
   </div>
 </div>
 
+<!-- MODAL: Numri Personal ekziston (lidhje me personin ekzistues) -->
+<div class="modal fade" id="pnExistsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title text-warning">
+          <i class="bi bi-exclamation-triangle me-1"></i> Numri Personal ekziston
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          Numri Personal <strong id="pnExistsValue">—</strong> është i regjistruar për:
+        </p>
+
+        <div class="border rounded-3 p-2 bg-light">
+          <div><strong id="pnExistsName">—</strong></div>
+          <div class="small">
+            Datëlindja: <span id="pnExistsBD">—</span><br>
+            Tel: <span id="pnExistsPhone">—</span>
+          </div>
+        </div>
+
+        <div class="alert alert-info mt-3 mb-0">
+          Nëse zgjedh “Lidhe këtë AMZË”, ky regjistrim do të lidhet me personin ekzistues dhe fushat do të plotësohen automatikisht.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnPnCancel" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" id="btnPnLink" class="btn btn-primary btn-pill">
+          <i class="bi bi-link-45deg me-1"></i> Lidhe këtë AMZË
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL: AMZË ekziston (konfirmim) -->
+<div class="modal fade" id="amzeExistsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title text-warning">
+          <i class="bi bi-exclamation-triangle me-1"></i> AMZË ekziston
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          AMZË <strong id="amzeExistsValue">—</strong> ekziston tashmë dhe i takon një studenti tjetër.
+        </p>
+
+        <div class="border rounded-3 p-2 bg-light">
+          <div class="small text-muted mb-1">Studenti ekzistues:</div>
+          <div><strong id="amzeExistsName">—</strong></div>
+          <div class="small">
+            Nr. Personal: <span id="amzeExistsPN">—</span><br>
+            Datëlindja: <span id="amzeExistsBD">—</span><br>
+            Tel: <span id="amzeExistsPhone">—</span>
+          </div>
+        </div>
+
+        <div class="alert alert-warning mt-3 mb-0">
+          Nëse vazhdon, duhet të punosh me studentin ekzistues (ose të bashkosh duplikatin).
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnAmzeCancel" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" id="btnAmzeOpenExisting" class="btn btn-soft-primary btn-pill">
+          <i class="bi bi-person-lines-fill me-1"></i> Hap studentin
+        </button>
+        <button type="button" id="btnAmzeMergeDuplicate" class="btn btn-danger btn-pill">
+          <i class="bi bi-link-45deg me-1"></i> Bashko / Hiq duplikatin
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -1245,6 +1431,69 @@ function normalizeDateForServer(str){
   throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
 }
 
+let amzeExistsState = null;
+
+let pnExistsState = null;
+
+function applyPersonToRow(sid, person, eduId){
+  const row = document.getElementById(`row-${sid}`);
+  if (!row || !person) return;
+
+  const setText = (field, val) => {
+    const el = row.querySelector(`td.cell[data-field="${field}"] .editable`);
+    if (el) el.textContent = (val && String(val).trim() !== '' ? val : '—');
+  };
+  const setSelect = (field, val) => {
+    const sel = row.querySelector(`td.cell[data-field="${field}"] select.inline-select`);
+    if (sel) sel.value = (val ? String(val) : '');
+  };
+
+  setText('personal_number', person.personal_number || '—');
+  setText('first_name', person.first_name || '—');
+  setText('father_name', person.father_name || '—');
+  setText('last_name', person.last_name || '—');
+  setText('birth_date', person.birth_date_dmy || '—');
+  setText('birth_place', person.birth_place || '—');
+  setText('phone', person.phone || '—');
+
+  if (person.gender_id) setSelect('gender_id', person.gender_id);
+  if (eduId !== undefined) setSelect('education_level_id', eduId);
+
+  // update dataset.name për delete button (që modal i fshirjes ta shfaqë saktë)
+  const fullName = [person.first_name, person.father_name, person.last_name].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  const delBtn = row.querySelector('.btn-delete');
+  if (delBtn) delBtn.dataset.name = (fullName !== '' ? fullName : '—');
+}
+
+
+async function postJSON(payload){
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Accept':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const json = await res.json().catch(()=>({ok:false,error:'Përgjigje e pavlefshme nga serveri.'}));
+  return { res, json };
+}
+
+async function checkAmzeExists(amze){
+  return postJSON({ csrf: CSRF, action: 'check_amze', nr_amze: amze });
+}
+
+function showAmzeExistsModal(existingStudent, pending){
+  amzeExistsState = { existingStudent, pending };
+
+  document.getElementById('amzeExistsValue').textContent = pending.newVal || '—';
+  document.getElementById('amzeExistsName').textContent  = existingStudent.full_name || '—';
+  document.getElementById('amzeExistsPN').textContent    = existingStudent.personal_number || '—';
+  document.getElementById('amzeExistsBD').textContent    = existingStudent.birth_date_dmy || '—';
+  document.getElementById('amzeExistsPhone').textContent = existingStudent.phone || '—';
+
+  new bootstrap.Modal(document.getElementById('amzeExistsModal')).show();
+}
+
+
+
 /* Save inline (lejon extra p.sh. planned_course_id) */
 async function saveInline(studentId, field, value, cell, displayEl, extra={}){
   if (!EDIT_MODE) return;
@@ -1295,10 +1544,81 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
     }
 
     if (field === 'nr_amze') {
-      pendingAmzeChange = { sid, field, newVal, cell, el };
-      const pickModal = new bootstrap.Modal(document.getElementById('pickCourseModal'));
-      const sel = document.getElementById('pickCourseSelect'); if (sel) sel.value = '';
-      pickModal.show(); return;
+      // ruaj oldVal për revert në rast anulimi
+      const oldAmze = cleanText(oldVal);
+
+      // kontrollo fillimisht nëse AMZË ekziston
+      (async ()=>{
+        const { json } = await checkAmzeExists(newVal);
+
+        if (!json.ok) {
+          // nëse lookup dështoi, mos e blloko përdoruesin: kthe vlerën e vjetër
+          el.textContent = oldVal;
+          notify('danger', json.error || 'Gabim gjatë kontrollit të AMZË-së.');
+          return;
+        }
+
+        if (json.exists && json.student && parseInt(json.student.student_id,10) !== sid) {
+          // AMZË i përket një studenti tjetër → modal konfirmimi
+          showAmzeExistsModal(json.student, { sid, field, newVal, cell, el, oldAmze });
+          return;
+        }
+
+        // AMZË nuk ekziston (ose i njëjti student) → vazhdo me flow-in ekzistues të modulit
+        pendingAmzeChange = { sid, field, newVal, cell, el, oldAmze };
+        const pickModal = new bootstrap.Modal(document.getElementById('pickCourseModal'));
+        const sel = document.getElementById('pickCourseSelect'); if (sel) sel.value = '';
+        pickModal.show();
+      })();
+
+      return;
+    }
+        if (field === 'personal_number') {
+      const oldPN = cleanText(oldVal);
+
+      (async ()=>{
+        try{
+          cell.classList.add('cell-saving');
+
+          const { json } = await postJSON({
+            csrf: CSRF,
+            student_id: sid,
+            field: 'personal_number',
+            value: newVal
+          });
+
+          cell.classList.remove('cell-saving');
+
+          if (json.ok) {
+            el.textContent = json.display ?? (newVal || '—');
+            cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+            notify('success','U ruajt me sukses.');
+            return;
+          }
+
+          if (json.code === 'PERSONAL_EXISTS' && json.person) {
+            // hap modal për lidhje
+            pnExistsState = { sid, newVal, cell, el, oldPN, person: json.person };
+
+            document.getElementById('pnExistsValue').textContent = newVal || '—';
+            document.getElementById('pnExistsName').textContent  = json.person.full_name || '—';
+            document.getElementById('pnExistsBD').textContent    = json.person.birth_date_dmy || '—';
+            document.getElementById('pnExistsPhone').textContent = json.person.phone || '—';
+
+            new bootstrap.Modal(document.getElementById('pnExistsModal')).show();
+            return;
+          }
+
+          throw new Error(json.error || 'Gabim i panjohur.');
+        } catch(e){
+          cell.classList.remove('cell-saving');
+          el.textContent = oldPN || '—';
+          notify('danger', e.message || 'Gabim gjatë ruajtjes.');
+          cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+        }
+      })();
+
+      return;
     }
 
     saveInline(sid, field, newVal, cell, el);
@@ -1316,6 +1636,38 @@ document.querySelectorAll('td.cell select.inline-select').forEach(sel=>{
     saveInline(sid, field, sel.value, cell, null);
   });
 });
+
+document.getElementById('btnPnCancel')?.addEventListener('click', ()=>{
+  if (!pnExistsState) return;
+  const { el, oldPN } = pnExistsState;
+  if (el) el.textContent = oldPN || '—';
+  pnExistsState = null;
+});
+
+document.getElementById('btnPnLink')?.addEventListener('click', async ()=>{
+  if (!pnExistsState) return;
+  const { sid, newVal } = pnExistsState;
+
+  try{
+    const { json } = await postJSON({
+      csrf: CSRF,
+      action: 'link_person_by_pn',
+      student_id: sid,
+      personal_number: newVal
+    });
+
+    if (!json.ok) throw new Error(json.error || 'Lidhja dështoi.');
+
+    applyPersonToRow(sid, json.person, json.education_level_id);
+    bootstrap.Modal.getInstance(document.getElementById('pnExistsModal'))?.hide();
+    notify('success', 'AMZË u lidh me personin ekzistues dhe fushat u plotësuan.');
+  }catch(e){
+    notify('danger', e.message || 'Gabim gjatë lidhjes.');
+  }finally{
+    pnExistsState = null;
+  }
+});
+
 
 /* Autoplotësim nga Numri Personal (modal i shtimit) */
 function isoToDmy(iso){ if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return ''; const [y,m,d]=iso.split('-'); return `${d}-${m}-${y}`; }
@@ -1402,6 +1754,52 @@ document.querySelectorAll('.btn-delete').forEach(btn=>{
     document.getElementById('delAlsoIdentity').checked = false;
     new bootstrap.Modal(document.getElementById('deleteStudentModal')).show();
   });
+});
+
+document.getElementById('btnAmzeCancel')?.addEventListener('click', ()=>{
+  if (!amzeExistsState) return;
+  const { pending } = amzeExistsState;
+  // rikthe vlerën e vjetër në qelizë
+  if (pending?.el) pending.el.textContent = pending.oldAmze || '';
+  amzeExistsState = null;
+});
+
+document.getElementById('btnAmzeOpenExisting')?.addEventListener('click', ()=>{
+  if (!amzeExistsState) return;
+  const { existingStudent, pending } = amzeExistsState;
+
+  // kthe vlerën e vjetër në rreshtin aktual (s’ka ndryshim DB)
+  if (pending?.el) pending.el.textContent = pending.oldAmze || '';
+
+  // hap kartelën e studentit ekzistues
+  window.location.href = `student_card.php?sid=${encodeURIComponent(existingStudent.student_id)}`;
+});
+
+document.getElementById('btnAmzeMergeDuplicate')?.addEventListener('click', async ()=>{
+  if (!amzeExistsState) return;
+  const { existingStudent, pending } = amzeExistsState;
+
+  try{
+    const { json } = await postJSON({
+      csrf: CSRF,
+      action: 'merge_students',
+      source_student_id: pending.sid,                 // ky rreshti ku po editoje
+      target_student_id: existingStudent.student_id   // studenti “i saktë” ekzistues
+    });
+
+    if (!json.ok) throw new Error(json.error || 'Bashkimi dështoi.');
+
+    // hiq rreshtin duplikat nga UI
+    document.getElementById(`row-${pending.sid}`)?.remove();
+
+    bootstrap.Modal.getInstance(document.getElementById('amzeExistsModal'))?.hide();
+    notify('success', 'U bashkua duplikati. Po hap studentin ekzistues...');
+    window.location.href = `student_card.php?sid=${encodeURIComponent(existingStudent.student_id)}`;
+  }catch(e){
+    notify('danger', e.message || 'Gabim gjatë bashkimit.');
+  }finally{
+    amzeExistsState = null;
+  }
 });
 
 document.getElementById('btnConfirmDelete')?.addEventListener('click', async ()=>{
