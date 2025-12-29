@@ -524,7 +524,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $q = $pdo->prepare("
         SELECT
           s.id AS student_id,
-          CAST(s.nr_amze AS UNSIGNED) AS amznum
+          CAST(s.nr_amze AS UNSIGNED) AS amznum,
+          cgs.exam_date,
+          cgs.final_score
         FROM course_group_students cgs
         JOIN students s ON s.id = cgs.student_id
         WHERE cgs.group_id = :gid
@@ -533,10 +535,17 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $q->execute([':gid' => $group_id]);
       $existing = $q->fetchAll(PDO::FETCH_ASSOC);
 
-      $existMap = [];
+      $existMap = [];          // amznum => student_id
+      $existingCgs = [];       // student_id => ['exam_date'=>..., 'final_score'=>...]
+
       foreach ($existing as $row) {
         if ($row['amznum'] === null) continue;
-        $existMap[(int)$row['amznum']] = (int)$row['student_id'];
+        $sid = (int)$row['student_id'];
+        $existMap[(int)$row['amznum']] = $sid;
+        $existingCgs[$sid] = [
+          'exam_date'   => $row['exam_date'],
+          'final_score' => $row['final_score'],
+        ];
       }
 
       // Target AMZË nga input-i
@@ -714,126 +723,171 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
         $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
       } else {
-        // === Rast i RI: më shumë se 10 studentë -> nda grupin në disa grupe (<=10 secili) ===
+          // === >10 studentë -> ndahet automatikisht në grupe të balancuara (diff max 1) ===
 
-        // Përgatit listën e AMZË-ve dhe ID-ve të studentëve sipas rendit të AMZË
-        $amzeList = array_map('intval', array_keys($targetMap));
-        sort($amzeList, SORT_NUMERIC);
-        $studentIdsOrdered = [];
-        foreach ($amzeList as $n) {
-          $studentIdsOrdered[] = $targetMap[$n];
-        }
+          // Rendit sipas AMZË
+          $amzeList = array_map('intval', array_keys($targetMap));
+          sort($amzeList, SORT_NUMERIC);
 
-        $total        = count($studentIdsOrdered);   // i njëjti me $totalTarget
-        $groupsNeeded = (int)ceil($total / 10);
-        if ($groupsNeeded < 1) { $groupsNeeded = 1; }
-
-        $base = (int)floor($total / $groupsNeeded);
-        $rem  = $total % $groupsNeeded;
-
-        $chunks = [];
-        $cursor = 0;
-        for ($gIndex = 0; $gIndex < $groupsNeeded; $gIndex++) {
-          $size = $base + ($gIndex < $rem ? 1 : 0);
-          if ($size <= 0) continue;
-
-          $chunkIds  = array_slice($studentIdsOrdered, $cursor, $size);
-          $chunkAmze = array_slice($amzeList,          $cursor, $size);
-          $cursor   += $size;
-
-          if (!$chunkIds) continue;
-          if (count($chunkIds) > 10) {
-            throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10 në një grup).');
+          $studentIdsOrdered = [];
+          foreach ($amzeList as $n) {
+            $studentIdsOrdered[] = (int)$targetMap[$n];
           }
 
-          $chunks[] = [
-            'ids'      => $chunkIds,
-            'amze_min' => $chunkAmze ? min($chunkAmze) : null,
-            'amze_max' => $chunkAmze ? max($chunkAmze) : null,
-          ];
-        }
+          // Siguri: mos lejo student_id duplikat (në rast anomalish në DB)
+          if (count($studentIdsOrdered) !== count(array_unique($studentIdsOrdered))) {
+            throw new RuntimeException('Procesi u ndërpre: u gjetën studentë të duplikuar në listë.');
+          }
 
-        if (!$chunks) {
-          throw new RuntimeException('Ndërprerë: nuk u arrit të ndahen anëtarët në grupe.');
-        }
+          $total        = count($studentIdsOrdered);
+          $groupsNeeded = (int)ceil($total / 10);
+          if ($groupsNeeded < 2) $groupsNeeded = 2;
 
-        // Fshi ANËTARËT aktualë të grupit ekzistues (jo vetë grupin)
-        $pdo->prepare("
-          DELETE FROM course_group_students
-          WHERE group_id = :g
-        ")->execute([':g' => $group_id]);
+          $base = (int)floor($total / $groupsNeeded);
+          $rem  = $total % $groupsNeeded;
 
-        $created      = [];
-        $insMember    = $pdo->prepare("
-          INSERT INTO course_group_students (group_id, student_id)
-          VALUES (:g,:s)
-        ");
-        $insGroupStmt = $pdo->prepare("
-          INSERT INTO course_groups (course_id, start_date, end_date, is_completed)
-          VALUES (:c,:s,:e,:ic)
-        ");
+          // Përgatit chunk-e të vazhdueshme sipas AMZË
+          $chunks = [];
+          $cursor = 0;
+          for ($gIndex = 0; $gIndex < $groupsNeeded; $gIndex++) {
+            $size = $base + ($gIndex < $rem ? 1 : 0);
+            if ($size <= 0) continue;
 
-        foreach ($chunks as $idx => $chunkInfo) {
-          if ($idx === 0) {
-            $gidUse = $group_id; // grupi ekzistues merr chunk-un e parë
-          } else {
-            // krijo grup të ri me të njëjtin modul dhe data
+            $chunkIds  = array_slice($studentIdsOrdered, $cursor, $size);
+            $chunkAmze = array_slice($amzeList,          $cursor, $size);
+            $cursor   += $size;
+
+            if (!$chunkIds) continue;
+            if (count($chunkIds) > 10) {
+              throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10 në një grup).');
+            }
+
+            $chunks[] = [
+              'ids'      => $chunkIds,
+              'amze_min' => $chunkAmze ? min($chunkAmze) : null,
+              'amze_max' => $chunkAmze ? max($chunkAmze) : null,
+            ];
+          }
+
+          if (!$chunks) {
+            throw new RuntimeException('Ndërprerë: nuk u arrit të ndahen anëtarët në grupe.');
+          }
+
+          // Fshi vetëm ata që po HIQEN (jo të gjithë) – që të mos humbasin exam_date/final_score për të tjerët
+          if ($toRemove) {
+            $del = $pdo->prepare("
+              DELETE FROM course_group_students
+              WHERE group_id = :g AND student_id = :s
+            ");
+            foreach ($toRemove as $sid) {
+              $del->execute([':g' => $group_id, ':s' => (int)$sid]);
+            }
+          }
+
+          // Krijo grupet e reja (për chunk-et > 0)
+          $created = [];
+          $insGroupStmt = $pdo->prepare("
+            INSERT INTO course_groups (course_id, start_date, end_date, is_completed)
+            VALUES (:c,:s,:e,:ic)
+          ");
+
+          $newGroupIds = []; // index => gid
+          foreach ($chunks as $idx => $chunkInfo) {
+            if ($idx === 0) {
+              $newGroupIds[$idx] = $group_id; // grupi ekzistues mban chunk-un e parë
+              continue;
+            }
+
             $insGroupStmt->execute([
               ':c'  => $gidCourseId,
               ':s'  => $gRowData['start_date'],
               ':e'  => $gRowData['end_date'],
               ':ic' => $is_completed
             ]);
-            $gidUse = (int)$pdo->lastInsertId();
+            $gidNew = (int)$pdo->lastInsertId();
+            $newGroupIds[$idx] = $gidNew;
 
             qta_audit_event('group.create', [
-              'group_id'         => $gidUse,
-              'course_id'        => $gidCourseId,
-              'start_date'       => $gRowData['start_date'],
-              'end_date'         => $gRowData['end_date'],
-              'is_completed'     => $is_completed,
-              'actor_user_id'    => $_SESSION['user_id'] ?? null,
-              'source_split_from'=> $group_id
+              'group_id'          => $gidNew,
+              'course_id'         => $gidCourseId,
+              'start_date'        => $gRowData['start_date'],
+              'end_date'          => $gRowData['end_date'],
+              'is_completed'      => $is_completed,
+              'actor_user_id'     => $_SESSION['user_id'] ?? null,
+              'source_split_from' => $group_id
             ]);
           }
 
-          foreach ($chunkInfo['ids'] as $sid) {
-            $insMember->execute([':g' => $gidUse, ':s' => $sid]);
+          // Prepared statements: INSERT dhe UPDATE për “zhvendosje”
+          $insMember = $pdo->prepare("
+            INSERT INTO course_group_students (group_id, student_id)
+            VALUES (:g,:s)
+          ");
+
+          $moveMember = $pdo->prepare("
+            UPDATE course_group_students
+            SET group_id = :newg
+            WHERE group_id = :oldg AND student_id = :s
+          ");
+
+          // Aplikojmë chunk-et:
+          // - Nëse studenti ishte në këtë grup => ose rri, ose zhvendoset (pa humbje exam_date/final_score)
+          // - Nëse është i ri => INSERT në grupin përkatës
+          foreach ($chunks as $idx => $chunkInfo) {
+            $gidUse = (int)$newGroupIds[$idx];
+
+            foreach ($chunkInfo['ids'] as $sid) {
+              $sid = (int)$sid;
+
+              if (isset($existingCgs[$sid])) {
+                // ishte në grupin origjinal
+                if ($gidUse !== $group_id) {
+                  $moveMember->execute([':newg' => $gidUse, ':oldg' => $group_id, ':s' => $sid]);
+                }
+              } else {
+                // student i ri (nuk ishte në këtë grup)
+                $insMember->execute([':g' => $gidUse, ':s' => $sid]);
+              }
+            }
+
+            $created[] = [
+              'group_id' => $gidUse,
+              'count'    => count($chunkInfo['ids']),
+              'amze_min' => $chunkInfo['amze_min'],
+              'amze_max' => $chunkInfo['amze_max'],
+            ];
           }
 
-          $created[] = [
-            'group_id' => $gidUse,
-            'count'    => count($chunkInfo['ids']),
-            'amze_min' => $chunkInfo['amze_min'],
-            'amze_max' => $chunkInfo['amze_max'],
-          ];
-        }
+          $pdo->commit();
 
-        $pdo->commit();
+          qta_audit_event('group.update_members', [
+            'group_id'      => $group_id,
+            'added'         => $toAdd,
+            'removed'       => $toRemove,
+            'actor_user_id' => $_SESSION['user_id'] ?? null,
+            'split_created' => array_values(array_filter($newGroupIds, fn($x)=> (int)$x !== (int)$group_id)),
+            'split_summary' => $created
+          ]);
 
-        qta_audit_event('group.update_members', [
-          'group_id'      => $group_id,
-          'added'         => $toAdd,
-          'removed'       => $toRemove,
-          'actor_user_id' => $_SESSION['user_id'] ?? null,
-          'split_created' => array_slice(array_column($created, 'group_id'), 1),
-          'split_summary' => $created
-        ]);
+          // === Multi-toasts (një toast për çdo veprim) ===
+          $_SESSION['flash_ok_list'] = $_SESSION['flash_ok_list'] ?? [];
 
-        // Mesazh përfundimtar
-        if (count($created) === 1) {
-          $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
-        } else {
-          $parts = array_map(function ($r) {
+          $_SESSION['flash_ok_list'][] = 'Grupi #' . $group_id . ' u nda në ' . count($created) . ' grupe (balancim automatik).';
+
+          foreach ($created as $r) {
             $range = ($r['amze_min'] !== null)
-              ? ' [' . $r['amze_min'] . ($r['amze_max'] && $r['amze_max'] !== $r['amze_min'] ? '–' . $r['amze_max'] : '') . ']'
+              ? ' [AMZË ' . $r['amze_min'] . ($r['amze_max'] && $r['amze_max'] !== $r['amze_min'] ? '–' . $r['amze_max'] : '') . ']'
               : '';
-            return '#' . $r['group_id'] . ' (' . $r['count'] . ')' . $range;
-          }, $created);
-          $_SESSION['flash_ok'] = 'Grupi u nda në ' . count($created) . ' grupe: ' . implode(', ', $parts);
-        }
-      }
+            $_SESSION['flash_ok_list'][] = 'Grupi #' . $r['group_id'] . ' u formua me ' . $r['count'] . ' studentë' . $range . '.';
+          }
 
+          if ($toAdd) {
+            $_SESSION['flash_ok_list'][] = 'U shtuan ' . count($toAdd) . ' studentë të rinj në ndarje.';
+          }
+          if ($toRemove) {
+            $_SESSION['flash_ok_list'][] = 'U hoqën ' . count($toRemove) . ' studentë nga grupi.';
+          }
+        }
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) {
         $pdo->rollBack();
@@ -1031,9 +1085,19 @@ $groupInfo = $pdo->query("
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Flash mesazhe */
+$flash_ok_list  = $_SESSION['flash_ok_list']  ?? [];
+$flash_err_list = $_SESSION['flash_err_list'] ?? [];
+unset($_SESSION['flash_ok_list'], $_SESSION['flash_err_list']);
+
 $flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
 $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
-$flash_js = ['ok'=>$flash_ok, 'err'=>$flash_err];
+
+$flash_js = [
+  'ok'       => $flash_ok,
+  'err'      => $flash_err,
+  'ok_list'  => array_values((array)$flash_ok_list),
+  'err_list' => array_values((array)$flash_err_list),
+];
 
 /* Navbar */
 $NAV_ACTIVE = 'groups';
@@ -1307,7 +1371,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 
           <button class="btn btn-soft-secondary btn-pill"
                   data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
-                  title="Shto/hiq anëtarë (maks 10)">
+                  title="Shto/hiq anëtarë (nëse kalon 10, ndahet automatikisht)">
             <i class="bi bi-people me-1"></i> Anëtarët
           </button>
           <button class="btn btn-soft-secondary btn-pill"
@@ -1410,12 +1474,16 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <label class="form-label">AMZË që duhet të jenë në këtë grup (deri në 10)</label>
-            <textarea name="amze_spec_members" class="form-control" rows="3" <?= $EDIT_MODE ? '' : 'disabled' ?>
-              placeholder="p.sh. 3400-3403, 3409"><?= htmlspecialchars($prefillAmzeStr) ?></textarea>
+            <label class="form-label">AMZË që duhet të jenë në këtë grup (mund të kalojë 10 — ndahet automatikisht)</label>
+            <textarea name="amze_spec_members"
+                      class="form-control"
+                      rows="3"
+                      <?= $EDIT_MODE ? '' : 'disabled' ?>
+                      data-original-amze="<?= htmlspecialchars($prefillAmzeStr) ?>"
+                      placeholder="p.sh. 3400-3403, 3409"><?= htmlspecialchars($prefillAmzeStr) ?>
+            </textarea>
             <div class="form-text">
-              Mund të shtosh ose heqësh AMZË. Nëse shkruan AMZË që s’ekziston, do të krijohet student i ri me të dhëna bosh.
-              Kapaciteti maksimal: 10 studentë. <br>
+              Mund të shtosh ose heqësh AMZË. Nëse shkruan AMZË që s’ekziston, do të krijohet student i ri me të dhëna bosh. Nëse kalon 10, grupi ndahet automatikisht në disa grupe të balancuara (diferencë max 1 student).
               <strong>Rregull:</strong> i njëjti person (sipas ID personale) nuk mund të jetë dy herë në të njëjtin modul.
               <br><strong>Shënim:</strong> në momentin e shtimit në grup, fshihen automatikisht të gjithë planët <em>planned</em> të studentit.
             </div>
@@ -1655,6 +1723,55 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   </div>
 </div>
 
+<!-- MODAL: Split preview (Bootstrap) -->
+<div class="modal fade" id="splitPreviewModal" tabindex="-1" aria-hidden="true"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-white">
+        <h5 class="modal-title" id="splitPreviewTitle">
+          <i class="bi bi-exclamation-triangle me-2 text-warning"></i> Konfirmo ndarjen e grupit
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="alert alert-warning mb-3" id="splitPreviewIntro">
+          Ky veprim do të ndajë automatikisht studentët në disa grupe (maksimumi 10 studentë për grup),
+          të balancuara (diferencë max 1). Renditja ruhet sipas AMZË.
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-3" id="splitPreviewBadges" style="display:none;"></div>
+
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Grupi</th>
+                <th class="nowrap">Studentë</th>
+                <th class="nowrap">AMZË (min–max)</th>
+              </tr>
+            </thead>
+            <tbody id="splitPreviewTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="form-text mt-2" id="splitPreviewNote"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-soft-secondary btn-pill" id="splitPreviewCancelBtn" data-bs-dismiss="modal">
+          Anulo
+        </button>
+        <button type="button" class="btn btn-primary btn-pill" id="splitPreviewOkBtn">
+          Po, vazhdo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
@@ -1701,6 +1818,12 @@ function notify(type, text, opts={}){
 
 /* === Flash -> Toast (nga serveri pas POST/redirect) === */
 const FLASH = <?= json_encode($flash_js, JSON_UNESCAPED_UNICODE) ?>;
+if (FLASH && Array.isArray(FLASH.ok_list)) {
+  FLASH.ok_list.forEach(m => { if (m) notify('success', m); });
+}
+if (FLASH && Array.isArray(FLASH.err_list)) {
+  FLASH.err_list.forEach(m => { if (m) notify('danger', m); });
+}
 if (FLASH && FLASH.ok)  notify('success', FLASH.ok);
 if (FLASH && FLASH.err) notify('danger',  FLASH.err);
 
@@ -2031,6 +2154,62 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if (!form) return;
 
     form.addEventListener('submit', function(e){
+      if (!EDIT_MODE) return;
+
+      const textarea = form.querySelector('textarea[name="amze_spec"]');
+      if (!textarea) return;
+
+      const nums = parseAmzeRangesClient(textarea.value);
+      if (nums.length <= 10) return;
+
+      const total        = nums.length;
+      const groupsNeeded = Math.ceil(total / 10);
+      if (groupsNeeded <= 1) return;
+
+      const base = Math.floor(total / groupsNeeded);
+      const rem  = total % groupsNeeded;
+
+      let cursor = 0;
+      const parts = [];
+
+      for (let g=0; g<groupsNeeded; g++){
+        const size = base + (g < rem ? 1 : 0);
+        if (size <= 0) continue;
+        const chunk = nums.slice(cursor, cursor + size);
+        cursor += size;
+        if (!chunk.length) continue;
+
+        const min = chunk[0];
+        const max = chunk[chunk.length-1];
+        parts.push({ index:g+1, count:chunk.length, min, max });
+      }
+
+      if (!parts.length) return;
+
+      let msg = 'Kujdes: Kjo komandë do të krijojë ' + parts.length + ' grupe:\n\n';
+      parts.forEach(p => {
+        msg += 'Grupi ' + p.index + ' — ' + p.count + ' studentë, AMZË ' +
+              p.min + (p.max !== p.min ? '–' + p.max : '') + '\n';
+      });
+      msg += '\nVazhdo?';
+
+      if (!confirm(msg)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    });
+  }
+
+  attachCreateGroupWarning();
+
+  function attachCreateGroupWarning(){
+    const modal = document.getElementById('createGroupModal');
+    if (!modal) return;
+    const form = modal.querySelector('form');
+    if (!form) return;
+
+    form.addEventListener('submit', function(e){
       // nëse Edit Mode është OFF, nuk bën sens të kontrollojmë
       if (!EDIT_MODE) return;
 
@@ -2085,6 +2264,269 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 
   attachCreateGroupWarning();
+
+    // ===== Split preview MODAL (për create_group & edit_members) =====
+
+  function parseAmzeRangesClient(s){
+    const out = new Set();
+    (s || '').split(',').forEach(raw => {
+      const tok = raw.trim();
+      if (!tok) return;
+
+      const rangeMatch = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (rangeMatch) {
+        let a = parseInt(rangeMatch[1],10);
+        let b = parseInt(rangeMatch[2],10);
+        if (Number.isNaN(a) || Number.isNaN(b)) return;
+        if (a > b){ const t=a; a=b; b=t; }
+        for (let i=a; i<=b; i++) out.add(i);
+        return;
+      }
+
+      const singleMatch = tok.match(/^\d+$/);
+      if (singleMatch) out.add(parseInt(singleMatch[0],10));
+    });
+    return Array.from(out).sort((a,b)=>a-b);
+  }
+
+  function buildSplitParts(nums){
+    const total = nums.length;
+    const groupsNeeded = Math.ceil(total / 10);
+    const base = Math.floor(total / groupsNeeded);
+    const rem  = total % groupsNeeded;
+
+    let cursor = 0;
+    const parts = [];
+    for (let g=0; g<groupsNeeded; g++){
+      const size = base + (g < rem ? 1 : 0);
+      if (size <= 0) continue;
+      const chunk = nums.slice(cursor, cursor + size);
+      cursor += size;
+      if (!chunk.length) continue;
+
+      parts.push({
+        idx: g,
+        count: chunk.length,
+        min: chunk[0],
+        max: chunk[chunk.length-1]
+      });
+    }
+    return parts;
+  }
+
+  function diffCounts(oldNums, newNums){
+    const oldSet = new Set(oldNums);
+    const newSet = new Set(newNums);
+    let added = 0, removed = 0;
+
+    newSet.forEach(n => { if (!oldSet.has(n)) added++; });
+    oldSet.forEach(n => { if (!newSet.has(n)) removed++; });
+
+    return { added, removed };
+  }
+
+  const splitModalEl = document.getElementById('splitPreviewModal');
+  const splitModal   = splitModalEl ? bootstrap.Modal.getOrCreateInstance(splitModalEl) : null;
+
+  const $title  = document.getElementById('splitPreviewTitle');
+  const $intro  = document.getElementById('splitPreviewIntro');
+  const $badges = document.getElementById('splitPreviewBadges');
+  const $tbody  = document.getElementById('splitPreviewTbody');
+  const $note   = document.getElementById('splitPreviewNote');
+
+  const btnOk     = document.getElementById('splitPreviewOkBtn');
+  const btnCancel = document.getElementById('splitPreviewCancelBtn');
+
+  let pending = null; // { form, resumeModalEl, resumeModalInstance, context }
+
+  function renderBadges(items){
+    if (!$badges) return;
+    if (!items || !items.length){
+      $badges.style.display = 'none';
+      $badges.innerHTML = '';
+      return;
+    }
+    $badges.style.display = '';
+    $badges.innerHTML = items.map(it => {
+      const cls = it.type === 'danger' ? 'text-bg-danger'
+               : it.type === 'success' ? 'text-bg-success'
+               : it.type === 'primary' ? 'text-bg-primary'
+               : 'text-bg-secondary';
+      return `<span class="badge ${cls}">${it.text}</span>`;
+    }).join(' ');
+  }
+
+  function renderPartsTable(parts, labelFn){
+    $tbody.innerHTML = parts.map(p => {
+      const label = labelFn ? labelFn(p) : `Grupi ${p.idx+1}`;
+      const range = `${p.min}${(p.max !== p.min) ? '–' + p.max : ''}`;
+      return `
+        <tr>
+          <td class="fw-semibold">${label}</td>
+          <td class="nowrap">${p.count}</td>
+          <td class="nowrap">${range}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function showSplitPreviewModal(options){
+    if (!splitModal) return false;
+
+    // options: { title, introHtml, badges[], parts, note, form, resumeModalEl }
+    $title.innerHTML = options.title || $title.innerHTML;
+    $intro.innerHTML = options.introHtml || $intro.innerHTML;
+    $note.textContent = options.note || '';
+
+    renderBadges(options.badges || []);
+    renderPartsTable(options.parts || [], options.labelFn);
+
+    pending = {
+      form: options.form,
+      resumeModalEl: options.resumeModalEl || null,
+      resumeModalInstance: options.resumeModalEl ? bootstrap.Modal.getOrCreateInstance(options.resumeModalEl) : null
+    };
+
+    // Fshih modali i formës (për të shmangur stacking issues)
+    if (pending.resumeModalInstance){
+      pending.resumeModalInstance.hide();
+    }
+
+    splitModal.show();
+    return true;
+  }
+
+  // Cancel: hap prap modali i formës (nëse ishte)
+  splitModalEl?.addEventListener('hidden.bs.modal', () => {
+    if (pending && pending.resumeModalInstance && pending._proceeded !== true){
+      pending.resumeModalInstance.show();
+    }
+    pending = null;
+  });
+
+  btnOk?.addEventListener('click', () => {
+    if (!pending || !pending.form) return;
+
+    pending._proceeded = true;
+    splitModal.hide();
+
+    // lejo submit pa e rishfaqur modal-in
+    pending.form.dataset.splitConfirmed = '1';
+
+    // submit pa “browser confirm”; server-side do bëjë ndarjen siç e ke tani
+    if (typeof pending.form.requestSubmit === 'function') pending.form.requestSubmit();
+    else pending.form.submit();
+  });
+
+  // ====== (A) CREATE GROUP: para ndarjes ======
+  (function attachCreateGroupSplitModal(){
+    const createModal = document.getElementById('createGroupModal');
+    if (!createModal) return;
+
+    const form = createModal.querySelector('form');
+    if (!form) return;
+
+    form.addEventListener('submit', function(e){
+      if (!EDIT_MODE) return;
+      if (form.dataset.splitConfirmed === '1'){ form.dataset.splitConfirmed = '0'; return; }
+
+      const ta = form.querySelector('textarea[name="amze_spec"]');
+      if (!ta) return;
+
+      const nums = parseAmzeRangesClient(ta.value);
+      if (nums.length <= 10) return; // s’ka ndarje
+
+      const parts = buildSplitParts(nums);
+
+      // NEW: Nëse do krijohen më shumë se 2 grupe, mos shfaq asnjë modal/alert — lëre të vazhdojë submit normal
+      if (parts.length > 2) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      showSplitPreviewModal({
+        form,
+        resumeModalEl: createModal,
+        title: `<i class="bi bi-exclamation-triangle me-2 text-warning"></i> Konfirmo krijimin dhe ndarjen e grupeve`,
+        introHtml: `
+          Do të krijohen <strong>${parts.length}</strong> grupe (maks. 10 studentë për grup),
+          sipas rendit të AMZË. A dëshiron të vazhdosh?
+        `,
+        badges: [
+          { type:'primary', text:`Totali AMZË: ${nums.length}` },
+          { type:'secondary', text:`Grupe: ${parts.length}` }
+        ],
+        parts,
+        labelFn: (p)=> `Grupi ${p.idx+1} (krijohet)`,
+        note: 'Nëse anulon, asnjë grup nuk krijohet.'
+      });
+    });
+  })();
+
+
+  // ====== (B) EDIT MEMBERS: para ndarjes ======
+  (function attachEditMembersSplitModal(){
+    document.querySelectorAll('form').forEach(form => {
+      const act = form.querySelector('input[name="action"]')?.value || '';
+      if (act !== 'edit_members') return;
+
+      // Hiq “onsubmit=confirmIfCompleted(...)” që të mos dalë confirm i shfletuesit
+      form.removeAttribute('onsubmit');
+      form.onsubmit = null;
+
+      form.addEventListener('submit', function(e){
+        if (!EDIT_MODE) return;
+        if (form.dataset.splitConfirmed === '1'){ form.dataset.splitConfirmed = '0'; return; }
+
+        // Konfirmimi për “completed” (siç e ke logjikën)
+        const gid = parseInt(form.querySelector('input[name="group_id"]')?.value || '0', 10);
+        if (gid > 0) {
+          const okCompleted = confirmIfCompleted(form, gid); // përdor logjikën ekzistuese të force=1
+          if (!okCompleted){
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
+
+        const ta = form.querySelector('textarea[name="amze_spec_members"]');
+        if (!ta) return;
+
+        const nums = parseAmzeRangesClient(ta.value);
+        if (nums.length <= 10) return; // s’ka ndarje
+
+        // Diferenca (shtime/hiqje) nga original
+        const original = parseAmzeRangesClient(ta.dataset.originalAmze || '');
+        const { added, removed } = diffCounts(original, nums);
+
+        const parts = buildSplitParts(nums);
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const hostModalEl = form.closest('.modal'); // editMembersModal_XX
+
+        showSplitPreviewModal({
+          form,
+          resumeModalEl: hostModalEl,
+          title: `<i class="bi bi-exclamation-triangle me-2 text-warning"></i> Ky veprim do ta ndajë Grupin #${gid}`,
+          introHtml: `
+            Po modifikon anëtarët e <strong>Grupit #${gid}</strong>. Pas ruajtjes, ky grup do të ndahet automatikisht në
+            <strong>${parts.length}</strong> grupe (maks. 10 studentë për grup). A je i sigurt?
+          `,
+          badges: [
+            { type:'primary', text:`Totali AMZË: ${nums.length}` },
+            { type:'secondary', text:`Grupe: ${parts.length}` },
+            ...(added ? [{ type:'success', text:`Shtohen: ${added}` }] : []),
+            ...(removed ? [{ type:'danger', text:`Hiqen: ${removed}` }] : [])
+          ],
+          parts,
+          labelFn: (p)=> (p.idx === 0 ? `Grupi #${gid} (aktual)` : `Grup i ri (krijohet)`),
+          note: 'Nëse anulon, ndryshimet nuk ruhen dhe grupi nuk ndahet.'
+        });
+      });
+    });
+  })();
 });
 </script>
 </body>
