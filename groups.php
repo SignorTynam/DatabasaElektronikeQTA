@@ -1024,7 +1024,10 @@ $groupInfo = $pdo->query("
   LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
   LEFT JOIN students s ON s.id = cgs.student_id
   GROUP BY cg.id
-  ORDER BY cg.id ASC
+  ORDER BY
+    (MIN(CAST(s.nr_amze AS UNSIGNED)) IS NULL) ASC,
+    MIN(CAST(s.nr_amze AS UNSIGNED)) ASC,
+    cg.id ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Flash mesazhe */

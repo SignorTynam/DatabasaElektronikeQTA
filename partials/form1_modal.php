@@ -18,12 +18,27 @@
           <label class="form-label">Grupi i fillimit</label>
           <select name="gstart" id="gstart" class="form-select" required>
             <option value="">— Zgjidh —</option>
-            <?php foreach($groupInfo as $gi): ?>
-              <option value="<?= (int)$gi['id'] ?>">
-                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name']) ?>
-                (<?= htmlspecialchars(date('d-m-Y', strtotime($gi['start_date'])).' → '.date('d-m-Y', strtotime($gi['end_date']))) ?>)
-              </option>
-            <?php endforeach; ?>
+              <?php foreach($groupInfo as $gi): ?>
+                <?php
+                  $min = $gi['amze_min'];
+                  $max = $gi['amze_max'];
+
+                  if ($min === null || $min === '') {
+                    $range = '—';
+                  } else {
+                    $min = (int)$min;
+                    $max = ($max === null || $max === '') ? $min : (int)$max;
+                    $range = ($max !== $min) ? ($min . '–' . $max) : (string)$min;
+                  }
+
+                  $dates = date('d-m-Y', strtotime($gi['start_date'])) . ' → ' . date('d-m-Y', strtotime($gi['end_date']));
+                ?>
+                <option value="<?= (int)$gi['id'] ?>">
+                  #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name'], ENT_QUOTES, 'UTF-8') ?>
+                  [<?= htmlspecialchars($range, ENT_QUOTES, 'UTF-8') ?>]
+                  (<?= htmlspecialchars($dates, ENT_QUOTES, 'UTF-8') ?>)
+                </option>
+              <?php endforeach; ?>
           </select>
           <div class="form-text" id="gstartHint">(AMZË: —)</div>
         </div>
@@ -31,12 +46,27 @@
           <label class="form-label">Grupi i mbarimit</label>
           <select name="gend" id="gend" class="form-select" required>
             <option value="">— Zgjidh —</option>
-            <?php foreach($groupInfo as $gi): ?>
-              <option value="<?= (int)$gi['id'] ?>">
-                #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name']) ?>
-                (<?= htmlspecialchars(date('d-m-Y', strtotime($gi['start_date'])).' → '.date('d-m-Y', strtotime($gi['end_date']))) ?>)
-              </option>
-            <?php endforeach; ?>
+              <?php foreach($groupInfo as $gi): ?>
+                <?php
+                  $min = $gi['amze_min'];
+                  $max = $gi['amze_max'];
+
+                  if ($min === null || $min === '') {
+                    $range = '—';
+                  } else {
+                    $min = (int)$min;
+                    $max = ($max === null || $max === '') ? $min : (int)$max;
+                    $range = ($max !== $min) ? ($min . '–' . $max) : (string)$min;
+                  }
+
+                  $dates = date('d-m-Y', strtotime($gi['start_date'])) . ' → ' . date('d-m-Y', strtotime($gi['end_date']));
+                ?>
+                <option value="<?= (int)$gi['id'] ?>">
+                  #<?= (int)$gi['id'] ?> — <?= htmlspecialchars($gi['course_name'], ENT_QUOTES, 'UTF-8') ?>
+                  [<?= htmlspecialchars($range, ENT_QUOTES, 'UTF-8') ?>]
+                  (<?= htmlspecialchars($dates, ENT_QUOTES, 'UTF-8') ?>)
+                </option>
+              <?php endforeach; ?>
           </select>
           <div class="form-text" id="gendHint">(AMZË: —)</div>
         </div>
