@@ -1425,37 +1425,53 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
                 </tr>
               </thead>
               <tbody>
-              <?php if ($g['students']): foreach ($g['students'] as $r): ?>
-                <tr>
-                  <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
-                  <td>
-                    <div class="fw-semibold">
-                      <?= htmlspecialchars(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
-                    </div>
-                    <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
-                  </td>
+                <?php if ($g['students']): foreach ($g['students'] as $r): ?>
+                  <tr>
+                    <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
+                    <td>
+                      <div class="fw-semibold">
+                        <?= htmlspecialchars(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
+                      </div>
+                      <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
+                    </td>
 
-                  <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
-                      title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
-                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                      <?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?>
-                    </span>
-                  </td>
+                    <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
+                        title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
+                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
+                        <?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?>
+                      </span>
+                    </td>
 
-                  <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
-                    <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                      <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
-                    </span>
-                  </td>
+                    <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
+                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
+                        <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
+                      </span>
+                    </td>
 
-                  <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                  <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
-                </tr>
-              <?php endforeach; else: ?>
-                <tr><td colspan="6" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
-              <?php endif; ?>
+                    <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+                    <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
+                  </tr>
+                <?php endforeach; else: ?>
+                  <tr><td colspan="6" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
+                <?php endif; ?>
               </tbody>
             </table>
+            <?php
+              if (empty($_SESSION['csrf_token'])) {
+                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+              }
+            ?>
+
+            <div class="d-flex justify-content-end mt-3">
+              <button type="button"
+                      class="btn btn-soft-primary btn-pill"
+                      data-bs-toggle="modal"
+                      data-bs-target="#modalDownloadProcesVerbal"
+                      data-group-id="<?= (int)$gid ?>"
+                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                <i class="bi bi-download me-1"></i> Shkarko proces verbalin
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1657,6 +1673,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 <!-- ===== Modalet e formularëve në partiale ===== -->
 <?php require __DIR__ . '/partials/form1_modal.php'; ?>
 <?php require __DIR__ . '/partials/form2_modal.php'; ?>
+<?php require __DIR__ . '/partials/modal_download_proces_verbal.php'; ?>
 
 <!-- MODAL: Krijo grup -->
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
