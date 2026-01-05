@@ -1,0 +1,115 @@
+<!--
+VARIANTI HTML (nëse 500.shtml NUK ekzekuton PHP në serverin tënd)
+- Ndrysho /dashboard.php sipas portalit (ose /selectProfile.php).
+-->
+<!doctype html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8" />
+  <title>500 — Internal Server Error • QTA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+  <style>
+    body { background:#f5f7fb; padding-top:72px; }
+    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
+    .muted { color:#64748b; }
+    .pill { border-radius:999px !important; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
+    .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
+    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+    .badge-soft-danger { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+    .topbar { border-bottom:1px solid #e2e8f0; box-shadow:0 10px 25px rgba(2,6,23,.04); }
+    .navbar-brand img { height:28px; }
+    .shortcut{
+      display:flex; align-items:center; gap:.5rem;
+      padding:.6rem .75rem; border-radius:.75rem;
+      background:#f8fafc; border:1px solid #e2e8f0;
+      text-decoration:none; color:inherit;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-light bg-white fixed-top topbar">
+    <div class="container-fluid px-3 px-md-4">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="/dashboard.php">
+        <img src="/image/logoPNG.png" alt="QTA" onerror="this.style.display='none'">
+        <span class="text-muted small">Portali</span>
+      </a>
+      <span class="navbar-text small text-muted d-none d-sm-inline">
+        Qendra e Trajnimeve të Avancuara
+      </span>
+    </div>
+  </nav>
+
+  <main class="container-fluid px-3 px-md-4">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-10 col-xl-8">
+        <div class="card">
+          <div class="card-body p-4 p-md-5">
+            <span class="badge badge-soft-danger pill px-3 py-2 mb-2">
+              <i class="bi bi-bug me-1"></i> 500 • Internal Server Error
+            </span>
+            <h1 class="h3 fw-bold mb-2">Gabim në server</h1>
+            <p class="mb-0 muted">Ndodhi një gabim i brendshëm në server. Provo përsëri pas pak ose kthehu në faqen kryesore.</p>
+
+            <hr class="my-4">
+
+            <div class="p-3 rounded-3 mb-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+              <div class="d-flex flex-wrap justify-content-between gap-2">
+                <div>
+                  <div class="small text-muted mb-1">Kërkesa</div>
+                  <div class="mono" id="req">—</div>
+                </div>
+                <div class="text-end">
+                  <div class="small text-muted mb-1">Kodi i referencës</div>
+                  <div class="mono" id="rid">—</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <button type="button" class="btn btn-soft-secondary pill"
+                      onclick="(history.length>1)?history.back():window.location.href='/dashboard.php'">
+                <i class="bi bi-arrow-left me-1"></i>Kthehu mbrapsht
+              </button>
+              <a class="btn btn-soft-primary pill" href="/dashboard.php">
+                <i class="bi bi-house-door me-1"></i>Faqja kryesore
+              </a>
+              <button type="button" class="btn btn-outline-danger pill" onclick="window.location.reload();">
+                <i class="bi bi-arrow-clockwise me-1"></i>Rifresko
+              </button>
+            </div>
+
+            <div class="small text-muted mb-2">Shkurtore</div>
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <a class="shortcut" href="/students.php"><i class="bi bi-mortarboard me-2"></i>Studentët</a>
+              </div>
+              <div class="col-12 col-md-6">
+                <a class="shortcut" href="/groups.php"><i class="bi bi-collection me-2"></i>Grupet</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer bg-white text-center text-muted small">
+            &copy; <span id="y"></span> QTA • Të gjitha të drejtat e rezervuara.
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    document.getElementById('y').textContent = new Date().getFullYear();
+    document.getElementById('req').textContent = window.location.pathname + window.location.search;
+
+    // gjenero një RID të thjeshtë në UI (HTML-only)
+    const rid = Math.random().toString(16).slice(2, 12).toUpperCase();
+    document.getElementById('rid').textContent = rid;
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

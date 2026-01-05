@@ -1,0 +1,145 @@
+<?php
+declare(strict_types=1);
+session_start();
+
+http_response_code(403);
+
+/**
+ * 403.shtml (Forbidden) — QTA Portal style
+ * Shënim: edhe pse quhet .shtml, nëse serveri yt e trajton si PHP, ky skedar punon perfekt.
+ * Nëse .shtml nuk ekzekuton PHP, shih variantin HTML në fund.
+ */
+
+function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+
+// Home: nëse je i loguar, ço te dashboard, përndryshe te selectProfile
+$homeUrl  = isset($_SESSION['user_id']) ? 'dashboard.php' : 'selectProfile.php';
+
+// Mesazh opsional (?msg=...)
+$msg = trim((string)($_GET['msg'] ?? ''));
+if ($msg === '') {
+  $msg = 'Nuk ke leje për të aksesuar këtë faqe. Nëse mendon se është gabim, kontakto administratorin.';
+}
+
+$reqUri = (string)($_SERVER['REQUEST_URI'] ?? '');
+
+$logoPath = __DIR__ . '/image/logoPNG.png';
+$hasLogo = is_file($logoPath);
+?>
+<!doctype html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8" />
+  <title>403 — Forbidden • QTA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+
+  <style>
+    body { background:#f5f7fb; padding-top:72px; }
+    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
+    .muted { color:#64748b; }
+    .pill { border-radius:999px !important; }
+
+    /* Soft buttons (si në QTA UI) */
+    .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
+    .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
+    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
+
+    /* “Danger” i butë (për Forbidden) */
+    .badge-soft-danger { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .topbar { border-bottom:1px solid #e2e8f0; box-shadow:0 10px 25px rgba(2,6,23,.04); }
+    .navbar-brand img { height:28px; }
+  </style>
+</head>
+
+<body>
+  <!-- Topbar -->
+  <nav class="navbar navbar-light bg-white fixed-top topbar">
+    <div class="container-fluid px-3 px-md-4">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="<?= h($homeUrl) ?>">
+        <?php if ($hasLogo): ?>
+          <img src="image/logoPNG.png" alt="QTA">
+        <?php else: ?>
+          <span class="fw-bold">QTA</span>
+        <?php endif; ?>
+        <span class="text-muted small">Portali</span>
+      </a>
+
+      <span class="navbar-text small text-muted d-none d-sm-inline">
+        Qendra e Trajnimeve të Avancuara
+      </span>
+    </div>
+  </nav>
+
+  <main class="container-fluid px-3 px-md-4">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-9 col-xl-7">
+        <div class="card">
+          <div class="card-body p-4 p-md-5">
+            <div class="d-flex align-items-start justify-content-between gap-3">
+              <div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="badge badge-soft-danger pill px-3 py-2">
+                    <i class="bi bi-shield-x me-1"></i> 403 • Forbidden
+                  </span>
+                </div>
+                <h1 class="h3 fw-bold mb-2">Akses i ndaluar</h1>
+                <p class="mb-0 muted"><?= h($msg) ?></p>
+              </div>
+
+              <div class="d-none d-md-flex align-items-center justify-content-center rounded-4"
+                   style="width:74px;height:74px;background:#fef2f2;border:1px solid #fecaca;">
+                <i class="bi bi-hand-thumbs-down fs-2" style="color:#991b1b;"></i>
+              </div>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="row g-3">
+              <div class="col-12">
+                <div class="p-3 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+                  <div class="small text-muted mb-1">Kërkesa</div>
+                  <div class="mono"><?= h($reqUri !== '' ? $reqUri : '—') ?></div>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button"
+                          class="btn btn-soft-secondary pill"
+                          onclick="(history.length > 1) ? history.back() : (window.location.href='<?= h($homeUrl) ?>');">
+                    <i class="bi bi-arrow-left me-1"></i>Kthehu mbrapsht
+                  </button>
+
+                  <a class="btn btn-soft-primary pill" href="<?= h($homeUrl) ?>">
+                    <i class="bi bi-house-door me-1"></i>Faqja kryesore
+                  </a>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="small text-muted">
+                  Kjo zakonisht ndodh kur roli yt (p.sh. <em>student</em>/<em>editor</em>) nuk ka të drejtë për këtë seksion,
+                  ose kur mungon një token (p.sh. CSRF) në një veprim të mbrojtur.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer bg-white text-center text-muted small">
+            &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
