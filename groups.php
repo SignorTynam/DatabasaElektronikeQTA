@@ -1462,7 +1462,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
               }
             ?>
 
-            <div class="d-flex justify-content-end mt-3">
+            <div class="d-flex justify-content-end mt-3 gap-2">
               <button type="button"
                       class="btn btn-soft-primary btn-pill"
                       data-bs-toggle="modal"
@@ -1470,6 +1470,33 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
                       data-group-id="<?= (int)$gid ?>"
                       data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
                 <i class="bi bi-download me-1"></i> Shkarko proces verbalin
+              </button>
+
+              <button type="button"
+                      class="btn btn-soft-secondary btn-pill"
+                      data-bs-toggle="modal"
+                      data-bs-target="#modalDownloadPraktikaProfesionale"
+                      data-group-id="<?= (int)$gid ?>"
+                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                <i class="bi bi-download me-1"></i> Shkarko praktikën profesionale
+              </button>
+
+              <button type="button"
+                      class="btn btn-soft-secondary btn-pill"
+                      data-bs-toggle="modal"
+                      data-bs-target="#modalDownloadSigurimiTeknik"
+                      data-group-id="<?= (int)$gid ?>"
+                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                <i class="bi bi-shield-check me-1"></i> Shkarko rregullat e sigurimit teknik
+              </button>
+
+              <button type="button"
+                      class="btn btn-soft-secondary btn-pill"
+                      data-bs-toggle="modal"
+                      data-bs-target="#modalDownloadListaEmerore"
+                      data-group-id="<?= (int)$gid ?>"
+                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                <i class="bi bi-list-ol me-1"></i> Shkarko listën emërore
               </button>
             </div>
           </div>
@@ -1674,6 +1701,9 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 <?php require __DIR__ . '/partials/form1_modal.php'; ?>
 <?php require __DIR__ . '/partials/form2_modal.php'; ?>
 <?php require __DIR__ . '/partials/modal_download_proces_verbal.php'; ?>
+<?php require __DIR__ . '/partials/modal_download_praktika_profesionale.php'; ?>
+<?php require __DIR__ . '/partials/modal_download_rregullat_sigurimi_teknik.php'; ?>
+<?php require __DIR__ . '/partials/modal_download_lista_emerore.php'; ?>
 
 <!-- MODAL: Krijo grup -->
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
@@ -1701,8 +1731,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 
           <div class="col-md-3">
             <label class="form-label">Datë fillimi *</label>
-            <input type="text" name="start_date" class="form-control dmy" required
-                   placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <input type="text" name="start_date" class="form-control dmy" required placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
 
           <div class="col-md-3">
