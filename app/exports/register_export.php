@@ -53,6 +53,10 @@ if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
 /* Parametra */
 $f = strtolower(trim($_GET['f'] ?? 'xlsx'));  // xlsx|pdf|docx
 $q = trim($_GET['q'] ?? '');
+$from_amze = trim($_GET['from_amze'] ?? '');
+
+@ini_set('memory_limit', '-1');
+@set_time_limit(0);
 
 /* Filtri */
 $where = ["1=1"];
@@ -68,6 +72,16 @@ if ($q !== '') {
   $params[':kw3'] = '%'.$q.'%';
   $params[':kw4'] = '%'.$q.'%';
   $params[':kw5'] = '%'.$q.'%';
+}
+
+if ($from_amze !== '') {
+  if (ctype_digit($from_amze)) {
+    $where[] = "CAST(s.nr_amze AS UNSIGNED) >= :from_num";
+    $params[':from_num'] = (int)$from_amze;
+  } else {
+    $where[] = "s.nr_amze >= :from_str";
+    $params[':from_str'] = $from_amze;
+  }
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
