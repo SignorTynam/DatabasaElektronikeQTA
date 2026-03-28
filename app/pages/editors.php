@@ -402,7 +402,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                 </button>
                 <!-- Delete -->
                 <form class="d-inline" method="post" action="editors.php"
-                      onsubmit="return <?= $EDIT_MODE ? 'confirm(\'Fshini këtë editor?\')' : '(notify(\"warning\",\"Aktivizo Edit Mode për të fshirë.\"), false)' ?>;">
+                      onsubmit="return <?= $EDIT_MODE ? 'confirm(\'Fshini këtë editor?\')' : 'false' ?>;">
                   <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
                   <input type="hidden" name="action" value="delete_user">
                   <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">

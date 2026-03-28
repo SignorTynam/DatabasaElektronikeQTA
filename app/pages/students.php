@@ -817,6 +817,7 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="container-fluid px-3 px-md-4">
+  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Studentët</h2>
     <div class="page-toolbar"></div>

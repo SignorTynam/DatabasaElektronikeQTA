@@ -332,7 +332,7 @@ $st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
                 <!-- Fshi Agjencinë -->
                 <form method="post" class="d-inline js-confirm-delete"
                       action="agencies.php"
-                      onsubmit="return <?= $EDIT_MODE ? 'true' : '(notify(\"warning\",\"Aktivizo Edit Mode për të fshirë.\"), false)' ?>;">
+                      onsubmit="return <?= $EDIT_MODE ? 'true' : 'false' ?>;">
                   <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
                   <input type="hidden" name="action" value="delete_agency">
                   <input type="hidden" name="agency_id" value="<?= $aid ?>">
@@ -635,7 +635,7 @@ async function loadAgencyStudents(agencyId){
 
 /* Shto nga AMZË */
 document.getElementById('msAddBtn')?.addEventListener('click', async ()=>{
-  if (!EDIT_ENABLED) { notify('warning','Aktivizo Edit Mode.'); return; }
+  if (!EDIT_ENABLED) { return; }
   const agencyId = parseInt(document.getElementById('msAgencyId').value,10);
   const spec = document.getElementById('msAmzeInput').value.trim();
   if(!spec){ notify('warning','Shkruaj AMZË.'); return; }
@@ -666,7 +666,7 @@ function openConfirm(message, onYes){
 document.querySelector('#msTable tbody')?.addEventListener('click', async (ev)=>{
   const btn = ev.target.closest('button[data-unlink]');
   if(!btn) return;
-  if (!EDIT_ENABLED || btn.hasAttribute('disabled')) { notify('warning','Aktivizo Edit Mode.'); return; }
+  if (!EDIT_ENABLED || btn.hasAttribute('disabled')) { return; }
   const sid = parseInt(btn.getAttribute('data-unlink'),10);
   const agencyId = parseInt(document.getElementById('msAgencyId').value,10);
   openConfirm('Të hiqet ky student nga agjencia?', async ()=>{
@@ -686,7 +686,7 @@ document.querySelector('#msTable tbody')?.addEventListener('click', async (ev)=>
 /* Konfirmim për fshirjen e agjencisë (forms) */
 document.querySelectorAll('form.js-confirm-delete').forEach(form=>{
   form.addEventListener('submit', (e)=>{
-    if (!EDIT_ENABLED) { e.preventDefault(); notify('warning','Aktivizo Edit Mode për të fshirë.'); return; }
+    if (!EDIT_ENABLED) { e.preventDefault(); return; }
     e.preventDefault();
     const msg = form.getAttribute('data-confirm') || 'A jeni i sigurt?';
     openConfirm(msg, ()=> form.submit());

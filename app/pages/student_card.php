@@ -374,6 +374,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3"></div>
 
 <main class="container-fluid px-3 px-md-4">
+  <?php if ($CAN_EDIT) require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <?php if ($m = flash('ok')): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       <i class="bi bi-check-circle me-1"></i><?= h($m) ?>

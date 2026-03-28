@@ -420,7 +420,7 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
                                         <i class="bi bi-key me-1"></i>Reset
                                     </button>
                                     <!-- Delete -->
-                                    <form class="d-inline" method="post" action="users.php" onsubmit="return <?= $EDIT_MODE ? 'confirm(\'Fshini këtë administrator?\')' : '(notify(\"warning\",\"Aktivizo Edit Mode për të fshirë.\"), false)' ?>;">
+                                    <form class="d-inline" method="post" action="users.php" onsubmit="return <?= $EDIT_MODE ? 'confirm(\'Fshini këtë administrator?\')' : 'false' ?>;">
                                         <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
                                         <input type="hidden" name="action" value="delete_user">
                                         <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
