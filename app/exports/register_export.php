@@ -162,7 +162,19 @@ foreach ($rows as $r) {
 $filename = 'regjistri_'.date('Ymd_His');
 
 /* ===== Eksportues ===== */
+function signal_download_ready(): void {
+    header('X-File-Download: 1');
+    setcookie('qta_file_ready', 'ok', [
+        'expires'  => time() + 60,
+        'path'     => '/',
+        'secure'   => !empty($_SERVER['HTTPS']),
+        'httponly' => false,
+        'samesite' => 'Lax',
+    ]);
+}
+
 function outputXlsx(array $headers, array $data, string $filename): void {
+    signal_download_ready();
     $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Regjistri');
@@ -198,6 +210,7 @@ function outputXlsx(array $headers, array $data, string $filename): void {
 }
 
 function outputPdf(array $headers, array $data, string $filename): void {
+    signal_download_ready();
     $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
     ob_start(); ?>
@@ -248,6 +261,7 @@ function outputPdf(array $headers, array $data, string $filename): void {
 }
 
 function outputDocx(array $headers, array $data, string $filename): void {
+    signal_download_ready();
     $phpWord = new \PhpOffice\PhpWord\PhpWord();
     $section = $phpWord->addSection(['orientation' => 'landscape', 'marginLeft'=>600, 'marginRight'=>600, 'marginTop'=>600, 'marginBottom'=>600]);
     $section->addText('Regjistri i studentëve', ['bold'=>true, 'size'=>14], ['spaceAfter'=>200]);

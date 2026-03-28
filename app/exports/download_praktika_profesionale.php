@@ -226,6 +226,14 @@ qta_audit_event('praktika_profesionale.download', [
 if (ob_get_length()) { ob_end_clean(); }
 
 $baseName = 'Praktika_Profesionale_Grupi_'.$groupId;
+header('X-File-Download: 1');
+setcookie('qta_file_ready', 'ok', [
+  'expires'  => time() + 60,
+  'path'     => '/',
+  'secure'   => !empty($_SERVER['HTTPS']),
+  'httponly' => false,
+  'samesite' => 'Lax',
+]);
 
 if ($format === 'pdf') {
   // Kërkon Dompdf. Nëse e ke, vazhdon direkt.

@@ -75,6 +75,10 @@
       }
 
       // Submit POST në tab të ri (backend-i yt pret POST + CSRF)
+      if (window.qtaDownloadToast && typeof window.qtaDownloadToast.start === 'function') {
+        window.qtaDownloadToast.start('Dokumenti i praktikës profesionale po gjenerohet. Ju lutem prisni...');
+      }
+
       const f = document.createElement('form');
       f.method = 'POST';
       f.action = 'download_praktika_profesionale.php';

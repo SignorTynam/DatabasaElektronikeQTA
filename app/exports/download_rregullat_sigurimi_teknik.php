@@ -237,6 +237,14 @@ qta_audit_event('sigurimi_teknik.download', [
 if (ob_get_length()) { ob_end_clean(); }
 
 $baseName = 'Rregullat_Sigurimi_Teknik_Grupi_'.$groupId;
+header('X-File-Download: 1');
+setcookie('qta_file_ready', 'ok', [
+  'expires'  => time() + 60,
+  'path'     => '/',
+  'secure'   => !empty($_SERVER['HTTPS']),
+  'httponly' => false,
+  'samesite' => 'Lax',
+]);
 
 if ($format === 'pdf') {
   $autoload = __DIR__ . '/vendor/autoload.php';

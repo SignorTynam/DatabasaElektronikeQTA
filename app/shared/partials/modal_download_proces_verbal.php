@@ -76,6 +76,10 @@
         return;
       }
 
+      if (window.qtaDownloadToast && typeof window.qtaDownloadToast.start === 'function') {
+        window.qtaDownloadToast.start('Procesverbali po gjenerohet. Ju lutem prisni...');
+      }
+
       const url =
         'download_proces_verbal.php' +
         '?group_id=' + encodeURIComponent(gid) +

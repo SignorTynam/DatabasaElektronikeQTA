@@ -76,6 +76,10 @@
         return;
       }
 
+      if (window.qtaDownloadToast && typeof window.qtaDownloadToast.start === 'function') {
+        window.qtaDownloadToast.start('Lista emërore po gjenerohet. Ju lutem prisni...');
+      }
+
       const f = document.createElement('form');
       f.method = 'POST';
       f.action = 'download_lista_emerore.php';

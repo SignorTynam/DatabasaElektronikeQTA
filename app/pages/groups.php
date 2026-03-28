@@ -1819,6 +1819,7 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
 
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'groups_inline_update.php';

@@ -283,6 +283,16 @@ $filename = 'studentet_'.date('Ymd_His');
 /* ===============================
    Funksionet e eksportit
    =============================== */
+function signal_download_ready(): void {
+    header('X-File-Download: 1');
+    setcookie('qta_file_ready', 'ok', [
+        'expires'  => time() + 60,
+        'path'     => '/',
+        'secure'   => !empty($_SERVER['HTTPS']),
+        'httponly' => false,
+        'samesite' => 'Lax',
+    ]);
+}
 
 function cleanOutputBuffer(): void {
     while (ob_get_level() > 0) {
@@ -291,6 +301,7 @@ function cleanOutputBuffer(): void {
 }
 
 function exportXlsx(array $headers, array $data, string $filename): void {
+    signal_download_ready();
     cleanOutputBuffer();
 
     $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
@@ -333,6 +344,7 @@ function exportXlsx(array $headers, array $data, string $filename): void {
 }
 
 function exportPdf(array $headers, array $data, string $filename): void {
+    signal_download_ready();
     cleanOutputBuffer();
 
     $escape = function ($s) {
@@ -393,6 +405,7 @@ function exportPdf(array $headers, array $data, string $filename): void {
 }
 
 function exportDocx(array $headers, array $data, string $filename): void {
+    signal_download_ready();
     cleanOutputBuffer();
 
     $phpWord = new \PhpOffice\PhpWord\PhpWord();

@@ -191,6 +191,19 @@ function htmlTable(array $headers, array $data, string $title): string {
 --------------------------------*/
 $title = "Regjistri i studentëve – {$AGENCY['company_name']}";
 
+function signal_download_ready(): void {
+  header('X-File-Download: 1');
+  setcookie('qta_file_ready', 'ok', [
+    'expires'  => time() + 60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+}
+
+signal_download_ready();
+
 switch ($f) {
   case 'xlsx':
     if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {

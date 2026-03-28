@@ -75,6 +75,10 @@
       }
 
       // POST në tab të ri (backend pret POST + CSRF)
+      if (window.qtaDownloadToast && typeof window.qtaDownloadToast.start === 'function') {
+        window.qtaDownloadToast.start('Dokumenti i rregullave të sigurimit teknik po gjenerohet. Ju lutem prisni...');
+      }
+
       const f = document.createElement('form');
       f.method = 'POST';
       f.action = 'download_rregullat_sigurimi_teknik.php';
