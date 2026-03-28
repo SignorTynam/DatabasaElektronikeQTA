@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 declare(strict_types=1);
 session_start();
 mb_internal_encoding('UTF-8');
@@ -7,6 +7,38 @@ require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
+
+function qta_download_status(string $status, string $message): void {
+  setcookie('qta_file_ready', $status, [
+    'expires'  => time()+60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+  setcookie('qta_file_msg', $message, [
+    'expires'  => time()+60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+}
+
+function qta_fail(int $code, string $message): never {
+  qta_download_status('error', $message);
+  http_response_code($code);
+  exit($message);
+}
+
+register_shutdown_function(function () {
+  $err = error_get_last();
+  if (!$err) return;
+  $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+  if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
+    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+  }
+});
 
 /* ===== Composer autoload ===== */
 $autoloadCandidates = [
@@ -19,22 +51,20 @@ foreach ($autoloadCandidates as $p) {
   if (is_file($p)) { require_once $p; $autoloadLoaded = true; break; }
 }
 if (!$autoloadLoaded) {
-  http_response_code(500);
-  echo "Composer autoload nuk u gjet. Ekzekuto 'composer require phpoffice/phpspreadsheet phpoffice/phpword dompdf/dompdf'.";
-  exit;
+  qta_fail(500, "Composer autoload nuk u gjet. Ekzekuto 'composer require phpoffice/phpspreadsheet phpoffice/phpword dompdf/dompdf'.");
 }
 
 /* ===== Guard: admin/editor + CSRF ===== */
-if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
+if (!isset($_SESSION['user_id'])) { qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kycuni perseri.'); header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("SELECT u.id, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=:id LIMIT 1");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $me = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($me['role_name'] ?? ''));
-if (!$me || !in_array($role, ['administrator','editor'], true)) { header('Location: selectProfile.php'); exit; }
+if (!$me || !in_array($role, ['administrator','editor'], true)) { qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.'); header('Location: selectProfile.php'); exit; }
 
 $csrfSession = $_SESSION['csrf_token'] ?? '';
 $csrfQuery   = $_GET['csrf'] ?? '';
-if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) { http_response_code(403); echo 'CSRF gabim ose mungon.'; exit; }
+if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) { qta_fail(403, 'CSRF gabim ose mungon.'); }
 
 /* ===== Parametra ===== */
 $type = strtolower(trim((string)($_GET['type'] ?? '')));
@@ -44,22 +74,17 @@ $fmt  = strtolower(trim((string)($_GET['f'] ?? 'xlsx')));  // xlsx|pdf|docx
 @ini_set('memory_limit','512M');
 @set_time_limit(120);
 
-/* ===== Helpers të përgjithshëm ===== */
+/* ===== Helpers tÃ« pÃ«rgjithshÃ«m ===== */
 function iso_to_dmy(?string $iso): string {
   if (!$iso || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$iso)) return (string)$iso;
   $ts = strtotime((string)$iso); return $ts ? date('d-m-Y', $ts) : (string)$iso;
 }
 
-/* Njoftim opsional për UI (cookie “file ready”) */
+/* Njoftim opsional pÃ«r UI (cookie â€œfile readyâ€) */
 function signal_download_ready(string $token='ok'): void {
   header('X-File-Download: 1');
-  setcookie('qta_file_ready', $token, [
-    'expires'  => time()+60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
+  if ($token === 'ok') qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
+  else qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
 }
 
 function get_group_amze_min(PDO $pdo, int $gid): ?int {
@@ -183,7 +208,7 @@ function outPdf(array $headers, array $rows, string $title, string $filenameBase
   qta_stream_file($tmp, 'application/pdf', $filenameBase.'.pdf');
 }
 
-/* Fallback për Word: .DOC (HTML) në LANDSCAPE – nuk kërkon ext-zip */
+/* Fallback pÃ«r Word: .DOC (HTML) nÃ« LANDSCAPE â€“ nuk kÃ«rkon ext-zip */
 function outWordHtml(array $headers, array $rows, string $title, string $filenameBase): void {
   signal_download_ready();
   $e = fn($s)=>htmlspecialchars((string)$s, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
@@ -231,7 +256,7 @@ function outWordHtml(array $headers, array $rows, string $title, string $filenam
 
 
 function outDocx(array $headers, array $rows, string $title, string $filenameBase): void {
-  // Nëse s’ka ZipArchive, kalo automatikisht në .DOC (HTML)
+  // NÃ«se sâ€™ka ZipArchive, kalo automatikisht nÃ« .DOC (HTML)
   if (!class_exists('ZipArchive')) { outWordHtml($headers,$rows,$title,$filenameBase); return; }
 
   signal_download_ready();
@@ -260,7 +285,7 @@ function outDocx(array $headers, array $rows, string $title, string $filenameBas
     $writer->save($tmp);
     qta_stream_file($tmp, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', $filenameBase.'.docx');
   } catch (Throwable $e) {
-    // Nëse diçka shkon keq, kalo në .DOC (HTML)
+    // NÃ«se diÃ§ka shkon keq, kalo nÃ« .DOC (HTML)
     outWordHtml($headers,$rows,$title,$filenameBase);
   }
 }
@@ -269,42 +294,34 @@ function exportAny(array $headers, array $rows, string $title, string $filenameB
   switch ($fmt) {
     case 'xlsx': outXlsx($headers,$rows,$title,$filenameBase); break;
     case 'pdf' : outPdf($headers,$rows,$title,$filenameBase); break;
-    case 'docx': outDocx($headers,$rows,$title,$filenameBase); break; // auto-fallback në .doc
-    default: http_response_code(400); echo 'Format i panjohur.'; exit;
+    case 'docx': outDocx($headers,$rows,$title,$filenameBase); break; // auto-fallback nÃ« .doc
+    default: qta_fail(400, 'Format i panjohur.');
   }
 }
 
 /* =========================================================
-   FORM 1: grupi fillim…mbarim (PA kode kursi) — datat DD-MM-YYYY
+   FORM 1: grupi fillimâ€¦mbarim (PA kode kursi) â€” datat DD-MM-YYYY
    ========================================================= */
 if ($type === 'form1') {
   $gstart = (int)($_GET['gstart'] ?? 0);
   $gend   = (int)($_GET['gend'] ?? 0);
 
   if ($gstart <= 0 || $gend <= 0) {
-    http_response_code(400);
-    echo 'Interval grupe i pavlefshëm.';
-    exit;
+    qta_fail(400, 'Interval grupe i pavlefshem.');
   }
 
-  // NEW: validim sipas AMZË (jo sipas ID)
+  // NEW: validim sipas AMZÃ‹ (jo sipas ID)
   $amzeStart = get_group_amze_min($pdo, $gstart);
   $amzeEnd   = get_group_amze_min($pdo, $gend);
 
   if ($amzeStart === null) {
-    http_response_code(400);
-    echo 'Grupi i fillimit nuk ka AMZË (nuk ka studentë) ose nuk u gjet.';
-    exit;
+    qta_fail(400, 'Grupi i fillimit nuk ka AMZE (nuk ka studente) ose nuk u gjet.');
   }
   if ($amzeEnd === null) {
-    http_response_code(400);
-    echo 'Grupi i mbarimit nuk ka AMZË (nuk ka studentë) ose nuk u gjet.';
-    exit;
+    qta_fail(400, 'Grupi i mbarimit nuk ka AMZE (nuk ka studente) ose nuk u gjet.');
   }
   if ($amzeEnd < $amzeStart) {
-    http_response_code(400);
-    echo 'Interval grupe i pavlefshëm: AMZË e mbarimit duhet të jetë ≥ AMZË e fillimit.';
-    exit;
+    qta_fail(400, 'Interval grupe i pavlefshem: AMZE e mbarimit duhet te jete >= AMZE e fillimit.');
   }
 
   $sql = "
@@ -343,12 +360,12 @@ if ($type === 'form1') {
 
   $headers = [
     'Grup ID','Kursi','Fillimi','Mbarimi','Totale','Femra',
-    '16–24','25–34','35+','AU','AM','AL','AMZË (min–max)'
+    '16â€“24','25â€“34','35+','AU','AM','AL','AMZÃ‹ (minâ€“max)'
   ];
 
   $data = [];
   foreach ($rows as $r) {
-    $amzeSpan = ($r['amze_min']===null || $r['amze_max']===null) ? '' : ($r['amze_min'].'–'.$r['amze_max']);
+    $amzeSpan = ($r['amze_min']===null || $r['amze_max']===null) ? '' : ($r['amze_min'].'â€“'.$r['amze_max']);
     $data[] = [
       (int)$r['group_id'],
       (string)($r['course_name'] ?? ''),
@@ -366,18 +383,18 @@ if ($type === 'form1') {
     ];
   }
 
-  exportAny($headers, $data, 'Formulari nr. 1 — Grupe', 'form1_grupe_'.date('Ymd_His'), $fmt);
+  exportAny($headers, $data, 'Formulari nr. 1 â€” Grupe', 'form1_grupe_'.date('Ymd_His'), $fmt);
   exit;
 }
 
 
 /* =========================================================
-   FORM 2: AMZË fillim…mbarim (veç emrit të kursit të fundit)
+   FORM 2: AMZÃ‹ fillimâ€¦mbarim (veÃ§ emrit tÃ« kursit tÃ« fundit)
    ========================================================= */
 if ($type === 'form2') {
   $a1 = (int)($_GET['amze_start'] ?? 0);
   $a2 = (int)($_GET['amze_end'] ?? 0);
-  if ($a1<=0 || $a2<=0 || $a1>$a2) { http_response_code(400); echo 'Interval AMZË i pavlefshëm.'; exit; }
+  if ($a1<=0 || $a2<=0 || $a1>$a2) { qta_fail(400, 'Interval AMZE i pavlefshem.'); }
 
   $sql = "
     SELECT
@@ -405,7 +422,7 @@ if ($type === 'form2') {
   $st->execute([':a1'=>$a1, ':a2'=>$a2]);
   $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-  $headers = ['AMZË','Emër','Atësi','Mbiemër','Vendlindja','Emri i kursit'];
+  $headers = ['AMZÃ‹','EmÃ«r','AtÃ«si','MbiemÃ«r','Vendlindja','Emri i kursit'];
   $data = [];
   foreach ($rows as $r) {
     $data[] = [
@@ -418,9 +435,9 @@ if ($type === 'form2') {
     ];
   }
 
-  exportAny($headers, $data, 'Formulari nr. 2 — AMZË', 'form2_amze_'.date('Ymd_His'), $fmt);
+  exportAny($headers, $data, 'Formulari nr. 2 â€” AMZÃ‹', 'form2_amze_'.date('Ymd_His'), $fmt);
   exit;
 }
 
-http_response_code(400);
-echo 'Parametri type i panjohur. Përdor type=form1 ose type=form2.';
+qta_fail(400, 'Parametri type i panjohur. Perdor type=form1 ose type=form2.');
+

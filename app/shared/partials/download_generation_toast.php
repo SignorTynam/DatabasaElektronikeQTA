@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Shared helper: uses the existing page toast system (`notify`) for download progress.
 ?>
 <script>
@@ -6,6 +6,7 @@
   if (window.qtaDownloadToast) return;
 
   const READY_COOKIE = 'qta_file_ready';
+  const MSG_COOKIE = 'qta_file_msg';
   const DOWNLOAD_RE = /(?:register_export|students_export|groups_export|register_export_agency|download_[a-z_]+)\.php\b/i;
 
   let pollTimer = null;
@@ -17,12 +18,18 @@
     document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSec}; SameSite=Lax`;
   }
 
-  function clearReadyCookie() {
-    setCookie(READY_COOKIE, '', 0);
+  function getCookie(name) {
+    const match = document.cookie
+      .split(';')
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(name + '='));
+    if (!match) return '';
+    return match.slice(name.length + 1);
   }
 
-  function hasReadyCookie() {
-    return document.cookie.split(';').some((c) => c.trim().startsWith(READY_COOKIE + '='));
+  function clearReadyCookie() {
+    setCookie(READY_COOKIE, '', 0);
+    setCookie(MSG_COOKIE, '', 0);
   }
 
   function ensureZone() {
@@ -98,10 +105,42 @@
     }
   }
 
-  function finish() {
+  function notifyFinal(type, message) {
+    if (typeof window.notify === 'function') {
+      window.notify(type, message, { delay: 4500 });
+      return;
+    }
+    // fallback minimal
+    if (typeof bootstrap !== 'undefined') {
+      const zone = ensureZone();
+      if (!zone) return;
+      const id = 'download-final-' + Date.now().toString(36);
+      const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
+      const title = type === 'success' ? 'Sukses' : 'Gabim';
+      const html = `
+        <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+          <div class="toast-header">
+            <i class="bi bi-${icon} me-2"></i>
+            <strong class="me-auto">${title}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
+          </div>
+          <div class="toast-body">${message}</div>
+        </div>`;
+      zone.insertAdjacentHTML('beforeend', html);
+      const el = document.getElementById(id);
+      const t = bootstrap.Toast.getOrCreateInstance(el, { autohide: true, delay: 4500 });
+      el.addEventListener('hidden.bs.toast', () => el.remove(), { once: true });
+      t.show();
+    }
+  }
+
+  function finish(finalType, finalMessage) {
     stopPolling();
     clearReadyCookie();
     hideActiveToast();
+    if (finalType && finalMessage) {
+      notifyFinal(finalType, finalMessage);
+    }
   }
 
   function start(message) {
@@ -124,14 +163,21 @@
 
     stopPolling();
     pollTimer = setInterval(function () {
-      if (hasReadyCookie()) {
-        finish();
+      const status = decodeURIComponent(getCookie(READY_COOKIE) || '').trim().toLowerCase();
+      if (!status) return;
+
+      const rawMsg = getCookie(MSG_COOKIE);
+      const msg = rawMsg ? decodeURIComponent(rawMsg) : '';
+
+      if (status === 'ok' || status === 'success') {
+        finish('success', msg || 'Dokumenti u gjenerua me sukses.');
+      } else {
+        finish('danger', msg || 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
       }
     }, 500);
 
     timeoutTimer = setTimeout(function () {
-      stopPolling();
-      hideActiveToast();
+      finish('danger', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
     }, 5 * 60 * 1000);
   }
 
@@ -156,3 +202,4 @@
   }, true);
 })();
 </script>
+

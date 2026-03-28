@@ -5,12 +5,45 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
+function qta_download_status(string $status, string $message): void {
+  setcookie('qta_file_ready', $status, [
+    'expires'  => time() + 60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+  setcookie('qta_file_msg', $message, [
+    'expires'  => time() + 60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+}
+
+function qta_fail(int $code, string $message): never {
+  qta_download_status('error', $message);
+  http_response_code($code);
+  exit($message);
+}
+
+register_shutdown_function(function () {
+  $err = error_get_last();
+  if (!$err) return;
+  $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+  if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
+    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+  }
+});
+
 /* ------------------------------
    Guard: vetëm "agjencia"
 --------------------------------*/
 if (!isset($_SESSION['user_id'])) {
-  http_response_code(302);
-  header('Location: selectProfile.php'); exit;
+  qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kycuni perseri.');
+  header('Location: selectProfile.php');
+  exit;
 }
 $usr = $pdo->prepare("
   SELECT u.id, r.name as role_name
@@ -20,15 +53,16 @@ $usr = $pdo->prepare("
 $usr->execute([':uid'=>$_SESSION['user_id']]);
 $me = $usr->fetch(PDO::FETCH_ASSOC);
 if (!$me || $me['role_name']!=='agjencia') {
-  http_response_code(302);
-  header('Location: selectProfile.php'); exit;
+  qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.');
+  header('Location: selectProfile.php');
+  exit;
 }
 
 /* Agjencia e këtij user-i */
 $ast = $pdo->prepare("SELECT id, company_name FROM agencies WHERE user_id=:uid LIMIT 1");
 $ast->execute([':uid'=>$me['id']]);
 $AGENCY = $ast->fetch(PDO::FETCH_ASSOC);
-if (!$AGENCY) { http_response_code(403); exit('No agency bound to this user.'); }
+if (!$AGENCY) { qta_fail(403, 'No agency bound to this user.'); }
 // CSRF token për eksport
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
 $CSRF = $_SESSION['csrf_token'];
@@ -38,8 +72,7 @@ $CSRF = $_SESSION['csrf_token'];
    CSRF
 --------------------------------*/
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_GET['csrf'] ?? ''))) {
-  http_response_code(400);
-  exit('Invalid CSRF token.');
+  qta_fail(400, 'Invalid CSRF token.');
 }
 
 /* ------------------------------
@@ -193,13 +226,7 @@ $title = "Regjistri i studentëve – {$AGENCY['company_name']}";
 
 function signal_download_ready(): void {
   header('X-File-Download: 1');
-  setcookie('qta_file_ready', 'ok', [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
+  qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 }
 
 signal_download_ready();
@@ -332,6 +359,5 @@ switch ($f) {
     }
 
   default:
-    http_response_code(400);
-    exit('Format i panjohur.');
+    qta_fail(400, 'Format i panjohur.');
 }

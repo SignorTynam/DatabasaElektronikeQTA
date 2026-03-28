@@ -9,6 +9,38 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
+function qta_download_status(string $status, string $message): void {
+  setcookie('qta_file_ready', $status, [
+    'expires'  => time() + 60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+  setcookie('qta_file_msg', $message, [
+    'expires'  => time() + 60,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']),
+    'httponly' => false,
+    'samesite' => 'Lax',
+  ]);
+}
+
+function qta_fail(int $code, string $message): never {
+  qta_download_status('error', $message);
+  http_response_code($code);
+  exit($message);
+}
+
+register_shutdown_function(function () {
+  $err = error_get_last();
+  if (!$err) return;
+  $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+  if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
+    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+  }
+});
+
 function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
 function qta_audit_event(string $type, array $payload): void {
@@ -20,7 +52,7 @@ function qta_audit_event(string $type, array $payload): void {
 }
 
 /* Guard */
-if (!isset($_SESSION['user_id'])) { http_response_code(401); exit('Unauthorized'); }
+if (!isset($_SESSION['user_id'])) { qta_fail(401, 'Unauthorized'); }
 
 $u = $pdo->prepare("
   SELECT u.id, r.name AS role_name
@@ -32,24 +64,22 @@ $currentUser = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($currentUser['role_name'] ?? ''));
 
 if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
-  http_response_code(403); exit('Forbidden');
+  qta_fail(403, 'Forbidden');
 }
 
 /* POST only */
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-  http_response_code(405);
-  exit('Method Not Allowed');
+  qta_fail(405, 'Method Not Allowed');
 }
 
 /* CSRF */
 if (empty($_POST['csrf']) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)$_POST['csrf'])) {
-  http_response_code(400);
-  exit('CSRF token mismatch.');
+  qta_fail(400, 'CSRF token mismatch.');
 }
 
 /* Input */
 $groupId = (int)($_POST['group_id'] ?? 0);
-if ($groupId <= 0) { http_response_code(400); exit('group_id i pavlefshëm.'); }
+if ($groupId <= 0) { qta_fail(400, 'group_id i pavlefshem.'); }
 
 $format = strtolower(trim((string)($_POST['format'] ?? 'doc')));
 if (!in_array($format, ['doc','pdf'], true)) $format = 'doc';
@@ -139,19 +169,12 @@ if (ob_get_length()) { ob_end_clean(); }
 
 $baseName = 'Lista_Emerore_Grupi_'.$groupId;
 header('X-File-Download: 1');
-setcookie('qta_file_ready', 'ok', [
-  'expires'  => time() + 60,
-  'path'     => '/',
-  'secure'   => !empty($_SERVER['HTTPS']),
-  'httponly' => false,
-  'samesite' => 'Lax',
-]);
+qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 
 if ($format === 'pdf') {
   $autoload = __DIR__ . '/vendor/autoload.php';
   if (!is_file($autoload)) {
-    http_response_code(500);
-    exit('PDF kërkon dompdf. Instalo: composer require dompdf/dompdf');
+    qta_fail(500, 'PDF kerkon dompdf. Instalo: composer require dompdf/dompdf');
   }
   require_once $autoload;
 

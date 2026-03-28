@@ -21,6 +21,38 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
+function qta_download_status(string $status, string $message): void {
+    setcookie('qta_file_ready', $status, [
+        'expires'  => time() + 60,
+        'path'     => '/',
+        'secure'   => !empty($_SERVER['HTTPS']),
+        'httponly' => false,
+        'samesite' => 'Lax',
+    ]);
+    setcookie('qta_file_msg', $message, [
+        'expires'  => time() + 60,
+        'path'     => '/',
+        'secure'   => !empty($_SERVER['HTTPS']),
+        'httponly' => false,
+        'samesite' => 'Lax',
+    ]);
+}
+
+function qta_fail(int $code, string $message): never {
+    qta_download_status('error', $message);
+    http_response_code($code);
+    exit($message);
+}
+
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if (!$err) return;
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
+        qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+    }
+});
+
 /* Composer autoload */
 $autoloadCandidates = array(
     __DIR__ . '/vendor/autoload.php',
@@ -36,13 +68,12 @@ foreach ($autoloadCandidates as $p) {
     }
 }
 if (!$autoloadLoaded) {
-    http_response_code(500);
-    echo "Composer autoload nuk u gjet. Ekzekuto 'composer require phpoffice/phpspreadsheet phpoffice/phpword dompdf/dompdf' ose korrigjo shtegun e vendor/autoload.php.";
-    exit;
+    qta_fail(500, 'Composer autoload nuk u gjet.');
 }
 
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
+    qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kycuni perseri.');
     header('Location: selectProfile.php');
     exit;
 }
@@ -58,6 +89,7 @@ $currentUser = $u->fetch(PDO::FETCH_ASSOC);
 
 $role = strtolower((string)($currentUser['role_name'] ?? ''));
 if (!$currentUser || !in_array($role, array('administrator','editor'), true)) {
+    qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.');
     header('Location: selectProfile.php');
     exit;
 }
@@ -66,9 +98,7 @@ if (!$currentUser || !in_array($role, array('administrator','editor'), true)) {
 $csrfSession = $_SESSION['csrf_token'] ?? '';
 $csrfQuery   = $_GET['csrf'] ?? '';
 if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
-    http_response_code(403);
-    echo 'CSRF gabim ose mungon.';
-    exit;
+    qta_fail(403, 'CSRF gabim ose mungon.');
 }
 
 /* Parametra */
@@ -285,13 +315,7 @@ $filename = 'studentet_'.date('Ymd_His');
    =============================== */
 function signal_download_ready(): void {
     header('X-File-Download: 1');
-    setcookie('qta_file_ready', 'ok', [
-        'expires'  => time() + 60,
-        'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS']),
-        'httponly' => false,
-        'samesite' => 'Lax',
-    ]);
+    qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 }
 
 function cleanOutputBuffer(): void {
@@ -461,7 +485,5 @@ switch ($f) {
         break;
     default:
         cleanOutputBuffer();
-        http_response_code(400);
-        echo 'Format i panjohur. Përdor f=xlsx|pdf|docx';
-        exit;
+        qta_fail(400, 'Format i panjohur. Perdor f=xlsx|pdf|docx');
 }
