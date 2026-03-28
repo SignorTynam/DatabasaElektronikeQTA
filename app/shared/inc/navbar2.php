@@ -18,7 +18,7 @@ if (!function_exists('h')) {
 /* Zbulo faqen aktive nëse s’është dhënë */
 $active = $NAV_ACTIVE ?? null;
 if ($active === null) {
-  $script = strtolower(basename($_SERVER['SCRIPT_NAME'] ?? ''));
+  $script = strtolower(basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ''));
   $map = [
     'dashboard_agjencia.php' => 'dashboard',
     'profile.php'            => 'profile',

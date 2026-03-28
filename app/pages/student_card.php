@@ -465,7 +465,8 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
       $canInline = ($EDIT_MODE && $CAN_EDIT);
       $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') ? 'https://' : 'http://';
       $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-      $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+      $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '/student_card.php';
+      $base = rtrim(dirname($requestPath), '/\\');
       $verifyURL = $personQR['token'] ? ($scheme.$host.$base.'/verify.php?pid='.$pid.'&t='.$personQR['token']) : null;
 
       // Lista e të gjitha AMZË-ve të personit (pa dublikatë)

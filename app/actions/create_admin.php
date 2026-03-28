@@ -1,6 +1,6 @@
 <?php
 // create_admin.php
-require 'database.php';
+require __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';

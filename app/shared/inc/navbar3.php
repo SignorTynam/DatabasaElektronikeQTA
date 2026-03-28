@@ -35,7 +35,7 @@ if (!isset($currentUser)) {
 /* Cakto faqen aktive (nga $NAV_ACTIVE ose auto) */
 $active = $NAV_ACTIVE ?? null;
 if ($active === null) {
-    $script = strtolower(basename($_SERVER['SCRIPT_NAME'] ?? ''));
+    $script = strtolower(basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ''));
     $map = [
         'dashboard_student.php' => 'dashboard',
         'profile.php'           => 'profile',

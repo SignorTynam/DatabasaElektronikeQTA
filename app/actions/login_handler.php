@@ -1,7 +1,7 @@
 <?php
 // login_handler.php
 session_start();
-require 'database.php';
+require __DIR__ . '/database.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: selectProfile.php');

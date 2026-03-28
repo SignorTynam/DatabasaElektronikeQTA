@@ -1,0 +1,21 @@
+DirectoryIndex app/pages/index.php
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /DatabasaElektronike/
+
+# Keep existing files/directories as-is
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Legacy URL compatibility: pages/actions/exports moved under app/
+RewriteCond %{DOCUMENT_ROOT}/DatabasaElektronike/app/pages/$1.php -f
+RewriteRule ^([A-Za-z0-9_-]+)\.php$ app/pages/$1.php [L,QSA,NC]
+
+RewriteCond %{DOCUMENT_ROOT}/DatabasaElektronike/app/actions/$1.php -f
+RewriteRule ^([A-Za-z0-9_-]+)\.php$ app/actions/$1.php [L,QSA,NC]
+
+RewriteCond %{DOCUMENT_ROOT}/DatabasaElektronike/app/exports/$1.php -f
+RewriteRule ^([A-Za-z0-9_-]+)\.php$ app/exports/$1.php [L,QSA,NC]
+</IfModule>
