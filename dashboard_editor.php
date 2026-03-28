@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+
 session_start();
 require_once __DIR__ . '/database.php';
 
@@ -7,669 +8,467 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo);
 
-/* ===== Guard admin ===== */
+/* ===== Guard: editor ===== */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
+
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
-  FROM users u JOIN roles r ON r.id=u.role_id
-  WHERE u.id=:id LIMIT 1
+  FROM users u
+  JOIN roles r ON r.id=u.role_id
+  WHERE u.id=:id
+  LIMIT 1
 ");
-$u->execute([':id'=>$_SESSION['user_id']]);
+$u->execute([':id' => $_SESSION['user_id']]);
 $currentUser = $u->fetch(PDO::FETCH_ASSOC);
-if (!$currentUser || ($currentUser['role_name']??'')!=='editor') { header('Location: selectProfile.php'); exit; }
+
+if (!$currentUser || ($currentUser['role_name'] ?? '') !== 'editor') {
+  header('Location: selectProfile.php'); exit;
+}
 
 /* ===== Helpers ===== */
 function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-function intv($v): int { return (int)$v; }
 
-/* ===== Core KPIs (no grades) ===== */
-$studentsTotal   = (int)$pdo->query("SELECT COUNT(*) FROM students")->fetchColumn();
-$agenciesTotal   = (int)$pdo->query("SELECT COUNT(*) FROM agencies")->fetchColumn();
-$coursesTotal    = (int)$pdo->query("SELECT COUNT(*) FROM courses")->fetchColumn();
-$usersTotal      = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-
-/* Active groups & utilization (capacity=10) */
-$activeGroups = (int)$pdo->query("
-  SELECT COUNT(*) FROM course_groups
-  WHERE start_date <= CURDATE() AND end_date >= CURDATE()
-")->fetchColumn();
-
-$activeEnrollments = (int)$pdo->query("
-  SELECT COUNT(*)
-  FROM course_group_students cgs
-  JOIN course_groups cg ON cg.id=cgs.group_id
-  WHERE CURDATE() BETWEEN cg.start_date AND cg.end_date
-")->fetchColumn();
-
-$capacitySeats = $activeGroups * 10;
-$fillRate = $capacitySeats > 0 ? round(($activeEnrollments / $capacitySeats) * 100, 1) : null;
-
-/* Audit activity (last 24h) */
-$audit24h = (int)$pdo->query("
-  SELECT COUNT(*) FROM audit_events
-  WHERE happened_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
-")->fetchColumn();
-
-/* Security & hygiene */
-$usersWithoutPerson = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE person_id IS NULL")->fetchColumn();
-$usersNoCredentials = (int)$pdo->query("
-  SELECT COUNT(*) FROM users u
-  LEFT JOIN credentials c ON c.user_id=u.id
-  WHERE c.user_id IS NULL
-")->fetchColumn();
-$outdatedCreds = (int)$pdo->query("
-  SELECT COUNT(*) FROM credentials
-  WHERE last_password_change IS NULL
-     OR last_password_change < DATE_SUB(NOW(), INTERVAL 180 DAY)
-")->fetchColumn();
-
-/* ===== NEW: Plans / Groups health ===== */
-$studentsNoGroup = (int)$pdo->query("
-  SELECT COUNT(*)
-  FROM students s
-  LEFT JOIN course_group_students cgs ON cgs.student_id=s.id
-  WHERE cgs.student_id IS NULL
-")->fetchColumn();
-
-$studentsNoPlan = (int)$pdo->query("
-  SELECT COUNT(*)
-  FROM students s
-  LEFT JOIN student_course_plans scp ON scp.student_id=s.id
-  WHERE scp.student_id IS NULL
-")->fetchColumn();
-
-$scpPlanned   = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='planned'")->fetchColumn();
-$scpAssigned  = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='assigned'")->fetchColumn();
-$scpCompleted = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='completed'")->fetchColumn();
-$scpCancelled = (int)$pdo->query("SELECT COUNT(*) FROM student_course_plans WHERE status='cancelled'")->fetchColumn();
-
-$pendingExams = (int)$pdo->query("
-  SELECT COUNT(*)
-  FROM course_group_students cgs
-  JOIN course_groups cg ON cg.id=cgs.group_id
-  WHERE cgs.exam_date IS NULL AND cg.end_date < CURDATE()
-")->fetchColumn();
-
-$groupsCompleted = (int)$pdo->query("SELECT COUNT(*) FROM course_groups WHERE is_completed=1")->fetchColumn();
-$groupsEndedNotCompleted = (int)$pdo->query("
-  SELECT COUNT(*) FROM course_groups
-  WHERE end_date < CURDATE() AND (is_completed=0 OR is_completed IS NULL)
-")->fetchColumn();
-
-/* ===== Distributions & Trends ===== */
-/* Funnel (students lifecycle) */
-$studentsInAnyGroup = (int)$pdo->query("SELECT COUNT(DISTINCT student_id) FROM course_group_students")->fetchColumn();
-$studentsInActiveGroups = (int)$pdo->query("
-  SELECT COUNT(DISTINCT cgs.student_id)
-  FROM course_group_students cgs
-  JOIN course_groups cg ON cg.id=cgs.group_id
-  WHERE CURDATE() BETWEEN cg.start_date AND cg.end_date
-")->fetchColumn();
-$studentsWithAgency = (int)$pdo->query("SELECT COUNT(DISTINCT student_id) FROM agency_students")->fetchColumn();
-
-/* Weekly new students (last 12 weeks) */
-$weekly = $pdo->query("
-  SELECT YEARWEEK(created_at,3) AS yw,
-         CONCAT(YEAR(created_at), '-W', LPAD(WEEK(created_at,3),2,'0')) AS label,
-         COUNT(*) AS cnt
-  FROM students
-  WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
-  GROUP BY yw, label
-  ORDER BY yw ASC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Audit events last 14 days by action (stacked) */
-$auditSeriesRows = $pdo->query("
-  SELECT DATE(happened_at) AS d, action, COUNT(*) AS cnt
-  FROM audit_events
-  WHERE happened_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-  GROUP BY d, action
-  ORDER BY d ASC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Roles distribution */
-$rolesDist = $pdo->query("
-  SELECT r.name AS label, COUNT(*) AS cnt
-  FROM users u JOIN roles r ON r.id=u.role_id
-  GROUP BY r.name
-  ORDER BY cnt DESC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Gender split (of students) */
-$genderDist = $pdo->query("
-  SELECT g.label AS label, COUNT(*) AS cnt
-  FROM students s
-  JOIN persons p ON p.id=s.person_id
-  JOIN genders g ON g.id=p.gender_id
-  GROUP BY g.id
-  ORDER BY cnt DESC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Education level split (of students) */
-$eduDist = $pdo->query("
-  SELECT COALESCE(el.label,'Pa specifikuar') AS label, COUNT(*) AS cnt
-  FROM students s
-  LEFT JOIN education_levels el ON el.id=s.education_level_id
-  GROUP BY COALESCE(el.label,'Pa specifikuar')
-  ORDER BY cnt DESC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Top agencies by assigned students */
-$agencyTop = $pdo->query("
-  SELECT a.company_name, a.nip_t, COUNT(asg.student_id) AS cnt
-  FROM agencies a
-  LEFT JOIN agency_students asg ON asg.agency_id=a.id
-  GROUP BY a.id
-  ORDER BY cnt DESC, a.company_name ASC
-  LIMIT 6
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Upcoming milestones (starts & exams next 30 days) */
-$milestones = $pdo->query("
-  SELECT * FROM (
-    SELECT 'Fillim' AS type, cg.start_date AS d, cg.id AS gid, c.code, c.name
-    FROM course_groups cg JOIN courses c ON c.id=cg.course_id
-    WHERE cg.start_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-    UNION ALL
-    SELECT 'Test' AS type, cg.exam_date AS d, cg.id AS gid, c.code, c.name
-    FROM course_groups cg JOIN courses c ON c.id=cg.course_id
-    WHERE cg.exam_date IS NOT NULL
-      AND cg.exam_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-  ) x
-  ORDER BY d ASC
-  LIMIT 8
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Utilization by course (active only) */
-$utilByCourse = $pdo->query("
-  SELECT c.id, c.code, c.name,
-         COUNT(DISTINCT cg.id) AS active_groups,
-         COUNT(cgs.student_id) AS enrolled
-  FROM courses c
-  JOIN course_groups cg ON cg.course_id=c.id
-    AND CURDATE() BETWEEN cg.start_date AND cg.end_date
-  LEFT JOIN course_group_students cgs ON cgs.group_id=cg.id
-  GROUP BY c.id
-  ORDER BY enrolled DESC, c.code ASC
-  LIMIT 6
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* NEW: Top planned modules (backlog) */
-$plannedTop = $pdo->query("
-  SELECT c.code, c.name, COUNT(*) AS cnt
-  FROM student_course_plans scp
-  JOIN courses c ON c.id=scp.course_id
-  WHERE scp.status='planned'
-  GROUP BY c.id
-  ORDER BY cnt DESC, c.code ASC
-  LIMIT 6
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Recent users (fresh activity) */
-$recentUsers = $pdo->query("
-  SELECT u.full_name, u.email, u.created_at, r.name AS role_name
-  FROM users u
-  JOIN roles r ON r.id=u.role_id
-  ORDER BY u.created_at DESC
-  LIMIT 8
-")->fetchAll(PDO::FETCH_ASSOC);
-
-/* ===== Prep data for charts ===== */
-$weeklyLabels = array_column($weekly, 'label');
-$weeklyCounts = array_map('intv', array_column($weekly, 'cnt'));
-
-/* Audit stacked */
-$days = [];
-foreach ($auditSeriesRows as $r) { $days[$r['d']] = true; }
-$days = array_keys($days); sort($days);
-$actions = ['INSERT','UPDATE','DELETE'];
-$seriesAudit = [];
-foreach ($actions as $a) {
-  $vals = [];
-  foreach ($days as $d) {
-    $found = 0;
-    foreach ($auditSeriesRows as $r) {
-      if ($r['d']===$d && $r['action']===$a) { $found = (int)$r['cnt']; break; }
-    }
-    $vals[] = $found;
-  }
-  $seriesAudit[$a] = $vals;
-}
-
-/* Distributions */
-$rolesLabels  = array_column($rolesDist, 'label');
-$rolesCounts  = array_map('intv', array_column($rolesDist, 'cnt'));
-$genderLabels = array_column($genderDist, 'label');
-$genderCounts = array_map('intv', array_column($genderDist, 'cnt'));
-$eduLabels    = array_column($eduDist, 'label');
-$eduCounts    = array_map('intv', array_column($eduDist, 'cnt'));
-
-/* Utilization arrays */
-$utilLabels = array_map(fn($r)=> ($r['code']??'').' · '.($r['name']??''), $utilByCourse);
-$utilGroups = array_map(fn($r)=> (int)$r['active_groups'], $utilByCourse);
-$utilSeats  = array_map(fn($g)=> $g*10, $utilGroups);
-$utilEnr    = array_map(fn($r)=> (int)$r['enrolled'], $utilByCourse);
-
-/* Funnel */
-$funnel = [
-  'Gjithë studentët'         => $studentsTotal,
-  'Në ndonjë grup'           => $studentsInAnyGroup,
-  'Në grupe aktive (sot)'    => $studentsInActiveGroups,
-  'Me kompani të caktuar'    => $studentsWithAgency,
+/* ===== Routes (rregullo sipas faqeve reale) ===== */
+$ROUTES = [
+  'students'       => 'students.php',
+  'groups'         => 'groups.php',
+  'courses'        => 'courses.php',
+  'agencies'       => 'agencies.php',
+  'plans'          => 'plans.php',
+  'logs'           => 'logs.php',
+  'settings'       => 'settings.php',  // nëse s’e ke, hiqe nga UI
+  'profile_select' => 'selectProfile.php',
 ];
 
-/* NEW: scp status chart data */
-$scpLabels = ['planned','assigned','completed','cancelled'];
-$scpCounts = [$scpPlanned,$scpAssigned,$scpCompleted,$scpCancelled];
+/* ===== KPIs (editor) ===== */
+$k = [
+  'students_total' => 0,
+  'audit_24h'      => 0,
+  'active_groups'  => 0,
+  'active_enrollments' => 0,
+  'students_no_group' => 0,
+  'groups_ended_not_completed' => 0,
+  'pending_exams'  => 0,
+  'scp_planned'    => 0,
+  'scp_assigned'   => 0,
+];
 
+try {
+  $k = $pdo->query("
+    SELECT
+      (SELECT COUNT(*) FROM students) AS students_total,
+
+      (SELECT COUNT(*)
+       FROM audit_events
+       WHERE happened_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+      ) AS audit_24h,
+
+      (SELECT COUNT(*) FROM course_groups
+       WHERE CURDATE() BETWEEN start_date AND end_date
+      ) AS active_groups,
+
+      (SELECT COUNT(*)
+       FROM course_group_students cgs
+       JOIN course_groups cg ON cg.id=cgs.group_id
+       WHERE CURDATE() BETWEEN cg.start_date AND cg.end_date
+      ) AS active_enrollments,
+
+      (SELECT COUNT(*)
+       FROM students s
+       LEFT JOIN course_group_students cgs ON cgs.student_id=s.id
+       WHERE cgs.student_id IS NULL
+      ) AS students_no_group,
+
+      (SELECT COUNT(*)
+       FROM course_groups
+       WHERE end_date < CURDATE() AND (is_completed=0 OR is_completed IS NULL)
+      ) AS groups_ended_not_completed,
+
+      (SELECT COUNT(*)
+       FROM course_group_students cgs
+       JOIN course_groups cg ON cg.id=cgs.group_id
+       WHERE cgs.exam_date IS NULL AND cg.end_date < CURDATE()
+      ) AS pending_exams,
+
+      (SELECT COUNT(*) FROM student_course_plans WHERE status='planned')  AS scp_planned,
+      (SELECT COUNT(*) FROM student_course_plans WHERE status='assigned') AS scp_assigned
+  ")->fetch(PDO::FETCH_ASSOC) ?: $k;
+} catch (Throwable $e) {
+  // keep defaults
+}
+
+/* ===== Groups starting/ending soon (7 days) ===== */
+$startingSoon = $endingSoon = [];
+try {
+  $startingSoon = $pdo->query("
+    SELECT cg.id, cg.start_date, cg.end_date, cg.is_completed,
+           c.code, c.name
+    FROM course_groups cg
+    JOIN courses c ON c.id=cg.course_id
+    WHERE cg.start_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+    ORDER BY cg.start_date ASC
+    LIMIT 8
+  ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  $endingSoon = $pdo->query("
+    SELECT cg.id, cg.start_date, cg.end_date, cg.is_completed,
+           c.code, c.name
+    FROM course_groups cg
+    JOIN courses c ON c.id=cg.course_id
+    WHERE cg.end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+    ORDER BY cg.end_date ASC
+    LIMIT 8
+  ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Throwable $e) {}
+
+/* Navbar */
 $NAV_ACTIVE = 'dashboard';
 require __DIR__ . '/inc/navbar4.php';
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sq">
 <head>
-  <meta charset="UTF-8" />
-  <title>Dashboard i Ri – QTA</title>
+  <meta charset="utf-8" />
+  <title>Editor Dashboard – QTA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
   <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .hero {
-      border-radius:1.25rem; color:#0b1220;
-      background:
-        radial-gradient(900px 300px at 90% -20%, rgba(16,185,129,.18), rgba(16,185,129,0) 60%),
-        radial-gradient(900px 300px at 10% -30%, rgba(59,130,246,.22), rgba(59,130,246,0) 55%),
-        linear-gradient(135deg, #e0f2fe 0%, #eff6ff 100%);
+    /* ===== Scoped: vetëm për këtë dashboard (Editor) ===== */
+    .qta-edm { background:#f6f8fc; min-height:100vh; padding-top:72px; }
+
+    .qta-edm .card{
+      border:1px solid #e9eef6;
+      border-radius:16px;
+      box-shadow:0 12px 30px rgba(2,6,23,.06);
     }
-    .chip { background:#eef2ff; border:1px solid #e0e7ff; border-radius:999px; padding:.25rem .65rem; }
-    .kpi .icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#f1f5f9; }
-    .mini-table thead { background:#f1f5f9; }
-    .progress { height:8px; }
-    .soft { background:#f8fafc; border:1px solid #e2e8f0; border-radius:.75rem; padding:.5rem .75rem; }
-    .nowrap { white-space:nowrap; }
+
+    .qta-edm .hero{
+      border-radius:20px;
+      background:
+        radial-gradient(900px 300px at 90% -20%, rgba(34,197,94,.14), rgba(34,197,94,0) 60%),
+        radial-gradient(900px 300px at 10% -30%, rgba(59,130,246,.18), rgba(59,130,246,0) 55%),
+        linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
+      border:1px solid #e9eef6;
+    }
+
+    .qta-edm .muted{ color:#64748b; }
+
+    .qta-edm .pill{
+      display:inline-flex; align-items:center; gap:.5rem;
+      border:1px solid #e9eef6; background:#fff;
+      padding:.35rem .65rem; border-radius:999px;
+      font-size:.875rem;
+    }
+
+    .qta-edm .qa{
+      display:flex; gap:12px; align-items:flex-start;
+      padding:12px; border-radius:14px;
+      border:1px solid #eef2f7; background:#fff;
+      text-decoration:none; color:inherit;
+      transition:transform .08s ease, box-shadow .08s ease;
+    }
+    .qta-edm .qa:hover{
+      transform:translateY(-1px);
+      box-shadow:0 10px 22px rgba(2,6,23,.08);
+    }
+
+    .qta-edm .qa .ico{
+      width:44px; height:44px; border-radius:12px;
+      display:flex; align-items:center; justify-content:center;
+      background:#f1f5f9;
+    }
+
+    .qta-edm .kpi{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:14px 16px;
+      border:1px solid #eef2f7; background:#fff;
+      border-radius:14px;
+    }
+    .qta-edm .kpi .val{ font-weight:800; font-size:1.15rem; color:#0f172a; }
+    .qta-edm .kpi .lbl{ font-size:.875rem; color:#64748b; }
+
+    .qta-edm .list-tight .list-group-item{ padding:.75rem .9rem; }
+    .qta-edm .soft-warn{ background:#fff7ed; border:1px solid #ffedd5; }
+    .qta-edm .soft-info{ background:#eff6ff; border:1px solid #dbeafe; }
   </style>
 </head>
-<body>
 
-<main class="container-fluid px-3 px-md-4">
+<body class="qta-edm">
+<main class="container-fluid px-3 px-md-4 pb-5">
+
   <!-- HERO -->
   <section class="hero p-4 p-md-5 mb-4">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
       <div>
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="chip">Panel i ri</span>
-          <span class="small text-muted">QTA • Qendra e Trajnimeve të Avancuara</span>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <span class="pill"><i class="bi bi-sliders"></i> Editor Panel</span>
+          <span class="pill"><i class="bi bi-calendar3"></i> <?= date('Y-m-d') ?></span>
+          <span class="pill"><i class="bi bi-activity"></i> Audit 24h: <strong><?= (int)$k['audit_24h'] ?></strong></span>
         </div>
-        <h1 class="fw-bold mb-1">Përmbledhje operative</h1>
-        <p class="mb-0 text-muted">Shëndeti i sistemit, aktiviteti i fundit dhe shfrytëzimi i kapaciteteve — në kohë reale.</p>
-      </div>
-      <div class="soft">
-        <div class="small text-muted">Mirë se erdhe</div>
-        <div class="h5 mb-0"><?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- KPI row (core) -->
-  <section class="row g-4 mb-4 kpi">
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="text-decoration-none text-reset" href="students.php">
-        <div class="card p-3 h-100">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3"><i class="bi bi-mortarboard fs-4 text-primary"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Studentë</div>
-              <div class="h3 mb-1"><?= number_format($studentsTotal) ?></div>
-              <span class="small text-muted">Në grupe aktive sot: <?= number_format($studentsInActiveGroups) ?></span>
-            </div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="text-decoration-none text-reset" href="groups.php">
-        <div class="card p-3 h-100">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3"><i class="bi bi-collection fs-4 text-success"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Grupe aktive</div>
-              <div class="h3 mb-1"><?= number_format($activeGroups) ?></div>
-              <span class="small text-muted">Kapacitet: <?= number_format($capacitySeats) ?> vende</span>
-            </div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-activity fs-4 text-warning"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Shfrytëzim</div>
-            <div class="h3 mb-1"><?= $fillRate!==null ? $fillRate.'%' : '—' ?></div>
-            <span class="small text-muted">Regjistrime aktive: <?= number_format($activeEnrollments) ?></span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="text-decoration-none text-reset" href="logs.php">
-        <div class="card p-3 h-100">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3"><i class="bi bi-shield-check fs-4 text-danger"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Audit (24h)</div>
-              <div class="h3 mb-1"><?= number_format($audit24h) ?></div>
-              <span class="small text-muted">Përdorues: <?= number_format($usersTotal) ?> • Kompani: <?= number_format($agenciesTotal) ?></span>
-            </div>
-          </div>
-        </div>
-      </a>
-    </div>
-  </section>
-
-  <!-- KPI row (plans & gaps) -->
-  <section class="row g-4 mb-4 kpi">
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="text-decoration-none text-reset" href="students_without_groups.php">
-        <div class="card p-3 h-100">
-          <div class="d-flex align-items-center">
-            <div class="icon me-3"><i class="bi bi-people fs-4 text-secondary"></i></div>
-            <div>
-              <div class="small text-muted text-uppercase">Pa grup</div>
-              <div class="h3 mb-1"><?= number_format($studentsNoGroup) ?></div>
-              <span class="small text-muted">Studentë pa asnjë rresht në grupe</span>
-            </div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-journal-minus fs-4 text-dark"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Pa modul (plan)</div>
-            <div class="h3 mb-1"><?= number_format($studentsNoPlan) ?></div>
-            <span class="small text-muted">S'kanë rresht në student_course_plans</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-list-check fs-4 text-primary"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Plane 'planned'</div>
-            <div class="h3 mb-1"><?= number_format($scpPlanned) ?></div>
-            <span class="small text-muted">Backlog i regjistrimeve</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-clipboard-x fs-4 text-danger"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Teste të papërcaktuara</div>
-            <div class="h3 mb-1"><?= number_format($pendingExams) ?></div>
-            <span class="small text-muted">Studentë me grup të mbyllur pa exam_date</span>
-          </div>
+        <h1 class="fw-bold mb-1">Sistemi i certifikimeve</h1>
+        <div class="muted">Përmbledhje operative: grupe aktive, backlog (planned/assigned) dhe punë për t’u mbyllur.</div>
+        <div class="small muted mt-2">
+          Mirë se erdhe: <strong><?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Editor')) ?></strong>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Trends & Distributions -->
+  <!-- KPI GRID -->
+  <section class="row g-3 mb-4">
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="kpi">
+        <div>
+          <div class="lbl">Total studentë</div>
+          <div class="val"><?= (int)$k['students_total'] ?></div>
+        </div>
+        <div><i class="bi bi-mortarboard fs-3 text-primary"></i></div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="kpi">
+        <div>
+          <div class="lbl">Grupe aktive</div>
+          <div class="val"><?= (int)$k['active_groups'] ?></div>
+        </div>
+        <div><i class="bi bi-collection fs-3 text-success"></i></div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="kpi">
+        <div>
+          <div class="lbl">Regjistrime aktive</div>
+          <div class="val"><?= (int)$k['active_enrollments'] ?></div>
+        </div>
+        <div><i class="bi bi-person-check fs-3 text-info"></i></div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="kpi">
+        <div>
+          <div class="lbl">Backlog plane</div>
+          <div class="val"><?= (int)$k['scp_planned'] ?> <span class="text-muted fw-normal" style="font-size:.95rem;">planned</span></div>
+        </div>
+        <div><i class="bi bi-list-check fs-3 text-dark"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK ACTIONS -->
   <section class="row g-4 mb-4">
-    <div class="col-12 col-xl-7">
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Studentë të rinj (12 javë)</h5>
-        </div>
-        <div class="card-body">
-          <canvas id="chartWeekly" height="120"></canvas>
-        </div>
+    <div class="col-12">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-lightning me-2"></i>Vepro shpejt</h5>
       </div>
     </div>
-    <div class="col-12 col-xl-5">
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>Aktivitet audit (14 ditë)</h5>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['students']) ?>">
+        <div class="ico"><i class="bi bi-mortarboard fs-4 text-primary"></i></div>
+        <div>
+          <div class="fw-semibold">Studentë</div>
+          <div class="small muted">Kërko dhe menaxho regjistrime.</div>
         </div>
-        <div class="card-body">
-          <canvas id="chartAudit" height="120"></canvas>
+      </a>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['groups']) ?>">
+        <div class="ico"><i class="bi bi-collection fs-4 text-success"></i></div>
+        <div>
+          <div class="fw-semibold">Grupe</div>
+          <div class="small muted">Shto studentë, mbyll grupe, data testesh.</div>
         </div>
+      </a>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['plans']) ?>">
+        <div class="ico"><i class="bi bi-list-check fs-4 text-dark"></i></div>
+        <div>
+          <div class="fw-semibold">Plane (SCP)</div>
+          <div class="small muted">Planned → Assigned → Completed.</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['courses']) ?>">
+        <div class="ico"><i class="bi bi-journal-text fs-4 text-info"></i></div>
+        <div>
+          <div class="fw-semibold">Module</div>
+          <div class="small muted">Shiko listën e moduleve/kursit.</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['agencies']) ?>">
+        <div class="ico"><i class="bi bi-building fs-4 text-secondary"></i></div>
+        <div>
+          <div class="fw-semibold">Agjenci</div>
+          <div class="small muted">NIPT dhe studentët e lidhur.</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['logs']) ?>">
+        <div class="ico"><i class="bi bi-shield-check fs-4 text-danger"></i></div>
+        <div>
+          <div class="fw-semibold">Audit / Log</div>
+          <div class="small muted">Kontrollo veprimet e fundit.</div>
+        </div>
+      </a>
+    </div>
+
+    <?php if (!empty($ROUTES['settings'])): ?>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="qa" href="<?= h($ROUTES['settings']) ?>">
+          <div class="ico"><i class="bi bi-gear fs-4 text-primary"></i></div>
+          <div>
+            <div class="fw-semibold">Settings</div>
+            <div class="small muted">Parametra (opsionale).</div>
+          </div>
+        </a>
       </div>
+    <?php endif; ?>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <a class="qa" href="<?= h($ROUTES['profile_select']) ?>">
+        <div class="ico"><i class="bi bi-person-badge fs-4 text-success"></i></div>
+        <div>
+          <div class="fw-semibold">Ndrysho profil</div>
+          <div class="small muted">Kthehu te zgjedhja e profilit.</div>
+        </div>
+      </a>
     </div>
   </section>
 
-  <!-- Funnel + Utilization -->
+  <!-- WORK QUEUE + THIS WEEK -->
   <section class="row g-4 mb-4">
     <div class="col-12 col-xl-5">
       <div class="card h-100">
-        <div class="card-header bg-white">
-          <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Funneli i studentëve</h5>
+        <div class="card-header bg-white d-flex align-items-center justify-content-between">
+          <h6 class="mb-0 fw-semibold"><i class="bi bi-inbox me-2"></i>Work Queue (Action needed)</h6>
+          <span class="small muted">Puna që s’duhet lënë pas</span>
         </div>
-        <div class="card-body">
-          <?php foreach ($funnel as $label=>$val): ?>
-            <div class="mb-3">
-              <div class="d-flex align-items-center justify-content-between">
-                <div class="small text-muted"><?= h($label) ?></div>
-                <div class="fw-semibold"><?= number_format($val) ?></div>
+        <div class="card-body p-0">
+          <div class="list-group list-group-flush list-tight">
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+               href="<?= h($ROUTES['students']) ?>">
+              <div>
+                <div class="fw-semibold">Studentë pa grup</div>
+                <div class="small muted">Duhet caktim në grup / plan.</div>
               </div>
-              <?php $pct = ($studentsTotal>0) ? round(($val/$studentsTotal)*100) : 0; ?>
-              <div class="progress"><div class="progress-bar" style="width:<?= $pct ?>%"></div></div>
-            </div>
-          <?php endforeach; ?>
-          <div class="small text-muted">Shifra relative ndaj totalit të studentëve.</div>
+              <span class="badge text-bg-secondary rounded-pill"><?= (int)$k['students_no_group'] ?></span>
+            </a>
+
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+               href="<?= h($ROUTES['groups']) ?>">
+              <div>
+                <div class="fw-semibold">Grupe të mbyllura, jo “completed”</div>
+                <div class="small muted">Duhet mbyllje operative.</div>
+              </div>
+              <span class="badge text-bg-warning rounded-pill"><?= (int)$k['groups_ended_not_completed'] ?></span>
+            </a>
+
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+               href="<?= h($ROUTES['groups']) ?>">
+              <div>
+                <div class="fw-semibold">Studentë pa test (grupe të mbyllura)</div>
+                <div class="small muted">Cakto exam_date ose procedo mbylljen.</div>
+              </div>
+              <span class="badge text-bg-danger rounded-pill"><?= (int)$k['pending_exams'] ?></span>
+            </a>
+
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+               href="<?= h($ROUTES['plans']) ?>">
+              <div>
+                <div class="fw-semibold">Backlog plane “planned”</div>
+                <div class="small muted">Ktheji në “assigned” (kur të krijohet grupi).</div>
+              </div>
+              <span class="badge text-bg-primary rounded-pill"><?= (int)$k['scp_planned'] ?></span>
+            </a>
+
+          </div>
         </div>
       </div>
     </div>
+
     <div class="col-12 col-xl-7">
       <div class="card h-100">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>Përdorimi sipas modulit (aktive)</h5>
-          <span class="text-muted small">Kufiri: 10 / grup</span>
+          <h6 class="mb-0 fw-semibold"><i class="bi bi-calendar-week me-2"></i>Kjo javë</h6>
+          <span class="small muted">Grupet që nisin/mbarojnë së shpejti</span>
         </div>
+
         <div class="card-body">
-          <?php if ($utilByCourse): ?>
-            <div class="table-responsive mini-table">
-              <table class="table align-middle">
-                <thead class="table-light">
-                  <tr><th>Moduli</th><th class="nowrap">Gr. aktive</th><th>Mbushja</th></tr>
-                </thead>
-                <tbody>
-                <?php foreach ($utilByCourse as $r):
-                  $seats = (int)$r['active_groups'] * 10;
-                  $enr   = (int)$r['enrolled'];
-                  $p = $seats>0 ? min(100, round(($enr/$seats)*100)) : 0;
-                ?>
-                  <tr>
-                    <td><?= h(($r['code']??'').' · '.($r['name']??'')) ?></td>
-                    <td class="nowrap"><?= (int)$r['active_groups'] ?></td>
-                    <td style="min-width:220px;">
-                      <div class="d-flex align-items-center">
-                        <div class="flex-grow-1 me-2">
-                          <div class="progress"><div class="progress-bar" style="width:<?= $p ?>%"></div></div>
+          <div class="row g-4">
+            <div class="col-12 col-lg-6">
+              <div class="soft-info p-3 rounded-4">
+                <div class="fw-semibold mb-2"><i class="bi bi-play-circle me-2"></i>Nisin (7 ditë)</div>
+
+                <?php if ($startingSoon): ?>
+                  <div class="list-group list-tight">
+                    <?php foreach ($startingSoon as $g): ?>
+                      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                         href="<?= h($ROUTES['groups']) ?>">
+                        <div>
+                          <div class="fw-semibold"><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></div>
+                          <div class="small muted">Start: <?= h($g['start_date'] ?? '') ?> • End: <?= h($g['end_date'] ?? '') ?></div>
                         </div>
-                        <span class="small text-muted"><?= $enr ?>/<?= $seats ?></span>
-                      </div>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-                </tbody>
-              </table>
+                        <i class="bi bi-chevron-right text-muted"></i>
+                      </a>
+                    <?php endforeach; ?>
+                  </div>
+                <?php else: ?>
+                  <div class="text-muted">Asnjë grup që nis në 7 ditë.</div>
+                <?php endif; ?>
+              </div>
             </div>
-          <?php else: ?>
-            <p class="text-muted mb-0">Nuk ka module me grupe aktive për momentin.</p>
-          <?php endif; ?>
+
+            <div class="col-12 col-lg-6">
+              <div class="soft-warn p-3 rounded-4">
+                <div class="fw-semibold mb-2"><i class="bi bi-flag me-2"></i>Mbarojnë (7 ditë)</div>
+
+                <?php if ($endingSoon): ?>
+                  <div class="list-group list-tight">
+                    <?php foreach ($endingSoon as $g): ?>
+                      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                         href="<?= h($ROUTES['groups']) ?>">
+                        <div>
+                          <div class="fw-semibold"><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></div>
+                          <div class="small muted">End: <?= h($g['end_date'] ?? '') ?> • Start: <?= h($g['start_date'] ?? '') ?></div>
+                        </div>
+                        <i class="bi bi-chevron-right text-muted"></i>
+                      </a>
+                    <?php endforeach; ?>
+                  </div>
+                <?php else: ?>
+                  <div class="text-muted">Asnjë grup që mbaron në 7 ditë.</div>
+                <?php endif; ?>
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Distributions row -->
-  <section class="row g-4 mb-4">
-    <div class="col-12 col-xl-3">
-      <div class="card h-100">
-        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-people me-2"></i>Role përdoruesish</h6></div>
-        <div class="card-body"><canvas id="chartRoles" height="140"></canvas></div>
-      </div>
-    </div>
-    <div class="col-12 col-xl-3">
-      <div class="card h-100">
-        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-gender-ambiguous me-2"></i>Gjinia (studentë)</h6></div>
-        <div class="card-body"><canvas id="chartGender" height="140"></canvas></div>
-      </div>
-    </div>
-    <div class="col-12 col-xl-3">
-      <div class="card h-100">
-        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-mortarboard-fill me-2"></i>Niveli arsimor</h6></div>
-        <div class="card-body"><canvas id="chartEdu" height="140"></canvas></div>
-      </div>
-    </div>
-    <div class="col-12 col-xl-3">
-      <div class="card h-100">
-        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-kanban me-2"></i>Statusi i planeve (SCP)</h6>
-        </div>
-        <div class="card-body">
-          <canvas id="chartPlans" height="140"></canvas>
-        </div>
-      </div>
-    </div>
-
-  </section>
-
-  <!-- Plans status + Backlog + Milestones & Security -->
-  <section class="row g-4">
-    <div class="col-12 col-xl-7">
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-list-task me-2"></i>Modulet në pritje (planned)</h5>
-        </div>
-        <div class="card-body">
-          <?php if ($plannedTop): ?>
-            <div class="table-responsive mini-table">
-              <table class="table align-middle">
-                <thead class="table-light"><tr><th>Moduli</th><th class="text-end">Plane</th></tr></thead>
-                <tbody>
-                <?php foreach ($plannedTop as $p): ?>
-                  <tr>
-                    <td><?= h(($p['code']??'').' · '.($p['name']??'')) ?></td>
-                    <td class="text-end fw-semibold"><?= (int)$p['cnt'] ?></td>
-                  </tr>
-                <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          <?php else: ?>
-            <p class="text-muted mb-0">S'ka backlog 'planned' aktualisht.</p>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-xl-5">
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Aktivitet i fundit (përdorues të rinj)</h5>
-        </div>
-        <div class="card-body">
-          <?php if ($recentUsers): ?>
-            <div class="table-responsive mini-table">
-              <table class="table align-middle">
-                <thead class="table-light"><tr><th>Emri</th><th>Email</th><th>Roli</th><th class="nowrap">Krijuar më</th></tr></thead>
-                <tbody>
-                <?php foreach ($recentUsers as $ru): ?>
-                  <tr>
-                    <td><?= h($ru['full_name'] ?: '—') ?></td>
-                    <td><?= h($ru['email'] ?: '—') ?></td>
-                    <td><span class="badge text-bg-secondary"><?= h($ru['role_name'] ?? '') ?></span></td>
-                    <td class="nowrap"><?= h($ru['created_at']) ?></td>
-                  </tr>
-                <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          <?php else: ?>
-            <p class="text-muted mb-0">S’ka përdorues të rinj së fundmi.</p>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <br>
-
-  <div class="text-center text-muted small my-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
+  <div class="text-center text-muted small mt-4">
+    &copy; <?= date('Y') ?> QTA • Editor Dashboard
   </div>
+
 </main>
 
-<!-- JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-/* PHP → JS */
-const weeklyLabels = <?= json_encode($weeklyLabels) ?>;
-const weeklyCounts = <?= json_encode($weeklyCounts) ?>;
-
-const auditDays = <?= json_encode($days) ?>;
-const auditInsert = <?= json_encode($seriesAudit['INSERT'] ?? []) ?>;
-const auditUpdate = <?= json_encode($seriesAudit['UPDATE'] ?? []) ?>;
-const auditDelete = <?= json_encode($seriesAudit['DELETE'] ?? []) ?>;
-
-const rolesLabels  = <?= json_encode($rolesLabels) ?>;
-const rolesCounts  = <?= json_encode($rolesCounts) ?>;
-const genderLabels = <?= json_encode($genderLabels) ?>;
-const genderCounts = <?= json_encode($genderCounts) ?>;
-const eduLabels    = <?= json_encode($eduLabels) ?>;
-const eduCounts    = <?= json_encode($eduCounts) ?>;
-
-/* NEW: plans chart */
-const scpLabels = <?= json_encode($scpLabels) ?>;
-const scpCounts = <?= json_encode($scpCounts) ?>;
-
-/* Charts */
-(() => {
-  const cw = document.getElementById('chartWeekly');
-  if (cw) new Chart(cw, {
-    type: 'line',
-    data: { labels: weeklyLabels, datasets: [{ label:'Studentë të rinj', data: weeklyCounts, borderWidth:2, tension:.35, fill:true }] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true } } }
-  });
-
-  const ca = document.getElementById('chartAudit');
-  if (ca) new Chart(ca, {
-    type: 'bar',
-    data: {
-      labels: auditDays,
-      datasets: [
-        { label: 'INSERT', data: auditInsert, stack:'a' },
-        { label: 'UPDATE', data: auditUpdate, stack:'a' },
-        { label: 'DELETE', data: auditDelete, stack:'a' }
-      ]
-    },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } }
-  });
-
-  const cr = document.getElementById('chartRoles');
-  if (cr) new Chart(cr, { type:'doughnut', data:{ labels: rolesLabels, datasets:[{ data: rolesCounts }] }, options:{ plugins:{ legend:{ position:'bottom' } } } });
-
-  const cg = document.getElementById('chartGender');
-  if (cg) new Chart(cg, { type:'doughnut', data:{ labels: genderLabels, datasets:[{ data: genderCounts }] }, options:{ plugins:{ legend:{ position:'bottom' } } } });
-
-  const ce = document.getElementById('chartEdu');
-  if (ce) new Chart(ce, { type:'doughnut', data:{ labels: eduLabels, datasets:[{ data: eduCounts }] }, options:{ plugins:{ legend:{ position:'bottom' } } } });
-
-  const cp = document.getElementById('chartPlans');
-  if (cp) new Chart(cp, { type:'doughnut', data:{ labels: scpLabels, datasets:[{ data: scpCounts }] }, options:{ plugins:{ legend:{ position:'bottom' } } } });
-})();
-</script>
 </body>
 </html>

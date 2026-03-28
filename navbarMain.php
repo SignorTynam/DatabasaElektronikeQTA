@@ -1,18 +1,11 @@
 <?php
-// navbarMain.php (revamped)
-// -----------------------------------------------------------
-// Përdorim nga faqet:
-//   $NAV_ACTIVE = 'home' | 'about' | 'contact' | 'verify'; // (opsionale)
-//   $currentUser = [...]; // (opsionale: ['full_name','email','role_name'])
-//   require __DIR__ . '/navbarMain.php';
-// Kërkon Bootstrap 5.3+ CSS & Icons të ngarkuara në prind.
+// navbarMain.php — QTA Light Slim (jo “AI”), CSS i izoluar vetëm për navbar.
+// Kërkon Bootstrap 5.3+ CSS & Bootstrap Icons të ngarkuara në prind.
 
-// Helper sigurie
 if (!function_exists('h')) {
   function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 }
 
-// Zbulo automatikisht "active" nëse s’është vendosur manualisht
 if (empty($NAV_ACTIVE)) {
   $path = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '');
   $NAV_ACTIVE = match ($path) {
@@ -24,15 +17,13 @@ if (empty($NAV_ACTIVE)) {
   };
 }
 
-// Të dhënat e përdoruesit (nëse është i loguar)
-$roleName    = $currentUser['role_name'] ?? null;                  // p.sh. administrator | agjencia | student
+$roleName    = isset($currentUser['role_name']) ? strtolower((string)$currentUser['role_name']) : null;
 $displayName = $currentUser['full_name'] ?? ($currentUser['email'] ?? 'Përdorues');
 
-// Funksione ndihmëse
-function nav_is_active(string $slug, string $active): string {
-  return $slug === $active ? 'active" aria-current="page' : '"';
-}
-function initials_from_name(string $name): string {
+function qta_nav_active(string $slug, string $active): string { return $slug === $active ? 'active' : ''; }
+function qta_nav_aria(string $slug, string $active): string { return $slug === $active ? 'aria-current="page"' : ''; }
+
+function qta_initials(string $name): string {
   $name = trim($name);
   if ($name === '') return 'U';
   $parts = preg_split('/\s+/', $name);
@@ -43,120 +34,206 @@ function initials_from_name(string $name): string {
   }
   return $ini ?: 'U';
 }
-function role_badge_color(?string $role): string {
+function qta_role_badge_color(?string $role): string {
   return match ($role) {
     'administrator' => 'danger',
     'agjencia'      => 'success',
+    'editor'        => 'warning',
     'student'       => 'info',
     default         => 'secondary'
   };
 }
-function role_panel_href(?string $role): string {
+function qta_role_panel_href(?string $role): string {
   return match ($role) {
     'administrator' => 'dashboard_admin.php',
     'agjencia'      => 'dashboard_agjencia.php',
-    'editor'       => 'dashboard_editor.php',
+    'editor'        => 'dashboard_editor.php',
     'student'       => 'dashboard_student.php',
     default         => 'selectProfile.php'
   };
 }
-function role_panel_label(?string $role): string {
+function qta_role_panel_label(?string $role): string {
   return match ($role) {
     'administrator' => 'Paneli i Administrimit',
     'agjencia'      => 'Paneli i Agjencisë',
+    'editor'        => 'Paneli i Editorit',
     'student'       => 'Paneli i Studentit',
-    'editor'       => 'Paneli i Editorit',
     default         => 'Zgjidh rolin'
   };
 }
 
-$avatarIni   = initials_from_name($displayName);
-$badgeColor  = role_badge_color($roleName);
-$panelHref   = role_panel_href($roleName);
-$panelLabel  = role_panel_label($roleName);
+$avatarIni  = qta_initials((string)$displayName);
+$badgeColor = qta_role_badge_color($roleName);
+$panelHref  = qta_role_panel_href($roleName);
+$panelLabel = qta_role_panel_label($roleName);
 ?>
+
 <style>
-  /* Glass navbar + aksent i lehtë */
-  .navbar-glass {
-    --nbg: rgba(15, 23, 42, .75);              /* slate-900 me transparencë */
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    background: var(--nbg) !important;
-    border-bottom: 1px solid rgba(255,255,255,.08);
+/* ==========================================================
+   QTA NAV (Slim + light + pak transparente)
+   CSS i izoluar: prek vetëm brenda nav.qtaNav
+   ========================================================== */
+nav.qtaNav{
+  --qta-bg: rgba(255,255,255,.86);
+  --qta-bd: rgba(15,23,42,.10);
+  --qta-text: #0f172a;
+  --qta-muted: #64748b;
+  --qta-primary: #2563eb;
+
+  background: var(--qta-bg);
+  border-bottom: 1px solid var(--qta-bd);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(2,6,23,.06);
+}
+
+nav.qtaNav .qtaNav-wrap{ min-height: 56px; } /* slim */
+
+nav.qtaNav .qtaNav-brand{
+  display:flex; align-items:center; gap:.6rem;
+  text-decoration:none;
+  color: var(--qta-text);
+}
+nav.qtaNav .qtaNav-brand:hover{ color: var(--qta-text); }
+
+nav.qtaNav .qtaNav-brand img{ height: 28px; width:auto; display:block; }
+nav.qtaNav .qtaNav-title{ font-weight: 900; letter-spacing:.2px; }
+nav.qtaNav .qtaNav-sub{ color: var(--qta-muted); font-weight: 700; font-size: .92rem; }
+
+nav.qtaNav a.qtaNav-link{
+  color: var(--qta-muted) !important;
+  font-weight: 800;
+  font-size: .95rem;
+  padding: .42rem .70rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+nav.qtaNav a.qtaNav-link:hover{
+  color: var(--qta-text) !important;
+  background: rgba(15,23,42,.04);
+  border-color: rgba(15,23,42,.08);
+}
+
+/* Active pill (si “Kryefaqja” në screenshot, por pa u dukur “AI”) */
+nav.qtaNav a.qtaNav-link.active{
+  color: #fff !important;
+  background: var(--qta-primary);
+  border-color: rgba(37,99,235,.35);
+  box-shadow: 0 8px 18px rgba(37,99,235,.18);
+}
+
+nav.qtaNav .navbar-toggler{
+  border: 1px solid rgba(15,23,42,.14);
+  border-radius: 9999px;
+  padding: .34rem .58rem;
+}
+nav.qtaNav .navbar-toggler:focus{
+  box-shadow: 0 0 0 .22rem rgba(37,99,235,.14);
+}
+
+/* Avatar */
+nav.qtaNav .qtaNav-avatar{
+  width: 32px; height: 32px; border-radius: 9999px;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-weight: 900; font-size: .80rem;
+  color: var(--qta-text);
+  background: rgba(255,255,255,.95);
+  border: 1px solid rgba(15,23,42,.10);
+}
+
+/* Dropdown vetëm brenda navbar */
+nav.qtaNav .qtaNav-dd{
+  min-width: 290px;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(2,6,23,.12);
+}
+nav.qtaNav .qtaNav-dd .dropdown-item{
+  border-radius: 12px;
+  font-weight: 750;
+}
+nav.qtaNav .qtaNav-dd .dropdown-item:hover{
+  background: rgba(15,23,42,.04);
+}
+
+/* Button Hyr: i thjeshtë, jo “gradient” */
+nav.qtaNav .qtaNav-cta{
+  border-radius: 9999px;
+  font-weight: 900;
+  padding: .44rem .90rem;
+}
+
+/* Mobile collapse = card e thjeshtë */
+@media (max-width: 991.98px){
+  nav.qtaNav .navbar-collapse{
+    margin-top: .55rem;
+    background: rgba(255,255,255,.92);
+    border: 1px solid rgba(15,23,42,.10);
+    border-radius: 14px;
+    padding: .6rem;
   }
-  .navbar-glass .nav-link {
-    color: rgba(255,255,255,.85);
-  }
-  .navbar-glass .nav-link:hover { color:#fff; }
-  .navbar-glass .nav-link.active {
-    color:#fff !important;
-    font-weight:600;
-    position:relative;
-  }
-  .navbar-glass .nav-link.active::after {
-    content:"";
-    position:absolute; left:.75rem; right:.75rem; bottom:-.25rem;
-    height:2px; border-radius:2px; background:linear-gradient(90deg,#0ea5e9,#2563eb,#4f46e5);
-  }
-  .navbar-brand img { height:30px; }
-  .avatar-circle {
-    width:32px; height:32px; border-radius:9999px;
-    display:inline-flex; align-items:center; justify-content:center;
-    background:linear-gradient(135deg,#60a5fa,#7c3aed);
-    color:#fff; font-weight:700; font-size:.85rem;
-  }
-  .dropdown-menu { min-width: 260px; }
-  @media (max-width: 991.98px) { /* lg breakpoint */
-    .navbar-glass .nav-link.active::after { display:none; } /* shmangem vijën poshtë në mobile */
-    .navbar-glass { border-bottom-color: rgba(255,255,255,.12); }
-  }
+  nav.qtaNav .qtaNav-sub{ display:none; }
+}
 </style>
 
-<nav class="navbar navbar-expand-lg navbar-dark navbar-glass sticky-top">
-  <div class="container">
-    <a class="navbar-brand d-flex align-items-center" href="index.php">
+<nav class="navbar navbar-expand-lg navbar-light sticky-top qtaNav" aria-label="QTA Navigation">
+  <div class="container qtaNav-wrap">
+
+    <a class="qtaNav-brand" href="index.php">
       <img src="image/logoPNG2.png" alt="QTA">
-      <span class="ms-2">Qendra e Trajnimeve të Avancuara</span>
+      <span class="qtaNav-title">QTA</span>
+      <span class="d-none d-md-inline qtaNav-sub">Qendra e Trajnimeve të Avancuara</span>
     </a>
 
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavMain" aria-controls="navbarNavMain" aria-expanded="false" aria-label="Toggle navigation">
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#qtaNavMain"
+            aria-controls="qtaNavMain" aria-expanded="false" aria-label="Hap menunë">
       <span class="navbar-toggler-icon"></span>
     </button>
 
-    <div class="collapse navbar-collapse" id="navbarNavMain">
-      <ul class="navbar-nav ms-auto align-items-lg-center">
+    <div class="collapse navbar-collapse" id="qtaNavMain">
+      <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
+
         <li class="nav-item">
-          <a class="nav-link <?= nav_is_active('home', $NAV_ACTIVE) ?>" href="index.php">
+          <a class="nav-link qtaNav-link <?= h(qta_nav_active('home', $NAV_ACTIVE)) ?>"
+             href="index.php" <?= qta_nav_aria('home', $NAV_ACTIVE) ?>>
             <i class="bi bi-house-door me-1"></i>Kryefaqja
           </a>
         </li>
+
         <li class="nav-item">
-          <a class="nav-link <?= nav_is_active('about', $NAV_ACTIVE) ?>" href="aboutus.php">
+          <a class="nav-link qtaNav-link <?= h(qta_nav_active('about', $NAV_ACTIVE)) ?>"
+             href="aboutus.php" <?= qta_nav_aria('about', $NAV_ACTIVE) ?>>
             <i class="bi bi-info-circle me-1"></i>Rreth nesh
           </a>
         </li>
+
         <li class="nav-item">
-          <a class="nav-link <?= nav_is_active('contact', $NAV_ACTIVE) ?>" href="contact.php">
+          <a class="nav-link qtaNav-link <?= h(qta_nav_active('contact', $NAV_ACTIVE)) ?>"
+             href="contact.php" <?= qta_nav_aria('contact', $NAV_ACTIVE) ?>>
             <i class="bi bi-envelope me-1"></i>Kontakt
           </a>
         </li>
+
         <li class="nav-item">
-          <a class="nav-link <?= nav_is_active('verify', $NAV_ACTIVE) ?>" href="verify.php">
+          <a class="nav-link qtaNav-link <?= h(qta_nav_active('verify', $NAV_ACTIVE)) ?>"
+             href="verify.php" <?= qta_nav_aria('verify', $NAV_ACTIVE) ?>>
             <i class="bi bi-qr-code-scan me-1"></i>Verifiko
           </a>
         </li>
 
         <?php if (!empty($currentUser)): ?>
-          <!-- Përdorues i loguar: dropdown -->
           <li class="nav-item dropdown ms-lg-2 my-2 my-lg-0">
-            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-              <span class="avatar-circle me-2"><?= h($avatarIni) ?></span>
-              <span class="d-none d-sm-inline text-white-90"><?= h($displayName) ?></span>
+            <a class="nav-link dropdown-toggle qtaNav-link d-flex align-items-center" href="#"
+               id="qtaNavUserMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <span class="qtaNav-avatar me-2"><?= h($avatarIni) ?></span>
+              <span class="d-none d-md-inline"><?= h($displayName) ?></span>
             </a>
-            <ul class="dropdown-menu dropdown-menu-end shadow-lg" aria-labelledby="userMenu">
-              <li class="px-3 py-2">
+
+            <ul class="dropdown-menu dropdown-menu-end qtaNav-dd" aria-labelledby="qtaNavUserMenu">
+              <li class="px-3 pt-3 pb-2">
                 <div class="d-flex align-items-center">
-                  <div class="avatar-circle me-2"><?= h($avatarIni) ?></div>
+                  <span class="qtaNav-avatar me-2"><?= h($avatarIni) ?></span>
                   <div>
                     <div class="fw-semibold"><?= h($displayName) ?></div>
                     <?php if (!empty($currentUser['email'])): ?>
@@ -165,31 +242,22 @@ $panelLabel  = role_panel_label($roleName);
                   </div>
                 </div>
                 <div class="mt-2">
-                  <span class="badge bg-<?= $badgeColor ?> rounded-pill">
-                    <?= h(ucfirst((string)$roleName)) ?: 'Përdorues' ?>
+                  <span class="badge bg-<?= h($badgeColor) ?> rounded-pill">
+                    <?= h($roleName ? ucfirst($roleName) : 'Përdorues') ?>
                   </span>
                 </div>
               </li>
-              <li><hr class="dropdown-divider"></li>
 
-              <?php if ($roleName): ?>
-                <li>
-                  <a class="dropdown-item d-flex align-items-center" href="<?= h($panelHref) ?>">
-                    <i class="bi bi-speedometer2 me-2"></i><?= h($panelLabel) ?>
-                  </a>
-                </li>
-              <?php endif; ?>
+              <li><hr class="dropdown-divider my-2"></li>
 
-              <!-- Mund të shtoni 'account.php' kur ta keni gati -->
-              <!--
               <li>
-                <a class="dropdown-item d-flex align-items-center" href="account.php">
-                  <i class="bi bi-person-gear me-2"></i>Profili im
+                <a class="dropdown-item d-flex align-items-center" href="<?= h($panelHref) ?>">
+                  <i class="bi bi-speedometer2 me-2"></i><?= h($panelLabel) ?>
                 </a>
               </li>
-              -->
 
-              <li><hr class="dropdown-divider"></li>
+              <li><hr class="dropdown-divider my-2"></li>
+
               <li>
                 <a class="dropdown-item d-flex align-items-center text-danger" href="logout.php">
                   <i class="bi bi-box-arrow-right me-2"></i>Dil
@@ -197,14 +265,15 @@ $panelLabel  = role_panel_label($roleName);
               </li>
             </ul>
           </li>
+
         <?php else: ?>
-          <!-- I pa-loguar: buton Hyr -->
-          <li class="nav-item my-2 my-lg-0 ms-lg-2">
-            <a class="btn btn-primary" href="selectProfile.php">
+          <li class="nav-item ms-lg-2 my-2 my-lg-0">
+            <a class="btn btn-primary qtaNav-cta" href="selectProfile.php">
               <i class="bi bi-box-arrow-in-right me-1"></i>Hyr
             </a>
           </li>
         <?php endif; ?>
+
       </ul>
     </div>
   </div>
