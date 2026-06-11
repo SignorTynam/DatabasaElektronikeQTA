@@ -78,11 +78,11 @@ if (!in_array($fmt, ['xlsx','pdf','docx'], true)) { qta_fail(400, 'Format i pavl
 @ini_set('memory_limit','512M');
 @set_time_limit(120);
 
-/* ===== Konstantat â€œsi nÃ« fotoâ€ ===== */
+/* ===== Konstantat â€œsi në fotoâ€ ===== */
 const DIDACTIC_TITLE = 'Drejtuesi didaktik';
 const DIDACTIC_NAME  = 'Ing. Silvana Pavaci';
 const ADMIN_TITLE    = 'Administratori';
-const ADMIN_NAME     = 'Msc. Mira KovaÃ§i';
+const ADMIN_NAME     = 'Msc. Mira Kovaçi';
 
 /* ===== Helpers ===== */
 function iso_to_dmy(?string $iso): string {
@@ -124,7 +124,7 @@ function qta_stream_file(string $tmpPath, string $mime, string $downloadName): v
   exit;
 }
 
-/* ===== Lexo â€œorÃ« mÃ«simoreâ€ nga courses (nÃ«se ekziston kolonÃ«) ===== */
+/* ===== Lexo â€œorë mësimoreâ€ nga courses (nëse ekziston kolonë) ===== */
 function getCourseHours(PDO $pdo, int $courseId): string {
   try {
     $cols = $pdo->query("DESCRIBE courses")->fetchAll(PDO::FETCH_ASSOC);
@@ -148,7 +148,7 @@ function getCourseHours(PDO $pdo, int $courseId): string {
   }
 }
 
-/* ===== Merr tÃ« dhÃ«nat e grupit ===== */
+/* ===== Merr të dhënat e grupit ===== */
 $g = $pdo->prepare("
   SELECT cg.id, cg.course_id, cg.start_date, cg.end_date, c.name AS course_name
   FROM course_groups cg
@@ -167,7 +167,7 @@ $endIso     = (string)($group['end_date'] ?? '');
 
 $hours = ($courseId > 0) ? getCourseHours($pdo, $courseId) : '';
 
-/* ===== StudentÃ«t e grupit (pÃ«r tabelÃ«n) ===== */
+/* ===== Studentët e grupit (për tabelën) ===== */
 $st = $pdo->prepare("
   SELECT
     s.id AS student_id,
@@ -186,8 +186,8 @@ $st = $pdo->prepare("
 $st->execute([':gid'=>$groupId]);
 $members = $st->fetchAll(PDO::FETCH_ASSOC);
 
-/* ===== Data e provimit (pÃ«r tekstin sipÃ«r) =====
-   - nÃ«se ka njÃ« exam_date, pÃ«rdorim MAX (zakonisht e njÃ«jta pÃ«r tÃ« gjithÃ«)
+/* ===== Data e provimit (për tekstin sipër) =====
+   - nëse ka një exam_date, përdorim MAX (zakonisht e njëjta për të gjithë)
 */
 $examIso = '';
 foreach ($members as $m) {
@@ -197,7 +197,7 @@ foreach ($members as $m) {
   }
 }
 
-/* ===== PÃ«rgatit rreshtat e tabelÃ«s ===== */
+/* ===== Përgatit rreshtat e tabelës ===== */
 $rows = [];
 $nr = 1;
 foreach ($members as $m) {
@@ -223,10 +223,10 @@ foreach ($members as $m) {
     'start'      => iso_to_dmy_dash($startIso),
     'end'        => iso_to_dmy_dash($endIso),
 
-    // pÃ«rdoret pÃ«r shfaqje nÃ« tabelÃ«
+    // përdoret për shfaqje në tabelë
     'exam'       => iso_to_dmy_dash($examIsoRow),
 
-    // pÃ«rdoret pÃ«r grupim (1 faqe pÃ«r Ã§do date testimi)
+    // përdoret për grupim (1 faqe për çdo date testimi)
     'exam_iso'   => $examIsoRow,
 
     'final'      => $scoreStr,
@@ -260,15 +260,15 @@ function exportPdfProcesVerbal(
   signal_download_ready();
   $e = fn($s)=>htmlspecialchars((string)$s, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
 
-  // --- Grupo sipas exam_iso (YYYY-MM-DD). Ã‡do grup => 1 faqe.
+  // --- Grupo sipas exam_iso (YYYY-MM-DD). Çdo grup => 1 faqe.
   $byExam = [];
   foreach ($rows as $r) {
     $k = (string)($r['exam_iso'] ?? '');
-    $k = preg_match('/^\d{4}-\d{2}-\d{2}$/', $k) ? $k : ''; // bosh nÃ«se mungon/jo valide
+    $k = preg_match('/^\d{4}-\d{2}-\d{2}$/', $k) ? $k : ''; // bosh nëse mungon/jo valide
     $byExam[$k][] = $r;
   }
 
-  // Rendit faqet: datat valide nÃ« rritje, bosh nÃ« fund
+  // Rendit faqet: datat valide në rritje, bosh në fund
   uksort($byExam, function($a, $b){
     if ($a === '' && $b === '') return 0;
     if ($a === '') return 1;
@@ -276,11 +276,11 @@ function exportPdfProcesVerbal(
     return strcmp($a, $b);
   });
 
-  // --- DinamikÃ« â€œfit on one pageâ€
+  // --- Dinamikë â€œfit on one pageâ€
   $maxRows = 0;
   foreach ($byExam as $list) $maxRows = max($maxRows, count($list));
 
-  // pragje praktike (rregulloji sipas dÃ«shirÃ«s)
+  // pragje praktike (rregulloji sipas dëshirës)
   if ($maxRows <= 10) { $baseFont=13; $cellPad=6; $titleBig=18; $titleMid=16; $lineGapTop=22; $signTop=40; }
   elseif ($maxRows <= 14) { $baseFont=12; $cellPad=5; $titleBig=16; $titleMid=14; $lineGapTop=18; $signTop=34; }
   elseif ($maxRows <= 18) { $baseFont=11; $cellPad=4; $titleBig=15; $titleMid=13; $lineGapTop=14; $signTop=28; }
@@ -294,7 +294,7 @@ function exportPdfProcesVerbal(
   <head>
     <meta charset="UTF-8" />
     <style>
-      /* Narrow margins pÃ«r tÃ« fituar hapÃ«sirÃ« */
+      /* Narrow margins për të fituar hapësirë */
       @page { size: A4 landscape; margin: 10mm 10mm; }
 
       * { font-family: DejaVu Sans, sans-serif; }
@@ -352,29 +352,29 @@ function exportPdfProcesVerbal(
 
     foreach ($byExam as $examIso => $pageRows):
       $isLast = ($examIso === $lastKey);
-      $examDmy = $examIso ? iso_to_dmy($examIso) : ''; // dd/mm/YYYY pÃ«r tekstin sipÃ«r
+      $examDmy = $examIso ? iso_to_dmy($examIso) : ''; // dd/mm/YYYY për tekstin sipër
       $pageTotal = count($pageRows);
   ?>
     <div class="pv-page <?= $isLast ? 'last' : '' ?>">
       <div class="toplogo">
         <?php
-          // Opsionale: nÃ«se sâ€™ka GD, mos e vendos logon qÃ« tÃ« mos bjerÃ«
+          // Opsionale: nëse sâ€™ka GD, mos e vendos logon që të mos bjerë
           if ($logoDataUri && function_exists('imagecreatefrompng')): ?>
           <img src="<?= $e($logoDataUri) ?>" alt="QTA Logo">
         <?php endif; ?>
       </div>
 
-      <div class="title big">QENDRA E TRAJNIMEVE TÃ‹ AVANCUARA</div>
-      <div class="title mid">PROCES VERBAL VLERÃ‹SIMI PÃ‹RFUNDIMTAR</div>
+      <div class="title big">QENDRA E TRAJNIMEVE TË AVANCUARA</div>
+      <div class="title mid">PROCES VERBAL VLERËSIMI PËRFUNDIMTAR</div>
 
       <div class="line-text">
-        Ã‹shtÃ« mbajtur sot mÃ« datÃ«
+        Është mbajtur sot më datë
         <span class="u short"><?= $examDmy ? $e($examDmy) : '&nbsp;' ?></span>
-        provimi i programit tÃ« kursit tÃ« unifikuar
+        provimi i programit të kursit të unifikuar
         <span class="u long"><?= $courseName ? $e($courseName) : '&nbsp;' ?></span>
-        me orÃ« mÃ«simore
+        me orë mësimore
         <span class="u hours"><?= $hoursTxt ? $e($hoursTxt) : '&nbsp;' ?></span>
-        orÃ«.
+        orë.
       </div>
 
       <table class="pv">
@@ -382,13 +382,13 @@ function exportPdfProcesVerbal(
           <tr>
             <th class="col-nr">Nr</th>
             <th class="col-amza">Amza</th>
-            <th class="col-name">EmÃ«r AtÃ«si MbiemÃ«r</th>
-            <th class="col-birth">DatÃ«lindja</th>
+            <th class="col-name">Emër Atësi Mbiemër</th>
+            <th class="col-birth">Datëlindja</th>
             <th class="col-place">Vendlindja</th>
-            <th class="col-s">DatÃ« fillimi</th>
-            <th class="col-e">DatÃ« mbarimi</th>
-            <th class="col-ex">DatÃ« testimi</th>
-            <th class="col-final">VlerÃ«simi</th>
+            <th class="col-s">Datë fillimi</th>
+            <th class="col-e">Datë mbarimi</th>
+            <th class="col-ex">Datë testimi</th>
+            <th class="col-final">Vlerësimi</th>
           </tr>
         </thead>
         <tbody>
@@ -412,7 +412,7 @@ function exportPdfProcesVerbal(
       </table>
 
       <div class="cert">
-        KursantÃ« tÃ« certifikuar:
+        Kursantë të certifikuar:
         <span class="u"><?= $e((string)$pageTotal) ?></span>
       </div>
 
@@ -456,7 +456,7 @@ function exportPdfProcesVerbal(
 }
 
 /* =========================
-   EXPORT: DOCX (format i afÃ«rt si foto)
+   EXPORT: DOCX (format i afërt si foto)
 ========================= */
 function exportDocxProcesVerbal(
   string $logoPath,
@@ -493,18 +493,18 @@ function exportDocxProcesVerbal(
   }
 
   // Titles
-  $section->addText('QENDRA E TRAJNIMEVE TÃ‹ AVANCUARA', ['bold'=>true,'size'=>16], ['alignment'=>'center','spaceBefore'=>120]);
-  $section->addText('PROCES VERBAL VLERÃ‹SIMI PÃ‹RFUNDIMTAR', ['bold'=>true,'size'=>14], ['alignment'=>'center','spaceAfter'=>380]);
+  $section->addText('QENDRA E TRAJNIMEVE TË AVANCUARA', ['bold'=>true,'size'=>16], ['alignment'=>'center','spaceBefore'=>120]);
+  $section->addText('PROCES VERBAL VLERËSIMI PËRFUNDIMTAR', ['bold'=>true,'size'=>14], ['alignment'=>'center','spaceAfter'=>380]);
 
   // Line with underlined fields
   $run = $section->addTextRun(['alignment'=>'center']);
-  $run->addText('Ã‹shtÃ« mbajtur sot mÃ« datÃ« ');
+  $run->addText('Është mbajtur sot më datë ');
   $run->addText($examDmy ?: '     ', ['underline'=>'single']);
-  $run->addText('  provimi i programit tÃ« kursit tÃ« unifikuar ');
+  $run->addText('  provimi i programit të kursit të unifikuar ');
   $run->addText($courseName ?: '                              ', ['underline'=>'single']);
-  $run->addText('  me orÃ« mÃ«simore ');
+  $run->addText('  me orë mësimore ');
   $run->addText($hoursTxt ?: '   ', ['underline'=>'single']);
-  $run->addText(' orÃ«.');
+  $run->addText(' orë.');
 
   $section->addText('', [], ['spaceAfter'=>220]);
 
@@ -512,7 +512,7 @@ function exportDocxProcesVerbal(
   $phpWord->addTableStyle('pv', ['borderSize'=>8,'borderColor'=>'000000','cellMargin'=>80], []);
   $table = $section->addTable('pv');
 
-  $headers = ['Nr','Amza','EmÃ«r AtÃ«si MbiemÃ«r','DatÃ«lindja','Vendlindja','DatÃ« fillimi','DatÃ« mbarimi','DatÃ« testimi','VlerÃ«simi'];
+  $headers = ['Nr','Amza','Emër Atësi Mbiemër','Datëlindja','Vendlindja','Datë fillimi','Datë mbarimi','Datë testimi','Vlerësimi'];
 
   $table->addRow();
   foreach ($headers as $h) {
@@ -536,7 +536,7 @@ function exportDocxProcesVerbal(
 
   // Certified count
   $run2 = $section->addTextRun();
-  $run2->addText('KursantÃ« tÃ« certifikuar: ');
+  $run2->addText('Kursantë të certifikuar: ');
   $run2->addText((string)$totalCertified, ['underline'=>'single']);
 
   // Signatures (3 columns)
@@ -567,7 +567,7 @@ function exportDocxProcesVerbal(
 }
 
 /* =========================
-   EXPORT: XLSX (tabelÃ« e pastÃ«r)
+   EXPORT: XLSX (tabelë e pastër)
 ========================= */
 function exportXlsxProcesVerbal(array $rows, int $groupId): void {
   signal_download_ready();
@@ -576,7 +576,7 @@ function exportXlsxProcesVerbal(array $rows, int $groupId): void {
   $sheet = $spreadsheet->getActiveSheet();
   $sheet->setTitle('Proces Verbal');
 
-  $headers = ['Nr','Amza','EmÃ«r AtÃ«si MbiemÃ«r','DatÃ«lindja','Vendlindja','DatÃ« fillimi','DatÃ« mbarimi','DatÃ« testimi','VlerÃ«simi'];
+  $headers = ['Nr','Amza','Emër Atësi Mbiemër','Datëlindja','Vendlindja','Datë fillimi','Datë mbarimi','Datë testimi','Vlerësimi'];
 
   $r = 1;
   $c = 1;
