@@ -1068,19 +1068,9 @@ try {
 $groupInfo = $pdo->query("
   SELECT
     cg.id,
-    cg.start_date, cg.end_date, cg.is_completed,
-    c.name AS course_name,
-    MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
-    MAX(CAST(s.nr_amze AS UNSIGNED)) AS amze_max
+    cg.is_completed
   FROM course_groups cg
-  JOIN courses c ON c.id = cg.course_id
-  LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
-  LEFT JOIN students s ON s.id = cgs.student_id
-  GROUP BY cg.id
-  ORDER BY
-    (MIN(CAST(s.nr_amze AS UNSIGNED)) IS NULL) ASC,
-    MIN(CAST(s.nr_amze AS UNSIGNED)) ASC,
-    cg.id ASC
+  ORDER BY cg.id ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Flash mesazhe */
@@ -1247,11 +1237,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Grupe</h2>
     <div class="d-flex flex-wrap align-items-center page-toolbar">
-      <button class="btn btn-soft-success btn-pill" data-bs-toggle="modal" data-bs-target="#form1Modal" data-bs-title="Shkarko statistika për grupe">
-        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Formulari nr. 1
-      </button>
-      <button class="btn btn-soft-danger btn-pill" data-bs-toggle="modal" data-bs-target="#form2Modal" data-bs-title="Shkarko listë studentësh sipas AMZË">
-        <i class="bi bi-file-earmark-text me-1"></i> Formulari nr. 2
+      <button class="btn btn-soft-success btn-pill" data-bs-toggle="modal" data-bs-target="#qklReportModal" data-bs-title="Shkarko raportin për QKL">
+        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Raporti për QKL
       </button>
     </div>
   </div>
@@ -1697,9 +1684,8 @@ $toggleUrl = 'groups.php?' . http_build_query(array_filter([
   <?php endif; ?>
 </div>
 
-<!-- ===== Modalet e formularëve në partiale ===== -->
-<?php require __DIR__ . '/partials/form1_modal.php'; ?>
-<?php require __DIR__ . '/partials/form2_modal.php'; ?>
+<!-- ===== Modalet e shkarkimeve ===== -->
+<?php require __DIR__ . '/../shared/partials/qkl_report_modal.php'; ?>
 <?php require __DIR__ . '/partials/modal_download_proces_verbal.php'; ?>
 <?php require __DIR__ . '/partials/modal_download_praktika_profesionale.php'; ?>
 <?php require __DIR__ . '/partials/modal_download_rregullat_sigurimi_teknik.php'; ?>
@@ -1827,9 +1813,6 @@ const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
 /* Map: groupId -> completed (0/1) për konfirmime */
 const GROUP_COMPLETED = <?= json_encode(array_column($groupInfo, 'is_completed', 'id')) ?>;
-
-/* Mapping për hints e Formularit 1 */
-const GROUP_AMZE = <?= json_encode(array_column($groupInfo, null, 'id'), JSON_UNESCAPED_UNICODE) ?>;
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
@@ -2119,54 +2102,19 @@ if (toggleAllBtn){
   toggleAllBtn.addEventListener('click', ()=> setAll(!allOpen));
 }
 
-/* ===== Formulari nr.1 — Hints për AMZË & datat ===== */
-function updateForm1Hint(selId, hintId){
-  const sel  = document.getElementById(selId);
-  const hint = document.getElementById(hintId);
-  if (!sel || !hint) return;
-  const gid = sel.value ? Number(sel.value) : 0;
-  const meta = GROUP_AMZE[String(gid)] || null;
-  if (!gid || !meta){ hint.textContent = '(AMZË: —)'; return; }
-  const min = meta.amze_min ?? '—';
-  const max = meta.amze_max ?? '';
-  const range = (min==='—' ? '—' : (max ? `${min}–${max}` : `${min}`));
-  const s = `${isoToDmy(meta.start_date)} → ${isoToDmy(meta.end_date)}`;
-  hint.textContent = `(AMZË: ${range}; Datat: ${s})`;
-}
-['gstart','gend'].forEach(id=>{
-  const el = document.getElementById(id);
-  if (el){
-    el.addEventListener('change', ()=>{
-      updateForm1Hint('gstart','gstartHint');
-      updateForm1Hint('gend','gendHint');
-    });
-  }
-});
-
 /* ===== Eksportet (format buttons) + toast ===== */
-document.querySelectorAll('#form1Modal [data-dl]').forEach(btn=>{
+document.querySelectorAll('#qklReportModal [data-dl]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const format = btn.getAttribute('data-dl');
-    document.getElementById('form1Format').value = format;
-    notify('success', 'Shkarkimi po përgatitet (Formulari 1 · ' + format.toUpperCase() + ').');
-    document.getElementById('form1Export').submit();
-  });
-});
-document.querySelectorAll('#form2Modal [data-dl]').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const format = btn.getAttribute('data-dl');
-    document.getElementById('form2Format').value = format;
-    notify('success', 'Shkarkimi po përgatitet (Formulari 2 · ' + format.toUpperCase() + ').');
-    document.getElementById('form2Export').submit();
+    document.getElementById('qklReportFormat').value = format;
+    notify('success', 'Shkarkimi po përgatitet (Raporti për QKL · ' + format.toUpperCase() + ').');
+    document.getElementById('qklReportExport').submit();
   });
 });
 
 /* Compact spacing */
 document.addEventListener('DOMContentLoaded', ()=>{
   document.body.classList.add('compact');
-  // initialize default hints për Formularin 1
-  updateForm1Hint('gstart','gstartHint');
-  updateForm1Hint('gend','gendHint');
 
   function parseAmzeRangesClient(s){
     const out = new Set();
