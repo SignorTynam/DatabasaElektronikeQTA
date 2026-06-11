@@ -436,7 +436,7 @@ $NAV_ACTIVE = 'verify';
 <html lang="sq">
 <head>
   <meta charset="UTF-8">
-  <title>Verifikim – QTA</title>
+  <title>Verifikim publik i certifikatave QTA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Bootstrap & Icons -->
@@ -445,6 +445,7 @@ $NAV_ACTIVE = 'verify';
 
   <!-- QR lib -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <link href="app/assets/css/public.css" rel="stylesheet">
 
   <style>
     :root{
@@ -644,27 +645,25 @@ require_once __DIR__ . '/navbarMain.php';
   <div class="container container-max hero-inner">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div>
-        <span class="badge badge-chip rounded-pill mb-2">
-          <i class="bi bi-upc-scan me-1"></i> Verifikim publik • QTA
-        </span>
-        <h1 class="h3 fw-bold mb-1">Verifikim i certifikatave</h1>
+        <h1 class="h3 fw-bold mb-1">Verifikim publik i certifikatave QTA</h1>
         <div class="text-muted2">
-          Mbështet QR të <strong>studentit (SID)</strong> dhe <strong>personit (PID)</strong>. Rezultati shfaqet në kohë reale.
+          Skano QR, ngarko foto ose vendos linkun/token-in për të kontrolluar vlefshmërinë.
         </div>
 
         <div class="mt-2 d-flex flex-wrap gap-2">
-          <span class="mini-pill"><i class="bi bi-shield-check"></i> Anti-abuzim</span>
-          <span class="mini-pill"><i class="bi bi-camera-video"></i> Kamera / Foto</span>
-          <span class="mini-pill"><i class="bi bi-link-45deg"></i> Link i ndashëm</span>
+          <span class="mini-pill"><i class="bi bi-person-x"></i> Nuk kërkohet llogari</span>
+          <span class="mini-pill"><i class="bi bi-lightning-charge"></i> Verifikim në kohë reale</span>
+          <span class="mini-pill"><i class="bi bi-shield-check"></i> Të dhëna minimale</span>
+          <span class="mini-pill"><i class="bi bi-key"></i> QR/token unik</span>
         </div>
       </div>
 
       <div class="d-flex gap-2 align-items-center" id="topActions">
         <a href="index.php" class="btn btn-soft">
-          <i class="bi bi-house me-1"></i> Home
+          <i class="bi bi-house me-1"></i> Kryefaqja
         </a>
         <button type="button" class="btn btn-soft" id="themeToggle" aria-label="Ndrysho temën">
-          <i class="bi bi-moon-stars me-1"></i> Dark mode
+          <i class="bi bi-moon-stars me-1"></i> Modalitet i errët
         </button>
       </div>
     </div>
@@ -716,7 +715,7 @@ require_once __DIR__ . '/navbarMain.php';
                 <button class="btn btn-soft" id="btnFlip" type="button"><i class="bi bi-arrow-left-right me-1"></i>Kalo</button>
                 <button class="btn btn-soft" id="btnStopCam" type="button"><i class="bi bi-stop-circle me-1"></i>Ndalo</button>
               </div>
-              <div class="small text-muted2 ms-auto">Sugjerim: “Back/Rear” për fokus më të mirë.</div>
+              <div class="small text-muted2 ms-auto">Jepni lejen e kamerës dhe përdorni kamerën e pasme kur është e mundur.</div>
             </div>
           </div>
 
@@ -731,7 +730,7 @@ require_once __DIR__ . '/navbarMain.php';
                 Zgjidh skedar
                 <input id="fileInput" type="file" accept="image/*" hidden>
               </label>
-              <div class="text-muted2 mt-2">Mbështetur: JPG, PNG, WEBP…</div>
+              <div class="text-muted2 mt-2">Mbështetur: JPG, PNG, WEBP.</div>
             </div>
 
             <div class="d-flex gap-2 align-items-center">
@@ -746,7 +745,7 @@ require_once __DIR__ . '/navbarMain.php';
           <div class="tab-pane fade" id="pane-manual" role="tabpanel">
             <div class="input-group mb-2">
               <span class="input-group-text"><i class="bi bi-link-45deg"></i></span>
-              <input id="manualPayload" type="text" class="form-control" placeholder="Ngjit këtu stringun ose URL-në e QR">
+              <input id="manualPayload" type="text" class="form-control" placeholder="Vendos linkun e certifikatës ose tekstin e QR-së">
             </div>
 
             <div class="d-flex gap-2 mb-2">
@@ -934,7 +933,12 @@ require_once __DIR__ . '/navbarMain.php';
             <?php endif; ?>
           <?php else: ?>
             <div class="text-muted2">
-              Skanoni QR, ngarkoni foto ose ngjisni vlerën për verifikim. Rezultati do të shfaqet këtu.
+              <div class="result-empty">
+                <div>
+                  <i class="bi bi-qr-code-scan fs-1 d-block mb-3"></i>
+                  Rezultati do të shfaqet këtu pasi të skanoni ose vendosni kodin.
+                </div>
+              </div>
             </div>
           <?php endif; ?>
         </div>
@@ -945,6 +949,7 @@ require_once __DIR__ . '/navbarMain.php';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="app/assets/js/public.js" defer></script>
 
 <script>
 /* ===== Theme toggle (si te faqet e reja) ===== */
@@ -956,8 +961,8 @@ const setTheme = (t) => {
   if (themeBtn){
     const isDark = (t === 'dark');
     themeBtn.innerHTML = isDark
-      ? '<i class="bi bi-sun me-1"></i> Light mode'
-      : '<i class="bi bi-moon-stars me-1"></i> Dark mode';
+      ? '<i class="bi bi-sun me-1"></i> Modalitet i çelët'
+      : '<i class="bi bi-moon-stars me-1"></i> Modalitet i errët';
   }
 };
 const saved = localStorage.getItem('qta_theme');
@@ -978,6 +983,12 @@ let currentCamIndex = -1;
 const statusBanner = document.querySelector('.status-banner');
 const statusText   = document.getElementById('statusText');
 const camSelect    = document.getElementById('camSelect');
+
+function notify(message, variant='primary'){
+  if (window.qtaToast) {
+    window.qtaToast(message, variant);
+  }
+}
 
 function setStatus(label, variant){
   const chip = document.getElementById('statusChip');
@@ -1055,6 +1066,7 @@ async function startCameraByIndex(idx){
   } catch (err){
     try { await stopCamera(); } catch(e){}
     readerEl.innerHTML = '<div class="text-muted2 p-3">Kamera nuk është në dispozicion ose nuk u lejua.</div>';
+    notify('Kamera nuk u lejua ose nuk është në dispozicion.', 'warning');
     isCamRunning = false;
   }
 }
@@ -1071,6 +1083,7 @@ function onDecode(decodedText){
   if (isBusy) return;
   isBusy = true;
   lastPayload = decodedText;
+  notify('QR u lexua me sukses. Po kryhet verifikimi.', 'success');
   stopCamera();
   setStatus('Duke verifikuar...', 'secondary');
   doVerify(decodedText).finally(()=>{ isBusy = false; });
@@ -1096,8 +1109,10 @@ async function handleFile(file){
     setStatus('Duke verifikuar...', 'secondary');
     await doVerify(decodedText);
     setUploadMsg('U lexua me sukses.', true);
+    notify('QR u lexua nga fotoja.', 'success');
   } catch(err){
     setUploadMsg('Nuk u gjet QR në këtë imazh. Provo me foto më të qartë.');
+    notify('Fotoja nuk u lexua. Provoni një imazh më të qartë.', 'warning');
   }
 }
 document.getElementById('fileInput')?.addEventListener('change', (ev)=>{ handleFile(ev.target.files?.[0]); });
@@ -1252,6 +1267,7 @@ function renderResult(json, payloadUsed=''){
   } else {
     setStatus('INVALID', 'danger');
     const reason = json.reason || 'Token i pavlefshëm.';
+    notify('Token i pavlefshëm ose certifikata nuk u gjet.', 'danger');
     body.innerHTML = `
       <div class="alert alert-danger">
         <strong>INVALID:</strong> ${escapeHtml(reason)}<br>
@@ -1279,7 +1295,7 @@ document.getElementById('btnClear')?.addEventListener('click', ()=>{
   document.getElementById('manualPayload').value = '';
   lastPayload = '';
   setStatus('—','secondary');
-  document.getElementById('resultBody').innerHTML = '<div class="text-muted2">Skanoni QR, ngarkoni foto ose ngjisni vlerën për verifikim. Rezultati do të shfaqet këtu.</div>';
+  document.getElementById('resultBody').innerHTML = '<div class="result-empty"><div><i class="bi bi-qr-code-scan fs-1 d-block mb-3"></i>Rezultati do të shfaqet këtu pasi të skanoni ose vendosni kodin.</div></div>';
 });
 
 /* Share link (mbështet pid/sid) */
@@ -1312,8 +1328,8 @@ function buildShareFromPayload(raw){
 }
 document.getElementById('btnShare')?.addEventListener('click', async ()=>{
   const link = buildShareFromPayload(lastPayload);
-  if (!link){ alert('S’ka të dhëna të mjaftueshme për link. Skanoni ose ngjisni QR fillimisht.'); return; }
-  try{ await navigator.clipboard.writeText(link); }catch(e){}
+  if (!link){ notify('Nuk ka të dhëna të mjaftueshme për link. Skanoni ose ngjisni QR fillimisht.', 'warning'); return; }
+  try{ await navigator.clipboard.writeText(link); notify('Linku u kopjua.', 'success'); }catch(e){ notify('Kopjimi nuk u krye nga shfletuesi.', 'warning'); }
   const btn = document.getElementById('btnShare');
   const old = btn.innerHTML; btn.innerHTML = '<i class="bi bi-check2"></i>'; setTimeout(()=>btn.innerHTML=old, 900);
 });
