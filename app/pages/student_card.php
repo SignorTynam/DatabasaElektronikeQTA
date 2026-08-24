@@ -345,7 +345,16 @@ require __DIR__ . '/../shared/app_head.php';
   <?php endif; ?>
 
   <!-- HERO + SEARCH -->
-  <div class="hero p-3 p-md-4 mb-3">
+  <div class="title-block">
+      <div class="title-block-main">
+        <div class="title-block-eyebrow">Regjistri</div>
+        <h1>Kartela e kursantit</h1>
+        <p class="title-block-note">Kërko sipas emrit, numrit të amzës ose numrit personal.</p>
+      </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+    </div>
+
+    <div class="leaf leaf-pad mb-4">
     <form class="row g-2 align-items-end" method="get" action="student_card.php">
       <div class="col-md-9">
         <label class="form-label fs-5 mb-2">Kërko person / student</label>
@@ -616,7 +625,34 @@ require __DIR__ . '/../shared/app_head.php';
       <div class="col-12 col-lg-7">
         <div class="card h-100">
           <div class="card-header bg-white section-title"><i class="bi bi-graph-up-arrow"></i><span>Ecuria e pikëve</span></div>
-          <div class="card-body"><canvas id="chartScores" height="120"></canvas></div>
+          <div class="card-body">
+              <?php
+              $sMax = 0;
+              foreach ($series as $pt) { if ($pt['s'] !== null) { $sMax = max($sMax, (float)$pt['s']); } }
+              $sPts = array_values(array_filter($series, fn($r) => $r['s'] !== null));
+              ?>
+              <?php if ($sPts): ?>
+                <div class="bars" style="height:150px">
+                  <?php foreach ($sPts as $pt):
+                    $v = (float)$pt['s'];
+                    $pct = $sMax > 0 ? max(3, round($v / $sMax * 100)) : 3; ?>
+                    <div class="bar<?= $v == $sMax ? ' is-peak' : '' ?>" title="<?= h((string)$pt['d']) ?>: <?= h((string)$v) ?> pikë">
+                      <span class="bar-value"><?= h((string)round($v)) ?></span>
+                      <span class="bar-fill" style="height:<?= $pct ?>%"></span>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+                <div class="bars-axis">
+                  <?php foreach ($sPts as $pt): ?>
+                    <span><?= h(date('d.m', strtotime((string)$pt['d']))) ?></span>
+                  <?php endforeach; ?>
+                </div>
+              <?php else: ?>
+                <div class="blank" style="padding:2rem 1rem">
+                  <span class="blank-note">Ende asnjë provim i vlerësuar.</span>
+                </div>
+              <?php endif; ?>
+            </div>
         </div>
       </div>
       <div class="col-12 col-lg-5">
@@ -716,13 +752,7 @@ require __DIR__ . '/../shared/app_head.php';
 <!-- Floating action buttons -->
 <div class="fab-stack" role="group" aria-label="Veprime shpejta">
   <?php if ($CAN_EDIT): ?>
-    <a class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-secondary' ?>"
-       href="<?= h($toggleUrl) ?>"
-       title="Ndrysho gjendjen e Edit Mode">
-      <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
-      <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-    </a>
-  <?php endif; ?>
+<?php endif; ?>
 </div>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
@@ -940,27 +970,6 @@ document.getElementById('btnCopyPayload')?.addEventListener('click', async ()=>{
 /* Render inicial i QR */
 if (PERSON_QR_PAYLOAD) refreshQrUI();
 
-/* Grafik */
-<?php if ($person): ?>
-(()=>{
-  const labels = <?= json_encode(array_column($series,'d')) ?>;
-  const data   = <?= json_encode(array_map(fn($r)=> $r['s']!==null?(float)$r['s']:null, $series)) ?>;
-  const ctx = document.getElementById('chartScores');
-  if (!ctx) return;
-  new Chart(ctx, {
-    type:'line',
-    data:{
-      labels,
-      datasets:[{ label:'Pikë', data, tension:.35, fill:true, borderWidth:2 }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ display:false } },
-      scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true, suggestedMax:100 } }
-    }
-  });
-})();
-<?php endif; ?>
 </script>
 </body>
 </html>

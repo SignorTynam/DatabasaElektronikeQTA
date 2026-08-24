@@ -136,6 +136,24 @@ require __DIR__ . '/../shared/app_head.php';
 
 <main class="app-main">
 
+  <div class="title-block">
+    <div class="title-block-main">
+      <div class="title-block-eyebrow">Kartela ime</div>
+      <h1>Grupet e mia</h1>
+      <p class="title-block-note">Modulet ku je caktuar, datat dhe rezultatet.</p>
+    </div>
+    <div class="title-block-fields">
+      <div class="title-block-field">
+        <span class="label">Grupe</span>
+        <span class="value"><?= number_format((int)$k_total_groups) ?></span>
+      </div>
+      <div class="title-block-field">
+        <span class="label">Data</span>
+        <span class="value"><?= h(date('d.m.Y')) ?></span>
+      </div>
+    </div>
+  </div>
+
   <!-- Tabela: grupet (read-only) -->
   <section class="card">
     <div class="card-header bg-white d-flex align-items-center justify-content-between">

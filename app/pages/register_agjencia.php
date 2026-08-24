@@ -129,7 +129,11 @@ require __DIR__ . '/../shared/app_head.php';
 
 <main class="app-main">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Regjistri i studentëve</h2>
+    <div class="title-block-main">
+          <div class="title-block-eyebrow">Regjistri</div>
+          <h1>Regjistri i studentëve</h1>
+        </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
     <form class="d-flex" method="get" action="register_agjencia.php">
       <div class="input-group">
         <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>

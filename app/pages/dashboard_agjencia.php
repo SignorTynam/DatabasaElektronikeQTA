@@ -200,267 +200,228 @@ require __DIR__ . '/../shared/app_head.php';
 <?php require __DIR__ . '/inc/navbar2.php'; ?>
 
 <main class="app-main">
-  <!-- HERO -->
-  <section class="hero p-4 p-md-5 mb-4">
-    <div class="row align-items-center">
-      <div class="col-lg-8 pe-lg-5">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="chip">Paneli i Kompanisë</span>
-          <span class="small text-muted">QTA • Qendra e Trajnimeve të Avancuara</span>
-        </div>
-        <h1 class="fw-bold mb-2">Mirë se erdhe, <?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Kompani')) ?>!</h1>
-        <p class="mb-0 text-muted">Shih statusin e studentëve të kompanisë, grupet ku marrin pjesë dhe ngjarjet e afërta.</p>
-      </div>
-      <div class="col-lg-4 mt-4 mt-lg-0">
-        <div class="card text-dark">
-          <div class="card-body">
-            <div class="d-flex align-items-center">
-              <div class="icon me-3"><i class="bi bi-buildings fs-4"></i></div>
-              <div>
-                <div class="text-uppercase small text-muted">Kompania</div>
-                <div class="h5 mb-0"><?= h($COMPANY['company_name'] ?? '—') ?></div>
-                <div class="small text-muted">NIPT: <?= h($COMPANY['nip_t'] ?? '—') ?></div>
-                <div class="small text-muted">Tel: <?= h($COMPANY['phone'] ?? '—') ?> • <?= h($COMPANY['address'] ?? '') ?></div>
-              </div>
-            </div>
-            <div class="progress mt-3"><div class="progress-bar" style="width:100%"></div></div>
-            <div class="small text-muted mt-2">Status: Aktiv</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- KPIs (pa nota) -->
-  <section class="row g-4 mb-4 kpi">
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-people-fill fs-4 text-primary"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Studentë</div>
-            <div class="h3 mb-1"><?= number_format($studentsTotal) ?></div>
-            <span class="small text-muted">Pa grup: <?= number_format($noGroupCnt) ?></span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-collection fs-4 text-success"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Grupe</div>
-            <div class="h3 mb-1"><?= number_format($groupsCnt) ?></div>
-            <span class="small text-muted">Module: <?= number_format($coursesCnt) ?></span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-activity fs-4 text-warning"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Aktivitet sot</div>
-            <div class="h3 mb-1"><?= number_format($activeStudentsToday) ?></div>
-            <span class="small text-muted">Në grupe aktive: <?= number_format($activeGroupsToday) ?></span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center">
-          <div class="icon me-3"><i class="bi bi-flag fs-4 text-secondary"></i></div>
-          <div>
-            <div class="small text-muted text-uppercase">Prioritete</div>
-            <div class="h6 mb-0">Fillime & teste</div>
-            <span class="small text-muted">Shiko listat më poshtë</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <?php
+  /* Pamja mbështetet vetëm te variablat që logjika sipër i ka kufizuar
+     tashmë te kjo agjenci. Asnjë pyetje e re. */
+  $agencyName = trim((string)($COMPANY['name'] ?? $COMPANY['company_name'] ?? ''));
+  $agencyNipt = trim((string)($COMPANY['nipt'] ?? ''));
 
-  <!-- Charts -->
-  <section class="row g-4 mb-4">
-    <div class="col-12 col-xl-7">
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Studentë të rinj (8 javë)</h5>
+  $weeklyMax = 0;
+  foreach (($weekly ?? []) as $w) { $weeklyMax = max($weeklyMax, (int)$w['cnt']); }
+
+  $topMax = 0;
+  foreach (($topCourses ?? []) as $c) { $topMax = max($topMax, (int)$c['total_students']); }
+
+  $greetHour = (int)date('G');
+  $greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' : 'Mirëmbrëma');
+  $whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Agjenci')));
+  ?>
+
+  <div class="title-block">
+    <div class="title-block-main">
+      <div class="title-block-eyebrow">Fleta e agjencisë</div>
+      <h1><?= h($greeting) ?><?= $agencyName !== '' ? ', ' . h($agencyName) : ', ' . h($whoShort) ?></h1>
+      <p class="title-block-note">Punonjësit që keni regjistruar dhe grupet ku janë caktuar.</p>
+    </div>
+    <div class="title-block-fields">
+      <?php if ($agencyNipt !== ''): ?>
+        <div class="title-block-field">
+          <span class="label">NIPT</span>
+          <span class="value"><?= h($agencyNipt) ?></span>
         </div>
-        <div class="card-body">
-          <canvas id="chartWeekly" height="120"></canvas>
-        </div>
+      <?php endif; ?>
+      <div class="title-block-field">
+        <span class="label">Data</span>
+        <span class="value"><?= h(date('d.m.Y')) ?></span>
       </div>
     </div>
-    <div class="col-12 col-xl-5">
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i>Top 5 module (sipas regjistrimeve)</h5>
-        </div>
-        <div class="card-body">
-          <canvas id="chartTopCourses" height="120"></canvas>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Tables -->
-  <section class="row g-4">
-    <div class="col-12 col-xl-7">
-      <div class="card">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-collection me-2"></i>Kapacitetet e grupeve</h5>
-          <span class="text-muted small">Kufiri i grupit: 10 studentë</span>
-        </div>
-        <div class="card-body">
-          <div class="table-responsive mini-table">
-            <table class="table align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>Grupi</th>
-                  <th>Moduli</th>
-                  <th class="nowrap">Datat</th>
-                  <th class="nowrap">Testi</th>
-                  <th class="nowrap">Kapaciteti (tuaj)</th>
-                </tr>
-              </thead>
-              <tbody>
-              <?php if ($groupsCap): foreach ($groupsCap as $g):
-                $cnt = (int)$g['cnt_company']; $pct = min(100, (int)round(($cnt/10)*100));
-              ?>
-                <tr>
-                  <td>#<?= (int)$g['id'] ?></td>
-                  <td><?= h(($g['course_code'] ?? '').' · '.($g['course_name'] ?? '')) ?></td>
-                  <td class="nowrap"><?= h($g['start_date']) ?> – <?= h($g['end_date']) ?></td>
-                  <td class="nowrap"><?= h($g['exam_date'] ?? '—') ?></td>
-                  <td style="min-width:200px;">
-                    <div class="d-flex align-items-center">
-                      <div class="flex-grow-1 me-2">
-                        <div class="progress"><div class="progress-bar" style="width: <?= $pct ?>%"></div></div>
-                      </div>
-                      <span class="small text-muted"><?= $cnt ?>/10</span>
-                    </div>
-                  </td>
-                </tr>
-              <?php endforeach; else: ?>
-                <tr><td colspan="5" class="text-center text-muted">Nuk ka grupe.</td></tr>
-              <?php endif; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-xl-5">
-      <div class="card mb-4">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-calendar2-week me-2"></i>Ngjarje të afërta (30 ditë)</h5>
-        </div>
-        <div class="card-body">
-          <?php if ($upcoming): ?>
-            <ul class="list-group list-group-flush">
-              <?php foreach ($upcoming as $e):
-                $dStart = $e['start_date'] ?? null;
-                $dExam  = $e['exam_date']  ?? null;
-              ?>
-                <?php if ($dStart && $dStart >= date('Y-m-d') && $dStart <= date('Y-m-d', strtotime('+30 days'))): ?>
-                  <li class="list-group-item d-flex justify-content-between align-items-start">
-                    <div>
-                      <div class="fw-semibold"><?= h(($e['course_code'] ?? '').' · '.($e['course_name'] ?? '')) ?></div>
-                      <div class="small text-muted">Fillim: <?= h($dStart) ?> • Grupi #<?= (int)$e['gid'] ?></div>
-                    </div>
-                    <span class="badge rounded-pill text-bg-primary">Fillim</span>
-                  </li>
-                <?php endif; ?>
-                <?php if ($dExam && $dExam >= date('Y-m-d') && $dExam <= date('Y-m-d', strtotime('+30 days'))): ?>
-                  <li class="list-group-item d-flex justify-content-between align-items-start">
-                    <div>
-                      <div class="fw-semibold"><?= h(($e['course_code'] ?? '').' · '.($e['course_name'] ?? '')) ?></div>
-                      <div class="small text-muted">Test: <?= h($dExam) ?> • Grupi #<?= (int)$e['gid'] ?></div>
-                    </div>
-                    <span class="badge rounded-pill text-bg-success">Test</span>
-                  </li>
-                <?php endif; ?>
-              <?php endforeach; ?>
-            </ul>
-          <?php else: ?>
-            <p class="text-muted mb-0">Asnjë ngjarje e afërt.</p>
-          <?php endif; ?>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header bg-white">
-          <h6 class="mb-0"><i class="bi bi-person-dash me-2"></i>Studentë pa grup</h6>
-        </div>
-        <div class="card-body">
-          <?php if ($noGroupList): ?>
-            <ul class="list-group list-group-flush">
-              <?php foreach ($noGroupList as $s):
-                $full = trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??'')); ?>
-                <li class="list-group-item d-flex justify-content-between align-items-start">
-                  <div>
-                    <div class="fw-semibold"><?= h($full ?: '—') ?></div>
-                    <div class="small text-muted">AMZË: <?= h($s['nr_amze']) ?> · ID: <?= h($s['personal_number'] ?? '—') ?></div>
-                  </div>
-                  <span class="badge rounded-pill text-bg-secondary">Pezull</span>
-                </li>
-              <?php endforeach; ?>
-            </ul>
-          <?php else: ?>
-            <p class="text-muted mb-0">Të gjithë studentët janë në grupe.</p>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
   </div>
+
+  <!-- ============================================================== SHIFRAT -->
+  <section class="tally" aria-label="Gjendja e agjencisë">
+    <div class="tally-cell">
+      <span class="label">Punonjës</span>
+      <span class="tally-value"><?= number_format((int)$studentsTotal) ?></span>
+      <span class="tally-foot">të regjistruar</span>
+    </div>
+    <div class="tally-cell">
+      <span class="label">Grupe</span>
+      <span class="tally-value"><?= number_format((int)$groupsCnt) ?></span>
+      <span class="tally-foot"><?= number_format((int)$activeGroupsToday) ?> në zhvillim</span>
+    </div>
+    <div class="tally-cell">
+      <span class="label">Module</span>
+      <span class="tally-value"><?= number_format((int)$coursesCnt) ?></span>
+      <span class="tally-foot">zanate të ndjekura</span>
+    </div>
+    <div class="tally-cell<?= (int)$noGroupCnt > 0 ? ' is-hold' : '' ?>">
+      <span class="label">Pa grup</span>
+      <span class="tally-value"><?= number_format((int)$noGroupCnt) ?></span>
+      <span class="tally-foot">presin caktim</span>
+    </div>
+  </section>
+
+  <!-- =============================================================== RITMI -->
+  <?php if (!empty($weekly)): ?>
+    <section class="mb-5" aria-labelledby="agRhythm">
+      <div class="plate-head">
+        <h2 id="agRhythm">Ritmi i regjistrimeve</h2>
+        <span class="label">Punonjës për javë</span>
+      </div>
+      <div class="bars">
+        <?php foreach ($weekly as $w):
+          $n = (int)$w['cnt'];
+          $pct = $weeklyMax > 0 ? max(2, round($n / $weeklyMax * 100)) : 2; ?>
+          <div class="bar<?= $n === $weeklyMax ? ' is-peak' : '' ?>" title="<?= h((string)$w['label']) ?>: <?= $n ?>">
+            <span class="bar-value"><?= $n ?></span>
+            <span class="bar-fill" style="height:<?= $pct ?>%"></span>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <div class="bars-axis">
+        <?php foreach ($weekly as $w):
+          $lbl = (string)$w['label'];
+          $short = (strpos($lbl, '-W') !== false) ? substr($lbl, strpos($lbl, '-W') + 1) : $lbl; ?>
+          <span><?= h($short) ?></span>
+        <?php endforeach; ?>
+      </div>
+    </section>
+  <?php endif; ?>
+
+  <div class="row g-4 g-xl-5">
+
+    <!-- ============================================================ MODULET -->
+    <div class="col-12 col-xl-7">
+      <section aria-labelledby="agMod">
+        <div class="plate-head">
+          <h2 id="agMod">Zanatet e punonjësve tuaj</h2>
+          <a class="label" href="groups_agjencia.php">Grupet →</a>
+        </div>
+
+        <?php if (!empty($topCourses)): ?>
+          <div class="rank">
+            <?php foreach ($topCourses as $c):
+              $n = (int)$c['total_students'];
+              $pct = $topMax > 0 ? round($n / $topMax * 100) : 0; ?>
+              <div class="rank-row" title="<?= h((string)$c['name']) ?> — <?= $n ?> punonjës">
+                <span class="code"><?= h((string)$c['code']) ?></span>
+                <span class="rank-name"><?= h((string)$c['name']) ?></span>
+                <span class="rank-n"><?= $n ?></span>
+                <span class="rank-track"><span class="rank-bar" style="width:<?= $pct ?>%"></span></span>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php else: ?>
+          <div class="blank">
+            <span class="blank-title">Ende pa module</span>
+            <span class="blank-note">Sapo punonjësit të caktohen në grupe, zanatet shfaqen këtu.</span>
+          </div>
+        <?php endif; ?>
+      </section>
+    </div>
+
+    <!-- ============================================================= PA GRUP -->
+    <div class="col-12 col-xl-5">
+      <section aria-labelledby="agNoGroup">
+        <div class="plate-head">
+          <h2 id="agNoGroup">Presin caktim</h2>
+          <span class="label"><?= number_format((int)$noGroupCnt) ?> punonjës</span>
+        </div>
+
+        <?php if (!empty($noGroupList)): ?>
+          <div class="action-list">
+            <?php foreach (array_slice($noGroupList, 0, 8) as $i => $s):
+              $full = trim(((string)($s['first_name'] ?? '')) . ' ' . ((string)($s['last_name'] ?? ''))); ?>
+              <a class="action-row" href="register_agjencia.php">
+                <span class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></span>
+                <span class="action-main">
+                  <b style="font-family:var(--font-record);font-weight:500"><?= h($full !== '' ? $full : '—') ?></b>
+                  <span class="code"><?= h((string)($s['nr_amze'] ?? '')) ?></span>
+                </span>
+                <span class="action-count" style="font-size:var(--fs-sm)">
+                  <span class="state state-hold">Pa grup</span>
+                </span>
+              </a>
+            <?php endforeach; ?>
+          </div>
+          <?php if (count($noGroupList) > 8): ?>
+            <p class="muted" style="font-size:var(--fs-xs);margin-top:.7rem">
+              Edhe <?= number_format(count($noGroupList) - 8) ?> të tjerë —
+              <a href="register_agjencia.php">shihi të gjithë</a>.
+            </p>
+          <?php endif; ?>
+        <?php else: ?>
+          <div class="blank">
+            <span class="blank-title">Të gjithë janë caktuar</span>
+            <span class="blank-note">Asnjë punonjës nuk pret caktim në grup.</span>
+          </div>
+        <?php endif; ?>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============================================================== GRUPET -->
+  <?php if (!empty($groupsCap)): ?>
+    <section class="mt-5" aria-labelledby="agGroups">
+      <div class="plate-head">
+        <h2 id="agGroups">Grupet ku keni punonjës</h2>
+        <span class="label"><?= count($groupsCap) ?> zëra</span>
+      </div>
+
+      <div class="ledger">
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th class="no">Nr.</th>
+              <th>Moduli</th>
+              <th>Kodi</th>
+              <th>Nisi</th>
+              <th>Mbaron</th>
+              <th>Punonjësit tuaj</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($groupsCap as $i => $g): ?>
+              <tr>
+                <td class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></td>
+                <td><span class="person"><?= h((string)($g['name'] ?? $g['course_name'] ?? '—')) ?></span></td>
+                <td class="code"><?= h((string)($g['code'] ?? $g['course_code'] ?? '')) ?></td>
+                <td class="num"><?= !empty($g['start_date']) ? h(date('d.m.Y', strtotime((string)$g['start_date']))) : '—' ?></td>
+                <td class="num"><?= !empty($g['end_date']) ? h(date('d.m.Y', strtotime((string)$g['end_date']))) : '—' ?></td>
+                <td class="num"><?= number_format((int)($g['cnt_company'] ?? 0)) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  <?php endif; ?>
+
+  <!-- ============================================================= SHKO TE -->
+  <section class="mt-5" aria-labelledby="agGo">
+    <div class="plate-head"><h2 id="agGo">Shko te</h2></div>
+    <div class="row g-2">
+      <?php
+      $shortcuts = [
+        ['register_agjencia.php', 'Punonjësit',  'Regjistrimi dhe të dhënat'],
+        ['groups_agjencia.php',   'Grupet',      'Ku janë caktuar'],
+        ['profile.php',           'Profili',     'Të dhënat e agjencisë'],
+        ['verify.php',            'Verifiko',    'Kontrollo një certifikatë'],
+      ];
+      foreach ($shortcuts as $sc): ?>
+        <div class="col-12 col-sm-6 col-lg-3">
+          <a class="shortcut" href="<?= h($sc[0]) ?>">
+            <span><b><?= h($sc[1]) ?></b><span><?= h($sc[2]) ?></span></span>
+            <i class="bi bi-arrow-right arrow"></i>
+          </a>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  </section>
+
 </main>
 
-<!-- JS -->
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
-<script>
-/* Të dhënat për grafiqet (nga PHP) */
-const weeklyLabels = <?= json_encode(array_column($weekly, 'label')) ?>;
-const weeklyData   = <?= json_encode(array_map('intval', array_column($weekly, 'cnt'))) ?>;
-
-const topLabels = <?= json_encode(array_map(fn($r)=> ($r['code']??'').' · '.($r['name']??''), $topCourses)) ?>;
-const topData   = <?= json_encode(array_map('intval', array_column($topCourses, 'total_students'))) ?>;
-
-/* Chart: Studentë të rinj / javë */
-(() => {
-  const ctx = document.getElementById('chartWeekly');
-  if (!ctx) return;
-  new Chart(ctx, {
-    type: 'line',
-    data: { labels: weeklyLabels, datasets: [{ label: 'Studentë të rinj', data: weeklyData, tension: .35, fill: true, borderWidth: 2 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: { x: { grid: { display:false } }, y: { beginAtZero:true, ticks: { stepSize: 1 } } }
-    }
-  });
-})();
-
-/* Chart: Top module sipas regjistrimeve */
-(() => {
-  const ctx = document.getElementById('chartTopCourses');
-  if (!ctx) return;
-  new Chart(ctx, {
-    type: 'bar',
-    data: { labels: topLabels, datasets: [{ label: 'Regjistrime', data: topData, borderWidth: 1 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false, plugins: { legend: { display:false } },
-      scales: { x: { grid: { display:false } }, y: { beginAtZero:true, ticks: { stepSize: 1 } } }
-    }
-  });
-})();
-</script>
 </body>
 </html>

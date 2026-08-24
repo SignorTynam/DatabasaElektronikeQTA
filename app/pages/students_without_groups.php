@@ -394,9 +394,12 @@ require __DIR__ . '/../shared/app_head.php';
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="app-main">
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Studentë pa grupe</h2>
+    <div class="title-block-main">
+          <div class="title-block-eyebrow">Regjistri</div>
+          <h1>Studentë pa grupe</h1>
+        </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
     <div class="d-flex flex-wrap align-items-center page-toolbar"></div>
   </div>
 
@@ -610,16 +613,6 @@ require __DIR__ . '/../shared/app_head.php';
 </main>
 
 <!-- FAB: Edit Mode -->
-<div class="fab-stack" role="group" aria-label="Veprime shpejta">
-  <a id="editModeFab"
-     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
-     href="<?= h($toggleUrl) ?>"
-     title="Ndrysho gjendjen e Edit Mode">
-    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
-    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-  </a>
-</div>
-
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;

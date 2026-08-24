@@ -698,9 +698,12 @@ require __DIR__ . '/../shared/app_head.php';
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="app-main">
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Studentët</h2>
+    <div class="title-block-main">
+          <div class="title-block-eyebrow">Regjistri</div>
+          <h1>Studentët</h1>
+        </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
     <div class="page-toolbar"></div>
   </div>
 
@@ -1006,15 +1009,6 @@ require __DIR__ . '/../shared/app_head.php';
 
 <!-- FAB Stack: Edit Mode + Student i ri -->
 <div class="fab-stack" role="group" aria-label="Veprime shpejta">
-  <!-- Edit Mode -->
-  <a id="editModeFab"
-     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
-     href="<?= htmlspecialchars($toggleUrl) ?>"
-     title="Ndrysho gjendjen e Edit Mode">
-    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
-    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-  </a>
-
   <!-- Student i ri (vetëm kur Edit Mode = ON) -->
   <?php if ($EDIT_MODE): ?>
   <button class="fab-btn btn btn-primary"

@@ -166,15 +166,11 @@
 }
 
 /* ------------------------------------------------------------- Tabelat */
-.mini-table { overflow: hidden; border-radius: var(--r); }
-.mini-table thead,
-.mini-table thead th { background: var(--paper) !important; color: var(--pencil) !important; }
-.table-min th, .table-min td { padding: .45rem .6rem; }
-.compact .mini-table table.table > :not(caption) > * > * { padding: .3rem .45rem; }
+/* Stili i tabelave rri i tëri te app.css (§ Tabela e vetme e regjistrit).
+   Këtu mbeten vetëm gjerësitë e kolonave historike. */
 .col-actions { width: 92px; }
 .cell { min-width: 0; }
 .readonly { opacity: .7; }
-.inline-select { min-width: 130px; }
 .list-tight .list-group-item { padding: .6rem .75rem; }
 
 .truncate-2 {
@@ -216,49 +212,6 @@
 .status-banner.status-invalid { border-left-color: var(--seal) !important; }
 .status-banner.status-pending { border-left-color: var(--pencil) !important; }
 .status-alert i { opacity: .8; }
-
-/* -------------------------------------------------------- Ngjarjet e audit */
-/* Zërat e auditit janë rreshta regjistri: vijë ngjyre majtas, pa sfond kartash. */
-.ev {
-  border: 1px solid var(--rule) !important;
-  border-left: 4px solid var(--rule-strong) !important;
-  border-radius: var(--r-sm) !important;
-  background: var(--paper-raised) !important;
-  color: var(--ink);
-  box-shadow: none !important;
-}
-.ev + .ev { margin-top: .5rem; }
-.ev-insert { border-left-color: var(--ref) !important;  background: var(--paper-raised) !important; }
-.ev-update { border-left-color: var(--hold) !important; background: var(--paper-raised) !important; }
-.ev-delete { border-left-color: var(--seal) !important; background: var(--paper-raised) !important; }
-
-.diff-badge {
-  padding: .1rem .35rem;
-  border-radius: var(--r-sm);
-  font-family: var(--font-code);
-  font-size: var(--fs-xs);
-}
-.diff-old { background: var(--seal-wash) !important; color: var(--seal) !important; text-decoration: line-through; }
-.diff-new { background: var(--ref-wash) !important;  color: var(--ref) !important; }
-
-/* Ndarësi i ditës: si titulli i një fletë-ditari. */
-.day-header {
-  position: sticky;
-  top: var(--nav-h);
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: .6rem;
-  padding: .5rem 0 .3rem;
-  background: var(--paper);
-  border-bottom: 1px solid var(--rule);
-  font-family: var(--font-ui);
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
-  color: var(--pencil);
-}
 
 /* ---------------------------------------------------------- FAB-et e vjetra */
 /* Nga rrathë me hije te një radhë butonash të drejtë, si vula veprimi. */
@@ -362,3 +315,71 @@ html[data-theme="dark"] .fab-stack .fab-btn:hover { background: var(--ink); colo
 
 /* Ikonat Bootstrap brenda tekstit nuk duhet të dominojnë. */
 .qa .bi, .kpi .bi, .action-row .bi { opacity: .7; }
+
+/* ============================================================================
+   Rregullimet e fundit të markup-it historik
+   ========================================================================= */
+
+/* --- Butonat e eksportit ------------------------------------------------- */
+/* Ishin tri ngjyra Bootstrap-i (blu/kuqe/blu) që bënin zhurmë në kokë tabele.
+   Në një regjistër, formati i skedarit nuk është ngjyrë: është etiketë. */
+.btn-outline-success:has(.bi-file-earmark-excel),
+.btn-outline-success:has(.bi-file-earmark-word),
+.btn-outline-success:has(.bi-file-earmark-spreadsheet),
+.btn-outline-primary:has(.bi-file-earmark-word),
+.btn-outline-primary:has(.bi-file-earmark-excel),
+.btn-outline-primary:has(.bi-download),
+.btn-outline-secondary:has(.bi-download) {
+  border-color: var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+}
+.btn-outline-success:has(.bi-file-earmark-excel):hover,
+.btn-outline-success:has(.bi-file-earmark-word):hover,
+.btn-outline-success:has(.bi-file-earmark-spreadsheet):hover,
+.btn-outline-primary:has(.bi-file-earmark-word):hover,
+.btn-outline-primary:has(.bi-file-earmark-excel):hover,
+.btn-outline-primary:has(.bi-download):hover,
+.btn-outline-secondary:has(.bi-download):hover {
+  border-color: var(--ink);
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+/* PDF-ja mban të kuqen: është dokumenti zyrtar që del jashtë institucionit. */
+.btn-outline-danger:has(.bi-file-earmark-pdf) { border-color: var(--seal); color: var(--seal); }
+.btn-outline-danger:has(.bi-file-earmark-pdf):hover { background: var(--seal); color: #fff; }
+
+/* --- Select-et brenda tabelave ------------------------------------------- */
+/* Nuk duhet të lexohen si kuti: janë fusha të plotësuara në një rresht
+   regjistri. Prandaj rrinë të padukshme derisa t'i afrohesh. */
+.inline-select {
+  min-width: 120px;
+  padding: .12rem 1.35rem .12rem .3rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background-color: transparent;
+  background-position: right .3rem center;
+  background-size: 12px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+.inline-select:hover:not(:disabled) { border-color: var(--rule-strong); background-color: var(--paper-raised); }
+.inline-select:focus { border-color: var(--ref); background-color: var(--paper-raised); }
+.inline-select:disabled { background-color: transparent; color: var(--pencil); opacity: 1; }
+
+/* --- Tabelat e gjera rrëshqasin brenda vetes, jo faqja ------------------- */
+.table-responsive,
+.mini-table,
+.ledger { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* --- Shiriti "Edit Mode" -------------------------------------------------- */
+/* Gjendje, jo alarm: vijë ari majtas dhe asnjë ikonë e rëndë. */
+.app-main > .alert-warning:first-child {
+  border-left-color: var(--hold);
+  background: var(--hold-wash);
+}
+.app-main > .alert-warning:first-child .bi { color: var(--hold); }
+
+/* --- Kokat e kartave me veprime djathtas --------------------------------- */
+.card-header .btn-group .btn,
+.card-header .d-flex .btn { font-size: var(--fs-xs); }

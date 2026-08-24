@@ -195,7 +195,7 @@ function htmlTable(array $headers, array $data, string $title): string {
       h2 { margin:0 0 10px 0; }
       .meta { color:#555; margin-bottom:12px; }
       table { border-collapse: collapse; width: 100%; }
-      th, td { border:1px solid #ddd; padding:6px 8px; vertical-align: top; }
+      th, td { border:1px solid #bdb5a4; padding:6px 8px; vertical-align: top; }
       th { background:#f1f5f9; text-align:left; }
       tr:nth-child(even) td { background:#fafafa; }
     </style>

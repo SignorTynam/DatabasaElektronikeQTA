@@ -1110,9 +1110,12 @@ require __DIR__ . '/../shared/app_head.php';
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="app-main">
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Grupe</h2>
+    <div class="title-block-main">
+          <div class="title-block-eyebrow">Regjistri</div>
+          <h1>Grupe</h1>
+        </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
     <div class="d-flex flex-wrap align-items-center page-toolbar">
       <button class="btn btn-soft-success btn-pill" data-bs-toggle="modal" data-bs-target="#qklReportModal" data-bs-title="Shkarko raportin për QKL">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i> Raporti për QKL
@@ -1538,15 +1541,6 @@ require __DIR__ . '/../shared/app_head.php';
     <i class="bi bi-arrows-angle-expand" id="toggleAllIcon"></i>
     <span class="fab-text" id="toggleAllText">Zgjero të gjitha</span>
   </button>
-
-  <!-- Edit Mode -->
-  <a id="editModeFab"
-     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
-     href="<?= htmlspecialchars($toggleUrl) ?>"
-     title="Ndrysho gjendjen e Edit Mode">
-    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
-    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-  </a>
 
   <!-- Create Group (only when Edit Mode is ON) -->
   <?php if ($EDIT_MODE): ?>

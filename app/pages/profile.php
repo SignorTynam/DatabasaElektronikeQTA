@@ -168,14 +168,19 @@ elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
 <main class="app-main">
 
   <!-- HERO -->
-  <section class="hero hero-brand p-4 p-md-5 mb-4">
-    <div class="d-flex align-items-center gap-2 mb-2">
-      <span class="badge chip rounded-pill">Profili i përdoruesit</span>
-      <span class="small" style="opacity:.85">QTA • Qendra e Trajnimeve të Avancuara</span>
+  <div class="title-block">
+    <div class="title-block-main">
+      <div class="title-block-eyebrow">Profili</div>
+      <h1>Përshëndetje, <?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Përdorues')) ?></h1>
+      <p class="title-block-note">Të dhënat e llogarisë tënde. Çfarë mund të ndryshosh varet nga roli.</p>
     </div>
-    <h1 class="display-6 fw-bold mb-1">Përshëndetje, <?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Përdorues')) ?>!</h1>
-    <p class="mb-0">Këtu mund të menaxhosh të dhënat e profilit. Opsionet ndryshojnë sipas rolit.</p>
-  </section>
+    <div class="title-block-fields">
+      <div class="title-block-field">
+        <span class="label">Roli</span>
+        <span class="value" style="font-family:var(--font-record)"><?= h(ucfirst((string)$ROLE)) ?></span>
+      </div>
+    </div>
+  </div>
 
   <?php if ($m = flash('ok')): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">

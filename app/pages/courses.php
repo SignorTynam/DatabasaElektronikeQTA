@@ -227,7 +227,11 @@ require __DIR__ . '/../shared/app_head.php';
 
 <main class="app-main">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-        <h2 class="mb-0">Modulet</h2>
+        <div class="title-block-main">
+          <div class="title-block-eyebrow">Katalogu</div>
+          <h1>Modulet</h1>
+        </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
 
         <div class="d-flex align-items-center page-toolbar">
             <?php
@@ -236,13 +240,7 @@ require __DIR__ . '/../shared/app_head.php';
                 $qs['edit'] = $EDIT_MODE ? '0' : '1';
                 $toggleUrl = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
             ?>
-            <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
-               title="Ndrysho gjendjen e Edit Mode">
-                <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-                Edit Mode:
-                <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-            </a>
-        </div>
+</div>
     </div>
 
     <?php if (!$EDIT_MODE): ?>

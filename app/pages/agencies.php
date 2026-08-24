@@ -164,7 +164,11 @@ require __DIR__ . '/../shared/app_head.php';
 
 <main class="app-main">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Agjencitë & lidhja me studentët</h2>
+    <div class="title-block-main">
+          <div class="title-block-eyebrow">Regjistri</div>
+          <h1>Agjencitë & lidhja me studentët</h1>
+        </div>
+        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
 
     <!-- Toolbar: Edit Mode toggle -->
     <div class="d-flex align-items-center">
@@ -173,13 +177,7 @@ require __DIR__ . '/../shared/app_head.php';
         $qs['edit'] = $EDIT_MODE ? '0' : '1';
         $toggleUrl = 'agencies.php' . ($qs ? ('?' . http_build_query($qs)) : '');
       ?>
-      <a class="btn btn-pill <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>" href="<?= htmlspecialchars($toggleUrl) ?>"
-         title="Ndrysho gjendjen e Edit Mode">
-        <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?> me-1"></i>
-        Edit Mode:
-        <span class="badge ms-1 <?= $EDIT_MODE ? 'bg-light text-success' : 'bg-secondary' ?>"><?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-      </a>
-    </div>
+</div>
   </div>
 
   <?php if (!$EDIT_MODE): ?>

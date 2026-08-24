@@ -168,68 +168,6 @@ require_once __DIR__ . '/navbarMain.php';
 
   </div>
 </main>
-
-<?php if ($loginError): ?>
-        <div class="alert alert-danger d-flex gap-2" role="alert" aria-live="assertive">
-          <i class="bi bi-exclamation-triangle mt-1"></i>
-          <div>
-            <div class="fw-bold">Nuk u krye hyrja</div>
-            <div><?= h($loginError) ?></div>
-          </div>
-        </div>
-      <?php endif; ?>
-
-      <?php foreach ($roles as $key => $roleInfo): ?>
-        <form class="login-form <?= $key === $activeRole ? '' : 'd-none' ?>" data-role="<?= h($key) ?>"
-              action="login_handler.php" method="post" autocomplete="off" novalidate>
-          <input type="hidden" name="role" value="<?= h($key) ?>">
-          <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
-
-          <div class="mb-3">
-            <label class="form-label" for="identifier_<?= h($key) ?>"><?= h($roleInfo['field_label']) ?></label>
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi <?= $roleInfo['type'] === 'email' ? 'bi-envelope' : h($roleInfo['icon']) ?>"></i></span>
-              <input class="form-control" id="identifier_<?= h($key) ?>" name="identifier" type="<?= h($roleInfo['type']) ?>"
-                     placeholder="<?= h($roleInfo['placeholder']) ?>" required>
-              <div class="invalid-feedback">Plotësoni këtë fushë.</div>
-            </div>
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label" for="password_<?= h($key) ?>">Fjalëkalimi</label>
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi bi-lock"></i></span>
-              <input class="form-control login-password" id="password_<?= h($key) ?>" name="password" type="password"
-                     placeholder="Shkruani fjalëkalimin" required>
-              <button class="btn btn-outline-secondary" type="button" data-password-toggle="#password_<?= h($key) ?>"
-                      aria-label="Shfaq ose fsheh fjalëkalimin">
-                <i class="bi bi-eye"></i>
-              </button>
-              <div class="invalid-feedback">Shkruani fjalëkalimin.</div>
-            </div>
-            <div class="caps-warning d-none" data-caps-warning>
-              <i class="bi bi-exclamation-triangle me-1"></i>Caps Lock është aktivizuar.
-            </div>
-          </div>
-
-          <div class="alert alert-info mt-3">
-            Nëse nuk keni akses ose keni harruar të dhënat, kontaktoni administratën e QTA-së.
-          </div>
-
-          <button class="btn btn-primary btn-lg qta-btn w-100 mt-2" type="submit">
-            <i class="bi bi-box-arrow-in-right"></i><?= h($roleInfo['button']) ?>
-          </button>
-        </form>
-      <?php endforeach; ?>
-
-      <div class="d-flex flex-wrap gap-3 mt-4 pt-4 border-top" style="border-color: var(--qta-border) !important;">
-        <a href="verify.php"><i class="bi bi-qr-code-scan me-1"></i>Verifiko certifikatën pa hyrë</a>
-        <a href="contact.php"><i class="bi bi-headset me-1"></i>Kontakt për ndihmë</a>
-        <a href="index.php"><i class="bi bi-house me-1"></i>Kthehu në kryefaqe</a>
-      </div>
-    </section>
-  </section>
-</main>
 <?php if ($loginError): ?>
   <script>
     window.QTA_LOGIN_ERROR = <?= json_encode($loginError, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;

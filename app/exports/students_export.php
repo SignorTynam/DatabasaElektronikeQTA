@@ -384,8 +384,8 @@ function exportPdf(array $headers, array $data, string $filename): void {
         * { font-family: DejaVu Sans, sans-serif; font-size: 11px; }
         h3 { margin: 0 0 10px 0; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #999; padding: 4px 6px; }
-        th { background: #f1f3f5; }
+        th, td { border: 1px solid #bdb5a4; padding: 4px 6px; }
+        th { background: #ebe8df; }
       </style>
     </head>
     <body>

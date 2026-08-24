@@ -24,8 +24,8 @@ function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, '
 function nonEmpty(?string $s): bool { return $s !== null && $s !== ''; }
 function fmtDate(?string $v): string {
   if ($v === null || $v === '') return '—';
-  if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) { $ts = strtotime($v); return $ts ? date('d-m-Y', $ts) : h($v); }
-  if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $v)) { $ts = strtotime($v); return $ts ? date('d-m-Y H:i', $ts) : h($v); }
+  if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) { $ts = strtotime($v); return $ts ? date('d.m.Y', $ts) : h($v); }
+  if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $v)) { $ts = strtotime($v); return $ts ? date('d.m.Y H:i', $ts) : h($v); }
   return h($v);
 }
 function timeAgo(string $ts): string {
@@ -48,6 +48,10 @@ $tableLabels = [
   'courses'               => 'Modul',
   'course_groups'         => 'Grup kursi',
   'course_group_students' => 'Anëtar i grupit',
+  'student_course_plans'  => 'Plan moduli',
+  'education_levels'      => 'Nivel arsimi',
+  'genders'               => 'Gjini',
+  'agency_students'       => 'Punonjës agjencie',
 ];
 $columnLabels = [
   'users' => [
@@ -177,6 +181,7 @@ $table   = isset($_GET['table']) && $_GET['table'] !== '' ? $_GET['table'] : nul
 $q       = isset($_GET['q']) && $_GET['q'] !== '' ? trim($_GET['q']) : null;
 $from    = isset($_GET['from']) && $_GET['from'] !== '' ? $_GET['from'] : null; // YYYY-MM-DD
 $to      = isset($_GET['to'])   && $_GET['to']   !== '' ? $_GET['to']   : null;
+$who_id  = isset($_GET['who']) && $_GET['who'] !== '' ? (int)$_GET['who'] : null;
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $perPage = min(100, max(10, (int)($_GET['per'] ?? 25)));
 $offset  = ($page - 1) * $perPage;
@@ -185,12 +190,30 @@ $where = [];
 $params = [];
 if ($action) { $where[] = "ae.action = :action"; $params[':action'] = $action; }
 if ($table)  { $where[] = "ae.table_name = :table"; $params[':table'] = $table; }
+if ($who_id) { $where[] = "ae.user_id = :who"; $params[':who'] = $who_id; }
 if ($from)   { $where[] = "ae.happened_at >= :from"; $params[':from'] = $from.' 00:00:00'; }
 if ($to)     { $where[] = "ae.happened_at <= :to";   $params[':to']   = $to  .' 23:59:59'; }
-if ($q) { $where[] = "(u.full_name LIKE :q OR u.email LIKE :q OR INSTR(ae.row_pk, :q2) > 0)"; $params[':q'] = '%'.$q.'%'; $params[':q2'] = $q; }
+/* Kërkimi shikon edhe BRENDA të dhënave të ndryshuara — përndryshe kërkimi
+   i një kursanti me emër nuk kthente kurrë asgjë. */
+if ($q) {
+  $where[] = "(u.full_name LIKE :q OR u.email LIKE :q
+               OR ae.row_pk   LIKE :q
+               OR ae.old_data LIKE :q
+               OR ae.new_data LIKE :q)";
+  $params[':q'] = '%'.$q.'%';
+}
 $whereSql = $where ? ('WHERE '.implode(' AND ', $where)) : '';
 
 $tables = $pdo->query("SELECT DISTINCT table_name FROM audit_events ORDER BY table_name")->fetchAll(PDO::FETCH_COLUMN);
+
+/* Kush ka vepruar — për filtrin "Kush". */
+$actors = $pdo->query("
+  SELECT u.id, COALESCE(NULLIF(u.full_name,''), u.email, CONCAT('Përdorues #', u.id)) AS nm, COUNT(*) AS n
+  FROM audit_events ae
+  JOIN users u ON u.id = ae.user_id
+  GROUP BY u.id
+  ORDER BY n DESC
+")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 /* ===== Count & Fetch ===== */
 $cntSt = $pdo->prepare("SELECT COUNT(*) FROM audit_events ae LEFT JOIN users u ON u.id=ae.user_id $whereSql");
@@ -288,7 +311,10 @@ require __DIR__ . '/../shared/app_head.php';
   <!-- Header i thjeshtë -->
   <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
     <div class="d-flex align-items-center gap-3">
-      <h2 class="mb-0">Auditime</h2>
+      <div class="title-block-main">
+          <div class="title-block-eyebrow">Auditimi</div>
+          <h1>Auditime</h1>
+        </div>
       <span class="text-muted small"><?= number_format($total) ?> ngjarje</span>
     </div>
   </div>
@@ -400,194 +426,260 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
   </div>
 
-  <!-- Filtrat -->
-  <div class="card mb-4">
-    <div class="card-body">
+  <!-- ===================================================== FILTRAT ======== -->
+  <?php
+  $activeFilters = array_filter([
+    'Veprimi' => $action ? ['INSERT'=>'Shtime','UPDATE'=>'Ndryshime','DELETE'=>'Fshirje'][$action] : null,
+    'Zona'    => $table ? ($tableLabels[$table] ?? $table) : null,
+    'Kush'    => $who_id ? (function() use ($actors, $who_id) {
+                    foreach ($actors as $a) { if ((int)$a['id'] === $who_id) return $a['nm']; }
+                    return 'Përdorues #'.$who_id;
+                  })() : null,
+    'Nga'     => $from ?: null,
+    'Deri'    => $to ?: null,
+    'Kërkim'  => $q ?: null,
+  ]);
+  $today = date('Y-m-d');
+  $presets = [
+    'Sot'        => ['from' => $today,                              'to' => $today],
+    '7 ditë'     => ['from' => date('Y-m-d', strtotime('-6 days')), 'to' => $today],
+    '30 ditë'    => ['from' => date('Y-m-d', strtotime('-29 days')),'to' => $today],
+  ];
+  ?>
+
+  <section class="leaf mb-4" aria-labelledby="filtersTitle">
+    <div class="leaf-head">
+      <span class="ui-title" id="filtersTitle">Gjej një veprim</span>
+      <span class="label"><?= number_format($total) ?> rezultate</span>
+    </div>
+
+    <div class="leaf-body">
       <form class="row g-3 align-items-end" method="get" action="logs.php">
-        <div class="col-12 col-sm-6 col-md-2">
-          <label class="form-label">Veprimi</label>
-          <select class="form-select" name="action">
-            <option value="">Të gjitha</option>
-            <?php foreach (['INSERT'=>'Shtime','UPDATE'=>'Ndryshime','DELETE'=>'Fshirje'] as $code=>$label): ?>
+
+        <div class="col-12 col-lg-4">
+          <label class="label" for="fq">Kërko</label>
+          <input type="text" class="input" id="fq" name="q" value="<?= h($q) ?>"
+                 placeholder="Emër kursanti, AMZË, email, datë…">
+          <div class="filter-hint">
+            Kërkon edhe brenda vlerave që janë ndryshuar — p.sh. emri i një kursanti
+            ose një datë e vjetër.
+          </div>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <label class="label" for="faction">Çfarë ndodhi</label>
+          <select class="select" id="faction" name="action">
+            <option value="">Çdo veprim</option>
+            <?php foreach (['INSERT'=>'U shtua','UPDATE'=>'U ndryshua','DELETE'=>'U fshi'] as $code=>$label): ?>
               <option value="<?= $code ?>"<?= $action===$code?' selected':'' ?>><?= $label ?></option>
             <?php endforeach; ?>
           </select>
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <label class="form-label">Zona e sistemit</label>
-          <select class="form-select" name="table">
-            <option value="">Të gjitha</option>
+
+        <div class="col-6 col-lg-3">
+          <label class="label" for="ftable">Ku</label>
+          <select class="select" id="ftable" name="table">
+            <option value="">Kudo në regjistër</option>
             <?php foreach ($tables as $t): ?>
-              <option value="<?= h($t) ?>"<?= $table===$t?' selected':'' ?>><?= h($tableLabels[$t] ?? ucfirst($t)) ?></option>
+              <option value="<?= h($t) ?>"<?= $table===$t?' selected':'' ?>><?= h($tableLabels[$t] ?? ucfirst(str_replace('_',' ',$t))) ?></option>
             <?php endforeach; ?>
           </select>
         </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label">Nga data</label>
-          <input type="date" class="form-control" name="from" value="<?= h($from) ?>">
+
+        <div class="col-12 col-lg-3">
+          <label class="label" for="fwho">Kush</label>
+          <select class="select" id="fwho" name="who">
+            <option value="">Kushdo</option>
+            <?php foreach ($actors as $a): ?>
+              <option value="<?= (int)$a['id'] ?>"<?= $who_id===(int)$a['id']?' selected':'' ?>>
+                <?= h((string)$a['nm']) ?> (<?= number_format((int)$a['n']) ?>)
+              </option>
+            <?php endforeach; ?>
+          </select>
         </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label">Deri më</label>
-          <input type="date" class="form-control" name="to" value="<?= h($to) ?>">
+
+        <div class="col-6 col-lg-3">
+          <label class="label" for="ffrom">Nga data</label>
+          <input type="date" class="input" id="ffrom" name="from" value="<?= h($from) ?>">
         </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Kërko (emër, email, AMZË, ID)</label>
-          <input type="text" class="form-control" name="q" value="<?= h($q) ?>" placeholder="p.sh. Arben, 12345, QTA-ALGO">
+
+        <div class="col-6 col-lg-3">
+          <label class="label" for="fto">Deri më</label>
+          <input type="date" class="input" id="fto" name="to" value="<?= h($to) ?>">
         </div>
-        <div class="col-12 d-flex gap-2">
-          <button class="btn btn-primary"><i class="bi bi-filter me-1"></i>Zbato filtrat</button>
-          <a class="btn btn-outline-secondary" href="logs.php"><i class="bi bi-x-circle me-1"></i>Pastro</a>
-          <a class="btn btn-outline-success" href="<?= 'logs.php?'.h(http_build_query(array_merge($_GET, ['export'=>'csv']))) ?>">
-            <i class="bi bi-download me-1"></i>Eksporto CSV
+
+        <div class="col-12 col-lg-6">
+          <span class="label" style="margin-bottom:.35rem">Periudha të shpejta</span>
+          <div class="d-flex flex-wrap gap-2">
+            <?php foreach ($presets as $lbl => $rng):
+              $pq = array_merge($_GET, $rng); unset($pq['page']);
+              $isOn = ($from === $rng['from'] && $to === $rng['to']); ?>
+              <a class="btn btn-sm<?= $isOn ? ' btn-ink' : '' ?>"
+                 href="logs.php?<?= h(http_build_query($pq)) ?>"><?= h($lbl) ?></a>
+            <?php endforeach; ?>
+          </div>
+        </div>
+
+        <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+          <button class="btn btn-ink" type="submit">Zbato filtrat</button>
+          <?php if ($activeFilters): ?>
+            <a class="btn" href="logs.php">Pastro të gjitha</a>
+          <?php endif; ?>
+          <a class="btn ms-auto" href="<?= 'logs.php?'.h(http_build_query(array_merge($_GET, ['export'=>'csv']))) ?>">
+            <i class="bi bi-download"></i>Shkarko CSV
           </a>
         </div>
       </form>
-    </div>
-  </div>
 
-  <!-- Ngjarje, të grupuara sipas datës -->
+      <?php if ($activeFilters): ?>
+        <div class="filter-chips">
+          <span class="label">Po shikon:</span>
+          <?php foreach ($activeFilters as $k => $v):
+            $drop = $_GET;
+            unset($drop[['Veprimi'=>'action','Zona'=>'table','Kush'=>'who','Nga'=>'from','Deri'=>'to','Kërkim'=>'q'][$k]], $drop['page']); ?>
+            <a class="filter-chip" href="logs.php?<?= h(http_build_query($drop)) ?>"
+               title="Hiq këtë filtër">
+              <?= h($k) ?>: <b><?= h((string)$v) ?></b><span aria-hidden="true">×</span>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+    </div>
+  </section>
+
+  <!-- ===================================================== NGJARJET ======= -->
   <?php
-    // grupim sipas ditës
-    $byDay = [];
-    foreach ($events as $ev) {
-      $day = substr((string)$ev['happened_at'], 0, 10);
-      $byDay[$day][] = $ev;
-    }
+  $byDay = [];
+  foreach ($events as $ev) {
+    $byDay[substr((string)$ev['happened_at'], 0, 10)][] = $ev;
+  }
   ?>
 
   <?php if (!$events): ?>
-    <div class="text-center text-muted py-5">S’ka rezultate për filtrat e zgjedhur.</div>
-  <?php else: ?>
-    <?php foreach ($byDay as $day => $rows): ?>
-      <div class="day-header d-flex align-items-center gap-2 mt-2 mb-1">
-        <i class="bi bi-calendar3"></i>
-        <strong><?= fmtDate($day) ?></strong>
-        <span class="badge text-bg-secondary"><?= count($rows) ?></span>
-      </div>
-
-      <?php foreach ($rows as $ev):
-        $eid = (int)$ev['id'];
-        $pk  = json_decode($ev['row_pk'] ?? 'null', true) ?: [];
-        $act = $ev['action'];
-        $class = $act==='INSERT' ? 'ev-insert' : ($act==='UPDATE' ? 'ev-update' : 'ev-delete');
-        $icon  = $act==='INSERT' ? 'plus-circle' : ($act==='UPDATE' ? 'arrow-repeat' : 'trash');
-        $labelAct = $act==='INSERT' ? 'shtoi' : ($act==='UPDATE' ? 'ndryshoi' : 'fshiu');
-
-        $subject = subjectFor($pdo, (string)$ev['table_name'], $pk, $tableLabels);
-        $who = $ev['full_name'] ?: ($ev['email'] ?? '—');
-        $zoneLabel = $tableLabels[$ev['table_name']] ?? $ev['table_name'];
-        $zoneIcon  = $tableIcons[$ev['table_name']] ?? 'grid';
-
-        // përmbledhje njerëzore e ndryshimeve
-        $diffs = $fields[$eid] ?? [];
-        $translated = $columnLabels[$ev['table_name']] ?? [];
-        $human = [];
-        foreach ($diffs as $f) {
-          $col = (string)$f['column_name'];
-          $label = $translated[$col] ?? ucfirst(str_replace('_',' ',$col));
-          $old = prettyValue($pdo, $ev['table_name'], $col, $f['old_value']);
-          $new = prettyValue($pdo, $ev['table_name'], $col, $f['new_value']);
-          if ($act==='INSERT') $human[] = "<span class=\"diff-badge diff-new\">$label: $new</span>";
-          elseif ($act==='DELETE') $human[] = "<span class=\"diff-badge diff-old\">$label: $old</span>";
-          else $human[] = "<span class=\"diff-badge diff-old\">$label: $old</span> → <span class=\"diff-badge diff-new\">$new</span>";
-        }
-        $summaryHtml = $human ? implode(' &nbsp; ', array_slice($human,0,6)).(count($human)>6?' …':'') : '—';
-        $collapseId = 'ev'.$eid;
-        $jsonId = 'raw'.$eid;
-      ?>
-        <div class="ev <?= $class ?> p-3">
-          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-            <div class="d-flex align-items-start gap-2">
-              <div class="mt-1"><i class="bi bi-<?= $icon ?>"></i></div>
-              <div>
-                <div class="fw-semibold">
-                  <?= h($who) ?> <span class="text-muted fw-normal"><?= $labelAct ?></span>
-                  <span class="fw-semibold"><?= h($zoneLabel) ?></span>
-                </div>
-                <div class="small text-muted">
-                  <?= h($subject) ?> • <?= h($ev['happened_at']) ?> (<?= h(timeAgo($ev['happened_at'])) ?>)
-                </div>
-              </div>
-            </div>
-
-            <div class="text-end small">
-              <div class="text-muted"><i class="bi bi-<?= $zoneIcon ?>"></i> <?= h($zoneLabel) ?></div>
-              <div class="mt-1"><span class="text-muted">IP:</span> <code><?= h($ev['ip_address'] ?? '—') ?></code></div>
-              <div class="mt-1"><span class="text-muted">ID:</span> <code>#<?= $eid ?></code></div>
-            </div>
-          </div>
-
-          <div class="mt-2"><?= $summaryHtml ?></div>
-
-          <div class="mt-2 text-end">
-            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#<?= $collapseId ?>">
-              <i class="bi bi-chevron-down me-1"></i>Detaje
-            </button>
-          </div>
-
-          <div class="collapse mt-2" id="<?= $collapseId ?>">
-            <div class="row g-2">
-              <div class="col-lg-7">
-                <div class="border rounded p-2 bg-white">
-                  <div class="small text-muted mb-2"><i class="bi bi-list-check me-1"></i>Ndryshimet fushë-për-fushë</div>
-                  <div class="table-responsive">
-                    <table class="table table-sm mb-0">
-                      <thead class="table-light">
-                        <tr><th>Fusha</th><th class="w-50">Vlera e vjetër</th><th class="w-50">Vlera e re</th></tr>
-                      </thead>
-                      <tbody>
-                        <?php if ($diffs): foreach ($diffs as $f):
-                          $col = (string)$f['column_name'];
-                          $label = ($columnLabels[$ev['table_name']][$col] ?? ucfirst(str_replace('_',' ',$col)));
-                          $old = prettyValue($pdo, $ev['table_name'], $col, $f['old_value']);
-                          $new = prettyValue($pdo, $ev['table_name'], $col, $f['new_value']);
-                        ?>
-                        <tr>
-                          <td class="small"><?= h($label) ?></td>
-                          <td class="small"><?= $ev['action']==='INSERT' ? '—' : $old ?></td>
-                          <td class="small"><?= $ev['action']==='DELETE' ? '—' : $new ?></td>
-                        </tr>
-                        <?php endforeach; else: ?>
-                        <tr><td colspan="3" class="text-muted">S’ka diferenca të regjistruara.</td></tr>
-                        <?php endif; ?>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-              <div class="col-lg-5">
-                <div class="border rounded p-2 bg-white">
-                  <div class="d-flex align-items-center justify-content-between">
-                    <div class="small text-muted"><i class="bi bi-gear-wide-connected me-1"></i>Detaje teknike (opsionale)</div>
-                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $jsonId ?>">
-                      Shfaq/Fsheh JSON
-                    </button>
-                  </div>
-                  <?php
-                    $j = $pdo->prepare("SELECT old_data, new_data, user_agent FROM audit_events WHERE id = ?");
-                    $j->execute([$eid]); $jd = $j->fetch(PDO::FETCH_ASSOC) ?: [];
-                  ?>
-                  <div class="collapse mt-2" id="<?= $jsonId ?>">
-                    <div class="small mb-1"><span class="badge text-bg-secondary">UA</span> <?= h($jd['user_agent'] ?? '') ?></div>
-                    <div class="row g-2">
-                      <div class="col-md-6">
-                        <div class="small text-muted mb-1">old_data</div>
-                        <pre class="mb-0" style="white-space:pre-wrap; font-family:ui-monospace; font-size:.8rem;"><?= h($jd['old_data'] ?: 'null') ?></pre>
-                      </div>
-                      <div class="col-md-6">
-                        <div class="small text-muted mb-1">new_data</div>
-                        <pre class="mb-0" style="white-space:pre-wrap; font-family:ui-monospace; font-size:.8rem;"><?= h($jd['new_data'] ?: 'null') ?></pre>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div><!-- /row -->
-          </div><!-- /collapse -->
-        </div>
-      <?php endforeach; ?>
-    <?php endforeach; ?>
+    <div class="blank">
+      <span class="blank-title">Asnjë veprim nuk përputhet</span>
+      <span class="blank-note">
+        Provo të heqësh një filtër, ose zgjero periudhën.
+        <?php if ($q): ?>Kërkimi <b><?= h($q) ?></b> nuk u gjet as te emrat, as brenda vlerave të ndryshuara.<?php endif; ?>
+      </span>
+      <a class="btn btn-sm mt-2" href="logs.php">Pastro filtrat</a>
+    </div>
   <?php endif; ?>
+
+  <?php foreach ($byDay as $day => $rows): ?>
+
+    <div class="day-header">
+      <span><?= h(fmtDate($day)) ?></span>
+      <span class="num"><?= count($rows) ?> veprime</span>
+    </div>
+
+    <?php foreach ($rows as $ev):
+      $eid  = (int)$ev['id'];
+      $pk   = json_decode((string)($ev['row_pk'] ?? 'null'), true) ?: [];
+      $act  = (string)$ev['action'];
+
+      /* Fjalia thuhet me folje të plotë, jo me etiketë teknike. */
+      $verb = $act === 'INSERT' ? 'shtoi' : ($act === 'UPDATE' ? 'ndryshoi' : 'fshiu');
+      $kind = $act === 'INSERT' ? 'is-add' : ($act === 'UPDATE' ? 'is-edit' : 'is-del');
+
+      $subject   = subjectFor($pdo, (string)$ev['table_name'], $pk, $tableLabels);
+      $who       = (string)($ev['full_name'] ?: ($ev['email'] ?? 'Përdorues i panjohur'));
+      $zoneLabel = $tableLabels[$ev['table_name']] ?? (string)$ev['table_name'];
+
+      $diffs      = $fields[$eid] ?? [];
+      $translated = $columnLabels[$ev['table_name']] ?? [];
+
+      /* Ndryshimet ndërtohen si çifte, që të shfaqen si tabelë e vogël. */
+      $changes = [];
+      foreach ($diffs as $f) {
+        $col   = (string)$f['column_name'];
+        $label = $translated[$col] ?? ucfirst(str_replace('_', ' ', $col));
+        $changes[] = [
+          'label' => $label,
+          'old'   => prettyValue($pdo, (string)$ev['table_name'], $col, $f['old_value']),
+          'new'   => prettyValue($pdo, (string)$ev['table_name'], $col, $f['new_value']),
+        ];
+      }
+      $shown  = array_slice($changes, 0, 4);
+      $hidden = max(0, count($changes) - count($shown));
+      ?>
+
+      <article class="entry <?= h($kind) ?>">
+
+        <div class="entry-head">
+          <p class="entry-line">
+            <b><?= h($who) ?></b> <?= h($verb) ?>
+            <span class="entry-subject"><?= $subject ?></span>
+          </p>
+          <time class="entry-when" datetime="<?= h((string)$ev['happened_at']) ?>"
+                title="<?= h((string)$ev['happened_at']) ?>">
+            <?= h(date('H:i', strtotime((string)$ev['happened_at']))) ?>
+            · <?= h(timeAgo((string)$ev['happened_at'])) ?>
+          </time>
+        </div>
+
+        <?php if ($changes): ?>
+          <dl class="entry-changes">
+            <?php foreach ($shown as $c): ?>
+              <div class="entry-change">
+                <dt><?= h($c['label']) ?></dt>
+                <dd>
+                  <?php if ($act === 'INSERT'): ?>
+                    <span class="val val-new"><?= $c['new'] ?></span>
+                  <?php elseif ($act === 'DELETE'): ?>
+                    <span class="val val-old"><?= $c['old'] ?></span>
+                  <?php else: ?>
+                    <span class="val val-old"><?= $c['old'] ?></span>
+                    <span class="val-arrow" aria-label="u bë">→</span>
+                    <span class="val val-new"><?= $c['new'] ?></span>
+                  <?php endif; ?>
+                </dd>
+              </div>
+            <?php endforeach; ?>
+          </dl>
+
+          <?php if ($hidden > 0): ?>
+            <button class="entry-more" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#more<?= $eid ?>">
+              Edhe <?= $hidden ?> ndryshim<?= $hidden === 1 ? '' : 'e' ?>
+            </button>
+            <div class="collapse" id="more<?= $eid ?>">
+              <dl class="entry-changes">
+                <?php foreach (array_slice($changes, 4) as $c): ?>
+                  <div class="entry-change">
+                    <dt><?= h($c['label']) ?></dt>
+                    <dd>
+                      <?php if ($act === 'INSERT'): ?>
+                        <span class="val val-new"><?= $c['new'] ?></span>
+                      <?php elseif ($act === 'DELETE'): ?>
+                        <span class="val val-old"><?= $c['old'] ?></span>
+                      <?php else: ?>
+                        <span class="val val-old"><?= $c['old'] ?></span>
+                        <span class="val-arrow">→</span>
+                        <span class="val val-new"><?= $c['new'] ?></span>
+                      <?php endif; ?>
+                    </dd>
+                  </div>
+                <?php endforeach; ?>
+              </dl>
+            </div>
+          <?php endif; ?>
+        <?php else: ?>
+          <p class="entry-nochange">Nuk u regjistrua asnjë ndryshim fushe.</p>
+        <?php endif; ?>
+
+        <div class="entry-foot">
+          <span><?= h($zoneLabel) ?></span>
+          <span class="num">#<?= $eid ?></span>
+          <?php if (!empty($ev['ip_address'])): ?>
+            <span class="num"><?= h((string)$ev['ip_address']) ?></span>
+          <?php endif; ?>
+        </div>
+
+      </article>
+    <?php endforeach; ?>
+  <?php endforeach; ?>
+
 
   <!-- Pagination -->
   <?php

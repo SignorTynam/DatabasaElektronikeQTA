@@ -622,9 +622,9 @@ require_once __DIR__ . '/navbarMain.php';
         </div>
       </div>
 
-      <div class="soft-card p-0">
-        <div class="d-flex align-items-center justify-content-between px-4 py-3 border-bottom" style="border-color: rgba(148,163,184,.18) !important;">
-          <div class="fw-semibold"><i class="bi bi-patch-check me-1"></i> Rezultati i verifikimit</div>
+      <div class="leaf">
+        <div class="leaf-head">
+          <span class="ui-title">Rezultati i verifikimit</span>
           <span id="statusChip" class="badge <?= $prefillResult ? ($prefillResult['valid']?'text-bg-success':'text-bg-danger') : 'text-bg-secondary' ?>">
             <?= $prefillResult ? ($prefillResult['valid']?'VALID':'INVALID') : '—' ?>
           </span>

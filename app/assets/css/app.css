@@ -291,6 +291,63 @@ body { padding-top: calc(var(--nav-h) + 2px); }
 }
 
 /* ------------------------------------------------------- 5. Trupi i faqes */
+
+/* Trupi i çdo faqeje paneli. 18 faqe e mbajnë këtë klasë që nga versioni i
+   vjetër — këtu ajo bëhet vetë fleta, që të gjitha të marrin të njëjtat
+   margjina, të njëjtën gjerësi dhe të njëjtin frymëmarrje si dashboard-i. */
+.app-main {
+  display: block;
+  width: min(1680px, 100%);
+  margin-inline: auto;
+  padding: clamp(1.1rem, 2.2vw, 1.75rem) clamp(1rem, 2.4vw, 2rem) 5rem;
+}
+
+/* Faqet me tabela shumë të gjera marrin gjithë gjerësinë e disponueshme. */
+.app-main > .container-max,
+.app-main > .container,
+.app-main > .container-fluid {
+  width: 100%;
+  max-width: none;
+  padding-inline: 0;
+  margin-inline: 0;
+}
+
+/* ---------------------------------------------- Koka e faqeve të panelit */
+/* Faqet historike e hapin trupin me një rresht flex: titull majtas, mjete
+   djathtas. Ai rresht këtu bëhet bllok titulli — vijë boje 2px poshtë — pa u
+   prekur struktura e tyre. :has() e gjen rreshtin që mban titullin. */
+.app-main > div:has(.title-block-main) {
+  align-items: flex-end !important;
+  gap: 1rem 2rem !important;
+  padding-bottom: .9rem;
+  margin-bottom: 1.5rem !important;
+  border-bottom: 2px solid var(--ink);
+}
+/* Mbështjellësit e brendshëm nuk e përsërisin vijën. */
+.app-main > div:has(.title-block-main) div:has(> .title-block-main) {
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin-bottom: 0 !important;
+  align-items: flex-end;
+}
+
+.title-block-main > h1 {
+  font-family: var(--font-record);
+  font-size: clamp(1.5rem, 2.6vw, 2.125rem);
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: var(--track-tight);
+  color: var(--ink);
+  margin: 0;
+}
+
+/* Mjetet e faqes rrinë në vijë me bazën e titullit, jo në qendër. */
+.app-main > div:has(.title-block-main) > .page-toolbar,
+.app-main > div:has(.title-block-main) > .d-flex { align-self: flex-end; }
+
+/* Shiriti "Edit Mode OFF" nuk është pjesë e fletës: rri sipër saj, i qetë. */
+.app-main > .alert:first-child { margin-bottom: 1.25rem; }
+
 /* Zërat e punës: rreshta regjistri me numër në margjinë. */
 .action-list { display: grid; border-top: 1px solid var(--rule); }
 .action-row {
@@ -355,7 +412,9 @@ body { padding-top: calc(var(--nav-h) + 2px); }
 html[data-theme="dark"] .btn-fab:hover,
 html[data-theme="dark"] .fab:hover { background: #fff; color: #000; }
 
-.to-top {
+/* I njëjti buton në panel dhe në faqet publike: një emër, një pamje. */
+.to-top,
+.app-back-top {
   position: fixed;
   right: 20px;
   bottom: 74px;
@@ -372,8 +431,8 @@ html[data-theme="dark"] .fab:hover { background: #fff; color: #000; }
   pointer-events: none;
   transition: opacity var(--t) var(--ease), color var(--t-fast) var(--ease);
 }
-.to-top.is-on { opacity: 1; pointer-events: auto; }
-.to-top:hover { color: var(--ink); }
+.to-top.is-on, .app-back-top.is-on { opacity: 1; pointer-events: auto; }
+.to-top:hover, .app-back-top:hover { color: var(--ink); border-color: var(--ink); }
 
 /* Qelizat e editueshme: nënvizim me laps, jo kuti me sfond. */
 .editable {
@@ -578,17 +637,7 @@ a.rank-row:hover { background: var(--paper-tint); color: var(--ink); text-decora
   color: var(--ink);
 }
 
-/* Titull i vogël seksioni brenda fletës së punës. */
-.plate-head {
-  display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  padding-bottom: .5rem;
-  margin-bottom: .9rem;
-  border-bottom: 1px solid var(--rule);
-}
-.plate-head h2 { font-size: var(--fs-xl); }
-.plate-head .label { margin-left: auto; }
+/* .plate-head përkufizohet te protokoll.css — komponent i përbashkët. */
 
 @media (max-width: 575.98px) {
   .bars { height: 140px; }
@@ -600,3 +649,472 @@ a.rank-row:hover { background: var(--paper-tint); color: var(--ink); text-decora
 /* Renditje pa kod moduli — p.sh. vendlindja. */
 .rank-row-2col { grid-template-columns: minmax(0, 1fr) 2.9rem; }
 .rank-row-2col .rank-track { grid-column: 1 / 2; }
+
+/* ============================================================================
+   Mbrojtja nga rrëshqitja horizontale
+   ----------------------------------------------------------------------------
+   Faqet historike përdorin rreshta flex që nuk mbështillen. Në ekran të vogël
+   ato e shtynin gjithë faqen anash. Këtu ato lejohen të bien në rresht të ri.
+   ========================================================================= */
+@media (max-width: 767.98px) {
+  .app-main .d-flex:not(.flex-nowrap):not(.text-nowrap) { flex-wrap: wrap; }
+  .app-main .d-flex > * { min-width: 0; }
+  .app-main .btn-group { flex-wrap: wrap; }
+}
+
+/* Kokëfleta nuk zgjerohet kurrë përtej ekranit. */
+.app-bar-inner { max-width: 100%; }
+.app-mark { min-width: 0; }
+.app-mark-name { min-width: 0; overflow: hidden; }
+.app-mark-name b,
+.app-mark-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-tools { min-width: 0; flex-shrink: 0; }
+
+@media (max-width: 420px) {
+  .app-mark-name { display: none; }
+}
+
+/* ============================================================================
+   Kyçi i regjistrit — një kontroll i vetëm për Edit Mode
+   ----------------------------------------------------------------------------
+   Më parë e njëjta gjë kishte tri pamje: pilulë në toolbar, FAB pluskues dhe
+   shirit paralajmërimi. Tani është një fushë e vetme, gjithnjë në të njëjtin
+   vend: djathtas bllokut të titullit.
+   ========================================================================= */
+.edit-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .4rem .5rem .4rem .7rem;
+  border: 1px solid var(--rule-strong);
+  border-left: 4px solid var(--pencil);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  white-space: nowrap;
+}
+.edit-lock.is-open { border-left-color: var(--ref); background: var(--ref-wash); }
+
+.edit-lock-state { display: inline-flex; align-items: center; gap: .5rem; }
+.edit-lock-state > .bi { font-size: 1rem; color: var(--pencil); }
+.edit-lock.is-open .edit-lock-state > .bi { color: var(--ref); }
+.edit-lock-state .label { line-height: 1.1; }
+.edit-lock-state b {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+/* Kur regjistri është i mbyllur, fushat lexohen si tekst, jo si kontrolle. */
+.editing-off .editable,
+.editing-off .inline-select:disabled { color: var(--pencil); }
+
+@media (max-width: 575.98px) {
+  .edit-lock { width: 100%; justify-content: space-between; }
+}
+
+/* ============================================================================
+   TABELA E VETME E REGJISTRIT
+   ----------------------------------------------------------------------------
+   Platforma kishte gjashtë variante tabele (.table-sm, .table-min, .mini-table,
+   thead.table-light …). Këtu të gjitha bëhen e njëjta gjë: vija horizontale,
+   pa grid vertikal, kokë me shkronja të vogla, shifra mono e të rreshtuara.
+   Dendësia qeveriset vetëm nga çelësi në kokëfletë.
+   ========================================================================= */
+
+/* --- Mbështjellësi: tabela rrëshqet brenda vetes, kurrë faqja ------------ */
+.app-main .table-responsive,
+.app-main .mini-table,
+.app-main .ledger {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+}
+/* Mbështjellës i dyfishtë (.table-responsive brenda .mini-table): vetëm i jashtmi mban kornizën. */
+.app-main .mini-table .table-responsive,
+.app-main .table-responsive .mini-table { border: 0; border-radius: 0; background: transparent; }
+
+/* --- Trupi i tabelës ------------------------------------------------------ */
+.app-main table.table,
+.app-main table.ledger-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Koka: e njëjtë kudo, pa marrë parasysh .table-light apo .table-dark. */
+.app-main table.table > thead > tr > th,
+.app-main table.ledger-table > thead > tr > th,
+.app-main table.table > thead.table-light > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: .55rem .7rem;
+  border: 0;
+  border-bottom: 1.5px solid var(--ink);
+  background: var(--paper-raised) !important;
+  color: var(--pencil) !important;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Qelizat: vetëm vijë horizontale. Asnjë grid vertikal — regjistri s'e ka. */
+.app-main table.table > tbody > tr > td,
+.app-main table.table > tbody > tr > th,
+.app-main table.ledger-table > tbody > tr > td {
+  padding: .5rem .7rem;
+  border: 0;
+  border-bottom: 1px solid var(--rule-hair);
+  vertical-align: middle;
+}
+.app-main table.table > tbody > tr:last-child > td,
+.app-main table.ledger-table > tbody > tr:last-child > td { border-bottom: 0; }
+
+/* Zebra dhe hover: një gjuhë e vetme. */
+.app-main table.table > tbody > tr:nth-child(even) > td,
+.app-main table.ledger-table > tbody > tr:nth-child(even) > td { background: var(--paper-tint); }
+.app-main table.table > tbody > tr:hover > td,
+.app-main table.ledger-table > tbody > tr:hover > td { background: var(--ref-wash); }
+
+/* Rreshti i zgjedhur. */
+.app-main table.table > tbody > tr.is-selected > td,
+.app-main table.table > tbody > tr.table-active > td { background: var(--ref-wash); box-shadow: inset 3px 0 0 var(--ref); }
+
+/* Numri i zërit dhe kodet: mono, të zbehta, të ngushta. */
+.app-main table td.no,
+.app-main table th.no,
+.app-main table td .code,
+.app-main table td.code {
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+.app-main table td.no, .app-main table th.no { width: 3.5rem; }
+
+/* Emrat e personave shkruhen me serifen — janë zëra regjistri. */
+.app-main table td .person {
+  font-family: var(--font-record);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Kolona e veprimeve rri djathtas dhe nuk mbështillet. */
+.app-main table td.col-actions,
+.app-main table th.col-actions { width: 1%; white-space: nowrap; text-align: right; }
+
+/* --- Dendësia: një çelës i vetëm, pa .table-sm e .table-min të veçanta --- */
+.app-main table.table.table-sm > :not(caption) > * > *,
+.app-main table.table-min > :not(caption) > * > * { padding: .5rem .7rem; }
+
+body.dense .app-main table.table > :not(caption) > * > *,
+body.dense .app-main table.ledger-table > :not(caption) > * > * { padding: .28rem .5rem; }
+body.dense .app-main table.table,
+body.dense .app-main table.ledger-table { font-size: var(--fs-xs); }
+
+/* --- Fundi i tabelës: totale ose përmbledhje ----------------------------- */
+.app-main table.table > tfoot > tr > td {
+  padding: .55rem .7rem;
+  border: 0;
+  border-top: 1.5px solid var(--ink);
+  background: var(--paper-raised);
+  font-weight: 600;
+}
+
+/* --- Tabela bosh ---------------------------------------------------------- */
+.app-main table .table-blank td {
+  padding: 2.25rem 1rem !important;
+  background: transparent !important;
+  text-align: center;
+  color: var(--pencil);
+}
+
+@media (max-width: 767.98px) {
+  .app-main table.table > thead > tr > th,
+  .app-main table.ledger-table > thead > tr > th { position: static; }
+}
+
+/* ============================================================================
+   REGJISTRI I VEPRIMEVE (auditimi)
+   ----------------------------------------------------------------------------
+   Përdoruesit thoshin "nuk gjej asgjë dhe nuk kuptoj". Prandaj çdo zë tani
+   lexohet si fjali shqip — kush, çfarë bëri, mbi çfarë — dhe ndryshimet
+   shfaqen menjëherë si "e vjetra → e reja", jo të fshehura pas një butoni.
+   ========================================================================= */
+
+/* --- Ndihma e filtrave ---------------------------------------------------- */
+.filter-hint { margin-top: .3rem; font-size: var(--fs-xs); color: var(--pencil); }
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .6rem;
+  margin-top: 1rem;
+  padding-top: .9rem;
+  border-top: 1px solid var(--rule);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .45rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--pencil);
+  font-size: var(--fs-xs);
+  text-decoration: none;
+}
+.filter-chip b { color: var(--ink); font-weight: 500; }
+.filter-chip span { color: var(--pencil-soft); font-size: 1.05em; line-height: 1; }
+.filter-chip:hover { border-color: var(--seal); color: var(--seal); text-decoration: none; }
+.filter-chip:hover b, .filter-chip:hover span { color: var(--seal); }
+
+/* --- Ndarësi i ditës ------------------------------------------------------ */
+.day-header {
+  position: sticky;
+  top: calc(var(--nav-h) + 2px);
+  z-index: 5;
+  display: flex;
+  align-items: baseline;
+  gap: .75rem;
+  padding: .8rem 0 .4rem;
+  margin-top: .5rem;
+  background: var(--paper);
+  border-bottom: 1.5px solid var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.day-header .num { margin-left: auto; color: var(--pencil); font-weight: 400; letter-spacing: 0; }
+
+/* --- Zëri i regjistrit ---------------------------------------------------- */
+.entry {
+  padding: .85rem 0 .9rem 1rem;
+  border-bottom: 1px solid var(--rule-hair);
+  border-left: 3px solid var(--rule-strong);
+  padding-left: .9rem;
+}
+.entry.is-add  { border-left-color: var(--ref); }
+.entry.is-edit { border-left-color: var(--hold); }
+.entry.is-del  { border-left-color: var(--seal); }
+
+.entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .3rem 1rem;
+}
+
+/* Fjalia: emri me bold, folja e thjeshtë, objekti me serifen. */
+.entry-line {
+  margin: 0;
+  font-size: var(--fs-base);
+  color: var(--pencil);
+  min-width: 0;
+}
+.entry-line b { color: var(--ink); font-weight: 600; }
+.entry-subject { font-family: var(--font-record); font-size: var(--fs-md); color: var(--ink); }
+
+.entry-when {
+  flex: 0 0 auto;
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+  white-space: nowrap;
+}
+
+/* --- Ndryshimet: e vjetra → e reja, gjithnjë të dukshme ------------------ */
+.entry-changes {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  gap: .15rem .9rem;
+  margin: .5rem 0 0;
+}
+.entry-change { display: contents; }
+.entry-change dt {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--pencil);
+  padding: .12rem 0;
+}
+.entry-change dd {
+  margin: 0;
+  padding: .12rem 0;
+  font-size: var(--fs-sm);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.val { font-family: var(--font-code); font-size: var(--fs-xs); padding: .05rem .3rem; border-radius: var(--r-sm); }
+.val-old { background: var(--seal-wash); color: var(--seal); text-decoration: line-through; }
+.val-new { background: var(--ref-wash);  color: var(--ref); }
+.val-arrow { color: var(--pencil-soft); margin: 0 .15rem; }
+
+.entry-more {
+  margin-top: .4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ref);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: .18em;
+  cursor: pointer;
+}
+.entry-more:hover { color: var(--ref-ink); }
+
+.entry-nochange { margin: .4rem 0 0; font-size: var(--fs-xs); color: var(--pencil-soft); font-style: italic; }
+
+.entry-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem .9rem;
+  margin-top: .5rem;
+  font-size: var(--fs-xs);
+  color: var(--pencil-soft);
+}
+.entry-foot .num { font-family: var(--font-code); }
+
+@media (max-width: 575.98px) {
+  .entry-changes { grid-template-columns: 1fr; gap: 0; }
+  .entry-change dt { padding-top: .35rem; }
+}
+
+/* ============================================================================
+   NORMALIZIMI — një pamje e vetme, pavarësisht cilën klasë historike mban HTML-ja
+   ----------------------------------------------------------------------------
+   Matja faqe-për-faqe nxori shtatë komponentë që dilnin ndryshe. Shkaqet ishin
+   modifikuesit e Bootstrap-it të shpërndarë nëpër faqe: .rounded-pill,
+   .input-group, .btn-lg, .input-group-lg, .table-light. Këtu ata zhbëhen.
+   ========================================================================= */
+
+/* --- 1. Shenjat nuk janë kurrë pilula ------------------------------------ */
+.app-main .badge.rounded-pill,
+.app-main .rounded-pill,
+.app-main .badge { border-radius: var(--r-sm) !important; }
+
+/* --- 2-3. Fushat dhe grupet e fushave -----------------------------------
+   Përkufizohen te protokoll.css pa kufizim faqeje: i njëjti formular në
+   panel dhe në faqet publike. */
+
+/* --- 4. Butonat: dy madhësi, jo pesë ------------------------------------ */
+/* Veprimet e faqes 36px; veprimet brenda rreshtave të tabelës 30px. */
+.app-main .btn { min-height: 36px; font-size: var(--fs-sm); border-radius: var(--r-sm); }
+.app-main .btn-lg { min-height: 36px; font-size: var(--fs-sm); padding: .38rem .85rem; }
+.app-main .btn-sm,
+.app-main table .btn { min-height: 30px; padding: .22rem .6rem; font-size: var(--fs-xs); }
+
+/* Butoni dytësor ka gjithnjë të njëjtën pamje, edhe kur HTML-ja thotë "soft-primary". */
+.app-main .btn-soft-primary,
+.app-main .btn-soft-secondary,
+.app-main .btn-outline-secondary {
+  border-color: var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+}
+.app-main .btn-soft-primary:hover,
+.app-main .btn-soft-secondary:hover,
+.app-main .btn-outline-secondary:hover { background: var(--paper-deep); color: var(--ink); }
+
+/* --- 5. Kokat e seksioneve ---------------------------------------------- */
+/* Dy role të ndryshme, secili i njëjtë kudo:
+     .plate-head — titull seksioni i zhveshur mbi fletë (pa mbushje anash)
+     .leaf-head  — koka e një blloku me kornizë (mban mbushjen e bllokut)
+   .card-header historik i bashkohet të dytit, që të mos ketë dy pamje. */
+.app-main .card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem 1rem;
+  padding: .8rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+.app-main .card-header h5,
+.app-main .card-header .h5,
+.app-main .card-header .section-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+
+/* --- 6. Vija e tabelës: një ngjyrë e vetme ------------------------------ */
+/* Disa faqe e trashëgonin nga .table-light ose nga rregulla të vjetra dhe
+   dilnin me vijë boje ose me ngjyrë lapsi. */
+.app-main table.table > tbody > tr > td,
+.app-main table.table > tbody > tr > th,
+.app-main table.ledger-table > tbody > tr > td,
+.app-main table.table-min > tbody > tr > td {
+  border-bottom: 1px solid var(--rule-hair) !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+.app-main table > tbody > tr:last-child > td { border-bottom: 0 !important; }
+
+/* --- 7. Sipërfaqet: kartat e vjetra janë fletë ------------------------- */
+.app-main .card,
+.app-main .soft-card,
+.app-main .leaf {
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  box-shadow: var(--lift);
+}
+
+/* ============================================================================
+   GJENDJA BOSHE E TABELËS
+   ----------------------------------------------------------------------------
+   Dashboard-et përdorin .blank; faqet me tabela përdorin një <td colspan> me
+   tekst të thatë. Këtu i dyti merr pamjen e të parit, pa u prekur HTML-ja.
+   ========================================================================= */
+.app-main table > tbody > tr > td[colspan]:only-child.text-center,
+.app-main table > tbody > tr > td[colspan]:only-child.text-muted {
+  padding: 2.5rem 1.25rem !important;
+  border-bottom: 0 !important;
+  background: transparent !important;
+  text-align: center;
+  color: var(--pencil) !important;
+  font-family: var(--font-record);
+  font-size: var(--fs-lg);
+}
+/* Rreshti bosh nuk merr as zebër, as hover. */
+.app-main table > tbody > tr:has(> td[colspan]:only-child.text-center) > td,
+.app-main table > tbody > tr:has(> td[colspan]:only-child.text-muted) > td { background: transparent !important; }
+
+/* Rreshtat ndarës brenda tabelave (p.sh. koka e një grupi te modulet). */
+.app-main table > tbody > tr > td[colspan].bg-light {
+  background: var(--paper-deep) !important;
+  border-bottom: 1px solid var(--rule) !important;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--ink) !important;
+}
