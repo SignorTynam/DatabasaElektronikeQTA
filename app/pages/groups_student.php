@@ -128,29 +128,13 @@ if ($allScores) {
 /* Navbar studenti */
 $NAV_ACTIVE = 'groups'; // (navbar3 ka vetëm Dashboard/Profili; kjo thjesht mban stilin)
 require __DIR__ . '/inc/navbar3.php';
-?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Grupet e mia – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Bootstrap & Icons -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .navbar-brand img { height:28px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
-    .badge-soft { background:#f1f5f9; color:#475569; }
-    .nowrap { white-space:nowrap; }
-    @media (max-width: 575.98px) { .navbar-text { display:none; } }
-  </style>
-</head>
-<body>
 
-<main class="container-fluid px-3 px-md-4">
+$pageTitle = 'Grupet e mia – QTA';
+require __DIR__ . '/../shared/app_head.php';
+?>
+
+
+<main class="app-main">
 
   <!-- Tabela: grupet (read-only) -->
   <section class="card">
@@ -210,6 +194,6 @@ require __DIR__ . '/inc/navbar3.php';
 </main>
 
 <!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

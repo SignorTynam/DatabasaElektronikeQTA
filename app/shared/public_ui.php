@@ -90,3 +90,15 @@ if (!function_exists('qta_plugin_enabled')) {
     return in_array($plugin, $plugins, true) || !empty($plugins[$plugin]);
   }
 }
+
+/**
+ * Shton një "gishtërinj" versioni te asetet lokale, që shfletuesi të mos
+ * shërbejë CSS/JS të vjetruar pas një përditësimi.
+ */
+if (!function_exists('qta_asset')) {
+  function qta_asset(string $path): string {
+    $full = dirname(__DIR__, 2) . '/' . ltrim($path, '/');
+    $stamp = is_file($full) ? (string)filemtime($full) : '1';
+    return $path . '?v=' . $stamp;
+  }
+}

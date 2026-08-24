@@ -116,269 +116,145 @@ try {
   ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
 
+/* ===== Prezantimi ===== */
+$greetHour = (int)date('G');
+$greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' : 'Mirëmbrëma');
+$whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')));
+
 $NAV_ACTIVE = 'dashboard';
+$pageTitle  = 'Dashboard – QTA';
+require __DIR__ . '/../shared/app_head.php';
 require __DIR__ . '/inc/navbar.php';
 ?>
-<!doctype html>
-<html lang="sq">
-<head>
-  <meta charset="utf-8" />
-  <title>Admin Dashboard – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-
-  <style>
-    /* ===== Scoped: vetëm për këtë dashboard ===== */
-    .qta-adm { background:#f6f8fc; min-height:100vh; padding-top:72px; }
-
-    .qta-adm .card {
-      border:1px solid #e9eef6;
-      border-radius:16px;
-      box-shadow:0 12px 30px rgba(2,6,23,.06);
-    }
-
-    .qta-adm .hero {
-      border-radius:20px;
-      background:
-        radial-gradient(900px 300px at 90% -20%, rgba(16,185,129,.16), rgba(16,185,129,0) 60%),
-        radial-gradient(900px 300px at 10% -30%, rgba(59,130,246,.18), rgba(59,130,246,0) 55%),
-        linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
-      border:1px solid #e9eef6;
-    }
-
-    .qta-adm .muted { color:#64748b; }
-
-    .qta-adm .pill {
-      display:inline-flex; align-items:center; gap:.5rem;
-      border:1px solid #e9eef6; background:#fff;
-      padding:.35rem .65rem; border-radius:999px;
-      font-size:.875rem;
-    }
-
-    .qta-adm .qa {
-      display:flex; gap:12px; align-items:flex-start;
-      padding:12px; border-radius:14px;
-      border:1px solid #eef2f7; background:#fff;
-      text-decoration:none; color:inherit;
-      transition:transform .08s ease, box-shadow .08s ease;
-    }
-    .qta-adm .qa:hover { transform:translateY(-1px); box-shadow:0 10px 22px rgba(2,6,23,.08); }
-
-    .qta-adm .qa .ico {
-      width:44px; height:44px; border-radius:12px;
-      display:flex; align-items:center; justify-content:center;
-      background:#f1f5f9;
-    }
-
-    .qta-adm .list-tight .list-group-item { padding:.75rem .9rem; }
-
-    .qta-adm .soft-warn { background:#fff7ed; border:1px solid #ffedd5; }
-    .qta-adm .soft-info { background:#eff6ff; border:1px solid #dbeafe; }
-
-    .qta-adm .kpi {
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-      padding:14px 16px;
-      border:1px solid #eef2f7;
-      background:#fff;
-      border-radius:14px;
-    }
-    .qta-adm .kpi .val { font-weight:800; font-size:1.15rem; color:#0f172a; }
-    .qta-adm .kpi .lbl { font-size:.875rem; color:#64748b; }
-  </style>
-</head>
-
-<body class="qta-adm">
-<main class="container-fluid px-3 px-md-4 pb-5">
+<main class="app-main">
 
   <!-- HERO -->
-  <section class="hero p-4 p-md-5 mb-4">
+  <section class="app-hero">
     <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+      <div class="min-w-0">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <span class="app-pill"><i class="bi bi-calendar3"></i><?= h(date('d.m.Y')) ?></span>
+          <span class="app-pill"><i class="bi bi-activity"></i>Audit 24h: <strong class="text-body"><?= (int)$k['audit_24h'] ?></strong></span>
+        </div>
+        <h1><?= h($greeting) ?>, <?= h($whoShort) ?></h1>
+        <p class="lead">Këtu janë veprimet kryesore dhe puna që ka mbetur pa u mbyllur në sistemin e certifikimeve.</p>
+      </div>
+
+      <div class="page-header-actions">
+        <a class="btn btn-primary" href="<?= h($ROUTES['students']) ?>">
+          <i class="bi bi-person-plus me-1"></i>Regjistro student
+        </a>
+        <a class="btn btn-outline-primary" href="<?= h($ROUTES['groups']) ?>">
+          <i class="bi bi-people me-1"></i>Grupet
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- KPI -->
+  <section class="stat-grid" aria-label="Treguesit kryesorë">
+    <div class="stat">
+      <span class="app-icon"><i class="bi bi-mortarboard"></i></span>
+      <div class="stat-body">
+        <span class="stat-value"><?= (int)$k['students_total'] ?></span>
+        <span class="stat-label">Total studentë</span>
+      </div>
+    </div>
+
+    <div class="stat stat-success">
+      <span class="app-icon success"><i class="bi bi-collection"></i></span>
+      <div class="stat-body">
+        <span class="stat-value"><?= (int)$k['active_groups'] ?></span>
+        <span class="stat-label">Grupe aktive</span>
+      </div>
+    </div>
+
+    <div class="stat stat-accent">
+      <span class="app-icon accent"><i class="bi bi-person-check"></i></span>
+      <div class="stat-body">
+        <span class="stat-value"><?= (int)$k['active_enrollments'] ?></span>
+        <span class="stat-label">Regjistrime aktive</span>
+      </div>
+    </div>
+
+    <div class="stat stat-warning">
+      <span class="app-icon warning"><i class="bi bi-exclamation-circle"></i></span>
+      <div class="stat-body">
+        <span class="stat-value"><?= (int)$k['students_no_group'] ?></span>
+        <span class="stat-label">Studentë pa grup</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- VEPRO SHPEJT -->
+  <section class="mb-4">
+    <div class="page-header">
       <div>
-        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-          <span class="pill"><i class="bi bi-lightning-charge"></i> Action Dashboard</span>
-          <span class="pill"><i class="bi bi-calendar3"></i> <?= date('Y-m-d') ?></span>
-          <span class="pill"><i class="bi bi-activity"></i> Audit 24h: <strong><?= (int)$k['audit_24h'] ?></strong></span>
-        </div>
-        <h1 class="fw-bold mb-1">Sistemi i certifikimeve</h1>
-        <div class="muted">
-          Fokus te veprimet kryesore dhe puna që ka mbetur pa u mbyllur.
-        </div>
-        <div class="small muted mt-2">
-          Mirë se erdhe: <strong><?= h($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')) ?></strong>
-        </div>
+        <div class="page-eyebrow"><i class="bi bi-lightning-charge"></i>Shkurtore</div>
+        <h2>Vepro shpejt</h2>
       </div>
+    </div>
+
+    <div class="row g-3">
+      <?php
+      $quickActions = [
+        ['href' => $ROUTES['students'],       'icon' => 'bi-mortarboard',   'tone' => '',        'title' => 'Studentë',       'desc' => 'Krijo dhe menaxho regjistrime.'],
+        ['href' => $ROUTES['groups'],         'icon' => 'bi-collection',    'tone' => 'success', 'title' => 'Grupe',          'desc' => 'Krijo grup, shto studentë, mbyll grup.'],
+        ['href' => $ROUTES['courses'],        'icon' => 'bi-journal-text',  'tone' => 'accent',  'title' => 'Module',         'desc' => 'Shto ose ndrysho kurse dhe orë.'],
+        ['href' => $ROUTES['agencies'],       'icon' => 'bi-building',      'tone' => 'info',    'title' => 'Agjenci',        'desc' => 'NIPT, të dhëna dhe studentë të caktuar.'],
+        ['href' => $ROUTES['logs'],           'icon' => 'bi-shield-check',  'tone' => 'danger',  'title' => 'Audit / Log',    'desc' => 'Kontrollo ndryshimet dhe përdoruesit.'],
+        ['href' => $ROUTES['profile_select'], 'icon' => 'bi-person-badge',  'tone' => 'warning', 'title' => 'Ndrysho profil', 'desc' => 'Kthehu te zgjedhja e profilit.'],
+      ];
+      foreach ($quickActions as $qa): ?>
+        <div class="col-12 col-sm-6 col-xl-4">
+          <a class="quick-action h-100" href="<?= h($qa['href']) ?>">
+            <span class="app-icon <?= h($qa['tone']) ?>"><i class="bi <?= h($qa['icon']) ?>"></i></span>
+            <span class="min-w-0">
+              <strong><?= h($qa['title']) ?></strong>
+              <span><?= h($qa['desc']) ?></span>
+            </span>
+          </a>
+        </div>
+      <?php endforeach; ?>
     </div>
   </section>
 
-  <!-- KPI GRID -->
-  <section class="row g-3 mb-4">
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="kpi">
-        <div>
-          <div class="lbl">Total studentë</div>
-          <div class="val"><?= (int)$k['students_total'] ?></div>
-        </div>
-        <div class="ico"><i class="bi bi-mortarboard fs-3 text-primary"></i></div>
-      </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="kpi">
-        <div>
-          <div class="lbl">Grupe aktive</div>
-          <div class="val"><?= (int)$k['active_groups'] ?></div>
-        </div>
-        <div class="ico"><i class="bi bi-collection fs-3 text-success"></i></div>
-      </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="kpi">
-        <div>
-          <div class="lbl">Regjistrime aktive</div>
-          <div class="val"><?= (int)$k['active_enrollments'] ?></div>
-        </div>
-        <div class="ico"><i class="bi bi-person-check fs-3 text-info"></i></div>
-      </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <div class="kpi">
-        <div>
-          <div class="lbl">Studentë pa grup</div>
-          <div class="val"><?= (int)$k['students_no_group'] ?></div>
-        </div>
-        <div class="ico"><i class="bi bi-exclamation-circle fs-3 text-warning"></i></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- QUICK ACTIONS -->
-  <section class="row g-4 mb-4">
-    <div class="col-12">
-      <div class="d-flex align-items-center justify-content-between mb-2">
-        <h5 class="mb-0 fw-semibold"><i class="bi bi-lightning me-2"></i>Vepro shpejt</h5>
-      </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['students']) ?>">
-        <div class="ico"><i class="bi bi-mortarboard fs-4 text-primary"></i></div>
-        <div>
-          <div class="fw-semibold">Studentë</div>
-          <div class="small muted">Krijo dhe menaxho regjistrime.</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['groups']) ?>">
-        <div class="ico"><i class="bi bi-collection fs-4 text-success"></i></div>
-        <div>
-          <div class="fw-semibold">Grupe</div>
-          <div class="small muted">Krijo grup, shto studentë, mbyll grup.</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['plans']) ?>">
-        <div class="ico"><i class="bi bi-list-check fs-4 text-dark"></i></div>
-        <div>
-          <div class="fw-semibold">Plane (SCP)</div>
-          <div class="small muted">Menaxho “planned/assigned”.</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['courses']) ?>">
-        <div class="ico"><i class="bi bi-journal-text fs-4 text-info"></i></div>
-        <div>
-          <div class="fw-semibold">Module</div>
-          <div class="small muted">Shto/ndrysho kurse & orë.</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['agencies']) ?>">
-        <div class="ico"><i class="bi bi-building fs-4 text-secondary"></i></div>
-        <div>
-          <div class="fw-semibold">Agjenci</div>
-          <div class="small muted">NIPT, të dhëna, studentë të caktuar.</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['logs']) ?>">
-        <div class="ico"><i class="bi bi-shield-check fs-4 text-danger"></i></div>
-        <div>
-          <div class="fw-semibold">Audit / Log</div>
-          <div class="small muted">Kontrollo ndryshimet & përdoruesin.</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['settings']) ?>">
-        <div class="ico"><i class="bi bi-gear fs-4 text-primary"></i></div>
-        <div>
-          <div class="fw-semibold">Settings</div>
-          <div class="small muted">Parametra sistemi (opsionale).</div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-      <a class="qa" href="<?= h($ROUTES['profile_select']) ?>">
-        <div class="ico"><i class="bi bi-person-badge fs-4 text-success"></i></div>
-        <div>
-          <div class="fw-semibold">Ndrysho profil</div>
-          <div class="small muted">Kthehu te zgjedhja e profilit.</div>
-        </div>
-      </a>
-    </div>
-  </section>
-
-  <!-- WORK QUEUE + THIS WEEK -->
-  <section class="row g-4 mb-4">
+  <!-- RADHA E PUNËS + KJO JAVË -->
+  <section class="row g-3">
     <div class="col-12 col-xl-5">
       <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h6 class="mb-0 fw-semibold"><i class="bi bi-inbox me-2"></i>Work Queue (Action needed)</h6>
-          <span class="small muted">Prioritetet operative</span>
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span><i class="bi bi-inbox me-2"></i>Radha e punës</span>
+          <span class="small text-muted fw-normal">Prioritete operative</span>
         </div>
         <div class="card-body p-0">
-          <div class="list-group list-group-flush list-tight">
-            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+          <div class="list-group list-group-flush">
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3"
                href="<?= h($ROUTES['students']) ?>">
-              <div>
-                <div class="fw-semibold">Studentë pa grup</div>
-                <div class="small muted">Regjistrime që s’janë futur askund.</div>
-              </div>
-              <span class="badge text-bg-secondary rounded-pill"><?= (int)$k['students_no_group'] ?></span>
+              <span>
+                <strong class="d-block">Studentë pa grup</strong>
+                <span class="small text-muted">Regjistrime që s'janë futur askund.</span>
+              </span>
+              <span class="badge text-bg-secondary"><?= (int)$k['students_no_group'] ?></span>
             </a>
 
-            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3"
                href="<?= h($ROUTES['groups']) ?>">
-              <div>
-                <div class="fw-semibold">Grupe të pa përfunduara</div>
-                <div class="small muted">Mbyllje operative & pastaj testet/notat.</div>
-              </div>
-              <span class="badge text-bg-warning rounded-pill"><?= (int)$k['groups_ended_not_completed'] ?></span>
+              <span>
+                <strong class="d-block">Grupe të papërfunduara</strong>
+                <span class="small text-muted">Mbyllje operative, pastaj testet dhe notat.</span>
+              </span>
+              <span class="badge text-bg-warning"><?= (int)$k['groups_ended_not_completed'] ?></span>
             </a>
 
-            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3"
                href="<?= h($ROUTES['groups']) ?>">
-              <div>
-                <div class="fw-semibold">Studentë pa test</div>
-                <div class="small muted">Në grupe të mbyllura pa datë testi.</div>
-              </div>
-              <span class="badge text-bg-danger rounded-pill"><?= (int)$k['pending_exams'] ?></span>
+              <span>
+                <strong class="d-block">Studentë pa test</strong>
+                <span class="small text-muted">Në grupe të mbyllura pa datë testi.</span>
+              </span>
+              <span class="badge text-bg-danger"><?= (int)$k['pending_exams'] ?></span>
             </a>
           </div>
         </div>
@@ -387,68 +263,61 @@ require __DIR__ . '/inc/navbar.php';
 
     <div class="col-12 col-xl-7">
       <div class="card h-100">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h6 class="mb-0 fw-semibold"><i class="bi bi-calendar-week me-2"></i>Kjo javë</h6>
-          <span class="small muted">Grupet që nisin/mbarojnë së shpejti</span>
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span><i class="bi bi-calendar-week me-2"></i>Kjo javë</span>
+          <span class="small text-muted fw-normal">Grupet që nisin ose mbarojnë</span>
         </div>
         <div class="card-body">
-          <div class="row g-4">
-            <div class="col-12 col-lg-6">
-              <div class="soft-info p-3 rounded-4">
-                <div class="fw-semibold mb-2"><i class="bi bi-play-circle me-2"></i>Nisin (7 ditë)</div>
-                <?php if ($startingSoon): ?>
-                  <div class="list-group list-tight">
-                    <?php foreach ($startingSoon as $g): ?>
-                      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+          <div class="row g-3">
+            <?php
+            $weekBlocks = [
+              ['title' => 'Nisin brenda 7 ditëve',    'icon' => 'bi-play-circle', 'tone' => 'success', 'rows' => $startingSoon, 'empty' => 'Asnjë grup që nis në 7 ditë.'],
+              ['title' => 'Mbarojnë brenda 7 ditëve', 'icon' => 'bi-flag',        'tone' => 'warning', 'rows' => $endingSoon,   'empty' => 'Asnjë grup që mbaron në 7 ditë.'],
+            ];
+            foreach ($weekBlocks as $block): ?>
+              <div class="col-12 col-lg-6">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="app-icon <?= h($block['tone']) ?>" style="width:32px;height:32px;font-size:.95rem;">
+                    <i class="bi <?= h($block['icon']) ?>"></i>
+                  </span>
+                  <strong class="small"><?= h($block['title']) ?></strong>
+                </div>
+
+                <?php if ($block['rows']): ?>
+                  <div class="list-group">
+                    <?php foreach ($block['rows'] as $g): ?>
+                      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2"
                          href="<?= h($ROUTES['groups']) ?>">
-                        <div>
-                          <div class="fw-semibold"><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></div>
-                          <div class="small muted">Start: <?= h($g['start_date'] ?? '') ?> • End: <?= h($g['end_date'] ?? '') ?></div>
-                        </div>
+                        <span class="min-w-0">
+                          <strong class="d-block text-truncate"><?= h(trim(($g['code'] ?? '') . ' · ' . ($g['name'] ?? ''), ' ·')) ?></strong>
+                          <span class="small text-muted tabular">
+                            <?= h((string)($g['start_date'] ?? '')) ?> → <?= h((string)($g['end_date'] ?? '')) ?>
+                          </span>
+                        </span>
                         <i class="bi bi-chevron-right text-muted"></i>
                       </a>
                     <?php endforeach; ?>
                   </div>
                 <?php else: ?>
-                  <div class="text-muted">Asnjë grup që nis në 7 ditë.</div>
-                <?php endif; ?>
-              </div>
-            </div>
-
-            <div class="col-12 col-lg-6">
-              <div class="soft-warn p-3 rounded-4">
-                <div class="fw-semibold mb-2"><i class="bi bi-flag me-2"></i>Mbarojnë (7 ditë)</div>
-                <?php if ($endingSoon): ?>
-                  <div class="list-group list-tight">
-                    <?php foreach ($endingSoon as $g): ?>
-                      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-                         href="<?= h($ROUTES['groups']) ?>">
-                        <div>
-                          <div class="fw-semibold"><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></div>
-                          <div class="small muted">End: <?= h($g['end_date'] ?? '') ?> • Start: <?= h($g['start_date'] ?? '') ?></div>
-                        </div>
-                        <i class="bi bi-chevron-right text-muted"></i>
-                      </a>
-                    <?php endforeach; ?>
+                  <div class="empty-state py-4">
+                    <span class="empty-icon" style="width:44px;height:44px;font-size:1.1rem;"><i class="bi bi-calendar-x"></i></span>
+                    <span class="small"><?= h($block['empty']) ?></span>
                   </div>
-                <?php else: ?>
-                  <div class="text-muted">Asnjë grup që mbaron në 7 ditë.</div>
                 <?php endif; ?>
               </div>
-            </div>
-
+            <?php endforeach; ?>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Admin Dashboard
-  </div>
+  <p class="text-center text-muted small mt-4 mb-0">
+    &copy; <?= date('Y') ?> QTA · Paneli i administrimit
+  </p>
 
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

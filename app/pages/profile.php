@@ -151,32 +151,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* View helpers */
 $NAV_ACTIVE = 'profile';
+
+$pageTitle = 'Profili – QTA';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Profili – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .navbar-brand img { height:28px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .hero {
-      background:
-        radial-gradient(1200px 420px at 10% -20%, rgba(37,99,235,.25), rgba(37,99,235,0) 60%),
-        radial-gradient(900px 320px at 90% -10%, rgba(99,102,241,.22), rgba(99,102,241,0) 55%),
-        linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4f46e5 100%);
-      color:#fff; border-radius:1.25rem; overflow:hidden;
-    }
-    .hero .chip { background:rgba(255,255,255,.17); border:1px solid rgba(255,255,255,.26); }
-    .form-control::placeholder { color:#9ca3af; }
-    @media (max-width: 575.98px) { .navbar-text { display:none; } }
-  </style>
-</head>
-<body>
+
 
 <?php
 // Ngarko navbar sipas rolit
@@ -186,10 +165,10 @@ elseif ($ROLE === 'agjencia')       { require __DIR__ . '/inc/navbar2.php';  }
 elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
 ?>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
 
   <!-- HERO -->
-  <section class="hero p-4 p-md-5 mb-4">
+  <section class="hero hero-brand p-4 p-md-5 mb-4">
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="badge chip rounded-pill">Profili i përdoruesit</span>
       <span class="small" style="opacity:.85">QTA • Qendra e Trajnimeve të Avancuara</span>
@@ -375,6 +354,6 @@ elseif ($ROLE === 'student')        { require __DIR__ . '/inc/navbar3.php';  }
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

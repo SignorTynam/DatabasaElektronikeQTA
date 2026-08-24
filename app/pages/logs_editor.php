@@ -319,51 +319,13 @@ if (isset($_GET['export']) && $_GET['export']==='csv') {
 /* Navbar për editor (jo admin) */
 $NAV_ACTIVE = 'logs_editor';
 require __DIR__ . '/inc/navbar4.php';
+
+$pageTitle = 'Veprimet e mia – QTA';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Veprimet e mia – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .nowrap { white-space:nowrap; }
-    .help-box { background:#eff6ff; border:1px solid #dbeafe; border-radius:.75rem; }
 
-    .stat-card { border-radius:1rem; }
-    .stat-icon { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f8fafc; }
 
-    .ev { border-left:6px solid transparent; border-radius:1rem; }
-    .ev-insert { border-left-color:#22c55e; background:#f0fdf4; }
-    .ev-update { border-left-color:#f59e0b; background:#fffbeb; }
-    .ev-delete { border-left-color:#ef4444; background:#fef2f2; }
-    .ev + .ev { margin-top: .75rem; }
-
-    .diff-badge { font-size:.75rem; border-radius:.5rem; padding:.15rem .4rem; }
-    .diff-old { background:#fee2e2; }
-    .diff-new { background:#dcfce7; }
-
-    .day-header { position:sticky; top:64px; z-index:5; background:#f5f7fb; padding:.35rem 0; }
-
-    .fab {
-      position: fixed; bottom: 24px; right: 24px; width:56px; height:56px;
-      border-radius: 50%; display:flex; align-items:center; justify-content:center;
-      box-shadow:0 12px 24px rgba(2,6,23,.18); z-index:1055;
-    }
-    .fab-secondary { right: 92px; }
-
-    @media (max-width: 575.98px){
-      .day-header { top:56px; }
-    }
-  </style>
-</head>
-<body>
-
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
 
   <!-- Header -->
   <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
@@ -690,6 +652,6 @@ require __DIR__ . '/inc/navbar4.php';
   <i class="bi bi-arrow-repeat"></i>
 </a>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

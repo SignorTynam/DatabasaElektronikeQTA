@@ -206,78 +206,12 @@ $ok  = flash('ok');
 $err = flash('err');
 
 $NAV_ACTIVE = 'courses';
+
+$pageTitle = 'Modulet – QTA ' . ($isAdmin ? 'Admin' : 'Editor');
+$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-    <meta charset="UTF-8" />
-    <title>Modulet – QTA <?= $isAdmin ? 'Admin' : 'Editor' ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Bootstrap & Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
-    <style>
-        body { background:#f5f7fb; padding-top:72px; }
-        .navbar-brand img { height:28px; }
-        .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-        .mini-table thead { background:#f1f5f9; }
-        .form-control::placeholder { color:#9ca3af; }
-        .pagination .page-link { border-radius:.5rem; }
-        .truncate-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-        .nowrap { white-space:nowrap; }
-        @media (max-width: 575.98px) { .navbar-text { display:none; } }
-
-        /* Editable cells */
-        .editable { display:inline-block; min-width:72px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
-        .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
-        .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
-        .editable[contenteditable="false"] { opacity:.7; cursor:default; }
-
-        .cell-saving { position:relative; }
-        .cell-saving::after {
-          content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
-          border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%;
-          animation:spin .6s linear infinite; transform:translateY(-50%);
-        }
-        @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
-        .cell-ok { animation: flashOk 1.2s ease; }
-        @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
-        .cell-err { animation: flashErr 1.2s ease; }
-        @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
-
-        /* Edit Mode OFF visuals */
-        .editing-off .editable { color:#6b7280; cursor:not-allowed; }
-        .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
-
-        /* Soft buttons & pills */
-        .btn-pill { border-radius:999px !important; }
-        .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
-        .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
-        .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
-        .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
-        .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
-        .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
-        .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
-        .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
-
-        .page-toolbar { gap:.5rem; }
-        .page-toolbar .btn { padding:.4rem .75rem; }
-
-        /* Toasts poshtë MAJTAS */
-        .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
-        .toast.qta-toast .toast-header{ border-bottom:0; }
-        .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
-        .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
-        .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
-        .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
-
-        /* Collapse caret */
-        .btn-toggle-groups .bi { transition: transform .2s ease; }
-        .btn-toggle-groups[aria-expanded="true"] .bi { transform: rotate(180deg); }
-    </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 
 <?php
     // Navbar sipas rolit
@@ -291,7 +225,7 @@ $NAV_ACTIVE = 'courses';
 <!-- Toast container -->
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <h2 class="mb-0">Modulet</h2>
 
@@ -628,7 +562,7 @@ $NAV_ACTIVE = 'courses';
 </div>
 
 <!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'courses_inline_update.php';

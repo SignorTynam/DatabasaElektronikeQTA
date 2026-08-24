@@ -151,73 +151,18 @@ foreach($params as $k=>$v){ $st->bindValue($k,$v,is_int($v)?PDO::PARAM_INT:PDO::
 $st->bindValue(':lim',$limit,PDO::PARAM_INT);
 $st->bindValue(':off',$offset,PDO::PARAM_INT);
 $st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
+
+$pageTitle = 'Agjencitë – QTA ' . ($isAdmin ? 'Admin' : 'Editor');
+$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Agjencitë – QTA <?= $isAdmin ? 'Admin' : 'Editor' ?></title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .navbar-brand img { height:28px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
-    .form-control::placeholder { color:#9ca3af; }
-    .pagination .page-link { border-radius:.5rem; }
-    @media (max-width: 575.98px) { .navbar-text { display:none; } }
-    .editable{ display:inline-block; min-width:90px; padding:.35rem .5rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
-    .editable[contenteditable="true"]:hover{ background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
-    .editable[contenteditable="true"]:focus{ outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
-    .editable[contenteditable="false"]{ opacity:.7; cursor:not-allowed; }
-    .cell-saving{ position:relative; }
-    .cell-saving::after{ content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem; border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%; animation:spin .6s linear infinite; transform:translateY(-50%); }
-    @keyframes spin { to { transform:translateY(-50%) rotate(360deg);} }
-    .cell-ok{ animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
-    .cell-err{ animation: flashErr 1.2s ease; } @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
-    .nowrap{ white-space:nowrap; }
-    .badge-soft{ background:#eef2ff; color:#4338ca; }
 
-    /* UI e re – soft & pill */
-    .btn-pill { border-radius:999px !important; }
-    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
-    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
-
-    /* Edit Mode OFF visuals */
-    .editing-off .editable { color:#6b7280; cursor:not-allowed; }
-    .editing-off .btn[disabled], .editing-off input[disabled], .editing-off select[disabled], .editing-off textarea[disabled] { cursor:not-allowed; }
-
-    /* FAB (+) poshtë DJATHTAS */
-    .btn-fab{
-      position: fixed;
-      right: 24px;
-      bottom: 24px;
-      width: 56px; height: 56px; border-radius: 50%;
-      display:flex; align-items:center; justify-content:center;
-      z-index:1040; box-shadow:0 12px 20px rgba(2,6,23,.15);
-    }
-    .btn-fab i{ font-size:1.25rem; line-height:1; }
-    .btn-fab:focus{ box-shadow:0 0 0 .25rem rgba(13,110,253,.25), 0 12px 20px rgba(2,6,23,.15); }
-    @media (max-width:575.98px){ .btn-fab{ right:16px; bottom:16px; width:52px; height:52px; } }
-
-    /* Toasts poshtë MAJTAS */
-    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
-    .toast.qta-toast .toast-header{ border-bottom:0; }
-    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
-    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
-    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
-    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
-  </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 <?php
   $NAV_ACTIVE='agencies';
   require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
 ?>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Agjencitë & lidhja me studentët</h2>
 
@@ -507,7 +452,7 @@ $st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const INLINE_ENDPOINT = 'agencies_inline_update.php';

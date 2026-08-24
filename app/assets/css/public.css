@@ -1,41 +1,7 @@
-:root {
-  color-scheme: light;
-  --qta-bg: #f7f9fc;
-  --qta-bg-soft: #eef5ff;
-  --qta-surface: #ffffff;
-  --qta-surface-2: #f8fafc;
-  --qta-text: #0f172a;
-  --qta-muted: #64748b;
-  --qta-border: rgba(15, 23, 42, .12);
-  --qta-primary: #1d4ed8;
-  --qta-primary-2: #4338ca;
-  --qta-accent: #0891b2;
-  --qta-success: #15803d;
-  --qta-danger: #dc2626;
-  --qta-warning: #d97706;
-  --qta-shadow: 0 18px 48px rgba(15, 23, 42, .10);
-  --qta-shadow-sm: 0 10px 28px rgba(15, 23, 42, .08);
-  --qta-radius: 18px;
-}
-
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --qta-bg: #08111f;
-  --qta-bg-soft: #0d1b2e;
-  --qta-surface: #111c2d;
-  --qta-surface-2: #0b1626;
-  --qta-text: #e5edf7;
-  --qta-muted: #aab6c6;
-  --qta-border: rgba(226, 232, 240, .16);
-  --qta-primary: #60a5fa;
-  --qta-primary-2: #818cf8;
-  --qta-accent: #22d3ee;
-  --qta-success: #4ade80;
-  --qta-danger: #f87171;
-  --qta-warning: #fbbf24;
-  --qta-shadow: 0 22px 56px rgba(0, 0, 0, .38);
-  --qta-shadow-sm: 0 14px 34px rgba(0, 0, 0, .30);
-}
+/* ============================================================================
+   QTA Public — faqet publike (kryefaqja, rreth nesh, kontakt, hyrja, verifikimi)
+   Tokenët vijnë nga tokens.css; këtu janë vetëm komponentët e faqeve publike.
+   ========================================================================= */
 
 * {
   box-sizing: border-box;
@@ -51,12 +17,33 @@ body {
 body {
   margin: 0;
   background:
-    radial-gradient(920px 420px at 8% -12%, rgba(29, 78, 216, .15), transparent 62%),
-    radial-gradient(760px 360px at 96% -8%, rgba(8, 145, 178, .13), transparent 58%),
+    radial-gradient(920px 420px at 8% -12%, var(--qta-primary-soft), transparent 62%),
+    radial-gradient(760px 360px at 96% -8%, var(--qta-accent-soft), transparent 58%),
     linear-gradient(180deg, var(--qta-bg) 0%, var(--qta-bg-soft) 52%, var(--qta-bg) 100%);
+  background-attachment: fixed;
   color: var(--qta-text);
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: 0;
+  font-family: var(--qta-font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: var(--qta-font-display);
+  color: var(--qta-text-strong);
+  letter-spacing: var(--qta-tracking-tight);
+  line-height: 1.15;
+}
+
+:focus-visible {
+  outline: 2px solid var(--qta-primary);
+  outline-offset: 2px;
+  border-radius: var(--qta-radius-xs);
+}
+
+::selection {
+  background: var(--qta-primary-soft);
+  color: var(--qta-text-strong);
 }
 
 a {
@@ -121,35 +108,41 @@ canvas {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border-radius: 15px;
-  background: rgba(29, 78, 216, .10);
-  border: 1px solid rgba(29, 78, 216, .18);
+  border-radius: var(--qta-radius);
+  background: var(--qta-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--qta-primary) 18%, transparent);
   color: var(--qta-primary);
   font-size: 1.35rem;
 }
 
 .qta-icon.success {
-  background: rgba(21, 128, 61, .10);
-  border-color: rgba(21, 128, 61, .20);
+  background: var(--qta-success-soft);
+  border-color: color-mix(in srgb, var(--qta-success) 20%, transparent);
   color: var(--qta-success);
 }
 
 .qta-icon.accent {
-  background: rgba(8, 145, 178, .12);
-  border-color: rgba(8, 145, 178, .20);
+  background: var(--qta-accent-soft);
+  border-color: color-mix(in srgb, var(--qta-accent) 20%, transparent);
   color: var(--qta-accent);
 }
 
 .qta-icon.warning {
-  background: rgba(217, 119, 6, .12);
-  border-color: rgba(217, 119, 6, .20);
+  background: var(--qta-warning-soft);
+  border-color: color-mix(in srgb, var(--qta-warning) 20%, transparent);
   color: var(--qta-warning);
 }
 
 .qta-btn {
-  min-height: 44px;
-  border-radius: 12px;
-  font-weight: 700;
+  min-height: 46px;
+  padding-inline: 1.15rem;
+  border-radius: var(--qta-radius-sm);
+  font-weight: 650;
+  transition: transform var(--qta-dur-fast) var(--qta-ease),
+              box-shadow var(--qta-dur-fast) var(--qta-ease),
+              background-color var(--qta-dur-fast) var(--qta-ease),
+              border-color var(--qta-dur-fast) var(--qta-ease),
+              color var(--qta-dur-fast) var(--qta-ease);
   display: inline-flex;
   gap: .45rem;
   align-items: center;
@@ -157,8 +150,28 @@ canvas {
 }
 
 .btn-primary {
-  background-color: #1d4ed8;
-  border-color: #1d4ed8;
+  --bs-btn-bg: var(--qta-primary);
+  --bs-btn-border-color: var(--qta-primary);
+  --bs-btn-hover-bg: var(--qta-primary-hover);
+  --bs-btn-hover-border-color: var(--qta-primary-hover);
+  --bs-btn-active-bg: var(--qta-primary-hover);
+  --bs-btn-active-border-color: var(--qta-primary-hover);
+  --bs-btn-color: var(--qta-on-brand);
+  --bs-btn-hover-color: var(--qta-on-brand);
+  --bs-btn-active-color: var(--qta-on-brand);
+  box-shadow: var(--qta-shadow-xs);
+}
+
+.qta-btn:active {
+  transform: translateY(1px);
+}
+
+.btn-outline-secondary {
+  --bs-btn-color: var(--qta-muted);
+  --bs-btn-border-color: var(--qta-border-strong);
+  --bs-btn-hover-bg: var(--qta-surface-3);
+  --bs-btn-hover-color: var(--qta-text-strong);
+  --bs-btn-hover-border-color: var(--qta-border-strong);
 }
 
 .btn-outline-primary {
@@ -172,8 +185,8 @@ canvas {
 }
 
 .qta-theme-btn {
-  min-height: 40px;
-  border-radius: 999px;
+  min-height: 42px;
+  border-radius: var(--qta-radius-pill);
   display: inline-flex;
   align-items: center;
   gap: .45rem;
@@ -189,12 +202,14 @@ canvas {
   border-bottom: 1px solid var(--qta-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, .07);
+  box-shadow: var(--qta-shadow-xs);
 }
 
 .qta-navbar .navbar-brand {
-  color: var(--qta-text);
-  font-weight: 900;
+  color: var(--qta-text-strong);
+  font-family: var(--qta-font-display);
+  font-weight: 800;
+  letter-spacing: var(--qta-tracking-tight);
 }
 
 .qta-navbar .navbar-brand img {
@@ -211,15 +226,17 @@ canvas {
 
 .qta-navbar .nav-link {
   color: var(--qta-muted);
-  font-weight: 740;
-  border-radius: 999px;
-  padding: .48rem .76rem;
+  font-weight: 600;
+  border-radius: var(--qta-radius-pill);
+  padding: .48rem .82rem;
+  transition: color var(--qta-dur-fast) var(--qta-ease),
+              background-color var(--qta-dur-fast) var(--qta-ease);
 }
 
 .qta-navbar .nav-link:hover,
 .qta-navbar .nav-link.active {
-  color: var(--qta-text);
-  background: rgba(29, 78, 216, .09);
+  color: var(--qta-text-strong);
+  background: var(--qta-primary-soft);
 }
 
 .qta-navbar .nav-link.active {
@@ -233,10 +250,10 @@ canvas {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(29, 78, 216, .12);
-  border: 1px solid rgba(29, 78, 216, .20);
-  color: var(--qta-primary);
-  font-weight: 900;
+  background: var(--qta-gradient-brand);
+  color: var(--qta-on-gradient);
+  font-family: var(--qta-font-display);
+  font-weight: 800;
 }
 
 .qta-dropdown {
@@ -258,10 +275,11 @@ canvas {
 }
 
 .hero-public h1 {
-  max-width: 820px;
-  font-size: clamp(2.1rem, 4.6vw, 4.8rem);
-  line-height: 1.02;
-  font-weight: 860;
+  max-width: 19ch;
+  font-size: clamp(2.15rem, 4.4vw, 4rem);
+  line-height: 1.04;
+  font-weight: 800;
+  letter-spacing: var(--qta-tracking-display);
   margin-bottom: 1.1rem;
 }
 
@@ -282,7 +300,7 @@ canvas {
   padding: 1rem;
   min-height: 420px;
   background:
-    linear-gradient(135deg, rgba(29, 78, 216, .12), rgba(8, 145, 178, .08)),
+    linear-gradient(135deg, var(--qta-primary-soft), var(--qta-accent-soft)),
     var(--qta-surface);
 }
 
@@ -303,11 +321,11 @@ canvas {
 
 .mockup-status {
   color: var(--qta-success);
-  background: rgba(21, 128, 61, .10);
-  border: 1px solid rgba(21, 128, 61, .18);
-  border-radius: 999px;
+  background: var(--qta-success-soft);
+  border: 1px solid color-mix(in srgb, var(--qta-success) 20%, transparent);
+  border-radius: var(--qta-radius-pill);
   padding: .36rem .65rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .trust-strip {
@@ -344,20 +362,21 @@ canvas {
 .step-number {
   width: 38px;
   height: 38px;
-  border-radius: 13px;
+  border-radius: var(--qta-radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(29, 78, 216, .10);
+  background: var(--qta-primary-soft);
   color: var(--qta-primary);
-  font-weight: 900;
+  font-family: var(--qta-font-display);
+  font-weight: 800;
 }
 
 .cta-band {
   padding: clamp(1.5rem, 4vw, 3rem);
-  border-radius: 24px;
-  color: #ffffff;
-  background: linear-gradient(135deg, #1e40af, #0f766e);
+  border-radius: var(--qta-radius-xl);
+  color: var(--qta-on-gradient);
+  background: var(--qta-gradient-brand);
   box-shadow: var(--qta-shadow);
 }
 
@@ -425,9 +444,9 @@ canvas {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(29, 78, 216, .11);
+  background: var(--qta-primary-soft);
   color: var(--qta-primary);
-  border: 1px solid rgba(29, 78, 216, .20);
+  border: 1px solid color-mix(in srgb, var(--qta-primary) 20%, transparent);
   font-weight: 900;
 }
 
@@ -437,13 +456,13 @@ canvas {
   color: var(--qta-text);
   background-color: color-mix(in srgb, var(--qta-surface) 88%, transparent);
   border-color: var(--qta-border);
-  border-radius: 12px;
+  border-radius: var(--qta-radius-sm);
 }
 
 .form-control:focus,
 .form-select:focus {
   border-color: color-mix(in srgb, var(--qta-primary) 55%, var(--qta-border));
-  box-shadow: 0 0 0 .22rem rgba(29, 78, 216, .13);
+  box-shadow: 0 0 0 .22rem var(--qta-ring);
 }
 
 .form-floating > label {
@@ -456,7 +475,7 @@ canvas {
   flex-direction: column;
   justify-content: center;
   background:
-    linear-gradient(135deg, rgba(29, 78, 216, .10), rgba(8, 145, 178, .10)),
+    linear-gradient(135deg, var(--qta-primary-soft), var(--qta-accent-soft)),
     var(--qta-surface);
 }
 
@@ -471,11 +490,9 @@ canvas {
 
 .login-brand-panel {
   padding: clamp(1.5rem, 4vw, 3rem);
-  background:
-    linear-gradient(140deg, rgba(29, 78, 216, .95), rgba(15, 118, 110, .88)),
-    #1d4ed8;
-  color: #ffffff;
-  border-radius: 24px;
+  background: var(--qta-gradient-brand);
+  color: var(--qta-on-gradient);
+  border-radius: var(--qta-radius-xl);
   box-shadow: var(--qta-shadow);
 }
 
@@ -510,8 +527,8 @@ canvas {
 .role-option.active {
   color: var(--qta-primary);
   border-color: color-mix(in srgb, var(--qta-primary) 45%, var(--qta-border));
-  background: rgba(29, 78, 216, .09);
-  box-shadow: 0 0 0 .2rem rgba(29, 78, 216, .10);
+  background: var(--qta-primary-soft);
+  box-shadow: 0 0 0 .2rem var(--qta-primary-soft);
 }
 
 .caps-warning {
@@ -537,9 +554,9 @@ canvas {
 }
 
 .verify-tabs .nav-link.active {
-  background: rgba(29, 78, 216, .10);
+  background: var(--qta-primary-soft);
   color: var(--qta-primary);
-  border-color: rgba(29, 78, 216, .30);
+  border-color: color-mix(in srgb, var(--qta-primary) 30%, transparent);
 }
 
 #reader {
@@ -558,7 +575,7 @@ canvas {
   text-align: center;
   border: 1px dashed color-mix(in srgb, var(--qta-primary) 44%, var(--qta-border));
   border-radius: 16px;
-  background: rgba(29, 78, 216, .05);
+  background: var(--qta-primary-soft);
 }
 
 .status-banner {
@@ -750,4 +767,73 @@ canvas {
     box-shadow: none !important;
     border-color: #dddddd !important;
   }
+}
+
+/* ------------------------------------------- Faqja e verifikimit (verify.php) */
+.container-max {
+  width: min(1180px, calc(100% - 32px));
+  margin-inline: auto;
+}
+
+.soft-card {
+  background: var(--qta-surface);
+  border: 1px solid var(--qta-border);
+  border-radius: var(--qta-radius-lg);
+  box-shadow: var(--qta-shadow-sm);
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 38px 0 20px;
+}
+
+.hero-inner { position: relative; z-index: 1; }
+
+.mini-pill,
+.badge-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .34rem .68rem;
+  border: 1px solid var(--qta-border);
+  border-radius: var(--qta-radius-pill);
+  background: var(--qta-surface-2);
+  color: var(--qta-muted);
+  font-size: .84rem;
+  font-weight: 600;
+}
+
+.btn-soft {
+  background: var(--qta-surface-2);
+  border: 1px solid var(--qta-border);
+  color: var(--qta-text);
+}
+
+.btn-soft:hover {
+  background: var(--qta-surface-3);
+  border-color: var(--qta-border-strong);
+  color: var(--qta-text-strong);
+}
+
+.btn-accent {
+  background: var(--qta-primary-2);
+  border: 1px solid color-mix(in srgb, var(--qta-primary-2) 40%, transparent);
+  color: #fff;
+}
+
+.btn-accent:hover { filter: brightness(.96); color: #fff; }
+
+.text-muted2 { color: var(--qta-muted) !important; }
+
+.table-min th,
+.table-min td { padding: .55rem .75rem; }
+
+/* Bootstrap-i i heq qoshet e djathta të kontrollit kur pas tij vjen një
+   .invalid-feedback (grupit i mungon klasa `has-validation`). Meqë ai element
+   është i padukshëm, qoshet i kthehen kontrollit që grupi të duket i plotë. */
+.input-group > *:has(+ .invalid-feedback:last-child),
+.input-group > *:has(+ .valid-feedback:last-child) {
+  border-start-end-radius: var(--qta-radius-sm) !important;
+  border-end-end-radius: var(--qta-radius-sm) !important;
 }

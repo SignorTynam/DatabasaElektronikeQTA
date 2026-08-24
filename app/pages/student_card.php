@@ -319,61 +319,17 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
   'pid' => ($pid>0 ? $pid : null),
   'edit'=> ($EDIT_MODE ? 'off' : 'on'),
 ]));
+
+$pageTitle = 'Profili i personit – QTA';
+$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Profili i personit – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <style>
-    body { background:#f6f8fb; padding-top:72px; }
-    .navbar-brand img { height:28px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
-    .nowrap{ white-space:nowrap; }
-    .avatar{ width:72px;height:72px;border-radius:1.25rem;background:linear-gradient(135deg,#eef2ff,#e0e7ff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#4338ca;font-size:1.25rem; }
-    .soft { background:#f8fafc; border:1px solid #e5e7eb; }
-    .btn-soft { background:#f8fafc; border:1px solid #e5e7eb; }
-    .hero { background: linear-gradient(180deg,#ffffff 0%, #f7f9fe 100%); border-radius:1rem; border:1px solid #eef2ff; }
-    .stat { display:flex; align-items:center; gap:.9rem; }
-    .stat i { font-size:1.4rem; }
-    .stat .label{ font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:#64748b; }
-    .stat .value{ font-weight:700; font-size:1.25rem; }
-    .editable { display:inline-block; min-width:72px; padding:.25rem .4rem; border-radius:.5rem; transition:box-shadow .2s, background-color .2s; }
-    .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
-    .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
-    .editable[contenteditable="false"] { opacity:.9; cursor:default; }
-    .cell-ok { animation: flashOk 1.2s ease; } @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
-    .cell-err{ animation: flashErr 1.2s ease; } @keyframes flashErr{ 0%{background:#fef2f2;} 100%{background:transparent;} }
-    .fab-stack{ position: fixed; right: 24px; bottom: 24px; display: flex; flex-direction: column-reverse; gap: 12px; z-index: 1040; }
-    .fab-stack .fab-btn{ align-self: flex-end; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 52px; height: 52px; width: 52px; padding: 0 14px; border-radius: 999px; box-shadow: 0 12px 20px rgba(2,6,23,.15); transition: width .2s ease, box-shadow .2s ease, transform .06s ease; overflow:hidden; }
-    .fab-stack .fab-btn:hover, .fab-stack .fab-btn:focus{ width:auto; box-shadow:0 16px 28px rgba(2,6,23,.22); }
-    .fab-stack .fab-btn .fab-text{ white-space:nowrap; max-width:0; opacity:0; transition:max-width .2s ease, opacity .15s ease, margin-left .2s ease; margin-left:0; }
-    .fab-stack .fab-btn:hover .fab-text, .fab-stack .fab-btn:focus .fab-text{ max-width: 220px; opacity:1; margin-left:4px; }
-    .fab-stack .fab-btn:active{ transform: translateY(1px); }
-    .toast-container { z-index:1080; }
-    .qta-toast { border-radius:.75rem; box-shadow:0 10px 25px rgba(2,6,23,.18); overflow:hidden; }
-    .toast-success .toast-header{ background:#ecfdf5; }
-    .toast-danger  .toast-header{ background:#fef2f2; }
-    .toast-warning .toast-header{ background:#fff7ed; }
-    .toast-info    .toast-header{ background:#eff6ff; }
-    .section-title{ display:flex; align-items:center; gap:.6rem; }
-    .section-title i{ color:#4f46e5; }
-    #qrBox canvas, #qrBox img { image-rendering: pixelated; }
-    .pill{ display:inline-block; padding:.3rem .6rem; border-radius:999px; background:#eef2ff; color:#4338ca; font-weight:600; font-size:.8rem; }
-  </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
+
 
 <!-- Toast container -->
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3"></div>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
   <?php if ($CAN_EDIT) require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <?php if ($m = flash('ok')): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -769,7 +725,7 @@ $toggleUrl = 'student_card.php?' . http_build_query(array_filter([
   <?php endif; ?>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const INLINE = 'student_card_inline.php';

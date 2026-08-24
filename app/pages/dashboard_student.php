@@ -155,37 +155,13 @@ $statusData   = array_values($statusCounts);
 /* Navbar studenti */
 $NAV_ACTIVE = 'dashboard';
 require __DIR__ . '/inc/navbar3.php';
-?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Dashboard i Ri — Studenti • QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .hero {
-      border-radius:1.25rem; color:#0b1220;
-      background:
-        radial-gradient(900px 300px at 90% -20%, rgba(16,185,129,.18), rgba(16,185,129,0) 60%),
-        radial-gradient(900px 300px at 10% -30%, rgba(59,130,246,.22), rgba(59,130,246,0) 55%),
-        linear-gradient(135deg, #e0f2fe 0%, #eff6ff 100%);
-    }
-    .chip { background:#eef2ff; border:1px solid #e0e7ff; border-radius:999px; padding:.25rem .65rem; }
-    .soft { background:#f8fafc; border:1px solid #e2e8f0; border-radius:.75rem; padding:.5rem .75rem; }
-    .mini-table thead { background:#f1f5f9; }
-    .kpi .icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#f1f5f9; }
-    .badge-soft { background:#f1f5f9; color:#475569; }
-    .nowrap { white-space:nowrap; }
-  </style>
-</head>
-<body>
 
-<main class="container-fluid px-3 px-md-4">
+$pageTitle = 'Dashboard i Ri — Studenti • QTA';
+require __DIR__ . '/../shared/app_head.php';
+?>
+
+
+<main class="app-main">
   <!-- HERO (i njëjtë stil si Admin/Editor) -->
   <section class="hero p-4 p-md-5 mb-4">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
@@ -395,7 +371,7 @@ require __DIR__ . '/inc/navbar3.php';
 </main>
 
 <!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 /* PHP → JS */
 const scoreLabels = <?= json_encode($scoreLabels) ?>;

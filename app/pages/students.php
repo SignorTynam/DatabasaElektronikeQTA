@@ -681,131 +681,12 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
     // pagen NUK e dërgojmë që eksporti të marrë gjithçka, jo vetëm faqen aktuale
 ]));
 
+
+$pageTitle = 'Studentët – QTA ' . ($role==='editor' ? 'Editor' : 'Admin');
+$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-    <meta charset="UTF-8" />
-    <title>Studentët – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Bootstrap & Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
-    <style>
-        body { background:#f5f7fb; padding-top:72px; }
-        .navbar-brand img { height:28px; }
-        .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-        .mini-table thead { background:#f1f5f9; }
-        .form-control::placeholder { color:#9ca3af; }
-        .pagination .page-link { border-radius:.5rem; }
-        .truncate-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-        .nowrap { white-space:nowrap; }
-        @media (max-width: 575.98px) { .navbar-text { display:none; } }
-
-        /* Inline-edit styles */
-        .editable {
-          display:inline-block; min-width:72px; padding:.35rem .5rem;
-          border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
-        }
-        .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
-        .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
-        .editable[contenteditable="false"] { opacity:.7; cursor:default; }
-        .cell-saving { position:relative; }
-        .cell-saving::after {
-          content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
-          border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%;
-          animation:spin .6s linear infinite; transform:translateY(-50%);
-        }
-        @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
-        .cell-ok { animation: flashOk 1.2s ease; }
-        @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
-        .cell-err { animation: flashErr 1.2s ease; }
-        @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
-        .inline-select { min-width: 160px; }
-
-        .editing-off .editable { color:#6b7280; cursor:not-allowed; }
-        .editing-off td.cell .inline-select:disabled { background:#f3f4f6; color:#6b7280; cursor:not-allowed; }
-        .badge-edit { letter-spacing:.2px; }
-
-        /* Soft buttons & pills */
-        .btn-pill { border-radius:999px !important; }
-        .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
-        .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
-        .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
-        .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
-        .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
-        .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
-        .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
-        .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
-
-        /* FAB Stack */
-        .fab-stack{
-          position: fixed;
-          right: 24px;
-          bottom: 24px;
-          display: flex;
-          flex-direction: column-reverse;
-          gap: 12px;
-          z-index: 1040;
-        }
-        .fab-stack .fab-btn{
-          align-self: flex-end;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          min-height: 52px;
-          height: 52px;
-          width: 52px;
-          padding: 0 14px;
-          border-radius: 999px;
-          box-shadow: 0 12px 20px rgba(2,6,23,.15);
-          transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
-          overflow: hidden;
-        }
-        .fab-stack .fab-btn .fab-text{
-          white-space: nowrap;
-          max-width: 0;
-          opacity: 0;
-          transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
-          margin-left: 0;
-        }
-        .fab-stack .fab-btn:hover,
-        .fab-stack .fab-btn:focus{
-          width: auto;
-          box-shadow: 0 16px 28px rgba(2,6,23,.22);
-        }
-        .fab-stack .fab-btn:hover .fab-text,
-        .fab-stack .fab-btn:focus .fab-text{
-          max-width: 180px;
-          opacity: 1;
-          margin-left: 4px;
-        }
-        .fab-stack .fab-btn:active{ transform: translateY(1px); }
-
-        @media (max-width: 575.98px){
-          .fab-stack{ right:16px; bottom:16px; gap:10px; }
-          .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
-        }
-
-        .btn-fab{ display:none !important; }
-
-        .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
-        .toast.qta-toast .toast-header{ border-bottom:0; }
-        .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
-        .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
-        .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
-        .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
-
-        .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
-
-        /* Veprime column */
-        .col-actions{ width: 92px; } /* rritur pak që të zërë dy butona */
-        .btn-icon{ width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; }
-    </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 
 <?php
   $NAV_ACTIVE = 'students';
@@ -816,7 +697,7 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
 <!-- Toast container -->
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
   <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Studentët</h2>
@@ -1380,7 +1261,7 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
 </div>
 
 <!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;

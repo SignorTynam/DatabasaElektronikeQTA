@@ -191,40 +191,15 @@ $stmt->execute([':cid'=>$cid]);
 $noGroupList = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $NAV_ACTIVE = 'dashboard';
+
+$pageTitle = 'Dashboard i Kompanisë – QTA';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Dashboard i Kompanisë – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Bootstrap & Icons -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .hero {
-      border-radius:1.25rem; overflow:hidden; color:#0b1220;
-      background:
-        radial-gradient(1100px 380px at 8% -20%, rgba(14,165,233,.18), rgba(14,165,233,0) 60%),
-        radial-gradient(900px 320px at 92% -15%, rgba(99,102,241,.18), rgba(99,102,241,0) 55%),
-        linear-gradient(135deg, #e0f2fe 0%, #eef2ff 100%);
-    }
-    .chip { background:#eef2ff; border:1px solid #e0e7ff; border-radius:999px; padding:.25rem .65rem; }
-    .kpi .icon { width:46px; height:46px; border-radius:.75rem; display:flex; align-items:center; justify-content:center; background:#f1f5f9; }
-    .mini-table thead { background:#f1f5f9; }
-    .progress { height:8px; }
-    .nowrap { white-space:nowrap; }
-  </style>
-</head>
-<body>
+
 
 <?php require __DIR__ . '/inc/navbar2.php'; ?>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
   <!-- HERO -->
   <section class="hero p-4 p-md-5 mb-4">
     <div class="row align-items-center">
@@ -450,7 +425,7 @@ $NAV_ACTIVE = 'dashboard';
 </main>
 
 <!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 /* Të dhënat për grafiqet (nga PHP) */
 const weeklyLabels = <?= json_encode(array_column($weekly, 'label')) ?>;

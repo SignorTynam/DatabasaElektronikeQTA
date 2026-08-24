@@ -431,209 +431,13 @@ if (isset($_GET['pid'], $_GET['t']) || isset($_GET['sid'], $_GET['t'])) {
 }
 
 $NAV_ACTIVE = 'verify';
+
+$pageTitle = 'Verifikim publik i certifikatave QTA';
+$pageDescription = 'Verifiko vlefshmërinë e një certifikate QTA me QR, foto ose token — pa llogari.';
+$publicPlugins = ['html5-qrcode'];
+
+require_once __DIR__ . '/../shared/public_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8">
-  <title>Verifikim publik i certifikatave QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Bootstrap & Icons -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-
-  <!-- QR lib -->
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-  <link href="app/assets/css/public.css" rel="stylesheet">
-
-  <style>
-    :root{
-      --bg:#f6f8ff;
-      --bg2:#eef2ff;
-      --card:#ffffff;
-      --text:#0b1220;
-      --muted:#667085;
-      --muted2:#94a3b8;
-
-      --primary:#2563eb;
-      --primary2:#4f46e5;
-      --accent:#0ea5e9;
-
-      --success:#10b981;
-      --danger:#ef4444;
-      --warning:#f59e0b;
-
-      --ring: rgba(37,99,235,.16);
-      --shadow: 0 18px 44px rgba(2,6,23,.12);
-      --shadow2: 0 10px 26px rgba(2,6,23,.10);
-      --radius: 18px;
-    }
-
-    html[data-theme="dark"]{
-      --bg:#070b14;
-      --bg2:#0b1220;
-      --card:#0f172a;
-      --text:#e5e7eb;
-      --muted:#a7b0c0;
-      --muted2:#7c879b;
-      --ring: rgba(99,102,241,.18);
-      --shadow: 0 20px 54px rgba(0,0,0,.45);
-      --shadow2: 0 12px 32px rgba(0,0,0,.35);
-    }
-
-    body{
-      background: radial-gradient(1200px 520px at 15% -12%, rgba(37,99,235,.18), transparent 60%),
-                  radial-gradient(900px 420px at 90% -10%, rgba(99,102,241,.16), transparent 55%),
-                  linear-gradient(180deg, var(--bg) 0%, var(--bg2) 60%, var(--bg) 100%);
-      color: var(--text);
-    }
-
-    .container-max{ max-width: 1180px; }
-
-    .soft-card{
-      background: var(--card);
-      border: 1px solid rgba(148,163,184,.18);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow2);
-    }
-
-    .hero{
-      position:relative;
-      overflow:hidden;
-      padding: 34px 0 18px;
-    }
-    .hero::before{
-      content:"";
-      position:absolute;
-      inset:-2px;
-      background:
-        radial-gradient(900px 360px at 15% 0%, rgba(14,165,233,.25), transparent 60%),
-        radial-gradient(800px 300px at 85% 10%, rgba(99,102,241,.24), transparent 60%),
-        linear-gradient(135deg, rgba(37,99,235,.08), rgba(79,70,229,.06));
-      pointer-events:none;
-    }
-    .hero-inner{ position:relative; z-index:1; }
-
-    .badge-chip{
-      border: 1px solid rgba(148,163,184,.25);
-      background: rgba(255,255,255,.55);
-      color: var(--text);
-    }
-    html[data-theme="dark"] .badge-chip{ background: rgba(15,23,42,.6); }
-
-    .text-muted2{ color: var(--muted); }
-
-    .mini-pill{
-      display:inline-flex;
-      gap:.5rem;
-      align-items:center;
-      padding:.35rem .6rem;
-      border-radius: 999px;
-      border:1px solid rgba(148,163,184,.22);
-      background: rgba(255,255,255,.6);
-      font-size: .85rem;
-      color: var(--text);
-    }
-    html[data-theme="dark"] .mini-pill{ background: rgba(15,23,42,.65); }
-
-    .btn, .form-control, .input-group-text, .nav-pills .nav-link{ border-radius: 14px; }
-
-    .input-group-text{
-      border: 1px solid rgba(148,163,184,.18);
-      background: rgba(255,255,255,.55);
-      color: var(--text);
-    }
-    html[data-theme="dark"] .input-group-text{ background: rgba(15,23,42,.65); }
-
-    .form-control{
-      border: 1px solid rgba(148,163,184,.18);
-      background: rgba(255,255,255,.55);
-      color: var(--text);
-    }
-    html[data-theme="dark"] .form-control{ background: rgba(15,23,42,.65); }
-
-    .form-control:focus{
-      border-color: rgba(37,99,235,.35);
-      box-shadow: 0 0 0 10px var(--ring);
-      background: rgba(255,255,255,.75);
-    }
-    html[data-theme="dark"] .form-control:focus{ background: rgba(15,23,42,.75); }
-
-    .nav-pills .nav-link{
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(148,163,184,.18);
-      color: var(--text);
-    }
-    html[data-theme="dark"] .nav-pills .nav-link{ background: rgba(15,23,42,.65); }
-
-    .nav-pills .nav-link.active{
-      background: rgba(37,99,235,.10);
-      border-color: rgba(37,99,235,.28);
-      box-shadow: 0 0 0 10px var(--ring);
-      color: var(--text);
-    }
-
-    .btn-soft{
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(148,163,184,.18);
-      color: var(--text);
-    }
-    html[data-theme="dark"] .btn-soft{ background: rgba(15,23,42,.65); }
-
-    .btn-accent{
-      background: var(--primary2);
-      border: 1px solid rgba(79,70,229,.35);
-      color:#fff;
-    }
-    .btn-accent:hover{ filter: brightness(.97); }
-
-    /* Reader */
-    #reader{ width:100%; height:340px; }
-    #reader > div{ border-radius: 16px !important; overflow:hidden; }
-    #reader video{ width:100% !important; height:100% !important; object-fit:cover; border-radius: 16px; }
-
-    /* Status banner */
-    .status-banner{
-      display:flex;
-      align-items:center;
-      gap:.7rem;
-      padding: 12px 14px;
-      border-radius: 16px;
-      border: 1px solid rgba(148,163,184,.18);
-      background: rgba(255,255,255,.55);
-      box-shadow: var(--shadow2);
-    }
-    html[data-theme="dark"] .status-banner{ background: rgba(15,23,42,.65); }
-
-    .status-banner.status-valid{ border-left: 6px solid var(--success); }
-    .status-banner.status-invalid{ border-left: 6px solid var(--danger); }
-    .status-banner.status-pending{ border-left: 6px solid rgba(148,163,184,.7); }
-
-    .fact{
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(148,163,184,.18);
-      border-radius: 16px;
-      padding: .85rem;
-    }
-    html[data-theme="dark"] .fact{ background: rgba(15,23,42,.65); }
-
-    .table-min th, .table-min td { padding:.55rem .75rem; }
-
-    .tab-content{ min-height: 420px; }
-
-    @media (max-width: 991px){
-      #reader{ height: 300px; }
-    }
-
-    @media print {
-      .navbar, .hero, #controlsBar, .nav, .btn, footer, #topActions { display:none !important; }
-      .soft-card, .status-banner { box-shadow:none !important; }
-      body { background:#fff !important; }
-    }
-  </style>
-</head>
-<body>
 
 <?php
 /* Navbar kryesor */
@@ -662,8 +466,8 @@ require_once __DIR__ . '/navbarMain.php';
         <a href="index.php" class="btn btn-soft">
           <i class="bi bi-house me-1"></i> Kryefaqja
         </a>
-        <button type="button" class="btn btn-soft" id="themeToggle" aria-label="Ndrysho temën">
-          <i class="bi bi-moon-stars me-1"></i> Modalitet i errët
+        <button type="button" class="btn btn-soft" data-theme-toggle aria-label="Ndrysho temën">
+          <i class="bi bi-moon-stars me-1"></i><span data-theme-label>Modalitet i errët</span>
         </button>
       </div>
     </div>
@@ -948,30 +752,9 @@ require_once __DIR__ . '/navbarMain.php';
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="app/assets/js/public.js" defer></script>
+<?php require_once __DIR__ . '/../shared/public_scripts.php'; ?>
 
 <script>
-/* ===== Theme toggle (si te faqet e reja) ===== */
-const root = document.documentElement;
-const themeBtn = document.getElementById('themeToggle');
-const setTheme = (t) => {
-  root.setAttribute('data-theme', t);
-  localStorage.setItem('qta_theme', t);
-  if (themeBtn){
-    const isDark = (t === 'dark');
-    themeBtn.innerHTML = isDark
-      ? '<i class="bi bi-sun me-1"></i> Modalitet i çelët'
-      : '<i class="bi bi-moon-stars me-1"></i> Modalitet i errët';
-  }
-};
-const saved = localStorage.getItem('qta_theme');
-if (saved === 'dark' || saved === 'light') setTheme(saved); else setTheme('light');
-themeBtn?.addEventListener('click', () => {
-  const cur = root.getAttribute('data-theme') || 'light';
-  setTheme(cur === 'dark' ? 'light' : 'dark');
-});
-
 /* ========= State ========= */
 let camQr = null;
 let isCamRunning = false;

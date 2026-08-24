@@ -124,80 +124,12 @@ try {
 /* Navbar */
 $NAV_ACTIVE = 'dashboard';
 require __DIR__ . '/inc/navbar4.php';
+
+$pageTitle = 'Editor Dashboard – QTA';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!doctype html>
-<html lang="sq">
-<head>
-  <meta charset="utf-8" />
-  <title>Editor Dashboard – QTA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-
-  <style>
-    /* ===== Scoped: vetëm për këtë dashboard (Editor) ===== */
-    .qta-edm { background:#f6f8fc; min-height:100vh; padding-top:72px; }
-
-    .qta-edm .card{
-      border:1px solid #e9eef6;
-      border-radius:16px;
-      box-shadow:0 12px 30px rgba(2,6,23,.06);
-    }
-
-    .qta-edm .hero{
-      border-radius:20px;
-      background:
-        radial-gradient(900px 300px at 90% -20%, rgba(34,197,94,.14), rgba(34,197,94,0) 60%),
-        radial-gradient(900px 300px at 10% -30%, rgba(59,130,246,.18), rgba(59,130,246,0) 55%),
-        linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
-      border:1px solid #e9eef6;
-    }
-
-    .qta-edm .muted{ color:#64748b; }
-
-    .qta-edm .pill{
-      display:inline-flex; align-items:center; gap:.5rem;
-      border:1px solid #e9eef6; background:#fff;
-      padding:.35rem .65rem; border-radius:999px;
-      font-size:.875rem;
-    }
-
-    .qta-edm .qa{
-      display:flex; gap:12px; align-items:flex-start;
-      padding:12px; border-radius:14px;
-      border:1px solid #eef2f7; background:#fff;
-      text-decoration:none; color:inherit;
-      transition:transform .08s ease, box-shadow .08s ease;
-    }
-    .qta-edm .qa:hover{
-      transform:translateY(-1px);
-      box-shadow:0 10px 22px rgba(2,6,23,.08);
-    }
-
-    .qta-edm .qa .ico{
-      width:44px; height:44px; border-radius:12px;
-      display:flex; align-items:center; justify-content:center;
-      background:#f1f5f9;
-    }
-
-    .qta-edm .kpi{
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-      padding:14px 16px;
-      border:1px solid #eef2f7; background:#fff;
-      border-radius:14px;
-    }
-    .qta-edm .kpi .val{ font-weight:800; font-size:1.15rem; color:#0f172a; }
-    .qta-edm .kpi .lbl{ font-size:.875rem; color:#64748b; }
-
-    .qta-edm .list-tight .list-group-item{ padding:.75rem .9rem; }
-    .qta-edm .soft-warn{ background:#fff7ed; border:1px solid #ffedd5; }
-    .qta-edm .soft-info{ background:#eff6ff; border:1px solid #dbeafe; }
-  </style>
-</head>
-
-<body class="qta-edm">
-<main class="container-fluid px-3 px-md-4 pb-5">
+<main class="app-main">
 
   <!-- HERO -->
   <section class="hero p-4 p-md-5 mb-4">
@@ -469,6 +401,6 @@ require __DIR__ . '/inc/navbar4.php';
 
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

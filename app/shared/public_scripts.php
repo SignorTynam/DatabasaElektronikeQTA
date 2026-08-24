@@ -18,7 +18,7 @@ $pageScripts = $pageScripts ?? [];
 <?php if (qta_plugin_enabled('html5-qrcode')): ?>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <?php endif; ?>
-<script src="app/assets/js/public.js" defer></script>
+<script src="<?= h(qta_asset('app/assets/js/public.js')) ?>" defer></script>
 <?php foreach ($pageScripts as $script): ?>
   <script src="<?= h((string)$script) ?>" defer></script>
 <?php endforeach; ?>

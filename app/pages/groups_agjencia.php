@@ -148,33 +148,15 @@ $noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
 
 /* Navbar active key */
 $NAV_ACTIVE = 'groups';
+
+$pageTitle = 'Grupe – QTA Agjenci';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Grupe – QTA Agjenci</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .navbar-brand img { height:28px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
-    .form-control::placeholder { color:#9ca3af; }
-    .pagination .page-link { border-radius:.5rem; }
-    .nowrap { white-space:nowrap; }
-    @media (max-width: 575.98px) { .navbar-text { display:none; } }
-    /* Read-only (pa editable) */
-    .readonly { display:inline-block; min-width:72px; padding:.35rem .5rem; border-radius:.5rem; }
-  </style>
-</head>
-<body>
+
 
 <?php require __DIR__ . '/inc/navbar2.php'; ?>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Grupe – <?= htmlspecialchars($AGENCY['company_name'] ?? 'Agjencia') ?></h2>
     <form class="d-flex" method="get" action="groups_agency.php">
@@ -292,6 +274,6 @@ $NAV_ACTIVE = 'groups';
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

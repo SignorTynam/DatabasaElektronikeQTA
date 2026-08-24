@@ -383,56 +383,17 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
   'course_id' => ($courseFilter !== '' ? $courseFilter : null),
   'edit' => ($EDIT_MODE ? 'off' : 'on'),
 ]));
+
+$pageTitle = 'Studentë pa grupe – QTA ' . ($role==='editor' ? 'Editor' : 'Admin');
+$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+require __DIR__ . '/../shared/app_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Studentë pa grupe – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
-    .form-control::placeholder { color:#9ca3af; }
-    .pagination .page-link { border-radius:.5rem; }
-    .nowrap { white-space:nowrap; }
-    .btn-pill { border-radius:999px !important; }
-    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
-    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
-    .badge-cap { font-weight:600; }
-    .table td select.form-select { padding:.2rem .5rem; }
-    .status-banner strong { font-size:1.05rem; }
-    .status-banner .metric { display:flex; align-items:center; gap:.5rem; }
 
-    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
-    .toast.qta-toast .toast-header{ border-bottom:0; }
-    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
-    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
-    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
-    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
-
-    .fab-stack{ position:fixed; right:24px; bottom:24px; display:flex; flex-direction:column-reverse; gap:12px; z-index:1040; }
-    .fab-stack .fab-btn{ align-self:flex-end; display:inline-flex; align-items:center; justify-content:center; gap:6px;
-      min-height:52px; height:52px; width:52px; padding:0 14px; border-radius:999px; box-shadow:0 12px 20px rgba(2,6,23,.15);
-      transition:width .2s ease, box-shadow .2s ease, transform .06s ease; overflow:hidden; }
-    .fab-stack .fab-btn:hover, .fab-stack .fab-btn:focus{ width:auto; box-shadow:0 16px 28px rgba(2,6,23,.22); }
-    .fab-stack .fab-btn .fab-text{ white-space:nowrap; max-width:0; opacity:0; transition:max-width .2s, opacity .15s, margin-left .2s; margin-left:0; }
-    .fab-stack .fab-btn:hover .fab-text, .fab-stack .fab-btn:focus .fab-text{ max-width:180px; opacity:1; margin-left:4px; }
-    .fab-stack .fab-btn:active{ transform:translateY(1px); }
-    @media (max-width:575.98px){ .fab-stack{ right:16px; bottom:16px; gap:10px; } .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; } }
-
-    .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
-  </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
 
 <!-- Toast container -->
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
-<main class="container-fluid px-3 px-md-4">
+<main class="app-main">
   <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <h2 class="mb-0">Studentë pa grupe</h2>
@@ -659,7 +620,7 @@ $toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
   </a>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;

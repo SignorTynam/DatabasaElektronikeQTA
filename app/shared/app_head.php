@@ -1,20 +1,32 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/public_ui.php';
+/**
+ * app_head.php — <head> i përbashkët i panelit.
+ *
+ * Variabla opsionale nga faqja prind:
+ *   $pageTitle   string  titulli i skedës
+ *   $bodyClass   string  klasa shtesë për <body>
+ *   $pageStyles  array   URL-ra CSS shtesë
+ *   $headExtra   string  HTML i papërpunuar për <head> (p.sh. <style> i faqes)
+ */
 
-$pageTitle = $pageTitle ?? 'QTA';
-$pageDescription = $pageDescription ?? 'Qendra e Trajnimeve të Avancuara';
-$pageBodyClass = $pageBodyClass ?? '';
+require_once __DIR__ . '/app_ui.php';
+
+$pageTitle  = $pageTitle  ?? 'QTA';
+$bodyClass  = $bodyClass  ?? '';
+$pageStyles = $pageStyles ?? [];
+$headExtra  = $headExtra  ?? '';
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sq">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="<?= h($pageDescription) ?>">
+  <meta name="robots" content="noindex, nofollow">
   <title><?= h($pageTitle) ?></title>
   <link rel="icon" type="image/png" href="image/logoPNG2.png">
+
   <script>
     (function () {
       var stored = localStorage.getItem('qta_theme');
@@ -24,22 +36,27 @@ $pageBodyClass = $pageBodyClass ?? '';
       document.documentElement.setAttribute('data-theme', theme);
     })();
   </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-  <?php if (qta_plugin_enabled('aos')): ?>
-    <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
-  <?php endif; ?>
-  <?php if (qta_plugin_enabled('swiper')): ?>
-    <link href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" rel="stylesheet">
-  <?php endif; ?>
-  <?php if (qta_plugin_enabled('leaflet')): ?>
-    <link href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
-  <?php endif; ?>
   <link href="<?= h(qta_asset('app/assets/css/tokens.css')) ?>" rel="stylesheet">
-  <link href="<?= h(qta_asset('app/assets/css/public.css')) ?>" rel="stylesheet">
+  <link href="<?= h(qta_asset('app/assets/css/app.css')) ?>" rel="stylesheet">
+  <link href="<?= h(qta_asset('app/assets/css/app-legacy.css')) ?>" rel="stylesheet">
+<?php foreach ($pageStyles as $style): ?>
+  <link href="<?= h((string)$style) ?>" rel="stylesheet">
+<?php endforeach; ?>
+<?= $headExtra ?>
 </head>
-<body class="<?= h($pageBodyClass) ?>">
+<body class="<?= h($bodyClass) ?>">
+<?php
+/* Koka doli: vizato navbar-in nëse faqja e kërkoi më herët. */
+$GLOBALS['QTA_HEAD_RENDERED'] = true;
+if (!empty($GLOBALS['QTA_NAV_DEFERRED'])) {
+  $GLOBALS['QTA_NAV_DEFERRED'] = false;
+  require __DIR__ . '/inc/app_navbar.php';
+}
+?>
