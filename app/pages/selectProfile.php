@@ -73,46 +73,103 @@ $roles = [
 require_once __DIR__ . '/../shared/public_head.php';
 require_once __DIR__ . '/navbarMain.php';
 ?>
-<main>
-  <section class="container-public login-shell">
-    <aside class="login-brand-panel" data-aos="fade-right">
-      <div class="d-flex align-items-center gap-3 mb-4">
-        <img src="image/logoPNG2.png" alt="Logo QTA" style="width: 54px; height: 54px; object-fit: contain;">
-        <div>
-          <div class="fw-bold fs-4">QTA</div>
-          <div class="opacity-75">Qendra e Trajnimeve të Avancuara</div>
-        </div>
+<main class="wrap">
+  <div class="gate">
+
+    <aside class="gate-aside">
+      <div class="protocol-line">
+        <span>Republika e Shqipërisë</span>
+        <span class="sep">·</span>
+        <span>Tiranë</span>
       </div>
-      <h1 class="display-6 fw-bold mb-3">Mirë se vini në portalin QTA</h1>
-      <p class="lead opacity-75">Zgjidhni rolin dhe hyni në panelin tuaj.</p>
-      <div class="d-grid gap-3 mt-4">
-        <div><i class="bi bi-person-lock me-2"></i>Akses sipas rolit</div>
-        <div><i class="bi bi-shield-check me-2"></i>Menaxhim i sigurt</div>
-        <div><i class="bi bi-qr-code me-2"></i>Certifikata të verifikueshme</div>
-        <div><i class="bi bi-phone me-2"></i>Portal i optimizuar për mobile</div>
-      </div>
+
+      <h1 style="margin-bottom:.8rem">Hyrje në regjistër</h1>
+      <p class="prose-lead" style="margin-bottom:1.75rem">
+        Aksesi jepet sipas rolit. Çdo veprim mbi regjistrin shënohet dhe i atribuohet
+        nënshkruesit që e kryen.
+      </p>
+
+      <dl style="margin:0;border-top:1px solid var(--rule)">
+        <?php
+        $gateNotes = [
+          ['Administratori', 'Mban regjistrin e plotë: përdoruesit, modulet, grupet dhe auditimin.'],
+          ['Editori', 'Regjistron kursantë, cakton grupe dhe shënon provimet.'],
+          ['Agjencia', 'Regjistron punonjësit e vet dhe ndjek grupet ku janë caktuar.'],
+          ['Kursanti', 'Sheh modulet, grupet dhe certifikatat e veta.'],
+        ];
+        foreach ($gateNotes as $n): ?>
+          <div style="display:grid;grid-template-columns:9rem 1fr;gap:1rem;padding:.7rem 0;border-bottom:1px solid var(--rule-hair)">
+            <dt class="label" style="padding-top:.15rem"><?= h($n[0]) ?></dt>
+            <dd style="margin:0;font-size:var(--fs-sm);color:var(--pencil)"><?= h($n[1]) ?></dd>
+          </div>
+        <?php endforeach; ?>
+      </dl>
     </aside>
 
-    <section class="qta-card login-card" data-aos="fade-left" aria-labelledby="loginTitle">
-      <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4">
-        <div>
-          <h2 class="h3 fw-bold mb-1" id="loginTitle">Hyr në sistem</h2>
-          <p class="text-muted-public mb-0" data-role-hint>Zgjidh rolin për të parë fushat e sakta.</p>
-        </div>
-        <span class="badge text-bg-primary align-self-start" data-role-badge><?= h($roles[$activeRole]['label']) ?></span>
-      </div>
+    <section class="gate-form" aria-labelledby="gateTitle">
+      <h2 id="gateTitle" style="margin-bottom:.25rem">Identifikohu</h2>
+      <p class="muted" style="font-size:var(--fs-sm);margin-bottom:1.4rem" data-role-hint>
+        Zgjidh rolin për të parë fushat e sakta.
+      </p>
 
-      <div class="role-switcher mb-4" role="group" aria-label="Zgjidh rolin">
+      <div class="role-tabs" role="group" aria-label="Zgjidh rolin">
         <?php foreach ($roles as $key => $roleInfo): ?>
-          <button class="role-option <?= $key === $activeRole ? 'active' : '' ?>" type="button"
-                  data-role-option="<?= h($key) ?>" aria-pressed="<?= $key === $activeRole ? 'true' : 'false' ?>">
-            <i class="bi <?= h($roleInfo['icon']) ?> me-1"></i><?= h($roleInfo['short']) ?>
-            <span><?= h($roleInfo['label']) ?></span>
-          </button>
+          <button class="role-tab <?= $key === $activeRole ? 'is-active' : '' ?>" type="button"
+                  data-role-option="<?= h($key) ?>"
+                  aria-pressed="<?= $key === $activeRole ? 'true' : 'false' ?>"><?= h($roleInfo['short']) ?></button>
         <?php endforeach; ?>
       </div>
 
       <?php if ($loginError): ?>
+        <div class="alert alert-danger mb-3" role="alert" aria-live="assertive">
+          <strong style="display:block">Hyrja nuk u krye</strong>
+          <?= h($loginError) ?>
+        </div>
+      <?php endif; ?>
+
+      <?php foreach ($roles as $key => $roleInfo): ?>
+        <form class="login-form <?= $key === $activeRole ? '' : 'd-none' ?>" data-role="<?= h($key) ?>"
+              action="login_handler.php" method="post" autocomplete="off" novalidate>
+          <input type="hidden" name="role" value="<?= h($key) ?>">
+          <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+
+          <div class="field">
+            <label class="label" for="identifier_<?= h($key) ?>"><?= h($roleInfo['field_label']) ?></label>
+            <input class="input<?= $roleInfo['type'] === 'email' ? '' : ' input-code' ?>"
+                   id="identifier_<?= h($key) ?>" name="identifier" type="<?= h($roleInfo['type']) ?>"
+                   placeholder="<?= h($roleInfo['placeholder']) ?>" required>
+          </div>
+
+          <div class="field">
+            <label class="label" for="password_<?= h($key) ?>">Fjalëkalimi</label>
+            <div style="display:flex;gap:.4rem">
+              <input class="input login-password" id="password_<?= h($key) ?>" name="password" type="password"
+                     placeholder="Shkruaj fjalëkalimin" required style="flex:1;min-width:0">
+              <button class="btn btn-icon" type="button" data-password-toggle="#password_<?= h($key) ?>"
+                      aria-label="Shfaq ose fsheh fjalëkalimin">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="caps-note d-none" data-caps-warning>Caps Lock është i ndezur.</div>
+          </div>
+
+          <button class="btn btn-ink btn-lg w-100" type="submit" style="margin-top:.6rem">
+            <?= h($roleInfo['button']) ?>
+          </button>
+        </form>
+      <?php endforeach; ?>
+
+      <p class="muted" style="font-size:var(--fs-xs);margin:1.1rem 0 0">
+        Nuk ke akses? Shkruaj te <a href="contact.php">administrata e QTA-së</a>.
+        Për të kontrolluar një certifikatë nuk duhet llogari —
+        <a href="verify.php">hap verifikimin</a>.
+      </p>
+    </section>
+
+  </div>
+</main>
+
+<?php if ($loginError): ?>
         <div class="alert alert-danger d-flex gap-2" role="alert" aria-live="assertive">
           <i class="bi bi-exclamation-triangle mt-1"></i>
           <div>
@@ -179,7 +236,7 @@ require_once __DIR__ . '/navbarMain.php';
   </script>
 <?php endif; ?>
 <?php
-require_once __DIR__ . '/footer.php';
+require_once __DIR__ . '/../shared/footer.php';
 require_once __DIR__ . '/../shared/public_scripts.php';
 ?>
 </body>

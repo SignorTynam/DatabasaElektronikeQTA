@@ -445,38 +445,40 @@ require_once __DIR__ . '/navbarMain.php';
 ?>
 
 <!-- HERO -->
-<section class="hero">
-  <div class="container container-max hero-inner">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <div>
-        <h1 class="h3 fw-bold mb-1">Verifikim publik i certifikatave QTA</h1>
-        <div class="text-muted2">
-          Skano QR, ngarko foto ose vendos linkun/token-in për të kontrolluar vlefshmërinë.
-        </div>
+<section class="wrap" style="padding-top:2rem">
 
-        <div class="mt-2 d-flex flex-wrap gap-2">
-          <span class="mini-pill"><i class="bi bi-person-x"></i> Nuk kërkohet llogari</span>
-          <span class="mini-pill"><i class="bi bi-lightning-charge"></i> Verifikim në kohë reale</span>
-          <span class="mini-pill"><i class="bi bi-shield-check"></i> Të dhëna minimale</span>
-          <span class="mini-pill"><i class="bi bi-key"></i> QR/token unik</span>
-        </div>
+  <div class="protocol-line">
+    <span>Republika e Shqipërisë</span>
+    <span class="sep">·</span>
+    <span>Qendra e Trajnimeve të Avancuara</span>
+    <span class="sep">·</span>
+    <span>Verifikim publik</span>
+  </div>
+
+  <div class="title-block">
+    <div class="title-block-main">
+      <h1>Kontroll i vlefshmërisë së certifikatës</h1>
+      <p class="title-block-note">
+        Skano kodin QR, ngarko një foto të tij ose shkruaj kodin. Përgjigjja jepet menjëherë
+        dhe nuk kërkon llogari.
+      </p>
+    </div>
+    <div class="title-block-fields">
+      <div class="title-block-field">
+        <span class="label">Data</span>
+        <span class="value"><?= h(date('d.m.Y')) ?></span>
       </div>
-
-      <div class="d-flex gap-2 align-items-center" id="topActions">
-        <a href="index.php" class="btn btn-soft">
-          <i class="bi bi-house me-1"></i> Kryefaqja
-        </a>
-        <button type="button" class="btn btn-soft" data-theme-toggle aria-label="Ndrysho temën">
-          <i class="bi bi-moon-stars me-1"></i><span data-theme-label>Modalitet i errët</span>
-        </button>
+      <div class="title-block-field">
+        <span class="label">Regjistri</span>
+        <span class="value">QTA</span>
       </div>
     </div>
   </div>
+
 </section>
 
-<br>
+<div class="wrap pb-5">
 
-<div class="container container-max pb-5">
   <div class="row g-4">
 
     <!-- LEFT: Tools -->
@@ -591,16 +593,30 @@ require_once __DIR__ . '/navbarMain.php';
         }
       ?>
 
-      <div class="status-banner mb-3 <?= h($statusClass) ?>">
-        <i id="statusIcon" class="bi fs-5 <?= $prefillResult ? ($prefillResult['valid']?'bi-check2-circle text-success':'bi-x-circle text-danger') : 'bi-shield-lock text-secondary' ?>"></i>
-        <div class="fw-semibold">Statusi:</div>
-        <div id="statusText"><?= h($statusLabel) ?></div>
+      <?php
+        $vClass = $prefillResult ? ($prefillResult['valid'] ? 'verdict-valid' : 'verdict-void') : '';
+        $vStamp = $prefillResult ? ($prefillResult['valid'] ? 'is-valid' : 'is-void') : 'is-hold';
+        $vWord  = $prefillResult ? ($prefillResult['valid'] ? 'I vlefshëm' : 'I pavlefshëm') : 'Në pritje';
+        $vNote  = $prefillResult
+          ? ($prefillResult['valid']
+              ? 'Certifikata figuron në regjistër dhe është në fuqi.'
+              : 'Ky kod nuk përputhet me asnjë certifikatë në fuqi.')
+          : 'Skano ose shkruaj kodin për të nisur kontrollin.';
+      ?>
 
+      <div class="verdict mb-3 <?= h($vClass) ?>" id="verdictBar">
+        <span class="stamp stamp-sm <?= h($vStamp) ?><?= $prefillResult ? ' stamp-press' : '' ?>" id="verdictStamp" aria-hidden="true">
+          <span class="stamp-mark">QTA</span>
+        </span>
+        <div class="min-w-0">
+          <h2 id="statusText"><?= h($vWord) ?></h2>
+          <div class="verdict-note" id="statusNote"><?= h($vNote) ?></div>
+        </div>
         <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-soft btn-sm" id="btnShare" type="button" title="Krijo link verifikimi">
+          <button class="btn btn-sm btn-icon" id="btnShare" type="button" title="Kopjo linkun e verifikimit" aria-label="Kopjo linkun e verifikimit">
             <i class="bi bi-link-45deg"></i>
           </button>
-          <button class="btn btn-soft btn-sm" id="btnPrint" type="button" title="Printo rezultatin">
+          <button class="btn btn-sm btn-icon" id="btnPrint" type="button" title="Printo rezultatin" aria-label="Printo rezultatin">
             <i class="bi bi-printer"></i>
           </button>
         </div>
@@ -763,7 +779,6 @@ let lastPayload = '';
 let cameras = [];
 let currentCamIndex = -1;
 
-const statusBanner = document.querySelector('.status-banner');
 const statusText   = document.getElementById('statusText');
 const camSelect    = document.getElementById('camSelect');
 
@@ -775,16 +790,40 @@ function notify(message, variant='primary'){
 
 function setStatus(label, variant){
   const chip = document.getElementById('statusChip');
-  chip.className = 'badge text-bg-'+variant;
-  chip.textContent = label;
+  if (chip){
+    chip.className = 'badge text-bg-'+variant;
+    chip.textContent = label;
+  }
 
-  if (statusText) statusText.textContent = (label === '—' ? 'Gati për verifikim' : label);
+  /* Fjala e vendimit, jo etiketa teknike. */
+  const word = variant === 'success' ? 'I vlefshëm'
+             : variant === 'danger'  ? 'I pavlefshëm'
+             : 'Në pritje';
+  const note = variant === 'success' ? 'Certifikata figuron në regjistër dhe është në fuqi.'
+             : variant === 'danger'  ? 'Ky kod nuk përputhet me asnjë certifikatë në fuqi.'
+             : 'Skano ose shkruaj kodin për të nisur kontrollin.';
 
-  statusBanner?.classList.remove('status-valid','status-invalid','status-pending');
-  statusBanner?.classList.add(
-    variant==='success' ? 'status-valid'
-    : (variant==='danger' ? 'status-invalid' : 'status-pending')
-  );
+  if (statusText) statusText.textContent = word;
+  const statusNote = document.getElementById('statusNote');
+  if (statusNote) statusNote.textContent = note;
+
+  const bar = document.getElementById('verdictBar');
+  if (bar){
+    bar.classList.remove('verdict-valid','verdict-void');
+    if (variant === 'success') bar.classList.add('verdict-valid');
+    else if (variant === 'danger') bar.classList.add('verdict-void');
+  }
+
+  /* Vula shtypet sërish sa herë ndryshon vendimi. */
+  const stamp = document.getElementById('verdictStamp');
+  if (stamp){
+    stamp.classList.remove('is-valid','is-void','is-hold','stamp-press');
+    stamp.classList.add(variant === 'success' ? 'is-valid' : (variant === 'danger' ? 'is-void' : 'is-hold'));
+    if (variant !== 'secondary'){
+      void stamp.offsetWidth;          /* rinis animacionin */
+      stamp.classList.add('stamp-press');
+    }
+  }
 }
 
 /* ========= Camera enumeration & switching ========= */

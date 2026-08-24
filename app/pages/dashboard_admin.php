@@ -122,199 +122,175 @@ $greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' 
 $whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')));
 
 $NAV_ACTIVE = 'dashboard';
-$pageTitle  = 'Dashboard – QTA';
+$pageTitle  = 'Fleta e punës – Regjistri QTA';
+
 require __DIR__ . '/../shared/app_head.php';
 require __DIR__ . '/inc/navbar.php';
 ?>
 
-<main class="app-main">
+<main class="sheet sheet-wide">
 
-  <!-- HERO -->
-  <section class="app-hero">
-    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
-      <div class="min-w-0">
-        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-          <span class="app-pill"><i class="bi bi-calendar3"></i><?= h(date('d.m.Y')) ?></span>
-          <span class="app-pill"><i class="bi bi-activity"></i>Audit 24h: <strong class="text-body"><?= (int)$k['audit_24h'] ?></strong></span>
+  <!-- ====================================================== BLLOKU I TITULLIT -->
+  <div class="title-block">
+    <div class="title-block-main">
+      <div class="title-block-eyebrow">Fleta e punës</div>
+      <h1><?= h($greeting) ?>, <?= h($whoShort) ?></h1>
+      <p class="title-block-note">
+        Gjendja e regjistrit sot dhe zërat që presin veprim.
+      </p>
+    </div>
+
+    <div class="title-block-fields">
+      <div class="title-block-field">
+        <span class="label">Data</span>
+        <span class="value"><?= h(date('d.m.Y')) ?></span>
+      </div>
+      <div class="title-block-field">
+        <span class="label">Veprime 24h</span>
+        <span class="value"><?= number_format((int)$k['audit_24h']) ?></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================== SHIFRAT -->
+  <section class="tally" aria-label="Gjendja e regjistrit">
+    <div class="tally-cell">
+      <span class="label">Të regjistruar</span>
+      <span class="tally-value"><?= number_format((int)$k['students_total']) ?></span>
+      <span class="tally-foot">gjithsej</span>
+    </div>
+    <div class="tally-cell">
+      <span class="label">Grupe në zhvillim</span>
+      <span class="tally-value"><?= number_format((int)$k['active_groups']) ?></span>
+      <span class="tally-foot">sot</span>
+    </div>
+    <div class="tally-cell">
+      <span class="label">Regjistrime aktive</span>
+      <span class="tally-value"><?= number_format((int)$k['active_enrollments']) ?></span>
+      <span class="tally-foot">në grupe të hapura</span>
+    </div>
+    <div class="tally-cell<?= (int)$k['students_no_group'] > 0 ? ' is-hold' : '' ?>">
+      <span class="label">Pa grup</span>
+      <span class="tally-value"><?= number_format((int)$k['students_no_group']) ?></span>
+      <span class="tally-foot">presin caktim</span>
+    </div>
+  </section>
+
+  <div class="row g-4">
+
+    <!-- ===================================================== ZËRAT PA MBYLLUR -->
+    <div class="col-12 col-xl-5">
+      <section aria-labelledby="pendingTitle">
+        <div class="band-head" style="margin-bottom:0">
+          <h2 id="pendingTitle">Pa mbyllur</h2>
+          <span class="label">Kërkon veprim</span>
         </div>
-        <h1><?= h($greeting) ?>, <?= h($whoShort) ?></h1>
-        <p class="lead">Këtu janë veprimet kryesore dhe puna që ka mbetur pa u mbyllur në sistemin e certifikimeve.</p>
-      </div>
 
-      <div class="page-header-actions">
-        <a class="btn btn-primary" href="<?= h($ROUTES['students']) ?>">
-          <i class="bi bi-person-plus me-1"></i>Regjistro student
-        </a>
-        <a class="btn btn-outline-primary" href="<?= h($ROUTES['groups']) ?>">
-          <i class="bi bi-people me-1"></i>Grupet
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- KPI -->
-  <section class="stat-grid" aria-label="Treguesit kryesorë">
-    <div class="stat">
-      <span class="app-icon"><i class="bi bi-mortarboard"></i></span>
-      <div class="stat-body">
-        <span class="stat-value"><?= (int)$k['students_total'] ?></span>
-        <span class="stat-label">Total studentë</span>
-      </div>
-    </div>
-
-    <div class="stat stat-success">
-      <span class="app-icon success"><i class="bi bi-collection"></i></span>
-      <div class="stat-body">
-        <span class="stat-value"><?= (int)$k['active_groups'] ?></span>
-        <span class="stat-label">Grupe aktive</span>
-      </div>
+        <div class="action-list">
+          <?php
+          $pending = [
+            ['no' => '01', 'href' => $ROUTES['students'], 'title' => 'Kursantë pa grup',
+             'note' => 'Regjistruar, por ende pa u caktuar në asnjë grup.',
+             'count' => (int)$k['students_no_group']],
+            ['no' => '02', 'href' => $ROUTES['groups'], 'title' => 'Grupe të mbaruara, të pambyllura',
+             'note' => 'Data e mbarimit ka kaluar dhe grupi s\'është mbyllur.',
+             'count' => (int)$k['groups_ended_not_completed']],
+            ['no' => '03', 'href' => $ROUTES['groups'], 'title' => 'Provime pa datë',
+             'note' => 'Kursantë në grupe të mbyllura pa datë provimi.',
+             'count' => (int)$k['pending_exams']],
+          ];
+          foreach ($pending as $row): ?>
+            <a class="action-row" href="<?= h($row['href']) ?>">
+              <span class="no"><?= h($row['no']) ?></span>
+              <span class="action-main">
+                <b><?= h($row['title']) ?></b>
+                <span><?= h($row['note']) ?></span>
+              </span>
+              <span class="action-count"><?= number_format($row['count']) ?></span>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      </section>
     </div>
 
-    <div class="stat stat-accent">
-      <span class="app-icon accent"><i class="bi bi-person-check"></i></span>
-      <div class="stat-body">
-        <span class="stat-value"><?= (int)$k['active_enrollments'] ?></span>
-        <span class="stat-label">Regjistrime aktive</span>
-      </div>
+    <!-- ============================================================ KALENDARI -->
+    <div class="col-12 col-xl-7">
+      <section aria-labelledby="weekTitle">
+        <div class="band-head" style="margin-bottom:0">
+          <h2 id="weekTitle">Shtatë ditët e ardhshme</h2>
+          <span class="label">Grupet</span>
+        </div>
+
+        <div class="row g-4 mt-0">
+          <?php
+          $weeks = [
+            ['title' => 'Nisin', 'rows' => $startingSoon, 'field' => 'start_date',
+             'empty' => 'Asnjë grup nuk nis brenda shtatë ditëve.'],
+            ['title' => 'Mbarojnë', 'rows' => $endingSoon, 'field' => 'end_date',
+             'empty' => 'Asnjë grup nuk mbaron brenda shtatë ditëve.'],
+          ];
+          foreach ($weeks as $w): ?>
+            <div class="col-12 col-lg-6">
+              <span class="label" style="display:block;padding-bottom:.4rem;border-bottom:1px solid var(--rule)">
+                <?= h($w['title']) ?>
+              </span>
+
+              <?php if ($w['rows']): ?>
+                <div class="action-list" style="border-top:0">
+                  <?php foreach ($w['rows'] as $i => $g): ?>
+                    <a class="action-row" href="<?= h($ROUTES['groups']) ?>">
+                      <span class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></span>
+                      <span class="action-main">
+                        <b class="text-truncate d-block"><?= h((string)($g['name'] ?? '')) ?></b>
+                        <span class="code"><?= h((string)($g['code'] ?? '')) ?></span>
+                      </span>
+                      <span class="action-count" style="font-size:var(--fs-sm)">
+                        <?= h(date('d.m', strtotime((string)$g[$w['field']]))) ?>
+                      </span>
+                    </a>
+                  <?php endforeach; ?>
+                </div>
+              <?php else: ?>
+                <div class="blank" style="padding:1.75rem 1rem;margin-top:.75rem">
+                  <span class="blank-note"><?= h($w['empty']) ?></span>
+                </div>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============================================================ SHKURTORET -->
+  <section class="mt-5" aria-labelledby="shortcutsTitle">
+    <div class="band-head">
+      <h2 id="shortcutsTitle">Shko te</h2>
     </div>
 
-    <div class="stat stat-warning">
-      <span class="app-icon warning"><i class="bi bi-exclamation-circle"></i></span>
-      <div class="stat-body">
-        <span class="stat-value"><?= (int)$k['students_no_group'] ?></span>
-        <span class="stat-label">Studentë pa grup</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- VEPRO SHPEJT -->
-  <section class="mb-4">
-    <div class="page-header">
-      <div>
-        <div class="page-eyebrow"><i class="bi bi-lightning-charge"></i>Shkurtore</div>
-        <h2>Vepro shpejt</h2>
-      </div>
-    </div>
-
-    <div class="row g-3">
+    <div class="row g-2">
       <?php
-      $quickActions = [
-        ['href' => $ROUTES['students'],       'icon' => 'bi-mortarboard',   'tone' => '',        'title' => 'Studentë',       'desc' => 'Krijo dhe menaxho regjistrime.'],
-        ['href' => $ROUTES['groups'],         'icon' => 'bi-collection',    'tone' => 'success', 'title' => 'Grupe',          'desc' => 'Krijo grup, shto studentë, mbyll grup.'],
-        ['href' => $ROUTES['courses'],        'icon' => 'bi-journal-text',  'tone' => 'accent',  'title' => 'Module',         'desc' => 'Shto ose ndrysho kurse dhe orë.'],
-        ['href' => $ROUTES['agencies'],       'icon' => 'bi-building',      'tone' => 'info',    'title' => 'Agjenci',        'desc' => 'NIPT, të dhëna dhe studentë të caktuar.'],
-        ['href' => $ROUTES['logs'],           'icon' => 'bi-shield-check',  'tone' => 'danger',  'title' => 'Audit / Log',    'desc' => 'Kontrollo ndryshimet dhe përdoruesit.'],
-        ['href' => $ROUTES['profile_select'], 'icon' => 'bi-person-badge',  'tone' => 'warning', 'title' => 'Ndrysho profil', 'desc' => 'Kthehu te zgjedhja e profilit.'],
+      $shortcuts = [
+        ['href' => $ROUTES['students'], 'title' => 'Kursantët',  'note' => 'Regjistrimi dhe të dhënat'],
+        ['href' => $ROUTES['groups'],   'title' => 'Grupet',     'note' => 'Caktimi, provimet, mbyllja'],
+        ['href' => $ROUTES['courses'],  'title' => 'Modulet',    'note' => 'Zanatet dhe orët'],
+        ['href' => $ROUTES['agencies'], 'title' => 'Agjencitë',  'note' => 'Kompanitë dhe punonjësit'],
+        ['href' => $ROUTES['logs'],     'title' => 'Auditimi',   'note' => 'Kush ndryshoi çfarë'],
+        ['href' => 'users.php',         'title' => 'Përdoruesit','note' => 'Aksesi dhe rolet'],
       ];
-      foreach ($quickActions as $qa): ?>
-        <div class="col-12 col-sm-6 col-xl-4">
-          <a class="quick-action h-100" href="<?= h($qa['href']) ?>">
-            <span class="app-icon <?= h($qa['tone']) ?>"><i class="bi <?= h($qa['icon']) ?>"></i></span>
-            <span class="min-w-0">
-              <strong><?= h($qa['title']) ?></strong>
-              <span><?= h($qa['desc']) ?></span>
+      foreach ($shortcuts as $sc): ?>
+        <div class="col-12 col-sm-6 col-lg-4">
+          <a class="shortcut" href="<?= h($sc['href']) ?>">
+            <span>
+              <b><?= h($sc['title']) ?></b>
+              <span><?= h($sc['note']) ?></span>
             </span>
+            <i class="bi bi-arrow-right arrow"></i>
           </a>
         </div>
       <?php endforeach; ?>
     </div>
   </section>
-
-  <!-- RADHA E PUNËS + KJO JAVË -->
-  <section class="row g-3">
-    <div class="col-12 col-xl-5">
-      <div class="card h-100">
-        <div class="card-header d-flex align-items-center justify-content-between">
-          <span><i class="bi bi-inbox me-2"></i>Radha e punës</span>
-          <span class="small text-muted fw-normal">Prioritete operative</span>
-        </div>
-        <div class="card-body p-0">
-          <div class="list-group list-group-flush">
-            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3"
-               href="<?= h($ROUTES['students']) ?>">
-              <span>
-                <strong class="d-block">Studentë pa grup</strong>
-                <span class="small text-muted">Regjistrime që s'janë futur askund.</span>
-              </span>
-              <span class="badge text-bg-secondary"><?= (int)$k['students_no_group'] ?></span>
-            </a>
-
-            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3"
-               href="<?= h($ROUTES['groups']) ?>">
-              <span>
-                <strong class="d-block">Grupe të papërfunduara</strong>
-                <span class="small text-muted">Mbyllje operative, pastaj testet dhe notat.</span>
-              </span>
-              <span class="badge text-bg-warning"><?= (int)$k['groups_ended_not_completed'] ?></span>
-            </a>
-
-            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3"
-               href="<?= h($ROUTES['groups']) ?>">
-              <span>
-                <strong class="d-block">Studentë pa test</strong>
-                <span class="small text-muted">Në grupe të mbyllura pa datë testi.</span>
-              </span>
-              <span class="badge text-bg-danger"><?= (int)$k['pending_exams'] ?></span>
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-xl-7">
-      <div class="card h-100">
-        <div class="card-header d-flex align-items-center justify-content-between">
-          <span><i class="bi bi-calendar-week me-2"></i>Kjo javë</span>
-          <span class="small text-muted fw-normal">Grupet që nisin ose mbarojnë</span>
-        </div>
-        <div class="card-body">
-          <div class="row g-3">
-            <?php
-            $weekBlocks = [
-              ['title' => 'Nisin brenda 7 ditëve',    'icon' => 'bi-play-circle', 'tone' => 'success', 'rows' => $startingSoon, 'empty' => 'Asnjë grup që nis në 7 ditë.'],
-              ['title' => 'Mbarojnë brenda 7 ditëve', 'icon' => 'bi-flag',        'tone' => 'warning', 'rows' => $endingSoon,   'empty' => 'Asnjë grup që mbaron në 7 ditë.'],
-            ];
-            foreach ($weekBlocks as $block): ?>
-              <div class="col-12 col-lg-6">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <span class="app-icon <?= h($block['tone']) ?>" style="width:32px;height:32px;font-size:.95rem;">
-                    <i class="bi <?= h($block['icon']) ?>"></i>
-                  </span>
-                  <strong class="small"><?= h($block['title']) ?></strong>
-                </div>
-
-                <?php if ($block['rows']): ?>
-                  <div class="list-group">
-                    <?php foreach ($block['rows'] as $g): ?>
-                      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2"
-                         href="<?= h($ROUTES['groups']) ?>">
-                        <span class="min-w-0">
-                          <strong class="d-block text-truncate"><?= h(trim(($g['code'] ?? '') . ' · ' . ($g['name'] ?? ''), ' ·')) ?></strong>
-                          <span class="small text-muted tabular">
-                            <?= h((string)($g['start_date'] ?? '')) ?> → <?= h((string)($g['end_date'] ?? '')) ?>
-                          </span>
-                        </span>
-                        <i class="bi bi-chevron-right text-muted"></i>
-                      </a>
-                    <?php endforeach; ?>
-                  </div>
-                <?php else: ?>
-                  <div class="empty-state py-4">
-                    <span class="empty-icon" style="width:44px;height:44px;font-size:1.1rem;"><i class="bi bi-calendar-x"></i></span>
-                    <span class="small"><?= h($block['empty']) ?></span>
-                  </div>
-                <?php endif; ?>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <p class="text-center text-muted small mt-4 mb-0">
-    &copy; <?= date('Y') ?> QTA · Paneli i administrimit
-  </p>
 
 </main>
 

@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * navbarMain.php — Kokëfleta publike (PROTOKOLL).
+ * Institucioni majtas, seksionet djathtas, vijë boje 2px poshtë.
+ */
+
 require_once __DIR__ . '/public_ui.php';
 
 if (empty($NAV_ACTIVE)) {
@@ -16,101 +21,75 @@ if (empty($NAV_ACTIVE)) {
 }
 
 $currentUser = $currentUser ?? null;
-$roleName = qta_public_role($currentUser);
+$roleName    = qta_public_role($currentUser);
 $displayName = (string)($currentUser['full_name'] ?? $currentUser['email'] ?? 'Përdorues');
-$panelHref = qta_public_panel_href($roleName);
-$panelLabel = qta_public_panel_label($roleName);
-$avatar = qta_public_initials($displayName);
+$panelHref   = qta_public_panel_href($roleName);
+$panelLabel  = qta_public_panel_label($roleName);
+$avatar      = qta_public_initials($displayName);
+
+$links = [
+  ['key' => 'home',    'href' => 'index.php',   'label' => 'Regjistri'],
+  ['key' => 'about',   'href' => 'aboutus.php', 'label' => 'Institucioni'],
+  ['key' => 'contact', 'href' => 'contact.php', 'label' => 'Kontakt'],
+];
 ?>
-<nav class="navbar navbar-expand-lg sticky-top qta-navbar" aria-label="Navigimi publik QTA">
-  <div class="container-public">
-    <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
-      <img src="image/logoPNG2.png" alt="Logo QTA">
-      <span class="lh-sm">
-        <span class="d-block">QTA</span>
-        <span class="brand-subtitle d-none d-md-block">Qendra e Trajnimeve të Avancuara</span>
+<header class="masthead">
+  <div class="wrap masthead-inner">
+
+    <a class="masthead-mark" href="index.php">
+      <img src="image/logoPNG2.png" alt="QTA">
+      <span>
+        <b>Regjistri QTA</b>
+        <span>Certifikime profesionale</span>
       </span>
     </a>
 
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#qtaPublicNav"
-            aria-controls="qtaPublicNav" aria-expanded="false" aria-label="Hap menunë">
-      <span class="navbar-toggler-icon"></span>
+    <button class="masthead-burger" type="button" data-mast-toggle
+            aria-expanded="false" aria-controls="mastNav" aria-label="Hap menunë">
+      <i class="bi bi-list"></i>
     </button>
 
-    <div class="collapse navbar-collapse" id="qtaPublicNav">
-      <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
-        <li class="nav-item">
-          <a class="nav-link <?= h(qta_public_active('home', $NAV_ACTIVE)) ?>" href="index.php" <?= $NAV_ACTIVE === 'home' ? 'aria-current="page"' : '' ?>>
-            Kryefaqja
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link <?= h(qta_public_active('about', $NAV_ACTIVE)) ?>" href="aboutus.php" <?= $NAV_ACTIVE === 'about' ? 'aria-current="page"' : '' ?>>
-            Rreth nesh
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link <?= h(qta_public_active('contact', $NAV_ACTIVE)) ?>" href="contact.php" <?= $NAV_ACTIVE === 'contact' ? 'aria-current="page"' : '' ?>>
-            Kontakt
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="btn btn-outline-primary qta-btn ms-lg-2 <?= h(qta_public_active('verify', $NAV_ACTIVE)) ?>" href="verify.php" <?= $NAV_ACTIVE === 'verify' ? 'aria-current="page"' : '' ?>>
-            <i class="bi bi-qr-code-scan"></i>Verifiko
-          </a>
-        </li>
+    <nav class="masthead-nav" id="mastNav" aria-label="Navigimi publik">
+      <?php foreach ($links as $l): ?>
+        <a class="masthead-link<?= $NAV_ACTIVE === $l['key'] ? ' is-active' : '' ?>"
+           href="<?= h($l['href']) ?>"
+           <?= $NAV_ACTIVE === $l['key'] ? 'aria-current="page"' : '' ?>><?= h($l['label']) ?></a>
+      <?php endforeach; ?>
 
-        <?php if (!empty($currentUser)): ?>
-          <li class="nav-item dropdown ms-lg-2">
-            <button class="btn qta-theme-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-              <span class="qta-avatar me-1"><?= h($avatar) ?></span>
-              <span><?= h($displayName) ?></span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end qta-dropdown p-2">
-              <li class="px-2 py-2">
-                <div class="d-flex align-items-center gap-2">
-                  <span class="qta-avatar"><?= h($avatar) ?></span>
-                  <div class="min-w-0">
-                    <div class="fw-bold text-truncate"><?= h($displayName) ?></div>
-                    <?php if (!empty($currentUser['email'])): ?>
-                      <div class="small text-muted text-truncate"><?= h((string)$currentUser['email']) ?></div>
-                    <?php endif; ?>
-                  </div>
-                </div>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <a class="dropdown-item d-flex align-items-center gap-2" href="<?= h($panelHref) ?>">
-                  <i class="bi bi-speedometer2"></i><?= h($panelLabel) ?>
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item d-flex align-items-center gap-2" href="profile.php">
-                  <i class="bi bi-person"></i>Profili
-                </a>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <a class="dropdown-item d-flex align-items-center gap-2 text-danger" href="logout.php">
-                  <i class="bi bi-box-arrow-right"></i>Dil
-                </a>
-              </li>
-            </ul>
-          </li>
-        <?php else: ?>
-          <li class="nav-item ms-lg-2">
-            <a class="btn btn-primary qta-btn <?= h(qta_public_active('login', $NAV_ACTIVE)) ?>" href="selectProfile.php">
-              <i class="bi bi-box-arrow-in-right"></i>Hyr
-            </a>
-          </li>
-        <?php endif; ?>
+      <a class="masthead-link<?= $NAV_ACTIVE === 'verify' ? ' is-active' : '' ?>"
+         href="verify.php" <?= $NAV_ACTIVE === 'verify' ? 'aria-current="page"' : '' ?>>Verifiko</a>
 
-        <li class="nav-item ms-lg-2">
-          <button class="qta-theme-btn" type="button" data-theme-toggle>
-            <i class="bi bi-moon-stars"></i><span>Modalitet i errët</span>
+      <button class="app-tool ms-2" type="button" data-theme-toggle aria-label="Ndërro pamjen">
+        <i class="bi bi-circle-half"></i>
+      </button>
+
+      <?php if (!empty($currentUser)): ?>
+        <div class="dropdown ms-2">
+          <button class="app-who" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <span class="initials"><?= h($avatar) ?></span>
+            <span class="app-who-name d-none d-sm-inline"><?= h($displayName) ?></span>
           </button>
-        </li>
-      </ul>
-    </div>
+          <ul class="dropdown-menu dropdown-menu-end" style="min-width:238px">
+            <li class="px-2 py-2 d-flex align-items-center gap-2">
+              <span class="initials initials-lg"><?= h($avatar) ?></span>
+              <span class="min-w-0">
+                <span class="d-block text-truncate" style="font-family:var(--font-record);font-weight:600"><?= h($displayName) ?></span>
+                <?php if (!empty($currentUser['email'])): ?>
+                  <span class="d-block text-truncate muted" style="font-size:var(--fs-xs)"><?= h((string)$currentUser['email']) ?></span>
+                <?php endif; ?>
+              </span>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="<?= h($panelHref) ?>"><i class="bi bi-journal-text"></i><?= h($panelLabel) ?></a></li>
+            <li><a class="dropdown-item" href="profile.php"><i class="bi bi-person"></i>Profili</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right"></i>Dil</a></li>
+          </ul>
+        </div>
+      <?php else: ?>
+        <a class="btn btn-ink btn-sm ms-2" href="selectProfile.php">Hyr në sistem</a>
+      <?php endif; ?>
+    </nav>
+
   </div>
-</nav>
+</header>

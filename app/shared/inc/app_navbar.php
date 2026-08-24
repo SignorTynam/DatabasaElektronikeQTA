@@ -2,20 +2,20 @@
 declare(strict_types=1);
 
 /**
- * app_navbar.php — Navbar-i i vetëm i panelit, i drejtuar nga roli.
- * Zëvendëson navbar.php / navbar2.php / navbar3.php / navbar4.php,
- * të cilët tani janë vetëm mbështjellës që caktojnë $NAV_ROLE.
+ * app_navbar.php — Kokëfleta e panelit (PROTOKOLL).
+ *
+ * Nuk është një "navbar": është koka e një formulari zyrtar — marka, roli i
+ * nënshkruesit, seksionet e regjistrit dhe mjetet. Mbyllet me vijë boje 2px.
  *
  * Variabla opsionale nga faqja prind:
  *   $NAV_ACTIVE   string  çelësi i faqes aktive
  *   $NAV_ROLE     string  roli që përcakton menunë
- *   $NAV_SUBTITLE string  rresht i dytë nën brand (p.sh. emri i agjencisë)
+ *   $NAV_SUBTITLE string  rresht i dytë nën markë
  *   $currentUser  array   id, full_name, email, role_name
  */
 
 require_once __DIR__ . '/../app_ui.php';
 
-/* Ngarko $currentUser nëse faqja nuk e ka dhënë */
 if (!isset($currentUser) || !is_array($currentUser)) {
   if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -42,20 +42,17 @@ if (!isset($currentUser) || !is_array($currentUser)) {
   }
 }
 
-$navRole    = strtolower((string)($NAV_ROLE ?? $currentUser['role_name'] ?? ''));
-$navActive  = $NAV_ACTIVE ?? qta_app_active_key();
-$navMenu    = qta_app_menu($navRole);
-$navHome    = qta_app_home($navRole);
-$navWho     = (string)(($currentUser['full_name'] ?? '') ?: ($currentUser['email'] ?? 'Përdorues'));
-$navEmail   = (string)($currentUser['email'] ?? '');
-$navInit    = qta_app_initials($navWho);
-$navLabel   = qta_app_role_label($navRole);
-$navIcon    = qta_app_role_icon($navRole);
-$navSub     = (string)($NAV_SUBTITLE ?? '');
-$navSearch  = qta_app_can_search($navRole);
-$navProfile = $navActive === 'profile';
+$navRole   = strtolower((string)($NAV_ROLE ?? $currentUser['role_name'] ?? ''));
+$navActive = $NAV_ACTIVE ?? qta_app_active_key();
+$navMenu   = qta_app_menu($navRole);
+$navHome   = qta_app_home($navRole);
+$navWho    = (string)(($currentUser['full_name'] ?? '') ?: ($currentUser['email'] ?? 'Përdorues'));
+$navEmail  = (string)($currentUser['email'] ?? '');
+$navInit   = qta_app_initials($navWho);
+$navLabel  = qta_app_role_label($navRole);
+$navSub    = (string)($NAV_SUBTITLE ?? '');
+$navSearch = qta_app_can_search($navRole);
 
-/** A është aktiv një zë (ose ndonjë nga fëmijët e tij)? */
 $navIsActive = static function (array $item) use ($navActive): bool {
   if (isset($item['key'])) {
     return $item['key'] === $navActive;
@@ -68,61 +65,49 @@ $navIsActive = static function (array $item) use ($navActive): bool {
   return false;
 };
 ?>
-<nav class="navbar navbar-expand-lg app-nav no-print" aria-label="Navigimi i panelit">
-  <div class="container-fluid">
+<header class="app-bar no-print">
+  <div class="app-bar-inner">
 
-    <a class="navbar-brand" href="<?= h($navHome) ?>">
+    <a class="app-mark" href="<?= h($navHome) ?>">
       <img src="image/logoPNG2.png" alt="QTA">
-      <span class="app-brand-text">
-        <span>QTA</span>
-        <small><?= h($navSub !== '' ? $navSub : 'Paneli i sistemit') ?></small>
-      </span>
-      <span class="app-role-chip d-none d-md-inline-flex ms-1">
-        <i class="bi <?= h($navIcon) ?>"></i><?= h($navLabel) ?>
+      <span class="app-mark-name">
+        <b>Regjistri QTA</b>
+        <span><?= h($navSub !== '' ? $navSub : 'Qendra e Trajnimeve të Avancuara') ?></span>
       </span>
     </a>
 
-    <div class="d-flex d-lg-none align-items-center gap-2">
-      <button class="app-icon-btn" type="button" data-theme-toggle aria-label="Ndrysho temën">
-        <i class="bi bi-moon-stars"></i>
-      </button>
-      <a href="verify.php" class="app-icon-btn" title="Verifiko certifikatë" aria-label="Verifiko certifikatë">
-        <i class="bi bi-qr-code-scan"></i>
-      </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNavMenu"
-              aria-controls="appNavMenu" aria-expanded="false" aria-label="Shfaq ose fshih menunë">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-    </div>
+    <span class="app-role d-none d-md-inline-flex">
+      Nënshkrues: <b><?= h($navLabel) ?></b>
+    </span>
 
-    <div class="collapse navbar-collapse" id="appNavMenu">
+    <button class="app-burger ms-auto" type="button" data-nav-toggle
+            aria-expanded="false" aria-controls="appNav" aria-label="Hap seksionet">
+      <i class="bi bi-list"></i>
+    </button>
 
-      <ul class="navbar-nav me-auto mb-0">
+    <nav class="app-nav" id="appNav" aria-label="Seksionet e regjistrit">
+      <ul class="app-nav-list">
         <?php foreach ($navMenu as $i => $item): ?>
           <?php $isActive = $navIsActive($item); ?>
           <?php if (empty($item['children'])): ?>
-            <li class="nav-item">
-              <a class="nav-link<?= $isActive ? ' active' : '' ?>"
+            <li>
+              <a class="app-nav-link<?= $isActive ? ' is-active' : '' ?>"
                  <?= $isActive ? 'aria-current="page"' : '' ?>
-                 href="<?= h((string)$item['href']) ?>">
-                <i class="bi <?= h((string)$item['icon']) ?>"></i><?= h((string)$item['label']) ?>
-              </a>
+                 href="<?= h((string)$item['href']) ?>"><?= h((string)$item['label']) ?></a>
             </li>
           <?php else: ?>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle<?= $isActive ? ' active' : '' ?>" href="#"
-                 id="appNavDrop<?= (int)$i ?>" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="bi <?= h((string)$item['icon']) ?>"></i><?= h((string)$item['label']) ?>
-              </a>
-              <ul class="dropdown-menu" aria-labelledby="appNavDrop<?= (int)$i ?>">
+            <li class="app-item">
+              <button class="app-nav-link<?= $isActive ? ' is-active' : '' ?>" type="button"
+                      data-sub-toggle aria-expanded="false" aria-controls="appSub<?= (int)$i ?>">
+                <?= h((string)$item['label']) ?><span class="caret" aria-hidden="true">▾</span>
+              </button>
+              <ul class="app-sub" id="appSub<?= (int)$i ?>">
                 <?php foreach ($item['children'] as $child): ?>
                   <?php $childActive = ($child['key'] ?? null) === $navActive; ?>
                   <li>
-                    <a class="dropdown-item<?= $childActive ? ' active' : '' ?>"
+                    <a class="app-nav-link<?= $childActive ? ' is-active' : '' ?>"
                        <?= $childActive ? 'aria-current="page"' : '' ?>
-                       href="<?= h((string)$child['href']) ?>">
-                      <i class="bi <?= h((string)$child['icon']) ?>"></i><?= h((string)$child['label']) ?>
-                    </a>
+                       href="<?= h((string)$child['href']) ?>"><?= h((string)$child['label']) ?></a>
                   </li>
                 <?php endforeach; ?>
               </ul>
@@ -130,76 +115,53 @@ $navIsActive = static function (array $item) use ($navActive): bool {
           <?php endif; ?>
         <?php endforeach; ?>
       </ul>
+    </nav>
 
-      <div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center gap-2">
+    <div class="app-tools">
+      <?php if ($navSearch): ?>
+        <form class="app-find" role="search" method="get" action="students.php" data-app-search>
+          <input name="q" type="search" placeholder="Kërko kursant…" aria-label="Kërko kursant"
+                 value="<?= h((string)($_GET['q'] ?? '')) ?>">
+          <button type="submit" aria-label="Kërko"><i class="bi bi-search"></i></button>
+        </form>
+      <?php endif; ?>
 
-        <?php if ($navSearch): ?>
-          <form class="app-search" role="search" method="get" action="students.php" data-app-search>
-            <i class="bi bi-search app-search-icon"></i>
-            <input name="q" type="search" placeholder="Kërko studentë…" aria-label="Kërko studentë"
-                   value="<?= h((string)($_GET['q'] ?? '')) ?>">
-            <kbd class="d-none d-xl-block">/</kbd>
-          </form>
-        <?php endif; ?>
+      <button class="app-tool" type="button" data-theme-toggle aria-label="Ndërro pamjen">
+        <i class="bi bi-circle-half"></i>
+      </button>
 
-        <div class="d-flex align-items-center gap-2">
-          <button class="app-icon-btn d-none d-lg-inline-flex" type="button" data-theme-toggle aria-label="Ndrysho temën">
-            <i class="bi bi-moon-stars"></i>
-          </button>
+      <button class="app-tool d-none d-lg-inline-flex" type="button" data-density-toggle
+              aria-pressed="false" aria-label="Ndërro densitetin e tabelave" title="Densiteti">
+        <i class="bi bi-list-nested"></i>
+      </button>
 
-          <button class="app-icon-btn d-none d-lg-inline-flex" type="button" data-density-toggle
-                  aria-pressed="false" title="Densitet kompakt" aria-label="Ndrysho densitetin e tabelave">
-            <i class="bi bi-arrows-collapse"></i>
-          </button>
+      <a class="app-tool" href="verify.php" title="Verifiko certifikatë" aria-label="Verifiko certifikatë">
+        <i class="bi bi-patch-check"></i>
+      </a>
 
-          <a href="verify.php" class="app-icon-btn d-none d-lg-inline-flex" title="Verifiko certifikatë" aria-label="Verifiko certifikatë">
-            <i class="bi bi-qr-code-scan"></i>
-          </a>
-
-          <a href="index.php" class="app-icon-btn" title="Faqja publike" aria-label="Faqja publike">
-            <i class="bi bi-globe2"></i>
-          </a>
-
-          <div class="dropdown flex-grow-1 flex-lg-grow-0">
-            <button class="app-user-btn dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-              <span class="app-avatar"><?= h($navInit) ?></span>
-              <span class="app-user-name"><?= h($navWho) ?></span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" style="min-width: 260px;">
-              <li class="px-2 py-2">
-                <div class="d-flex align-items-center gap-2">
-                  <span class="app-avatar app-avatar-lg"><?= h($navInit) ?></span>
-                  <div class="min-w-0">
-                    <div class="fw-bold text-truncate"><?= h($navWho) ?></div>
-                    <?php if ($navEmail !== ''): ?>
-                      <div class="small text-muted text-truncate"><?= h($navEmail) ?></div>
-                    <?php endif; ?>
-                  </div>
-                </div>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <a class="dropdown-item<?= $navProfile ? ' active' : '' ?>"
-                   <?= $navProfile ? 'aria-current="page"' : '' ?> href="profile.php">
-                  <i class="bi bi-person-gear"></i>Profili
-                </a>
-              </li>
-              <li class="d-lg-none">
-                <button class="dropdown-item" type="button" data-theme-toggle>
-                  <i class="bi bi-moon-stars"></i><span data-theme-label>Modalitet i errët</span>
-                </button>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <a class="dropdown-item text-danger" href="logout.php">
-                  <i class="bi bi-box-arrow-right"></i>Dil
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
+      <div class="dropdown">
+        <button class="app-who" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <span class="initials"><?= h($navInit) ?></span>
+          <span class="app-who-name d-none d-sm-inline"><?= h($navWho) ?></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" style="min-width:246px">
+          <li class="px-2 py-2 d-flex align-items-center gap-2">
+            <span class="initials initials-lg"><?= h($navInit) ?></span>
+            <span class="min-w-0">
+              <span class="d-block text-truncate" style="font-family:var(--font-record);font-weight:600"><?= h($navWho) ?></span>
+              <?php if ($navEmail !== ''): ?>
+                <span class="d-block text-truncate muted" style="font-size:var(--fs-xs)"><?= h($navEmail) ?></span>
+              <?php endif; ?>
+            </span>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item<?= $navActive === 'profile' ? ' active' : '' ?>" href="profile.php"><i class="bi bi-person"></i>Profili</a></li>
+          <li><a class="dropdown-item" href="index.php"><i class="bi bi-box-arrow-up-right"></i>Faqja publike</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right"></i>Dil</a></li>
+        </ul>
       </div>
-
     </div>
+
   </div>
-</nav>
+</header>

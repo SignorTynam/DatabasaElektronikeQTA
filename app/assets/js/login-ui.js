@@ -27,7 +27,7 @@
 
     document.querySelectorAll('[data-role-option]').forEach(function (button) {
       var active = button.getAttribute('data-role-option') === role;
-      button.classList.toggle('active', active);
+      button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 
@@ -35,11 +35,7 @@
       form.classList.toggle('d-none', form.getAttribute('data-role') !== role);
     });
 
-    var badge = document.querySelector('[data-role-badge]');
     var hint = document.querySelector('[data-role-hint]');
-    if (badge) {
-      badge.textContent = roleMeta[role].title;
-    }
     if (hint) {
       hint.textContent = roleMeta[role].hint;
     }
@@ -100,7 +96,7 @@
       var button = form.querySelector('button[type="submit"]');
       if (button) {
         button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Duke u futur...';
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Po hyn…';
       }
     });
   });
@@ -109,6 +105,6 @@
     window.qtaToast(window.QTA_LOGIN_ERROR, 'danger');
   }
 
-  var initial = document.querySelector('[data-role-option].active')?.getAttribute('data-role-option') || 'administrator';
+  var initial = document.querySelector('[data-role-option].is-active')?.getAttribute('data-role-option') || 'administrator';
   selectRole(initial, false);
 })();

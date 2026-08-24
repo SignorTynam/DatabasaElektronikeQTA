@@ -1,0 +1,364 @@
+/* ============================================================================
+   QTA · PROTOKOLL — Përkthimi i markup-it historik
+   ----------------------------------------------------------------------------
+   Faqet e panelit janë shkruar me një fjalor të vjetër klasash (.kpi, .qa,
+   .hero, .fab-stack, .ev-*, .pill …). Këtu ai fjalor ripërkufizohet me gjuhën
+   e regjistrit, që faqet ta marrin stilin e ri pa u prekur HTML-ja e tyre.
+   Ngarkohet i fundit.
+   ========================================================================= */
+
+/* Klasat e vjetra të <body> nuk imponojnë më sfond. */
+.qta-adm, .qta-edm { background: transparent !important; min-height: 0 !important; padding-top: 0 !important; }
+
+/* Kontejnerët e vjetër marrin masat e fletës. */
+.container-max { width: min(var(--sheet-max), 100%); margin-inline: auto; }
+
+/* ---------------------------------------------------- Koka e faqes (hero) */
+/* Ish-hero-t me gradient bëhen bllok titulli: vijë boje poshtë, pa sfond. */
+.hero {
+  position: relative;
+  overflow: visible;
+  padding: 0 0 .9rem !important;
+  margin-bottom: 1.5rem;
+  border: 0 !important;
+  border-bottom: 2px solid var(--ink) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--ink);
+}
+.hero-inner { position: relative; z-index: 1; }
+.hero h1, .hero h2, .hero .h3 {
+  font-family: var(--font-record);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: var(--track-tight);
+}
+.hero .muted, .hero .text-muted2 { color: var(--pencil); }
+
+/* Hero-t që ishin plot ngjyrë (profili) tani janë thjesht bllok titulli. */
+.hero.hero-brand { background: transparent !important; color: var(--ink); }
+.hero.hero-brand h1, .hero.hero-brand h2 { color: var(--ink); }
+.hero.hero-brand .muted { color: var(--pencil); }
+
+/* ------------------------------------------------------- Pilula dhe chip-a */
+/* Në një regjistër nuk ka pilula: ka fusha të shënuara. */
+.pill, .chip, .mini-pill, .badge-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .16rem .45rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.hero .chip, .hero.hero-brand .chip {
+  border-color: var(--rule);
+  background: var(--paper-raised);
+  color: var(--pencil);
+}
+.badge-soft {
+  border: 1px solid var(--ref) !important;
+  background: var(--ref-wash) !important;
+  color: var(--ref) !important;
+}
+.badge-cap, .group-badge, .badge-edit { font-family: var(--font-ui); font-size: var(--fs-micro); letter-spacing: .05em; }
+
+/* ------------------------------------------------------------ Shifrat (KPI) */
+.kpi {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  height: 100%;
+  padding: .8rem .95rem !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: var(--r) !important;
+  background: var(--paper-raised) !important;
+  box-shadow: none !important;
+}
+.kpi .val, .metric .value, .stat .value {
+  font-family: var(--font-code) !important;
+  font-size: 1.5rem !important;
+  font-weight: 500 !important;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink) !important;
+}
+.kpi .lbl, .metric .label, .stat .label {
+  font-family: var(--font-ui) !important;
+  font-size: var(--fs-micro) !important;
+  font-weight: 600 !important;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil) !important;
+}
+
+/* Ikonat e vjetra rrethore hiqen: një regjistër nuk i ka. */
+.kpi .ico, .qa .ico, .stat-icon, .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--pencil-soft) !important;
+  font-size: .95rem;
+}
+.kpi .ico i, .qa .ico i, .stat-icon i { font-size: 1rem; }
+
+.stat-card { border-radius: var(--r) !important; }
+
+/* -------------------------------------------------------------- Shkurtoret */
+.qa {
+  display: flex;
+  align-items: baseline;
+  gap: .55rem;
+  height: 100%;
+  padding: .7rem .8rem !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: var(--r-sm) !important;
+  background: var(--paper-raised) !important;
+  color: var(--ink) !important;
+  text-decoration: none;
+  box-shadow: none !important;
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+.qa:hover {
+  transform: none !important;
+  border-color: var(--ink) !important;
+  background: var(--paper-tint) !important;
+  box-shadow: none !important;
+}
+.qa .fw-semibold { font-family: var(--font-ui); font-weight: 600; }
+
+/* ------------------------------------------------------- Sipërfaqe të buta */
+.soft-card, .soft, .fact, .help-box {
+  border: 1px solid var(--rule) !important;
+  border-radius: var(--r) !important;
+  background: var(--paper-raised) !important;
+  color: var(--ink);
+  box-shadow: none !important;
+}
+.soft-info {
+  border: 1px solid var(--rule) !important;
+  border-left: 4px solid var(--ref) !important;
+  border-radius: var(--r-sm) !important;
+  background: var(--ref-wash) !important;
+}
+.soft-warn {
+  border: 1px solid var(--rule) !important;
+  border-left: 4px solid var(--hold) !important;
+  border-radius: var(--r-sm) !important;
+  background: var(--hold-wash) !important;
+}
+.help-box {
+  border-left: 4px solid var(--ref) !important;
+  background: var(--ref-wash) !important;
+  border-radius: var(--r-sm) !important;
+}
+
+/* ------------------------------------------------------------- Tabelat */
+.mini-table { overflow: hidden; border-radius: var(--r); }
+.mini-table thead,
+.mini-table thead th { background: var(--paper) !important; color: var(--pencil) !important; }
+.table-min th, .table-min td { padding: .45rem .6rem; }
+.compact .mini-table table.table > :not(caption) > * > * { padding: .3rem .45rem; }
+.col-actions { width: 92px; }
+.cell { min-width: 0; }
+.readonly { opacity: .7; }
+.inline-select { min-width: 130px; }
+.list-tight .list-group-item { padding: .6rem .75rem; }
+
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.text-muted2 { color: var(--pencil) !important; }
+.navbar-text { display: none; }
+
+/* -------------------------------------------------------------- Toolbar */
+.page-toolbar, .group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+}
+.page-toolbar .btn, .group-toolbar .btn { padding: .28rem .6rem; }
+
+/* ------------------------------------------------------- Shiriti i statusit */
+.status-banner, .status-alert {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .85rem 1rem !important;
+  border: 1px solid var(--rule) !important;
+  border-left: 5px solid var(--pencil) !important;
+  border-radius: var(--r) !important;
+  background: var(--paper-raised) !important;
+  color: var(--ink);
+  box-shadow: none !important;
+}
+.status-banner strong { font-family: var(--font-record); font-size: var(--fs-lg); color: var(--ink); }
+.status-banner .metric { display: flex; align-items: center; gap: .5rem; }
+.status-banner.status-valid   { border-left-color: var(--ref) !important; }
+.status-banner.status-invalid { border-left-color: var(--seal) !important; }
+.status-banner.status-pending { border-left-color: var(--pencil) !important; }
+.status-alert i { opacity: .8; }
+
+/* -------------------------------------------------------- Ngjarjet e audit */
+/* Zërat e auditit janë rreshta regjistri: vijë ngjyre majtas, pa sfond kartash. */
+.ev {
+  border: 1px solid var(--rule) !important;
+  border-left: 4px solid var(--rule-strong) !important;
+  border-radius: var(--r-sm) !important;
+  background: var(--paper-raised) !important;
+  color: var(--ink);
+  box-shadow: none !important;
+}
+.ev + .ev { margin-top: .5rem; }
+.ev-insert { border-left-color: var(--ref) !important;  background: var(--paper-raised) !important; }
+.ev-update { border-left-color: var(--hold) !important; background: var(--paper-raised) !important; }
+.ev-delete { border-left-color: var(--seal) !important; background: var(--paper-raised) !important; }
+
+.diff-badge {
+  padding: .1rem .35rem;
+  border-radius: var(--r-sm);
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+}
+.diff-old { background: var(--seal-wash) !important; color: var(--seal) !important; text-decoration: line-through; }
+.diff-new { background: var(--ref-wash) !important;  color: var(--ref) !important; }
+
+/* Ndarësi i ditës: si titulli i një fletë-ditari. */
+.day-header {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .5rem 0 .3rem;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil);
+}
+
+/* ---------------------------------------------------------- FAB-et e vjetra */
+/* Nga rrathë me hije te një radhë butonash të drejtë, si vula veprimi. */
+.fab-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: var(--z-fab);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: .4rem;
+}
+.fab-stack .fab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  width: auto;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 .75rem;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  box-shadow: var(--lift-2);
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.fab-stack .fab-btn:hover { background: var(--ink); color: var(--paper); }
+html[data-theme="dark"] .fab-stack .fab-btn:hover { background: var(--ink); color: var(--paper); }
+
+/* Etiketa nuk fshihet më: një veprim zyrtar duhet të thuhet me emër. */
+.fab-stack .fab-btn .fab-text {
+  max-width: none;
+  margin-left: .1rem;
+  opacity: 1;
+  white-space: nowrap;
+}
+.fab-secondary { right: 20px; }
+.btn-fab.fab-toggleall,
+.btn-fab.fab-editmode { display: none !important; }
+
+@media (max-width: 575.98px) {
+  .fab-stack { right: 12px; bottom: 12px; }
+  .fab-stack .fab-btn { height: 34px; min-height: 34px; padding: 0 .6rem; font-size: var(--fs-xs); }
+}
+
+/* ------------------------------------------------------- Butonat e vjetër */
+/* Pilulat zhbëhen: dokumentet nuk kanë butona të rrumbullakët. */
+.btn-pill { border-radius: var(--r-sm) !important; }
+
+.btn-soft, .btn-soft-secondary {
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+}
+.btn-soft:hover, .btn-soft-secondary:hover { background: var(--paper-deep); color: var(--ink); }
+
+.btn-soft-primary { border: 1px solid var(--ref);  background: var(--ref-wash);  color: var(--ref); }
+.btn-soft-success { border: 1px solid var(--ref);  background: var(--ref-wash);  color: var(--ref); }
+.btn-soft-danger  { border: 1px solid var(--seal); background: var(--seal-wash); color: var(--seal); }
+.btn-soft-warning { border: 1px solid var(--hold); background: var(--hold-wash); color: var(--hold); }
+.btn-soft-primary:hover, .btn-soft-success:hover { background: var(--ref); color: #fff; }
+.btn-soft-danger:hover  { background: var(--seal); color: #fff; }
+.btn-soft-warning:hover { background: var(--hold); color: #fff; }
+
+.btn-accent { border: 1px solid var(--ref); background: var(--ref); color: #fff; }
+.btn-accent:hover { background: var(--ref-ink); border-color: var(--ref-ink); color: #fff; }
+
+.btn-toggle-groups .bi, .collapse-toggle .bi-chevron-down { transition: transform var(--t) var(--ease); }
+.btn-toggle-groups[aria-expanded="true"] .bi,
+.collapse-toggle[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
+
+/* ------------------------------------------------------------- Të tjera */
+/* Avatari i kartelës: një vulë personale, jo një rreth me gradient. */
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border: 2px solid var(--ref) !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: var(--ref) !important;
+  font-family: var(--font-ui);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.section-title { font-family: var(--font-record); font-weight: 600; color: var(--ink); }
+
+.toast-container { z-index: var(--z-toast); }
+.toast.qta-toast { border-radius: var(--r-sm); box-shadow: var(--lift-3); }
+
+.progress { background: var(--paper-deep); }
+
+/* Ikonat Bootstrap brenda tekstit nuk duhet të dominojnë. */
+.qa .bi, .kpi .bi, .action-row .bi { opacity: .7; }

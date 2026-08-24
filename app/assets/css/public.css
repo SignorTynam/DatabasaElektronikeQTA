@@ -1,839 +1,564 @@
 /* ============================================================================
-   QTA Public — faqet publike (kryefaqja, rreth nesh, kontakt, hyrja, verifikimi)
-   Tokenët vijnë nga tokens.css; këtu janë vetëm komponentët e faqeve publike.
+   QTA · PROTOKOLL — Faqet publike
+   Ngarkohet pas protokoll.css.
+
+   Faqja publike është KAPAKU i regjistrit: kush e mban, çfarë certifikon dhe
+   ku verifikohet. Prandaj hyn me kokëfletë institucionale dhe me veprimin e
+   vetëm që publiku vjen të bëjë — verifikimin.
    ========================================================================= */
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  min-height: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-}
-
-body {
-  margin: 0;
-  background:
-    radial-gradient(920px 420px at 8% -12%, var(--qta-primary-soft), transparent 62%),
-    radial-gradient(760px 360px at 96% -8%, var(--qta-accent-soft), transparent 58%),
-    linear-gradient(180deg, var(--qta-bg) 0%, var(--qta-bg-soft) 52%, var(--qta-bg) 100%);
-  background-attachment: fixed;
-  color: var(--qta-text);
-  font-family: var(--qta-font-sans);
-  font-size: 1rem;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-}
-
-h1, h2, h3, h4, h5 {
-  font-family: var(--qta-font-display);
-  color: var(--qta-text-strong);
-  letter-spacing: var(--qta-tracking-tight);
-  line-height: 1.15;
-}
-
-:focus-visible {
-  outline: 2px solid var(--qta-primary);
-  outline-offset: 2px;
-  border-radius: var(--qta-radius-xs);
-}
-
-::selection {
-  background: var(--qta-primary-soft);
-  color: var(--qta-text-strong);
-}
-
-a {
-  color: var(--qta-primary);
-}
-
-img,
-svg,
-video,
-canvas {
-  max-width: 100%;
-}
-
-.container-public {
-  width: min(1160px, calc(100% - 32px));
+.wrap {
+  width: min(1180px, calc(100% - 2.5rem));
   margin-inline: auto;
 }
+.wrap-narrow { width: min(760px, calc(100% - 2.5rem)); }
 
-.text-muted-public {
-  color: var(--qta-muted) !important;
+.band { padding: clamp(2.75rem, 6vw, 4.5rem) 0; }
+.band-tight { padding: clamp(1.75rem, 3.5vw, 2.75rem) 0; }
+.band-rule { border-top: 1px solid var(--rule); }
+
+/* -------------------------------------------------- 1. Kokëfleta publike */
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  background: var(--paper);
+  border-bottom: 2px solid var(--ink);
 }
 
-.section-pad {
-  padding: 72px 0;
+.masthead-inner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 62px;
 }
 
-.section-pad-sm {
-  padding: 46px 0;
-}
-
-.section-title {
-  max-width: 760px;
-}
-
-.section-title h2 {
-  font-size: clamp(1.75rem, 2.5vw, 2.6rem);
-  line-height: 1.1;
-  font-weight: 800;
-  margin-bottom: .8rem;
-}
-
-.section-title p {
-  color: var(--qta-muted);
-  font-size: 1.04rem;
-}
-
-.qta-card {
-  background: color-mix(in srgb, var(--qta-surface) 92%, transparent);
-  border: 1px solid var(--qta-border);
-  border-radius: var(--qta-radius);
-  box-shadow: var(--qta-shadow-sm);
-}
-
-.qta-card-pad {
-  padding: 1.35rem;
-}
-
-.qta-icon {
-  width: 50px;
-  height: 50px;
+.masthead-mark {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: .65rem;
   flex: 0 0 auto;
-  border-radius: var(--qta-radius);
-  background: var(--qta-primary-soft);
-  border: 1px solid color-mix(in srgb, var(--qta-primary) 18%, transparent);
-  color: var(--qta-primary);
-  font-size: 1.35rem;
-}
-
-.qta-icon.success {
-  background: var(--qta-success-soft);
-  border-color: color-mix(in srgb, var(--qta-success) 20%, transparent);
-  color: var(--qta-success);
-}
-
-.qta-icon.accent {
-  background: var(--qta-accent-soft);
-  border-color: color-mix(in srgb, var(--qta-accent) 20%, transparent);
-  color: var(--qta-accent);
-}
-
-.qta-icon.warning {
-  background: var(--qta-warning-soft);
-  border-color: color-mix(in srgb, var(--qta-warning) 20%, transparent);
-  color: var(--qta-warning);
-}
-
-.qta-btn {
-  min-height: 46px;
-  padding-inline: 1.15rem;
-  border-radius: var(--qta-radius-sm);
-  font-weight: 650;
-  transition: transform var(--qta-dur-fast) var(--qta-ease),
-              box-shadow var(--qta-dur-fast) var(--qta-ease),
-              background-color var(--qta-dur-fast) var(--qta-ease),
-              border-color var(--qta-dur-fast) var(--qta-ease),
-              color var(--qta-dur-fast) var(--qta-ease);
-  display: inline-flex;
-  gap: .45rem;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-primary {
-  --bs-btn-bg: var(--qta-primary);
-  --bs-btn-border-color: var(--qta-primary);
-  --bs-btn-hover-bg: var(--qta-primary-hover);
-  --bs-btn-hover-border-color: var(--qta-primary-hover);
-  --bs-btn-active-bg: var(--qta-primary-hover);
-  --bs-btn-active-border-color: var(--qta-primary-hover);
-  --bs-btn-color: var(--qta-on-brand);
-  --bs-btn-hover-color: var(--qta-on-brand);
-  --bs-btn-active-color: var(--qta-on-brand);
-  box-shadow: var(--qta-shadow-xs);
-}
-
-.qta-btn:active {
-  transform: translateY(1px);
-}
-
-.btn-outline-secondary {
-  --bs-btn-color: var(--qta-muted);
-  --bs-btn-border-color: var(--qta-border-strong);
-  --bs-btn-hover-bg: var(--qta-surface-3);
-  --bs-btn-hover-color: var(--qta-text-strong);
-  --bs-btn-hover-border-color: var(--qta-border-strong);
-}
-
-.btn-outline-primary {
-  color: var(--qta-primary);
-  border-color: color-mix(in srgb, var(--qta-primary) 48%, transparent);
-}
-
-.btn-outline-primary:hover {
-  background: var(--qta-primary);
-  border-color: var(--qta-primary);
-}
-
-.qta-theme-btn {
-  min-height: 42px;
-  border-radius: var(--qta-radius-pill);
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  border: 1px solid var(--qta-border);
-  background: color-mix(in srgb, var(--qta-surface) 84%, transparent);
-  color: var(--qta-text);
-  padding: .42rem .78rem;
-  font-weight: 700;
-}
-
-.qta-navbar {
-  background: color-mix(in srgb, var(--qta-surface) 86%, transparent);
-  border-bottom: 1px solid var(--qta-border);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: var(--qta-shadow-xs);
-}
-
-.qta-navbar .navbar-brand {
-  color: var(--qta-text-strong);
-  font-family: var(--qta-font-display);
-  font-weight: 800;
-  letter-spacing: var(--qta-tracking-tight);
-}
-
-.qta-navbar .navbar-brand img {
-  width: 34px;
-  height: 34px;
-  object-fit: contain;
-}
-
-.qta-navbar .brand-subtitle {
-  color: var(--qta-muted);
-  font-size: .82rem;
-  font-weight: 700;
-}
-
-.qta-navbar .nav-link {
-  color: var(--qta-muted);
-  font-weight: 600;
-  border-radius: var(--qta-radius-pill);
-  padding: .48rem .82rem;
-  transition: color var(--qta-dur-fast) var(--qta-ease),
-              background-color var(--qta-dur-fast) var(--qta-ease);
-}
-
-.qta-navbar .nav-link:hover,
-.qta-navbar .nav-link.active {
-  color: var(--qta-text-strong);
-  background: var(--qta-primary-soft);
-}
-
-.qta-navbar .nav-link.active {
-  color: var(--qta-primary);
-}
-
-.qta-avatar {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--qta-gradient-brand);
-  color: var(--qta-on-gradient);
-  font-family: var(--qta-font-display);
-  font-weight: 800;
-}
-
-.qta-dropdown {
-  min-width: 280px;
-  border: 1px solid var(--qta-border);
-  border-radius: 16px;
-  box-shadow: var(--qta-shadow);
-  background: var(--qta-surface);
-}
-
-.qta-dropdown .dropdown-item {
-  border-radius: 12px;
-  font-weight: 700;
-}
-
-.hero-public {
-  padding: clamp(54px, 8vw, 92px) 0 58px;
-  position: relative;
-}
-
-.hero-public h1 {
-  max-width: 19ch;
-  font-size: clamp(2.15rem, 4.4vw, 4rem);
-  line-height: 1.04;
-  font-weight: 800;
-  letter-spacing: var(--qta-tracking-display);
-  margin-bottom: 1.1rem;
-}
-
-.hero-public .lead {
-  max-width: 720px;
-  color: var(--qta-muted);
-  font-size: clamp(1.05rem, 1.3vw, 1.25rem);
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .75rem;
-  margin-top: 1.65rem;
-}
-
-.hero-mockup {
-  padding: 1rem;
-  min-height: 420px;
-  background:
-    linear-gradient(135deg, var(--qta-primary-soft), var(--qta-accent-soft)),
-    var(--qta-surface);
-}
-
-.mockup-window {
-  height: 100%;
-  padding: 1.15rem;
-  background: var(--qta-surface);
-  border: 1px solid var(--qta-border);
-  border-radius: 16px;
-  box-shadow: var(--qta-shadow-sm);
-}
-
-.mockup-line {
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--qta-muted) 22%, transparent);
-}
-
-.mockup-status {
-  color: var(--qta-success);
-  background: var(--qta-success-soft);
-  border: 1px solid color-mix(in srgb, var(--qta-success) 20%, transparent);
-  border-radius: var(--qta-radius-pill);
-  padding: .36rem .65rem;
-  font-weight: 700;
-}
-
-.trust-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-}
-
-.trust-item {
-  min-height: 92px;
-  padding: 1rem;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--qta-surface) 86%, transparent);
-  border: 1px solid var(--qta-border);
-}
-
-.feature-card,
-.step-card,
-.target-card,
-.contact-card {
-  height: 100%;
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-}
-
-.feature-card:hover,
-.step-card:hover,
-.target-card:hover,
-.contact-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--qta-shadow);
-  border-color: color-mix(in srgb, var(--qta-primary) 28%, var(--qta-border));
-}
-
-.step-number {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--qta-radius-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--qta-primary-soft);
-  color: var(--qta-primary);
-  font-family: var(--qta-font-display);
-  font-weight: 800;
-}
-
-.cta-band {
-  padding: clamp(1.5rem, 4vw, 3rem);
-  border-radius: var(--qta-radius-xl);
-  color: var(--qta-on-gradient);
-  background: var(--qta-gradient-brand);
-  box-shadow: var(--qta-shadow);
-}
-
-.accordion-item {
-  color: var(--qta-text);
-  background: transparent;
-  border: 0;
-  margin-bottom: .75rem;
-}
-
-.accordion-button {
-  color: var(--qta-text);
-  background: var(--qta-surface);
-  border: 1px solid var(--qta-border);
-  border-radius: 14px !important;
-  box-shadow: none !important;
-  font-weight: 760;
-}
-
-.accordion-body {
-  color: var(--qta-muted);
-  background: var(--qta-surface);
-  border: 1px solid var(--qta-border);
-  border-radius: 14px;
-  margin-top: .5rem;
-}
-
-.qta-swiper {
-  padding: .25rem .25rem 2.7rem;
-}
-
-.swiper-slide {
-  height: auto;
-}
-
-.swiper-button-next,
-.swiper-button-prev {
-  width: 38px;
-  height: 38px;
-  color: var(--qta-primary);
-}
-
-.swiper-button-next::after,
-.swiper-button-prev::after {
-  font-size: 1rem;
-  font-weight: 900;
-}
-
-.timeline-list {
-  display: grid;
-  gap: 1rem;
-}
-
-.timeline-item {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 1rem;
-  align-items: start;
-}
-
-.timeline-dot {
-  width: 42px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--qta-primary-soft);
-  color: var(--qta-primary);
-  border: 1px solid color-mix(in srgb, var(--qta-primary) 20%, transparent);
-  font-weight: 900;
-}
-
-.form-control,
-.form-select,
-.input-group-text {
-  color: var(--qta-text);
-  background-color: color-mix(in srgb, var(--qta-surface) 88%, transparent);
-  border-color: var(--qta-border);
-  border-radius: var(--qta-radius-sm);
-}
-
-.form-control:focus,
-.form-select:focus {
-  border-color: color-mix(in srgb, var(--qta-primary) 55%, var(--qta-border));
-  box-shadow: 0 0 0 .22rem var(--qta-ring);
-}
-
-.form-floating > label {
-  color: var(--qta-muted);
-}
-
-.map-card {
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  background:
-    linear-gradient(135deg, var(--qta-primary-soft), var(--qta-accent-soft)),
-    var(--qta-surface);
-}
-
-.login-shell {
-  min-height: calc(100vh - 72px);
-  display: grid;
-  grid-template-columns: minmax(0, .95fr) minmax(420px, 1.05fr);
-  gap: 1.5rem;
-  align-items: stretch;
-  padding: 42px 0 64px;
-}
-
-.login-brand-panel {
-  padding: clamp(1.5rem, 4vw, 3rem);
-  background: var(--qta-gradient-brand);
-  color: var(--qta-on-gradient);
-  border-radius: var(--qta-radius-xl);
-  box-shadow: var(--qta-shadow);
-}
-
-.login-card {
-  padding: clamp(1.25rem, 3vw, 2rem);
-}
-
-.role-switcher {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: .55rem;
-}
-
-.role-option {
-  min-height: 78px;
-  border: 1px solid var(--qta-border);
-  border-radius: 14px;
-  background: var(--qta-surface);
-  color: var(--qta-text);
-  text-align: left;
-  padding: .85rem;
-  font-weight: 800;
-}
-
-.role-option span {
-  display: block;
-  color: var(--qta-muted);
-  font-size: .76rem;
-  font-weight: 700;
-}
-
-.role-option.active {
-  color: var(--qta-primary);
-  border-color: color-mix(in srgb, var(--qta-primary) 45%, var(--qta-border));
-  background: var(--qta-primary-soft);
-  box-shadow: 0 0 0 .2rem var(--qta-primary-soft);
-}
-
-.caps-warning {
-  color: var(--qta-danger);
-  font-size: .88rem;
-  margin-top: .45rem;
-}
-
-.verify-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, .88fr) minmax(0, 1.12fr);
-  gap: 1.35rem;
-  align-items: start;
-}
-
-.verify-tabs .nav-link {
-  min-height: 48px;
-  border-radius: 14px;
-  color: var(--qta-text);
-  border: 1px solid var(--qta-border);
-  background: var(--qta-surface);
-  font-weight: 800;
-}
-
-.verify-tabs .nav-link.active {
-  background: var(--qta-primary-soft);
-  color: var(--qta-primary);
-  border-color: color-mix(in srgb, var(--qta-primary) 30%, transparent);
-}
-
-#reader {
-  width: 100%;
-  min-height: 300px;
-}
-
-#reader video {
-  border-radius: 14px;
-}
-
-.upload-drop {
-  min-height: 180px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  border: 1px dashed color-mix(in srgb, var(--qta-primary) 44%, var(--qta-border));
-  border-radius: 16px;
-  background: var(--qta-primary-soft);
-}
-
-.status-banner {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  padding: 1rem;
-  border-radius: 16px;
-  border: 1px solid var(--qta-border);
-  background: var(--qta-surface);
-}
-
-.status-banner.status-valid {
-  border-left: 6px solid var(--qta-success);
-}
-
-.status-banner.status-invalid {
-  border-left: 6px solid var(--qta-danger);
-}
-
-.status-banner.status-pending {
-  border-left: 6px solid var(--qta-muted);
-}
-
-.result-empty {
-  min-height: 260px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: var(--qta-muted);
-}
-
-.fact {
-  padding: .85rem;
-  border: 1px solid var(--qta-border);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--qta-surface-2) 70%, transparent);
-}
-
-.qta-footer {
-  padding: 56px 0 28px;
-  background: color-mix(in srgb, var(--qta-surface) 88%, transparent);
-  border-top: 1px solid var(--qta-border);
-}
-
-.qta-footer h3,
-.qta-footer h4 {
-  font-size: 1rem;
-  font-weight: 850;
-}
-
-.qta-footer a {
-  color: var(--qta-muted);
   text-decoration: none;
 }
-
-.qta-footer a:hover {
-  color: var(--qta-primary);
-  text-decoration: underline;
+.masthead-mark:hover { text-decoration: none; }
+.masthead-mark img { height: 28px; width: auto; display: block; }
+.masthead-mark b {
+  display: block;
+  font-family: var(--font-record);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+  color: var(--ink);
+  line-height: 1.05;
+}
+.masthead-mark span {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil);
 }
 
-.footer-logo {
-  width: 38px;
-  height: 38px;
-  object-fit: contain;
+.masthead-nav {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  margin-left: auto;
 }
 
-.back-top {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 1030;
-  width: 46px;
-  height: 46px;
+.masthead-link {
+  position: relative;
   display: inline-flex;
+  align-items: center;
+  min-height: 60px;
+  padding: 0 .75rem;
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: color var(--t-fast) var(--ease);
+}
+.masthead-link:hover { color: var(--ink); text-decoration: none; }
+.masthead-link.is-active { color: var(--ink); }
+.masthead-link.is-active::after {
+  content: "";
+  position: absolute;
+  left: .5rem;
+  right: .5rem;
+  bottom: -2px;
+  height: 4px;
+  background: var(--ink);
+}
+
+.masthead-burger {
+  display: none;
   align-items: center;
   justify-content: center;
+  width: 34px;
+  height: 32px;
+  margin-left: auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+@media (max-width: 899.98px) {
+  .masthead-burger { display: inline-flex; }
+  .masthead-nav {
+    position: absolute;
+    inset: 100% 0 auto 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: .35rem clamp(1rem, 3vw, 1.5rem) .9rem;
+    background: var(--paper);
+    border-bottom: 2px solid var(--ink);
+  }
+  .masthead-nav.is-open { display: flex; }
+  .masthead-link { min-height: 42px; padding: 0; border-bottom: 1px solid var(--rule-hair); }
+  .masthead-link.is-active::after { display: none; }
+  .masthead-nav .btn { margin-top: .6rem; }
+}
+
+/* ------------------------------------------------------- 2. Kapaku (hero) */
+/* Teza e faqes: ky është një regjistër publik dhe ti mund ta kontrollosh tani. */
+.cover { padding: clamp(2.25rem, 5vw, 3.75rem) 0 clamp(2rem, 4vw, 3rem); }
+
+.cover-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  gap: clamp(1.75rem, 4vw, 3.5rem);
+  align-items: start;
+}
+
+/* Rreshti i protokollit: institucioni, akti, vendi, data — si në kokë akti. */
+.protocol-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .9rem;
+  padding-bottom: .7rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+.protocol-line .sep { color: var(--rule-strong); }
+.protocol-line b { color: var(--ink); font-weight: 500; }
+
+.cover h1 {
+  font-size: clamp(1.9rem, 4.4vw, 3.15rem);
+  line-height: 1.1;
+  margin-bottom: .9rem;
+  max-width: 19ch;
+}
+.cover .prose-lead { margin-bottom: 1.6rem; }
+
+.cover-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+
+/* Fusha e verifikimit në kapak: veprimi që publiku vjen të bëjë vërtet. */
+.check-box {
+  padding: 1.15rem;
+  border: 1px solid var(--rule-strong);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  box-shadow: var(--lift-2);
+}
+.check-box .label { margin-bottom: .5rem; }
+.check-box .check-row { display: flex; gap: .5rem; }
+.check-box .input { flex: 1; min-width: 0; }
+.check-note { margin-top: .7rem; font-size: var(--fs-xs); color: var(--pencil); }
+
+@media (max-width: 899.98px) {
+  .cover-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------- 3. Titujt e seksioneve */
+.band-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: .6rem;
+  margin-bottom: 1.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+.band-head h2 { flex: 0 0 auto; }
+.band-head .label { margin-left: auto; flex: 0 0 auto; }
+.band-note { margin-top: -.9rem; margin-bottom: 1.6rem; }
+
+/* ------------------------------------------- 4. Indeksi i moduleve */
+/* Përmbajtja e vërtetë e regjistrit: kodi dhe zanati, si një indeks zyrtar. */
+.index-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 0 2.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.index-row {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--rule-hair);
+}
+.index-row .code {
+  flex: 0 0 auto;
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+.index-row .name {
+  font-family: var(--font-record);
+  font-size: var(--fs-md);
+  color: var(--ink);
+  min-width: 0;
+}
+/* Vija me pika që lidh kodin me emrin, si në një përmbajtje libri. */
+.index-row .dots {
+  flex: 1;
+  min-width: 1rem;
+  height: 1px;
+  margin-bottom: .28em;
+  background-image: radial-gradient(circle, var(--rule-strong) 1px, transparent 1px);
+  background-size: 5px 1px;
+  background-repeat: repeat-x;
+  opacity: .8;
+}
+
+/* --------------------------------------------------- 5. Radha e hapave */
+/* Numërimi këtu mban informacion të vërtetë: është një sekuencë e detyruar. */
+.steps { counter-reset: step; display: grid; gap: 0; }
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.25rem 1fr;
+  gap: 1rem;
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--rule-hair);
+}
+.step:first-child { border-top: 1px solid var(--rule); }
+.step::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero);
+  font-family: var(--font-code);
+  font-size: var(--fs-md);
+  color: var(--pencil);
+  line-height: 1.4;
+}
+.step h3 { font-size: var(--fs-lg); margin-bottom: .2rem; }
+.step p { font-size: var(--fs-sm); color: var(--pencil); margin: 0; max-width: 62ch; }
+
+/* -------------------------------------------------- 6. Kush e përdor */
+.audience {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.audience-cell { padding: 1.15rem; background: var(--paper-raised); }
+.audience-cell h3 { font-size: var(--fs-lg); margin-bottom: .35rem; }
+.audience-cell p { font-size: var(--fs-sm); color: var(--pencil); margin: 0; }
+.audience-cell .label { margin-bottom: .6rem; }
+
+/* ------------------------------------------------------- 7. Thirrja */
+.closing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  border: 1px solid var(--rule-strong);
+  border-left: 5px solid var(--ink);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+}
+.closing h2 { margin-bottom: .3rem; }
+.closing p { color: var(--pencil); margin: 0; }
+
+/* ----------------------------------------------- 8. Faqja e verifikimit */
+.verify-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
+  gap: clamp(1.25rem, 3vw, 2rem);
+  align-items: start;
+}
+@media (max-width: 991.98px) { .verify-grid { grid-template-columns: 1fr; } }
+
+#reader { width: 100%; min-height: 260px; }
+#reader video { border-radius: var(--r-sm); }
+
+.drop {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 1.25rem;
+  text-align: center;
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--r-sm);
+  color: var(--pencil);
+  font-size: var(--fs-sm);
+}
+
+/* Rezultati: fleta e certifikatës me vulën e shtypur. */
+.record-sheet {
+  position: relative;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  box-shadow: var(--lift-2);
+}
+.record-sheet .stamp-slot {
+  position: absolute;
+  top: clamp(1rem, 3vw, 1.75rem);
+  right: clamp(1rem, 3vw, 1.75rem);
+}
+@media (max-width: 575.98px) {
+  .record-sheet .stamp-slot { position: static; margin-bottom: 1rem; }
+}
+
+/* Fushat e certifikatës: etiketë e vogël, vlerë e madhe — si në një akt. */
+.record-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem 1.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+.record-field .label { margin-bottom: .15rem; }
+.record-field .value {
+  font-family: var(--font-record);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.record-field .value.code { font-family: var(--font-code); font-size: var(--fs-md); }
+
+.record-empty {
+  display: grid;
+  place-items: center;
+  gap: .4rem;
+  min-height: 280px;
+  padding: 2rem;
+  text-align: center;
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--r);
+  color: var(--pencil);
+}
+
+/* ------------------------------------------------------ 9. Hyrja në sistem */
+.gate {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  align-items: center;
+  min-height: calc(100vh - 62px);
+  padding: 2.5rem 0 4rem;
+}
+@media (max-width: 899.98px) {
+  .gate { grid-template-columns: 1fr; min-height: 0; padding-top: 1.5rem; }
+  .gate-aside { display: none; }
+}
+
+.gate-form {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--rule-strong);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  box-shadow: var(--lift-2);
+}
+
+/* Zgjedhja e rolit: gjuhëza dosjeje, jo butona. */
+.role-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+}
+.role-tab {
+  position: relative;
+  flex: 1 0 auto;
+  padding: .55rem .8rem;
+  border: 0;
+  background: transparent;
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease);
+}
+.role-tab:hover { color: var(--ink); }
+.role-tab.is-active { color: var(--ink); }
+.role-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--ink);
+}
+
+.caps-note { margin-top: .4rem; font-size: var(--fs-xs); color: var(--seal); }
+
+/* ------------------------------------------------------------ 10. Fundi */
+.colophon {
+  padding: 2.5rem 0 1.75rem;
+  border-top: 2px solid var(--ink);
+  background: var(--paper);
+}
+.colophon h3 {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil);
+  margin-bottom: .7rem;
+}
+.colophon ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.colophon a { color: var(--ink-soft); font-size: var(--fs-sm); }
+.colophon a:hover { color: var(--ref); }
+.colophon-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .5rem 1.5rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil-soft);
+}
+
+.to-top {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: var(--z-fab);
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--pencil);
   opacity: 0;
   pointer-events: none;
-  border-radius: 14px;
-  border: 1px solid var(--qta-border);
-  background: var(--qta-surface);
-  color: var(--qta-text);
-  box-shadow: var(--qta-shadow-sm);
-  transition: opacity .18s ease, transform .18s ease;
+  transition: opacity var(--t) var(--ease), color var(--t-fast) var(--ease);
 }
+.to-top.is-on { opacity: 1; pointer-events: auto; }
+.to-top:hover { color: var(--ink); }
 
-.back-top.is-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.back-top:hover {
-  transform: translateY(-2px);
-}
-
-@media (max-width: 1199.98px) {
-  .role-switcher {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 991.98px) {
-  .qta-navbar .navbar-collapse {
-    margin-top: .75rem;
-    padding: .75rem;
-    border: 1px solid var(--qta-border);
-    border-radius: 18px;
-    background: var(--qta-surface);
-    box-shadow: var(--qta-shadow-sm);
-  }
-
-  .trust-strip,
-  .verify-layout,
-  .login-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .login-shell {
-    padding-top: 22px;
-  }
-}
-
-@media (max-width: 575.98px) {
-  .container-public {
-    width: min(100% - 22px, 1160px);
-  }
-
-  .section-pad {
-    padding: 48px 0;
-  }
-
-  .hero-public {
-    padding: 42px 0 36px;
-  }
-
-  .hero-public h1 {
-    font-size: 2.05rem;
-  }
-
-  .hero-actions .btn,
-  .hero-actions a {
-    width: 100%;
-  }
-
-  .trust-strip {
-    gap: .75rem;
-  }
-
-  .role-switcher {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: .35rem;
-    scroll-snap-type: x mandatory;
-  }
-
-  .role-option {
-    min-width: 156px;
-    scroll-snap-align: start;
-  }
-
-  .qta-card-pad {
-    padding: 1rem;
-  }
-
-  .qta-theme-btn span {
-    display: none;
-  }
-}
-
-@media print {
-  .qta-navbar,
-  .qta-footer,
-  .hero-public,
-  .verify-tools,
-  .back-top,
-  .btn,
-  .nav {
-    display: none !important;
-  }
-
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
-  }
-
-  .qta-card,
-  .status-banner {
-    box-shadow: none !important;
-    border-color: #dddddd !important;
-  }
-}
-
-/* ------------------------------------------- Faqja e verifikimit (verify.php) */
-.container-max {
-  width: min(1180px, calc(100% - 32px));
-  margin-inline: auto;
-}
+/* ============================================================================
+   Mbetjet e markup-it të verifikimit
+   verify.php ruan disa emra klasash historikë; këtu ata flasin gjuhën e re.
+   ========================================================================= */
+.container-max { width: min(1180px, calc(100% - 2.5rem)); margin-inline: auto; }
 
 .soft-card {
-  background: var(--qta-surface);
-  border: 1px solid var(--qta-border);
-  border-radius: var(--qta-radius-lg);
-  box-shadow: var(--qta-shadow-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  box-shadow: var(--lift);
 }
 
-.hero {
-  position: relative;
-  overflow: hidden;
-  padding: 38px 0 20px;
+/* Fusha e vetme e një akti: etiketë e vogël, vlerë e madhe. */
+.fact {
+  padding: .6rem .7rem;
+  border: 0;
+  border-left: 2px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+}
+.fact .text-muted2,
+.fact .small {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro) !important;
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil) !important;
+}
+.fact .h5, .fact .h4 {
+  font-family: var(--font-code);
+  font-size: var(--fs-lg) !important;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
-.hero-inner { position: relative; z-index: 1; }
-
-.mini-pill,
-.badge-chip {
+.mini-pill, .badge-chip {
   display: inline-flex;
   align-items: center;
-  gap: .45rem;
-  padding: .34rem .68rem;
-  border: 1px solid var(--qta-border);
-  border-radius: var(--qta-radius-pill);
-  background: var(--qta-surface-2);
-  color: var(--qta-muted);
-  font-size: .84rem;
-  font-weight: 600;
+  gap: .35rem;
+  padding: .16rem .45rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.btn-soft {
-  background: var(--qta-surface-2);
-  border: 1px solid var(--qta-border);
-  color: var(--qta-text);
+.btn-soft { border: 1px solid var(--rule-strong); background: transparent; color: var(--ink); }
+.btn-soft:hover { background: var(--paper-deep); color: var(--ink); }
+.btn-accent { border: 1px solid var(--ref); background: var(--ref); color: #fff; }
+.btn-accent:hover { background: var(--ref-ink); border-color: var(--ref-ink); color: #fff; }
+
+.text-muted2 { color: var(--pencil) !important; }
+.table-min th, .table-min td { padding: .45rem .6rem; }
+
+/* Zona e ngarkimit të fotos dhe gjendja pa rezultat. */
+.upload-drop {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 1.25rem;
+  text-align: center;
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--r-sm);
+  color: var(--pencil);
+  font-size: var(--fs-sm);
+}
+.result-empty {
+  display: grid;
+  place-items: center;
+  gap: .4rem;
+  min-height: 260px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--pencil);
 }
 
-.btn-soft:hover {
-  background: var(--qta-surface-3);
-  border-color: var(--qta-border-strong);
-  color: var(--qta-text-strong);
-}
-
-.btn-accent {
-  background: var(--qta-primary-2);
-  border: 1px solid color-mix(in srgb, var(--qta-primary-2) 40%, transparent);
-  color: #fff;
-}
-
-.btn-accent:hover { filter: brightness(.96); color: #fff; }
-
-.text-muted2 { color: var(--qta-muted) !important; }
-
-.table-min th,
-.table-min td { padding: .55rem .75rem; }
-
-/* Bootstrap-i i heq qoshet e djathta të kontrollit kur pas tij vjen një
-   .invalid-feedback (grupit i mungon klasa `has-validation`). Meqë ai element
-   është i padukshëm, qoshet i kthehen kontrollit që grupi të duket i plotë. */
-.input-group > *:has(+ .invalid-feedback:last-child),
-.input-group > *:has(+ .valid-feedback:last-child) {
-  border-start-end-radius: var(--qta-radius-sm) !important;
-  border-end-end-radius: var(--qta-radius-sm) !important;
-}
+.verify-tabs .nav-link { border-radius: var(--r-sm); }

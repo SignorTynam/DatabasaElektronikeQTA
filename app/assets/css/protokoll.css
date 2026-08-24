@@ -1,0 +1,823 @@
+/* ============================================================================
+   QTA · PROTOKOLL — Sistemi i përbashkët (publik + panel)
+   Ngarkohet pas tokens.css dhe pas Bootstrap-it.
+
+   Rendi i seksioneve:
+     1. Baza dhe tipografia
+     2. Blloku i titullit (title block)
+     3. Fleta dhe margjina e regjistrit
+     4. Vula — elementi nënshkrues
+     5. Statuset
+     6. Tabela ledger
+     7. Butonat
+     8. Formularët
+     9. Mbishkrimet mbi Bootstrap
+   ========================================================================= */
+
+/* ------------------------------------------------- 1. Baza dhe tipografia */
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+html, body { min-height: 100%; }
+
+body {
+  margin: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  font-feature-settings: "ss02";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Kokrriza e letrës: e ndalon sfondin të lexohet si ngjyrë e sheshtë. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--grain);
+  opacity: var(--grain-opacity);
+  pointer-events: none;
+}
+body > * { position: relative; z-index: 1; }
+
+/* Zëri i regjistrit. Serifja shfaqet vetëm aty ku një dokument do të
+   shkruante një emër ose një titull akti — kurrë si zbukurim. */
+.record,
+.record-title,
+h1, h2, h3 {
+  font-family: var(--font-record);
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: var(--track-tight);
+  color: var(--ink);
+  margin: 0;
+}
+
+h1 { font-size: clamp(1.5rem, 2.6vw, 2.125rem); }
+h2 { font-size: clamp(1.2rem, 1.9vw, 1.5rem); }
+h3 { font-size: 1.125rem; }
+
+/* Titujt e nderfaqes (panele, karta) janë punë, jo akt: grotesk. */
+h4, h5, h6, .ui-title {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: var(--fs-md);
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 0;
+}
+
+p { margin: 0 0 1em; }
+p:last-child { margin-bottom: 0; }
+
+.prose { font-family: var(--font-record); font-size: var(--fs-md); color: var(--ink-soft); max-width: 68ch; }
+.prose-lead { font-family: var(--font-record); font-size: var(--fs-lg); line-height: 1.55; color: var(--ink-soft); max-width: 62ch; }
+
+a { color: var(--ref); text-decoration: none; text-underline-offset: .18em; }
+a:hover { color: var(--ref-ink); text-decoration: underline; }
+
+code, kbd, pre, .code { font-family: var(--font-code); font-size: .92em; }
+
+/* Numri, kodi, data, tokeni — gjithnjë mono dhe me shifra tabelare. */
+.num, .code, .protocol {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Etiketa formulari zyrtar: e vogël, e shpërndarë, me shkronja të mëdha. */
+.label {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil);
+}
+
+.muted     { color: var(--pencil) !important; }
+.muted-2   { color: var(--pencil-soft) !important; }
+.nowrap    { white-space: nowrap; }
+.min-w-0   { min-width: 0; }
+.tabular   { font-variant-numeric: tabular-nums; }
+
+hr, .rule { height: 0; border: 0; border-top: 1px solid var(--rule); margin: 1.25rem 0; opacity: 1; }
+.rule-strong { border-top-color: var(--rule-strong); }
+
+::selection { background: var(--ref-wash); color: var(--ink); }
+
+:focus-visible { outline: 0; box-shadow: var(--focus); border-radius: var(--r-sm); }
+
+/* Shirit rrëshqitës i hollë, në letër. */
+* { scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
+*::-webkit-scrollbar { width: 11px; height: 11px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--rule-strong); border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--pencil); background-clip: content-box; }
+
+/* ------------------------------------------------- 2. Blloku i titullit */
+/* Si kokëfleta e një formulari zyrtar: çfarë është kjo fletë, nën çfarë
+   numri, e kujt dhe e sa zërave. Çdo fushë mban informacion të vërtetë. */
+.title-block {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem 2rem;
+  align-items: end;
+  padding-bottom: .9rem;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 1.5rem;
+}
+
+.title-block-main { min-width: 0; }
+
+.title-block-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil);
+}
+.title-block-eyebrow::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.title-block h1 { margin-bottom: .3rem; }
+.title-block-note { font-family: var(--font-record); font-size: var(--fs-md); color: var(--pencil); max-width: 60ch; }
+
+/* Fushat e kokëfletës: etiketë sipër, vlerë mono poshtë. */
+.title-block-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.75rem;
+  align-items: flex-end;
+}
+.title-block-field { text-align: right; }
+.title-block-field .label { margin-bottom: .1rem; }
+.title-block-field .value {
+  font-family: var(--font-code);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+@media (max-width: 767.98px) {
+  .title-block { grid-template-columns: 1fr; align-items: start; }
+  .title-block-fields { gap: 0 1.25rem; }
+  .title-block-field { text-align: left; }
+}
+
+/* -------------------------------------------- 3. Fleta dhe margjina */
+.sheet {
+  width: min(var(--sheet-max), 100%);
+  margin-inline: auto;
+  padding: clamp(1.25rem, 2.6vw, 2.25rem) clamp(1rem, 2.4vw, 2rem) 5rem;
+}
+.sheet-wide { --sheet-max: 1680px; }
+.sheet-narrow { --sheet-max: 860px; }
+
+/* Bllok me margjinë regjistri: vijë vertikale me numra zërash majtas. */
+.ledger-margin {
+  position: relative;
+  padding-left: var(--margin-rule);
+}
+.ledger-margin::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--margin-rule) - 18px);
+  width: 1px;
+  background: var(--rule);
+}
+.ledger-margin > .entry-no {
+  position: absolute;
+  left: 0;
+  width: calc(var(--margin-rule) - 26px);
+  text-align: right;
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 575.98px) {
+  .ledger-margin { padding-left: 0; }
+  .ledger-margin::before { display: none; }
+  .ledger-margin > .entry-no { position: static; width: auto; text-align: left; display: block; margin-bottom: .2rem; }
+}
+
+/* Fletë e ngritur — përdoret për grupe zërash, jo për çdo gjë. */
+.leaf {
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  box-shadow: var(--lift);
+}
+.leaf-pad { padding: clamp(1rem, 2vw, 1.4rem); }
+
+.leaf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem 1rem;
+  padding: .8rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.leaf-head .ui-title { font-size: var(--fs-base); }
+.leaf-body { padding: 1.1rem; }
+.leaf-body-flush { padding: 0; }
+
+/* ------------------------------------------------ 4. Vula (nënshkrimi) */
+/* Elementi i vetëm i guximshëm i sistemit. Rrethore e dyfishtë, e rrotulluar
+   lehtë, e shtypur mbi letër me multiply që të ngjajë bojë e vërtetë. */
+.stamp {
+  --stamp-color: var(--ref);
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--stamp-size, 132px);
+  height: var(--stamp-size, 132px);
+  flex: 0 0 auto;
+  border: 3px solid var(--stamp-color);
+  border-radius: 50%;
+  color: var(--stamp-color);
+  text-align: center;
+  transform: rotate(-7deg);
+  mix-blend-mode: multiply;
+  opacity: .92;
+  user-select: none;
+}
+html[data-theme="dark"] .stamp { mix-blend-mode: screen; opacity: .95; }
+
+.stamp::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: .75;
+}
+
+.stamp-text {
+  font-family: var(--font-ui);
+  font-size: calc(var(--stamp-size, 132px) * .105);
+  font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  padding: 0 12%;
+}
+.stamp-mark {
+  font-family: var(--font-record);
+  font-size: calc(var(--stamp-size, 132px) * .17);
+  font-weight: 700;
+  letter-spacing: .04em;
+  line-height: 1;
+}
+.stamp-meta {
+  font-family: var(--font-code);
+  font-size: calc(var(--stamp-size, 132px) * .075);
+  letter-spacing: .02em;
+  opacity: .85;
+}
+
+.stamp.is-void    { --stamp-color: var(--seal); }
+.stamp.is-hold    { --stamp-color: var(--pencil); }
+.stamp.is-valid   { --stamp-color: var(--ref); }
+
+.stamp-sm { --stamp-size: 62px; border-width: 2px; }
+.stamp-sm::before { inset: 3px; }
+
+/* Shtypja: vula bie mbi letër një herë, në ngarkim. */
+.stamp-press { animation: stamp-press 420ms var(--ease-press) both; }
+@keyframes stamp-press {
+  0%   { opacity: 0; transform: rotate(-14deg) scale(1.6); }
+  60%  { opacity: .92; transform: rotate(-6deg) scale(.97); }
+  100% { opacity: .92; transform: rotate(-7deg) scale(1); }
+}
+
+/* ------------------------------------------------------- 5. Statuset */
+/* Në një regjistër statusi thuhet me fjalë. Ngjyra vetëm e përforcon. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .5rem .18rem .45rem;
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.state::before { content: ""; width: 5px; height: 5px; background: currentColor; }
+
+.state-valid { color: var(--ref);    background: var(--ref-wash); }
+.state-void  { color: var(--seal);   background: var(--seal-wash); }
+.state-hold  { color: var(--hold);   background: var(--hold-wash); }
+.state-idle  { color: var(--pencil); background: transparent; }
+
+/* Shirit statusi për rezultatin e verifikimit. */
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--rule);
+  border-left: 5px solid var(--pencil);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+}
+.verdict-valid { border-left-color: var(--ref); }
+.verdict-void  { border-left-color: var(--seal); }
+.verdict h2 { font-size: var(--fs-xl); }
+.verdict-note { color: var(--pencil); font-size: var(--fs-sm); }
+
+/* --------------------------------------------------- 6. Tabela ledger */
+/* Vetëm vija horizontale. Asnjë grid vertikal — një regjistër nuk e ka. */
+.ledger { width: 100%; overflow-x: auto; }
+
+table.ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+table.ledger-table > thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: .55rem .7rem;
+  border-bottom: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+table.ledger-table > tbody > tr > td {
+  padding: .5rem .7rem;
+  border-bottom: 1px solid var(--rule-hair);
+  vertical-align: middle;
+}
+table.ledger-table > tbody > tr:nth-child(even) > td { background: var(--paper-tint); }
+table.ledger-table > tbody > tr:hover > td { background: var(--ref-wash); }
+
+/* Kolona e parë e regjistrit: numri i zërit, gjithnjë mono dhe i zbehtë. */
+table.ledger-table td.no,
+table.ledger-table th.no { width: 3.5rem; color: var(--pencil-soft); font-family: var(--font-code); font-size: var(--fs-xs); }
+
+/* Emrat e personave vendosen me serifen — janë zëra regjistri. */
+table.ledger-table td .person { font-family: var(--font-record); font-size: var(--fs-md); font-weight: 500; color: var(--ink); }
+
+/* --------------------------------------------------------- 7. Butonat */
+.btn {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink);
+  --btn-bd: var(--rule-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  min-height: 36px;
+  padding: .38rem .85rem;
+  border: 1px solid var(--btn-bd);
+  border-radius: var(--r-sm);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease);
+}
+.btn:hover { --btn-bg: var(--paper-deep); --btn-fg: var(--ink); text-decoration: none; }
+.btn:active { transform: translateY(.5px); }
+.btn:focus-visible { box-shadow: var(--focus); }
+.btn[disabled], .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Veprimi kryesor: bojë e plotë. Një dokument nënshkruhet me bojë. */
+.btn-ink     { --btn-bg: var(--ink); --btn-fg: var(--paper); --btn-bd: var(--ink); }
+.btn-ink:hover { --btn-bg: #000; --btn-fg: #fff; --btn-bd: #000; }
+html[data-theme="dark"] .btn-ink:hover { --btn-bg: #fff; --btn-fg: #000; --btn-bd: #fff; }
+
+.btn-ref     { --btn-bg: var(--ref); --btn-fg: #fff; --btn-bd: var(--ref); }
+.btn-ref:hover { --btn-bg: var(--ref-ink); --btn-fg: #fff; --btn-bd: var(--ref-ink); }
+
+.btn-seal    { --btn-bg: transparent; --btn-fg: var(--seal); --btn-bd: var(--seal); }
+.btn-seal:hover { --btn-bg: var(--seal); --btn-fg: #fff; }
+
+.btn-quiet   { --btn-bd: transparent; --btn-fg: var(--pencil); }
+.btn-quiet:hover { --btn-bd: var(--rule); --btn-fg: var(--ink); }
+
+.btn-sm { min-height: 30px; padding: .22rem .6rem; font-size: var(--fs-xs); }
+.btn-lg { min-height: 44px; padding: .6rem 1.2rem; font-size: var(--fs-md); }
+
+.btn-icon { width: 36px; min-height: 36px; padding: 0; }
+.btn-icon.btn-sm { width: 30px; min-height: 30px; }
+
+/* ------------------------------------------------------ 8. Formularët */
+.field { display: block; margin-bottom: .9rem; }
+.field > .label { margin-bottom: .3rem; }
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: .4rem .6rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.input::placeholder, .textarea::placeholder { color: var(--pencil-soft); }
+.input:focus, .select:focus, .textarea:focus { outline: 0; border-color: var(--ref); box-shadow: var(--focus); }
+.input:disabled, .select:disabled, .textarea:disabled { background: var(--paper-deep); color: var(--pencil-soft); }
+
+/* Fushat që mbajnë kode shkruhen me mono — si të plotësuara me makinë shkrimi. */
+.input-code { font-family: var(--font-code); letter-spacing: .02em; }
+
+/* ------------------------------------- 9. Mbishkrimet mbi Bootstrap-in */
+/* Faqet ekzistuese janë ndërtuar me Bootstrap; këtu ai flet gjuhën PROTOKOLL. */
+
+.card {
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: var(--lift);
+}
+.card-header, .card-footer {
+  padding: .8rem 1.1rem;
+  border-color: var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+.card-header:first-child { border-radius: var(--r) var(--r) 0 0; }
+.card-body { padding: 1.1rem; }
+.card-title { font-family: var(--font-record); font-weight: 600; }
+
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--ink);
+  --bs-table-border-color: var(--rule-hair);
+  --bs-table-striped-bg: var(--paper-tint);
+  --bs-table-striped-color: var(--ink);
+  --bs-table-hover-bg: var(--ref-wash);
+  --bs-table-hover-color: var(--ink);
+  --bs-table-active-bg: var(--paper-deep);
+  --bs-table-active-color: var(--ink);
+  margin-bottom: 0;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+.table > thead > tr > th {
+  padding: .55rem .7rem;
+  border-bottom: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.table > tbody > tr > td,
+.table > tbody > tr > th { padding: .5rem .7rem; border-color: var(--rule-hair); }
+.table > :not(:first-child) { border-top: 0; }
+.table-sm > :not(caption) > * > * { padding: .34rem .5rem; }
+
+body.dense .table > :not(caption) > * > * { padding: .26rem .5rem; }
+body.dense .table { font-size: var(--fs-xs); }
+
+/* Butonat e Bootstrap-it marrin gjuhën e re. */
+.btn-primary   { --btn-bg: var(--ink);  --btn-fg: var(--paper); --btn-bd: var(--ink); }
+.btn-primary:hover { --btn-bg: #000; --btn-fg: #fff; --btn-bd: #000; }
+html[data-theme="dark"] .btn-primary:hover { --btn-bg: #fff; --btn-fg: #000; --btn-bd: #fff; }
+.btn-secondary, .btn-light, .btn-outline-secondary, .btn-outline-light, .btn-outline-dark {
+  --btn-bg: transparent; --btn-fg: var(--ink); --btn-bd: var(--rule-strong);
+}
+.btn-outline-primary { --btn-bg: transparent; --btn-fg: var(--ref); --btn-bd: var(--ref); }
+.btn-outline-primary:hover { --btn-bg: var(--ref); --btn-fg: #fff; }
+.btn-success   { --btn-bg: var(--ref); --btn-fg: #fff; --btn-bd: var(--ref); }
+.btn-success:hover { --btn-bg: var(--ref-ink); --btn-fg: #fff; --btn-bd: var(--ref-ink); }
+.btn-outline-success { --btn-bg: transparent; --btn-fg: var(--ref); --btn-bd: var(--ref); }
+.btn-outline-success:hover { --btn-bg: var(--ref); --btn-fg: #fff; }
+.btn-danger    { --btn-bg: var(--seal); --btn-fg: #fff; --btn-bd: var(--seal); }
+.btn-danger:hover { --btn-bg: var(--seal-ink); --btn-fg: #fff; --btn-bd: var(--seal-ink); }
+.btn-outline-danger { --btn-bg: transparent; --btn-fg: var(--seal); --btn-bd: var(--seal); }
+.btn-outline-danger:hover { --btn-bg: var(--seal); --btn-fg: #fff; }
+.btn-warning, .btn-outline-warning { --btn-bg: transparent; --btn-fg: var(--hold); --btn-bd: var(--hold); }
+.btn-warning:hover, .btn-outline-warning:hover { --btn-bg: var(--hold); --btn-fg: #fff; }
+.btn-info, .btn-outline-info { --btn-bg: transparent; --btn-fg: var(--ref); --btn-bd: var(--ref); }
+
+/* Kontrollet e Bootstrap-it. */
+.form-control, .form-select, .input-group-text {
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background-color: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.form-control::placeholder { color: var(--pencil-soft); }
+.form-control:focus, .form-select:focus {
+  border-color: var(--ref);
+  background-color: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: var(--focus);
+}
+.form-control:disabled, .form-select:disabled { background-color: var(--paper-deep); color: var(--pencil-soft); }
+.input-group-text { background-color: var(--paper-deep); color: var(--pencil); }
+.form-label { font-family: var(--font-ui); font-size: var(--fs-micro); font-weight: 600; letter-spacing: var(--track-label); text-transform: uppercase; color: var(--pencil); margin-bottom: .3rem; }
+.form-text { color: var(--pencil); font-size: var(--fs-xs); }
+.form-check-input { border-color: var(--rule-strong); background-color: var(--paper-raised); border-radius: var(--r-sm); }
+.form-check-input:checked { background-color: var(--ink); border-color: var(--ink); }
+.form-check-input:focus { border-color: var(--ref); box-shadow: var(--focus); }
+.form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%237d766a' stroke-width='1.6' d='m3 6 5 5 5-5'/%3E%3C/svg%3E");
+}
+html[data-theme="dark"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%239b9384' stroke-width='1.6' d='m3 6 5 5 5-5'/%3E%3C/svg%3E");
+}
+html[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+html[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(.6); }
+
+/* Grupet e fushave: kontrolli para një .invalid-feedback të fshehur ruan qoshet. */
+.input-group > *:has(+ .invalid-feedback:last-child),
+.input-group > *:has(+ .valid-feedback:last-child) {
+  border-start-end-radius: var(--r-sm) !important;
+  border-end-end-radius: var(--r-sm) !important;
+}
+
+/* Shenjat. */
+.badge {
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: .3em .55em;
+}
+.text-bg-primary   { background: var(--ink) !important;    color: var(--paper) !important; }
+.text-bg-secondary { background: var(--paper-deep) !important; color: var(--pencil) !important; }
+.text-bg-success   { background: var(--ref-wash) !important;  color: var(--ref) !important;  box-shadow: inset 0 0 0 1px var(--ref); }
+.text-bg-danger    { background: var(--seal-wash) !important; color: var(--seal) !important; box-shadow: inset 0 0 0 1px var(--seal); }
+.text-bg-warning   { background: var(--hold-wash) !important; color: var(--hold) !important; box-shadow: inset 0 0 0 1px var(--hold); }
+.text-bg-info      { background: var(--ref-wash) !important;  color: var(--ref) !important; }
+.text-bg-light     { background: var(--paper-deep) !important; color: var(--ink) !important; }
+.text-bg-dark      { background: var(--ink) !important; color: var(--paper) !important; }
+
+.text-primary { color: var(--ref) !important; }
+.text-success { color: var(--ref) !important; }
+.text-danger  { color: var(--seal) !important; }
+.text-warning { color: var(--hold) !important; }
+.text-info    { color: var(--ref) !important; }
+.text-muted, .text-body-secondary { color: var(--pencil) !important; }
+.text-body { color: var(--ink) !important; }
+.bg-white, .bg-light, .bg-body { background-color: var(--paper-raised) !important; }
+.bg-body-tertiary, .bg-body-secondary { background-color: var(--paper-tint) !important; }
+.border, .border-top, .border-bottom, .border-start, .border-end { border-color: var(--rule) !important; }
+.rounded, .rounded-3, .rounded-4 { border-radius: var(--r) !important; }
+.shadow, .shadow-sm, .shadow-lg { box-shadow: var(--lift) !important; }
+
+/* Dropdown, modal, toast, alert. */
+.dropdown-menu {
+  --bs-dropdown-bg: var(--paper-raised);
+  --bs-dropdown-color: var(--ink);
+  --bs-dropdown-border-color: var(--rule-strong);
+  --bs-dropdown-link-color: var(--ink);
+  --bs-dropdown-link-hover-color: var(--ink);
+  --bs-dropdown-link-hover-bg: var(--paper-tint);
+  --bs-dropdown-link-active-color: var(--ref);
+  --bs-dropdown-link-active-bg: var(--ref-wash);
+  --bs-dropdown-divider-bg: var(--rule);
+  padding: .25rem;
+  border-radius: var(--r);
+  box-shadow: var(--lift-3);
+}
+.dropdown-menu .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem .55rem;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+.dropdown-item.text-danger { color: var(--seal) !important; }
+.dropdown-item.text-danger:hover { background: var(--seal-wash) !important; }
+.dropdown-header { font-family: var(--font-ui); font-size: var(--fs-micro); font-weight: 600; letter-spacing: var(--track-label); text-transform: uppercase; color: var(--pencil); }
+
+.modal-content {
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: var(--lift-3);
+}
+.modal-header, .modal-footer { padding: .9rem 1.15rem; border-color: var(--rule); }
+.modal-header { border-bottom-width: 2px; border-bottom-color: var(--ink); }
+.modal-body { padding: 1.15rem; }
+.modal-title { font-family: var(--font-record); font-weight: 600; font-size: var(--fs-xl); }
+.modal-backdrop.show { opacity: .4; }
+html[data-theme="dark"] .btn-close { filter: invert(1) grayscale(1) brightness(1.6); }
+
+.offcanvas { background: var(--paper-raised); color: var(--ink); border-color: var(--rule); }
+
+.toast {
+  border: 1px solid var(--rule-strong);
+  border-left: 4px solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: var(--lift-3);
+}
+.toast .toast-header {
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}
+.toast-success { border-left-color: var(--ref); }
+.toast-danger  { border-left-color: var(--seal); }
+.toast-warning { border-left-color: var(--hold); }
+.toast-info    { border-left-color: var(--pencil); }
+
+.alert {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--pencil);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.alert-success { border-left-color: var(--ref);  background: var(--ref-wash);  color: var(--ink); }
+.alert-danger  { border-left-color: var(--seal); background: var(--seal-wash); color: var(--ink); }
+.alert-warning { border-left-color: var(--hold); background: var(--hold-wash); color: var(--ink); }
+.alert-info    { border-left-color: var(--ref);  background: var(--ref-wash);  color: var(--ink); }
+
+.list-group {
+  --bs-list-group-bg: transparent;
+  --bs-list-group-color: var(--ink);
+  --bs-list-group-border-color: var(--rule-hair);
+  --bs-list-group-action-hover-bg: var(--paper-tint);
+  --bs-list-group-action-hover-color: var(--ink);
+  --bs-list-group-active-bg: var(--ref-wash);
+  --bs-list-group-active-color: var(--ref);
+  --bs-list-group-active-border-color: var(--rule-hair);
+  --bs-list-group-border-radius: var(--r-sm);
+}
+.list-group-item { padding: .65rem .8rem; font-size: var(--fs-sm); }
+
+.pagination {
+  --bs-pagination-bg: transparent;
+  --bs-pagination-color: var(--pencil);
+  --bs-pagination-border-color: var(--rule);
+  --bs-pagination-hover-bg: var(--paper-tint);
+  --bs-pagination-hover-color: var(--ink);
+  --bs-pagination-hover-border-color: var(--rule-strong);
+  --bs-pagination-active-bg: var(--ink);
+  --bs-pagination-active-border-color: var(--ink);
+  --bs-pagination-active-color: var(--paper);
+  --bs-pagination-disabled-bg: transparent;
+  --bs-pagination-disabled-color: var(--pencil-soft);
+  --bs-pagination-disabled-border-color: var(--rule-hair);
+  gap: .2rem;
+}
+.pagination .page-link { border-radius: var(--r-sm); font-family: var(--font-code); font-size: var(--fs-xs); }
+
+.nav-pills .nav-link, .nav-tabs .nav-link {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--pencil);
+  border-radius: var(--r-sm);
+}
+.nav-pills .nav-link:hover { background: var(--paper-tint); color: var(--ink); }
+.nav-pills .nav-link.active { background: var(--ink); color: var(--paper); }
+.nav-tabs { border-bottom: 1px solid var(--rule); }
+.nav-tabs .nav-link { border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+.nav-tabs .nav-link:hover { border-bottom-color: var(--rule-strong); color: var(--ink); background: transparent; }
+.nav-tabs .nav-link.active { border-bottom-color: var(--ink); color: var(--ink); background: transparent; }
+
+.accordion {
+  --bs-accordion-bg: var(--paper-raised);
+  --bs-accordion-color: var(--ink);
+  --bs-accordion-border-color: var(--rule);
+  --bs-accordion-btn-color: var(--ink);
+  --bs-accordion-btn-bg: var(--paper-raised);
+  --bs-accordion-active-bg: var(--paper-tint);
+  --bs-accordion-active-color: var(--ink);
+  --bs-accordion-border-radius: var(--r-sm);
+}
+.accordion-button { font-family: var(--font-ui); font-weight: 600; font-size: var(--fs-base); box-shadow: none !important; }
+
+.progress { background: var(--paper-deep); border-radius: var(--r-sm); }
+.progress-bar { background: var(--ink); }
+.spinner-border, .spinner-grow { color: var(--ref); }
+.tooltip-inner { background: var(--ink); color: var(--paper); border-radius: var(--r-sm); font-family: var(--font-ui); font-size: var(--fs-xs); }
+.popover { background: var(--paper-raised); border-color: var(--rule-strong); border-radius: var(--r); box-shadow: var(--lift-3); }
+.popover-body, .popover-header { color: var(--ink); background: transparent; }
+
+/* Rreshti i shifrave: fusha formulari të ndara me vijë, jo karta me hije. */
+.tally {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+}
+.tally-cell {
+  min-width: 0;
+  padding: .85rem 1rem;
+  border-right: 1px solid var(--rule-hair);
+}
+.tally-cell:last-child { border-right: 0; }
+.tally-cell .label { margin-bottom: .25rem; }
+.tally-value {
+  display: block;
+  font-family: var(--font-code);
+  font-size: 1.6rem;
+  font-weight: 500;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.tally-cell.is-alert .tally-value { color: var(--seal); }
+.tally-cell.is-hold  .tally-value { color: var(--hold); }
+.tally-foot { font-size: var(--fs-xs); color: var(--pencil); }
+
+@media (max-width: 575.98px) {
+  .tally { grid-template-columns: repeat(2, 1fr); }
+  .tally-cell { border-bottom: 1px solid var(--rule-hair); }
+}
+
+/* Gjendje boshe: një ftesë për të vepruar, jo një humor. */
+.blank {
+  display: grid;
+  place-items: center;
+  gap: .35rem;
+  padding: 2.75rem 1.5rem;
+  text-align: center;
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--r);
+  color: var(--pencil);
+}
+.blank .blank-title { font-family: var(--font-record); font-size: var(--fs-lg); color: var(--ink); }
+.blank .blank-note { font-size: var(--fs-sm); max-width: 44ch; }
+
+/* --------------------------------------------------------------- Print */
+@media print {
+  body { padding-top: 0; background: #fff !important; color: #000 !important; }
+  body::before { display: none; }
+  .no-print, .app-bar, .btn, .btn-fab, .fab-stack, .to-top { display: none !important; }
+  .leaf, .card { border-color: #ccc !important; box-shadow: none !important; }
+  .stamp { mix-blend-mode: normal; }
+  .title-block { border-bottom-color: #000 !important; }
+}

@@ -21,8 +21,8 @@
   /* --- Boja -------------------------------------------------------------- */
   --ink:          #131211;  /* teksti kryesor */
   --ink-soft:     #3d3a34;  /* teksti dytësor */
-  --pencil:       #7d766a;  /* shënime, etiketa */
-  --pencil-soft:  #a29a8c;  /* tekst i zbehtë, placeholder */
+  --pencil:       #6b6559;  /* shënime, etiketa — 5.5:1 mbi letër */
+  --pencil-soft:  #847c6e;  /* vetëm dekorative: placeholder, numra rreshtash */
 
   /* --- Vijat e regjistrit ------------------------------------------------ */
   --rule:         #ded9cd;  /* vijë ledger */

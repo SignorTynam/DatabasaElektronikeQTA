@@ -26,7 +26,7 @@ $pageBodyClass = $pageBodyClass ?? '';
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
@@ -40,6 +40,7 @@ $pageBodyClass = $pageBodyClass ?? '';
     <link href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
   <?php endif; ?>
   <link href="<?= h(qta_asset('app/assets/css/tokens.css')) ?>" rel="stylesheet">
+  <link href="<?= h(qta_asset('app/assets/css/protokoll.css')) ?>" rel="stylesheet">
   <link href="<?= h(qta_asset('app/assets/css/public.css')) ?>" rel="stylesheet">
 </head>
 <body class="<?= h($pageBodyClass) ?>">
