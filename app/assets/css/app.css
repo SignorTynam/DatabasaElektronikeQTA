@@ -58,11 +58,11 @@ body { padding-top: calc(var(--nav-h) + 2px); }
   color: var(--pencil);
 }
 
-/* Roli: shkruhet si fushë formulari, jo si "badge". */
+/* Roli: ikonë + emri i rolit. Fjala "Nënshkrues" rri te titulli, jo në shirit. */
 .app-role {
   display: inline-flex;
-  align-items: baseline;
-  gap: .35rem;
+  align-items: center;
+  gap: .4rem;
   padding-left: .85rem;
   border-left: 1px solid var(--rule);
   font-family: var(--font-code);
@@ -70,6 +70,7 @@ body { padding-top: calc(var(--nav-h) + 2px); }
   color: var(--pencil);
   white-space: nowrap;
 }
+.app-role .bi { font-size: .95rem; color: var(--ref); }
 .app-role b { color: var(--ink); font-weight: 500; }
 
 /* ------------------------------------------------------ 2. Navigimi */
@@ -415,3 +416,187 @@ html[data-theme="dark"] .fab:hover { background: #fff; color: #000; }
 .cell-err { animation: mark-err 1.1s var(--ease); }
 @keyframes mark-ok  { 0% { background: var(--ref-wash); }  100% { background: transparent; } }
 @keyframes mark-err { 0% { background: var(--seal-wash); } 100% { background: transparent; } }
+
+/* ============================================================================
+   Grafikët e regjistrit
+   ----------------------------------------------------------------------------
+   Pa biblioteka dhe pa gradientë. Një regjistër i vizaton numrat me bojë:
+   shtylla të plota, vija bazë floku, shifra mono. Ngjyra mban kuptim, jo zbukurim.
+   ========================================================================= */
+
+/* ------------------------------------------------ Shtylla vertikale (ritmi) */
+.bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: end;
+  gap: clamp(.4rem, 2vw, 1.75rem);
+  height: 190px;
+  padding-top: 1.5rem;
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.bar { position: relative; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+
+/* Shtylla nuk duhet të dalë më e gjerë se e lartë — përndryshe lexohet bllok. */
+.bar-fill {
+  width: 100%;
+  max-width: 58px;
+  margin-inline: auto;
+  min-height: 2px;
+  background: var(--ink);
+  transition: background-color var(--t-fast) var(--ease);
+}
+.bar:hover .bar-fill { background: var(--ref); }
+
+/* Kulmi shënohet vetë — nuk i shtojmë asnjë etiketë "peak". */
+.bar.is-peak .bar-fill { background: var(--ref); }
+
+.bar-value {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--pencil);
+  white-space: nowrap;
+}
+.bar.is-peak .bar-value { color: var(--ref); font-weight: 600; }
+
+.bars-axis {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: clamp(.4rem, 2vw, 1.75rem);
+  padding-top: .45rem;
+}
+.bars-axis span {
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------- Renditje horizontale (modulet) */
+.rank { display: grid; }
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) 2.9rem;
+  align-items: center;
+  gap: .7rem;
+  padding: .42rem 0;
+  border-bottom: 1px solid var(--rule-hair);
+  color: var(--ink);
+  text-decoration: none;
+}
+a.rank-row:hover { background: var(--paper-tint); color: var(--ink); text-decoration: none; }
+
+.rank-row .code { font-family: var(--font-code); font-size: var(--fs-xs); color: var(--pencil); }
+.rank-row .rank-name {
+  font-family: var(--font-record);
+  font-size: var(--fs-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rank-row .rank-n {
+  font-family: var(--font-code);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink);
+}
+
+/* Shtylla rri nën emrin, si nënvizim i matur — jo si shirit i veçantë. */
+.rank-track { grid-column: 2 / 3; height: 3px; margin-top: .18rem; background: var(--paper-deep); }
+.rank-bar { display: block; height: 100%; background: var(--ink); }
+.rank-row:first-child .rank-bar { background: var(--ref); }
+
+/* -------------------------------------------------- Shpërndarja e notave */
+.spread { display: grid; gap: .1rem; }
+
+.spread-row {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr) 2.6rem;
+  align-items: center;
+  gap: .7rem;
+  padding: .3rem 0;
+}
+.spread-row .spread-band {
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+.spread-track { height: 12px; background: var(--paper-deep); }
+.spread-bar { display: block; height: 100%; background: var(--ink); }
+.spread-row.is-top .spread-bar { background: var(--ref); }
+.spread-row .spread-n {
+  font-family: var(--font-code);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ------------------------------------------------ Ndarje me pjesë (split) */
+/* Një shirit i vetëm i ndarë — për gjini, arsim, veprime auditimi. */
+.split { display: flex; height: 14px; overflow: hidden; border: 1px solid var(--rule); }
+.split-part { height: 100%; }
+.split-part:nth-child(1) { background: var(--ink); }
+.split-part:nth-child(2) { background: var(--ref); }
+.split-part:nth-child(3) { background: var(--rule-strong); }
+
+.split-key { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; margin-top: .55rem; }
+.split-key-item { display: inline-flex; align-items: baseline; gap: .35rem; font-size: var(--fs-xs); color: var(--pencil); }
+.split-key-item::before { content: ""; width: 8px; height: 8px; flex: 0 0 auto; transform: translateY(-1px); }
+.split-key-item:nth-child(1)::before { background: var(--ink); }
+.split-key-item:nth-child(2)::before { background: var(--ref); }
+.split-key-item:nth-child(3)::before { background: var(--rule-strong); }
+.split-key-item b { font-family: var(--font-code); font-weight: 500; color: var(--ink); }
+
+/* ---------------------------------------------------- Rreshta të dhënash */
+.datarow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--rule-hair);
+}
+.datarow:last-child { border-bottom: 0; }
+.datarow dt { font-size: var(--fs-sm); color: var(--pencil); font-weight: 400; }
+.datarow dd {
+  margin: 0;
+  font-family: var(--font-code);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Titull i vogël seksioni brenda fletës së punës. */
+.plate-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: .5rem;
+  margin-bottom: .9rem;
+  border-bottom: 1px solid var(--rule);
+}
+.plate-head h2 { font-size: var(--fs-xl); }
+.plate-head .label { margin-left: auto; }
+
+@media (max-width: 575.98px) {
+  .bars { height: 140px; }
+  .bar-fill { max-width: 34px; }
+  .bar-value { font-size: 10px; }
+  .rank-row { grid-template-columns: 2.4rem minmax(0, 1fr) 2.6rem; }
+}
+
+/* Renditje pa kod moduli — p.sh. vendlindja. */
+.rank-row-2col { grid-template-columns: minmax(0, 1fr) 2.9rem; }
+.rank-row-2col .rank-track { grid-column: 1 / 2; }

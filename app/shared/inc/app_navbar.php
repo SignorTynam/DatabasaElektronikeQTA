@@ -76,8 +76,21 @@ $navIsActive = static function (array $item) use ($navActive): bool {
       </span>
     </a>
 
-    <span class="app-role d-none d-md-inline-flex">
-      Nënshkrues: <b><?= h($navLabel) ?></b>
+    <?php
+    /* Roli tregohet me ikonë; fjala "Nënshkrues" rri te titulli, jo në shirit. */
+    $navIcon = match ($navRole) {
+      'administrator' => 'bi-shield-lock',
+      'editor'        => 'bi-pencil-square',
+      'agjencia'      => 'bi-building',
+      'student'       => 'bi-mortarboard',
+      default         => 'bi-person-badge',
+    };
+    ?>
+    <span class="app-role d-none d-md-inline-flex"
+          title="Nënshkrues: <?= h($navLabel) ?>">
+      <i class="bi <?= h($navIcon) ?>" aria-hidden="true"></i>
+      <b><?= h($navLabel) ?></b>
+      <span class="visually-hidden">Nënshkrues</span>
     </span>
 
     <button class="app-burger ms-auto" type="button" data-nav-toggle
