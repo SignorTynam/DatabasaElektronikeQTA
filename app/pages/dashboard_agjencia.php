@@ -202,16 +202,9 @@ require __DIR__ . '/../shared/app_head.php';
 <main class="app-main">
 
   <?php
-  /* Pamja mbështetet vetëm te variablat që logjika sipër i ka kufizuar
-     tashmë te kjo agjenci. Asnjë pyetje e re. */
+  /* Vetëm nga variablat që logjika sipër i ka kufizuar te kjo agjenci. */
   $agencyName = trim((string)($COMPANY['name'] ?? $COMPANY['company_name'] ?? ''));
   $agencyNipt = trim((string)($COMPANY['nipt'] ?? ''));
-
-  $weeklyMax = 0;
-  foreach (($weekly ?? []) as $w) { $weeklyMax = max($weeklyMax, (int)$w['cnt']); }
-
-  $topMax = 0;
-  foreach (($topCourses ?? []) as $c) { $topMax = max($topMax, (int)$c['total_students']); }
 
   $greetHour = (int)date('G');
   $greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' : 'Mirëmbrëma');
@@ -222,7 +215,6 @@ require __DIR__ . '/../shared/app_head.php';
     <div class="title-block-main">
       <div class="title-block-eyebrow">Fleta e agjencisë</div>
       <h1><?= h($greeting) ?><?= $agencyName !== '' ? ', ' . h($agencyName) : ', ' . h($whoShort) ?></h1>
-      <p class="title-block-note">Punonjësit që keni regjistruar dhe grupet ku janë caktuar.</p>
     </div>
     <div class="title-block-fields">
       <?php if ($agencyNipt !== ''): ?>
@@ -232,153 +224,95 @@ require __DIR__ . '/../shared/app_head.php';
         </div>
       <?php endif; ?>
       <div class="title-block-field">
-        <span class="label">Data</span>
+        <span class="label">Sot</span>
         <span class="value"><?= h(date('d.m.Y')) ?></span>
       </div>
     </div>
   </div>
 
-  <!-- ============================================================== SHIFRAT -->
-  <section class="tally" aria-label="Gjendja e agjencisë">
-    <div class="tally-cell">
-      <span class="label">Punonjës</span>
-      <span class="tally-value"><?= number_format((int)$studentsTotal) ?></span>
-      <span class="tally-foot">të regjistruar</span>
-    </div>
-    <div class="tally-cell">
-      <span class="label">Grupe</span>
-      <span class="tally-value"><?= number_format((int)$groupsCnt) ?></span>
-      <span class="tally-foot"><?= number_format((int)$activeGroupsToday) ?> në zhvillim</span>
-    </div>
-    <div class="tally-cell">
-      <span class="label">Module</span>
-      <span class="tally-value"><?= number_format((int)$coursesCnt) ?></span>
-      <span class="tally-foot">zanate të ndjekura</span>
-    </div>
-    <div class="tally-cell<?= (int)$noGroupCnt > 0 ? ' is-hold' : '' ?>">
-      <span class="label">Pa grup</span>
-      <span class="tally-value"><?= number_format((int)$noGroupCnt) ?></span>
-      <span class="tally-foot">presin caktim</span>
+  <!-- ====================================================== KËRKIMI I SHPEJTË -->
+  <section class="jump" aria-labelledby="jumpTitle">
+    <h2 id="jumpTitle" class="visually-hidden">Gjej një punonjës</h2>
+    <form class="jump-form" method="get" action="register_agjencia.php">
+      <div class="jump-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input type="text" name="q" autofocus
+               placeholder="Gjej punonjës — emër, numër amze ose numër personal"
+               aria-label="Gjej punonjës">
+      </div>
+      <button class="btn btn-ink" type="submit">Kërko</button>
+    </form>
+  </section>
+
+  <!-- ============================================================ VEPRIMET -->
+  <section class="mb-5" aria-labelledby="actTitle">
+    <div class="plate-head"><h2 id="actTitle">Çfarë mund të bësh</h2></div>
+    <div class="actions">
+      <a class="act act-primary" href="register_agjencia.php">
+        <i class="bi bi-person-plus" aria-hidden="true"></i>
+        <b>Punonjësit e mi</b><span>Regjistro dhe shiko të dhënat</span>
+      </a>
+      <a class="act act-primary" href="groups_agjencia.php">
+        <i class="bi bi-collection" aria-hidden="true"></i>
+        <b>Grupet</b><span>Ku janë caktuar punonjësit</span>
+      </a>
+      <a class="act" href="verify.php">
+        <i class="bi bi-patch-check" aria-hidden="true"></i>
+        <b>Verifiko</b><span>Kontrollo një certifikatë</span>
+      </a>
+      <a class="act" href="profile.php">
+        <i class="bi bi-building" aria-hidden="true"></i>
+        <b>Profili</b><span>Të dhënat e agjencisë</span>
+      </a>
     </div>
   </section>
 
-  <!-- =============================================================== RITMI -->
-  <?php if (!empty($weekly)): ?>
-    <section class="mb-5" aria-labelledby="agRhythm">
+  <!-- ========================================================= PRET PËR TY -->
+  <?php if (!empty($noGroupList)): ?>
+    <section class="mb-5" aria-labelledby="waitTitle">
       <div class="plate-head">
-        <h2 id="agRhythm">Ritmi i regjistrimeve</h2>
-        <span class="label">Punonjës për javë</span>
+        <h2 id="waitTitle">Presin caktim në grup</h2>
+        <span class="label"><?= number_format((int)$noGroupCnt) ?> punonjës</span>
       </div>
-      <div class="bars">
-        <?php foreach ($weekly as $w):
-          $n = (int)$w['cnt'];
-          $pct = $weeklyMax > 0 ? max(2, round($n / $weeklyMax * 100)) : 2; ?>
-          <div class="bar<?= $n === $weeklyMax ? ' is-peak' : '' ?>" title="<?= h((string)$w['label']) ?>: <?= $n ?>">
-            <span class="bar-value"><?= $n ?></span>
-            <span class="bar-fill" style="height:<?= $pct ?>%"></span>
-          </div>
+      <div class="waiting">
+        <?php foreach (array_slice($noGroupList, 0, 6) as $s):
+          $full = trim(((string)($s['first_name'] ?? '')) . ' ' . ((string)($s['last_name'] ?? ''))); ?>
+          <a class="wait-row" href="register_agjencia.php">
+            <span class="wait-n code" style="font-size:var(--fs-sm)"><?= h((string)($s['nr_amze'] ?? '')) ?></span>
+            <span class="wait-main">
+              <b style="font-family:var(--font-record);font-weight:500"><?= h($full !== '' ? $full : '—') ?></b>
+              <span>Ende pa grup të caktuar.</span>
+            </span>
+            <span class="wait-go">Shiko →</span>
+          </a>
         <?php endforeach; ?>
       </div>
-      <div class="bars-axis">
-        <?php foreach ($weekly as $w):
-          $lbl = (string)$w['label'];
-          $short = (strpos($lbl, '-W') !== false) ? substr($lbl, strpos($lbl, '-W') + 1) : $lbl; ?>
-          <span><?= h($short) ?></span>
-        <?php endforeach; ?>
-      </div>
+      <?php if (count($noGroupList) > 6): ?>
+        <p class="muted mt-2" style="font-size:var(--fs-xs)">
+          Edhe <?= number_format(count($noGroupList) - 6) ?> të tjerë —
+          <a href="register_agjencia.php">shihi të gjithë</a>.
+        </p>
+      <?php endif; ?>
     </section>
   <?php endif; ?>
 
-  <div class="row g-4 g-xl-5">
-
-    <!-- ============================================================ MODULET -->
-    <div class="col-12 col-xl-7">
-      <section aria-labelledby="agMod">
-        <div class="plate-head">
-          <h2 id="agMod">Zanatet e punonjësve tuaj</h2>
-          <a class="label" href="groups_agjencia.php">Grupet →</a>
-        </div>
-
-        <?php if (!empty($topCourses)): ?>
-          <div class="rank">
-            <?php foreach ($topCourses as $c):
-              $n = (int)$c['total_students'];
-              $pct = $topMax > 0 ? round($n / $topMax * 100) : 0; ?>
-              <div class="rank-row" title="<?= h((string)$c['name']) ?> — <?= $n ?> punonjës">
-                <span class="code"><?= h((string)$c['code']) ?></span>
-                <span class="rank-name"><?= h((string)$c['name']) ?></span>
-                <span class="rank-n"><?= $n ?></span>
-                <span class="rank-track"><span class="rank-bar" style="width:<?= $pct ?>%"></span></span>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        <?php else: ?>
-          <div class="blank">
-            <span class="blank-title">Ende pa module</span>
-            <span class="blank-note">Sapo punonjësit të caktohen në grupe, zanatet shfaqen këtu.</span>
-          </div>
-        <?php endif; ?>
-      </section>
-    </div>
-
-    <!-- ============================================================= PA GRUP -->
-    <div class="col-12 col-xl-5">
-      <section aria-labelledby="agNoGroup">
-        <div class="plate-head">
-          <h2 id="agNoGroup">Presin caktim</h2>
-          <span class="label"><?= number_format((int)$noGroupCnt) ?> punonjës</span>
-        </div>
-
-        <?php if (!empty($noGroupList)): ?>
-          <div class="action-list">
-            <?php foreach (array_slice($noGroupList, 0, 8) as $i => $s):
-              $full = trim(((string)($s['first_name'] ?? '')) . ' ' . ((string)($s['last_name'] ?? ''))); ?>
-              <a class="action-row" href="register_agjencia.php">
-                <span class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></span>
-                <span class="action-main">
-                  <b style="font-family:var(--font-record);font-weight:500"><?= h($full !== '' ? $full : '—') ?></b>
-                  <span class="code"><?= h((string)($s['nr_amze'] ?? '')) ?></span>
-                </span>
-                <span class="action-count" style="font-size:var(--fs-sm)">
-                  <span class="state state-hold">Pa grup</span>
-                </span>
-              </a>
-            <?php endforeach; ?>
-          </div>
-          <?php if (count($noGroupList) > 8): ?>
-            <p class="muted" style="font-size:var(--fs-xs);margin-top:.7rem">
-              Edhe <?= number_format(count($noGroupList) - 8) ?> të tjerë —
-              <a href="register_agjencia.php">shihi të gjithë</a>.
-            </p>
-          <?php endif; ?>
-        <?php else: ?>
-          <div class="blank">
-            <span class="blank-title">Të gjithë janë caktuar</span>
-            <span class="blank-note">Asnjë punonjës nuk pret caktim në grup.</span>
-          </div>
-        <?php endif; ?>
-      </section>
-    </div>
-  </div>
-
   <!-- ============================================================== GRUPET -->
   <?php if (!empty($groupsCap)): ?>
-    <section class="mt-5" aria-labelledby="agGroups">
+    <section aria-labelledby="agGroups">
       <div class="plate-head">
         <h2 id="agGroups">Grupet ku keni punonjës</h2>
-        <span class="label"><?= count($groupsCap) ?> zëra</span>
+        <a class="label" href="groups_agjencia.php">Të plota →</a>
       </div>
 
       <div class="ledger">
-        <table class="ledger-table">
+        <table class="ledger-table" data-sortable>
           <thead>
             <tr>
-              <th class="no">Nr.</th>
-              <th>Moduli</th>
-              <th>Kodi</th>
-              <th>Nisi</th>
-              <th>Mbaron</th>
-              <th>Punonjësit tuaj</th>
+              <th class="no" data-sort="none">Nr.</th>
+              <th data-sort="text">Moduli</th>
+              <th class="nowrap" data-sort="date">Nisi</th>
+              <th class="nowrap" data-sort="date">Mbaron</th>
+              <th class="nowrap num-col" data-sort="num">Punonjësit tuaj</th>
             </tr>
           </thead>
           <tbody>
@@ -386,10 +320,9 @@ require __DIR__ . '/../shared/app_head.php';
               <tr>
                 <td class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></td>
                 <td><span class="person"><?= h((string)($g['name'] ?? $g['course_name'] ?? '—')) ?></span></td>
-                <td class="code"><?= h((string)($g['code'] ?? $g['course_code'] ?? '')) ?></td>
-                <td class="num"><?= !empty($g['start_date']) ? h(date('d.m.Y', strtotime((string)$g['start_date']))) : '—' ?></td>
-                <td class="num"><?= !empty($g['end_date']) ? h(date('d.m.Y', strtotime((string)$g['end_date']))) : '—' ?></td>
-                <td class="num"><?= number_format((int)($g['cnt_company'] ?? 0)) ?></td>
+                <td class="nowrap num"><?= !empty($g['start_date']) ? h(date('d.m.Y', strtotime((string)$g['start_date']))) : '—' ?></td>
+                <td class="nowrap num"><?= !empty($g['end_date']) ? h(date('d.m.Y', strtotime((string)$g['end_date']))) : '—' ?></td>
+                <td class="nowrap num-col num"><?= number_format((int)($g['cnt_company'] ?? 0)) ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -397,28 +330,6 @@ require __DIR__ . '/../shared/app_head.php';
       </div>
     </section>
   <?php endif; ?>
-
-  <!-- ============================================================= SHKO TE -->
-  <section class="mt-5" aria-labelledby="agGo">
-    <div class="plate-head"><h2 id="agGo">Shko te</h2></div>
-    <div class="row g-2">
-      <?php
-      $shortcuts = [
-        ['register_agjencia.php', 'Punonjësit',  'Regjistrimi dhe të dhënat'],
-        ['groups_agjencia.php',   'Grupet',      'Ku janë caktuar'],
-        ['profile.php',           'Profili',     'Të dhënat e agjencisë'],
-        ['verify.php',            'Verifiko',    'Kontrollo një certifikatë'],
-      ];
-      foreach ($shortcuts as $sc): ?>
-        <div class="col-12 col-sm-6 col-lg-3">
-          <a class="shortcut" href="<?= h($sc[0]) ?>">
-            <span><b><?= h($sc[1]) ?></b><span><?= h($sc[2]) ?></span></span>
-            <i class="bi bi-arrow-right arrow"></i>
-          </a>
-        </div>
-      <?php endforeach; ?>
-    </div>
-  </section>
 
 </main>
 

@@ -160,30 +160,22 @@ $pageTitle = 'Kartela ime – Regjistri QTA';
 require __DIR__ . '/../shared/app_head.php';
 
 /* ---------------------------------------------------------------------------
-   Përgatitja e pamjes — vetëm nga $groups, që tashmë është kufizuar te ky
-   kursant në pjesën e logjikës. Asnjë pyetje e re dhe asnjë fushë më tepër.
+   Vetëm nga $groups, që logjika sipër e ka kufizuar te ky kursant.
+   Asnjë pyetje e re dhe asnjë fushë më tepër.
    ------------------------------------------------------------------------ */
 $myScores = [];
 foreach ($groups as $g) {
-  if ($g['final_score'] !== null && $g['final_score'] !== '') {
-    $myScores[] = (float)$g['final_score'];
-  }
+  if ($g['final_score'] !== null && $g['final_score'] !== '') { $myScores[] = (float)$g['final_score']; }
 }
 $avgScore = $myScores ? round(array_sum($myScores) / count($myScores), 1) : null;
 
-/* Orët sipas modulit — renditur, si zërat e një dëftese. */
-$byModule = [];
+/* Çfarë pret kursantin: provime të caktuara që ende s'kanë notë. */
+$upcomingExams = [];
 foreach ($groups as $g) {
-  $key = (string)$g['course_code'];
-  if (!isset($byModule[$key])) {
-    $byModule[$key] = ['code' => $key, 'name' => (string)$g['course_name'], 'hours' => 0, 'n' => 0];
-  }
-  $byModule[$key]['hours'] += (int)$g['hours'];
-  $byModule[$key]['n']++;
+  $hasScore = $g['final_score'] !== null && $g['final_score'] !== '';
+  if (!$hasScore && !empty($g['my_exam'])) { $upcomingExams[] = $g; }
 }
-uasort($byModule, static fn($a, $b) => $b['hours'] <=> $a['hours']);
-$moduleMax = 0;
-foreach ($byModule as $m) { $moduleMax = max($moduleMax, (int)$m['hours']); }
+usort($upcomingExams, static fn($a, $b) => strcmp((string)$a['my_exam'], (string)$b['my_exam']));
 
 $greetHour = (int)date('G');
 $greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' : 'Mirëmbrëma');
@@ -196,7 +188,6 @@ $whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?
     <div class="title-block-main">
       <div class="title-block-eyebrow">Kartela ime</div>
       <h1><?= h($greeting) ?>, <?= h($whoShort) ?></h1>
-      <p class="title-block-note">Modulet ku je regjistruar, orët dhe rezultatet e tua.</p>
     </div>
     <div class="title-block-fields">
       <?php if (!empty($company)): ?>
@@ -206,191 +197,109 @@ $whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?
         </div>
       <?php endif; ?>
       <div class="title-block-field">
-        <span class="label">Data</span>
+        <span class="label">Sot</span>
         <span class="value"><?= h(date('d.m.Y')) ?></span>
       </div>
     </div>
   </div>
 
-  <!-- ============================================================== SHIFRAT -->
-  <section class="tally" aria-label="Përmbledhje personale">
-    <div class="tally-cell">
-      <span class="label">Modulet e mia</span>
-      <span class="tally-value"><?= number_format((int)$k_total_groups) ?></span>
-      <span class="tally-foot"><?= number_format((int)$k_active_groups) ?> në zhvillim</span>
-    </div>
-    <div class="tally-cell">
-      <span class="label">Orë mësimore</span>
-      <span class="tally-value"><?= number_format((int)$totalHours) ?></span>
-      <span class="tally-foot">gjithsej</span>
-    </div>
-    <div class="tally-cell">
-      <span class="label">Nota mesatare</span>
-      <span class="tally-value"><?= $avgScore !== null ? h((string)$avgScore) : '—' ?></span>
-      <span class="tally-foot"><?= count($myScores) ?> të vlerësuara</span>
-    </div>
-    <div class="tally-cell<?= (int)$k_upcoming_tests > 0 ? ' is-hold' : '' ?>">
-      <span class="label">Provime në pritje</span>
-      <span class="tally-value"><?= number_format((int)$k_upcoming_tests) ?></span>
-      <span class="tally-foot">me datë të caktuar</span>
+  <!-- ============================================================ VEPRIMET -->
+  <section class="mb-5" aria-labelledby="actTitle">
+    <div class="plate-head"><h2 id="actTitle">Çfarë mund të bësh</h2></div>
+    <div class="actions">
+      <a class="act act-primary" href="groups_student.php">
+        <i class="bi bi-mortarboard" aria-hidden="true"></i>
+        <b>Modulet e mia</b><span>Datat, provimet dhe pikët</span>
+      </a>
+      <a class="act act-primary" href="verify.php">
+        <i class="bi bi-patch-check" aria-hidden="true"></i>
+        <b>Verifiko certifikatën</b><span>Kontrollo me kod ose QR</span>
+      </a>
+      <a class="act" href="profile.php">
+        <i class="bi bi-person" aria-hidden="true"></i>
+        <b>Profili im</b><span>Të dhënat e mia</span>
+      </a>
+      <a class="act" href="contact.php">
+        <i class="bi bi-envelope" aria-hidden="true"></i>
+        <b>Shkruaji QTA-së</b><span>Për pyetje ose ndreqje të dhënash</span>
+      </a>
     </div>
   </section>
 
-  <div class="row g-4 g-xl-5">
+  <!-- ========================================================= PRET PËR TY -->
+  <?php if ($upcomingExams): ?>
+    <section class="mb-5" aria-labelledby="waitTitle">
+      <div class="plate-head">
+        <h2 id="waitTitle">Provime të caktuara</h2>
+        <span class="label"><?= count($upcomingExams) ?> në pritje</span>
+      </div>
+      <div class="waiting">
+        <?php foreach (array_slice($upcomingExams, 0, 5) as $g): ?>
+          <a class="wait-row" href="groups_student.php">
+            <span class="wait-n" style="font-size:var(--fs-sm);min-width:5rem">
+              <?= h(date('d.m.Y', strtotime((string)$g['my_exam']))) ?>
+            </span>
+            <span class="wait-main">
+              <b><?= h((string)$g['course_name']) ?></b>
+              <span>Ende pa notë të regjistruar.</span>
+            </span>
+            <span class="wait-go">Shiko →</span>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    </section>
+  <?php endif; ?>
 
-    <!-- ============================================================ MODULET -->
-    <div class="col-12 col-xl-7">
-      <section aria-labelledby="myModTitle">
-        <div class="plate-head">
-          <h2 id="myModTitle">Orë sipas modulit</h2>
-          <span class="label"><?= count($byModule) ?> module</span>
-        </div>
-
-        <?php if ($byModule): ?>
-          <div class="rank">
-            <?php foreach ($byModule as $m):
-              $pct = $moduleMax > 0 ? round((int)$m['hours'] / $moduleMax * 100) : 0; ?>
-              <div class="rank-row" title="<?= h($m['name']) ?> — <?= (int)$m['hours'] ?> orë">
-                <span class="code"><?= h($m['code']) ?></span>
-                <span class="rank-name"><?= h($m['name']) ?></span>
-                <span class="rank-n"><?= (int)$m['hours'] ?></span>
-                <span class="rank-track"><span class="rank-bar" style="width:<?= $pct ?>%"></span></span>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        <?php else: ?>
-          <div class="blank">
-            <span class="blank-title">Ende pa module</span>
-            <span class="blank-note">Sapo të caktohesh në një grup, moduli shfaqet këtu.</span>
-          </div>
-        <?php endif; ?>
-      </section>
-    </div>
-
-    <!-- ============================================================ PIKËT -->
-    <div class="col-12 col-xl-5">
-      <section aria-labelledby="myScoreTitle">
-        <div class="plate-head">
-          <h2 id="myScoreTitle">Pikët e mia</h2>
-          <span class="label"><?= count($myScores) ?> nga <?= count($groups) ?></span>
-        </div>
-
-        <?php if ($myScores): ?>
-          <?php
-          $myBands = ['90–100' => 0, '80–89' => 0, '70–79' => 0, 'nën 70' => 0];
-          foreach ($myScores as $sc) {
-            if ($sc >= 90)      { $myBands['90–100']++; }
-            elseif ($sc >= 80)  { $myBands['80–89']++; }
-            elseif ($sc >= 70)  { $myBands['70–79']++; }
-            else                { $myBands['nën 70']++; }
-          }
-          $myBandMax = max($myBands);
-          ?>
-          <div class="spread mb-3">
-            <?php foreach ($myBands as $band => $n):
-              $pct = $myBandMax > 0 ? max(1, round($n / $myBandMax * 100)) : 1; ?>
-              <div class="spread-row<?= ($n > 0 && $n === $myBandMax) ? ' is-top' : '' ?>">
-                <span class="spread-band"><?= h($band) ?></span>
-                <span class="spread-track"><span class="spread-bar" style="width:<?= $n > 0 ? $pct : 0 ?>%"></span></span>
-                <span class="spread-n"><?= $n ?></span>
-              </div>
-            <?php endforeach; ?>
-          </div>
-
-          <dl style="margin:0">
-            <div class="datarow"><dt>Mesatarja</dt><dd><?= h((string)$avgScore) ?></dd></div>
-            <div class="datarow"><dt>Nota më e lartë</dt><dd><?= h((string)max($myScores)) ?></dd></div>
-            <div class="datarow"><dt>Ende pa notë</dt><dd><?= max(0, count($groups) - count($myScores)) ?></dd></div>
-          </dl>
-        <?php else: ?>
-          <div class="blank">
-            <span class="blank-title">Ende pa rezultate</span>
-            <span class="blank-note">Notat shfaqen pasi të mbahet provimi.</span>
-          </div>
-        <?php endif; ?>
-      </section>
-    </div>
-  </div>
-
-  <!-- ======================================================== GRUPET E MIA -->
-  <section class="mt-5" aria-labelledby="myGroupsTitle">
+  <!-- ======================================================== MODULET E MIA -->
+  <section aria-labelledby="myTitle">
     <div class="plate-head">
-      <h2 id="myGroupsTitle">Grupet e mia</h2>
-      <span class="label"><?= count($groups) ?> zëra</span>
+      <h2 id="myTitle">Modulet e mia</h2>
+      <a class="label" href="groups_student.php">Të plota →</a>
     </div>
 
     <?php if ($groups): ?>
       <div class="ledger">
-        <table class="ledger-table">
+        <table class="ledger-table" data-sortable>
           <thead>
             <tr>
-              <th class="no">Nr.</th>
-              <th>Moduli</th>
-              <th>Kodi</th>
-              <th>Orë</th>
-              <th>Nisi</th>
-              <th>Mbaroi</th>
-              <th>Provimi</th>
-              <th>Nota</th>
-              <th>Gjendja</th>
+              <th class="no" data-sort="none">Nr.</th>
+              <th data-sort="text">Moduli</th>
+              <th class="nowrap" data-sort="date">Nisi</th>
+              <th class="nowrap" data-sort="date">Mbaroi</th>
+              <th class="nowrap" data-sort="date">Provimi</th>
+              <th class="nowrap num-col" data-sort="num">Nota</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($groups as $i => $g):
               $score = $g['final_score'];
-              $hasScore = $score !== null && $score !== '';
-              $exam = !empty($g['my_exam']) ? date('d.m.Y', strtotime((string)$g['my_exam'])) : null;
-              ?>
+              $hasScore = $score !== null && $score !== ''; ?>
               <tr>
                 <td class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></td>
                 <td><span class="person"><?= h((string)$g['course_name']) ?></span></td>
-                <td class="code"><?= h((string)$g['course_code']) ?></td>
-                <td class="num"><?= (int)$g['hours'] ?></td>
-                <td class="num"><?= !empty($g['start_date']) ? h(date('d.m.Y', strtotime((string)$g['start_date']))) : '—' ?></td>
-                <td class="num"><?= !empty($g['end_date']) ? h(date('d.m.Y', strtotime((string)$g['end_date']))) : '—' ?></td>
-                <td class="num"><?= $exam ? h($exam) : '—' ?></td>
-                <td class="num"><?= $hasScore ? h((string)$score) : '—' ?></td>
-                <td>
-                  <?php if ($hasScore): ?>
-                    <span class="state state-valid">Vlerësuar</span>
-                  <?php elseif ($exam): ?>
-                    <span class="state state-hold">Provim i caktuar</span>
-                  <?php else: ?>
-                    <span class="state state-idle">Në ndjekje</span>
-                  <?php endif; ?>
-                </td>
+                <td class="nowrap num"><?= !empty($g['start_date']) ? h(date('d.m.Y', strtotime((string)$g['start_date']))) : '—' ?></td>
+                <td class="nowrap num"><?= !empty($g['end_date']) ? h(date('d.m.Y', strtotime((string)$g['end_date']))) : '—' ?></td>
+                <td class="nowrap num"><?= !empty($g['my_exam']) ? h(date('d.m.Y', strtotime((string)$g['my_exam']))) : '—' ?></td>
+                <td class="nowrap num-col num"><?= $hasScore ? h((string)$score) : '—' ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
         </table>
       </div>
+
+      <?php if ($avgScore !== null): ?>
+        <p class="muted mt-3" style="font-size:var(--fs-xs)">
+          Mesatarja jote: <b class="code" style="color:var(--ink)"><?= h((string)$avgScore) ?></b>
+          nga <?= count($myScores) ?> module të vlerësuara.
+        </p>
+      <?php endif; ?>
+
     <?php else: ?>
       <div class="blank">
-        <span class="blank-title">Ende pa grupe</span>
-        <span class="blank-note">Sapo administrata të të caktojë në një grup, ai shfaqet këtu.</span>
+        <span class="blank-title">Ende pa module</span>
+        <span class="blank-note">Sapo administrata të të caktojë në një grup, moduli shfaqet këtu.</span>
       </div>
     <?php endif; ?>
-  </section>
-
-  <!-- =========================================================== SHKO TE -->
-  <section class="mt-5" aria-labelledby="stGoTitle">
-    <div class="plate-head"><h2 id="stGoTitle">Shko te</h2></div>
-    <div class="row g-2">
-      <?php
-      $shortcuts = [
-        ['groups_student.php', 'Grupet e mia', 'Datat dhe rezultatet'],
-        ['profile.php',        'Profili',      'Të dhënat e mia'],
-        ['verify.php',         'Verifiko',     'Kontrollo një certifikatë'],
-      ];
-      foreach ($shortcuts as $sc): ?>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <a class="shortcut" href="<?= h($sc[0]) ?>">
-            <span><b><?= h($sc[1]) ?></b><span><?= h($sc[2]) ?></span></span>
-            <i class="bi bi-arrow-right arrow"></i>
-          </a>
-        </div>
-      <?php endforeach; ?>
-    </div>
   </section>
 
 </main>

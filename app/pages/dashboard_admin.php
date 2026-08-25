@@ -42,178 +42,58 @@ $ROUTES = [
 
 
 /* ============================================================================
-   Fleta e punës — të dhënat
-   ----------------------------------------------------------------------------
-   Çdo pyetje këtu mbështetet te fusha që regjistri i mban vërtet. Asgjë nuk
-   llogaritet nga fusha që fluksi nuk i plotëson.
+   Fleta e punës — vetëm çfarë duhet për të nisur punën.
+   Asnjë shifër dekorative: kërkim, veprime, ajo që pret, dhe ku e le.
    ========================================================================= */
 
 $one = static function (PDO $pdo, string $sql, array $fallback = []) {
-  try {
-    $row = $pdo->query($sql)->fetch(PDO::FETCH_ASSOC);
-    return $row !== false ? $row : $fallback;
-  } catch (Throwable $e) {
-    return $fallback;
-  }
+  try { $r = $pdo->query($sql)->fetch(PDO::FETCH_ASSOC); return $r !== false ? $r : $fallback; }
+  catch (Throwable $e) { return $fallback; }
 };
 $many = static function (PDO $pdo, string $sql): array {
-  try {
-    return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
-  } catch (Throwable $e) {
-    return [];
-  }
+  try { return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: []; }
+  catch (Throwable $e) { return []; }
 };
 
-/* ----- Shifrat kryesore ----- */
-$k = $one($pdo, "
-  SELECT
-    (SELECT COUNT(*) FROM students)                                        AS students,
-    (SELECT COUNT(*) FROM course_groups)                                   AS groups,
-    (SELECT COUNT(DISTINCT course_id) FROM course_groups)                  AS modules_used,
-    (SELECT COUNT(*) FROM courses)                                         AS modules_all,
-    (SELECT COUNT(*) FROM course_group_students WHERE final_score IS NOT NULL) AS scored,
-    (SELECT ROUND(AVG(final_score),1) FROM course_group_students WHERE final_score IS NOT NULL) AS avg_score
-", ['students'=>0,'groups'=>0,'modules_used'=>0,'modules_all'=>0,'scored'=>0,'avg_score'=>null]);
+/* Çfarë pret dorën e dikujt. Vetëm zërat me numër > 0 shfaqen. */
+$checks = [
+  ['Kursantë pa grup', 'Presin të caktohen në një grup.', 'students_without_groups.php', 'Cakto tani',
+   "SELECT COUNT(*) n FROM students s WHERE NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.student_id = s.id)"],
+  ['Kartela pa numër personal', 'Identifikuesi bazë mungon.', 'students.php', 'Plotëso',
+   "SELECT COUNT(*) n FROM persons WHERE personal_number IS NULL OR personal_number = ''"],
+  ['Grupe bosh', 'Grupe pa asnjë kursant.', 'groups.php', 'Shiko grupet',
+   "SELECT COUNT(*) n FROM course_groups cg WHERE NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.group_id = cg.id)"],
+  ['Datëlindje të pamundura', 'Mosha del nën 15 ose mbi 90 vjeç.', 'students.php', 'Ndreq',
+   "SELECT COUNT(*) n FROM persons WHERE birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) NOT BETWEEN 15 AND 90"],
+];
+$waiting = [];
+foreach ($checks as $c) {
+  $n = (int)($one($pdo, $c[4], ['n' => 0])['n']);
+  if ($n > 0) { $waiting[] = ['title' => $c[0], 'note' => $c[1], 'href' => $c[2], 'cta' => $c[3], 'n' => $n]; }
+}
 
-$enrolled = (int)($one($pdo, "SELECT COUNT(*) n FROM course_group_students", ['n'=>0])['n']);
-
-/* ----- Ritmi: grupe e kursantë sipas muajit ----- */
-$rhythm = $many($pdo, "
-  SELECT DATE_FORMAT(cg.start_date, '%Y-%m') AS ym,
-         COUNT(DISTINCT cg.id)              AS groups,
-         COUNT(cgs.student_id)              AS students
-  FROM course_groups cg
-  LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
-  WHERE cg.start_date IS NOT NULL
-  GROUP BY ym
-  ORDER BY ym
-");
-$rhythmMax = 0;
-foreach ($rhythm as $r) { $rhythmMax = max($rhythmMax, (int)$r['students']); }
-
-/* ----- Modulet më të kërkuara ----- */
-$topModules = $many($pdo, "
-  SELECT c.id, c.code, c.name, COUNT(cgs.student_id) AS n
-  FROM courses c
-  JOIN course_groups cg           ON cg.course_id = c.id
-  JOIN course_group_students cgs  ON cgs.group_id = cg.id
-  GROUP BY c.id
-  HAVING n > 0
-  ORDER BY n DESC
+/* Të fundit që hynë në regjistër — për t'u kthyer shpejt te dikush. */
+$recent = $many($pdo, "
+  SELECT s.id, s.nr_amze, s.created_at,
+         TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,''))) AS full_name
+  FROM students s
+  LEFT JOIN persons p ON p.id = s.person_id
+  ORDER BY s.created_at DESC, s.id DESC
   LIMIT 8
 ");
-$topMax = $topModules ? (int)$topModules[0]['n'] : 1;
 
-/* ----- Shpërndarja e notave ----- */
-$bands = $many($pdo, "
-  SELECT CASE
-           WHEN final_score >= 90 THEN '90–100'
-           WHEN final_score >= 80 THEN '80–89'
-           WHEN final_score >= 70 THEN '70–79'
-           ELSE 'nën 70'
-         END AS band,
-         COUNT(*) AS n
-  FROM course_group_students
-  WHERE final_score IS NOT NULL
-  GROUP BY band
-  ORDER BY MIN(final_score) DESC
-");
-$bandMax = 0;
-foreach ($bands as $b) { $bandMax = max($bandMax, (int)$b['n']); }
-
-/* ----- Profili i kursantit ----- */
-$profile = $one($pdo, "
-  SELECT
-    (SELECT ROUND(AVG(TIMESTAMPDIFF(YEAR, birth_date, CURDATE())))
-       FROM persons WHERE birth_date IS NOT NULL
-        AND TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN 15 AND 90)     AS avg_age,
-    (SELECT ROUND(AVG(n),1) FROM (SELECT COUNT(*) n FROM course_group_students GROUP BY group_id) t) AS avg_group
-", ['avg_age'=>null,'avg_group'=>null]);
-
-$schooling = $many($pdo, "
-  SELECT el.label, COUNT(s.id) AS n
-  FROM education_levels el
-  LEFT JOIN students s ON s.education_level_id = el.id
-  GROUP BY el.id
-  HAVING n > 0
-  ORDER BY n DESC
-");
-$schoolTotal = 0;
-foreach ($schooling as $s) { $schoolTotal += (int)$s['n']; }
-
-$genders = $many($pdo, "
-  SELECT g.label, COUNT(p.id) AS n
-  FROM genders g
-  JOIN persons p ON p.gender_id = g.id
-  GROUP BY g.id
-  ORDER BY n DESC
-");
-$genderTotal = 0;
-foreach ($genders as $g) { $genderTotal += (int)$g['n']; }
-
-/* ----- Origjina ----- */
-$origins = $many($pdo, "
-  SELECT birth_place, COUNT(*) AS n
-  FROM persons
-  WHERE birth_place IS NOT NULL AND birth_place <> ''
-  GROUP BY birth_place
-  ORDER BY n DESC
-  LIMIT 8
-");
-$originMax = $origins ? (int)$origins[0]['n'] : 1;
-
-/* ----- Aktiviteti i regjistrit ----- */
-$actions = $many($pdo, "SELECT action, COUNT(*) AS n FROM audit_events GROUP BY action ORDER BY n DESC");
-$actionTotal = 0;
-foreach ($actions as $a) { $actionTotal += (int)$a['n']; }
-
-/* ----- Të dhëna që duhen parë (higjienë reale, jo fusha të pambajtura) ----- */
-$hygiene = [];
-$hygiene[] = [
-  'title' => 'Kursantë pa grup',
-  'note'  => 'Të regjistruar, por të pacaktuar në asnjë grup.',
-  'href'  => $ROUTES['students'],
-  'n'     => (int)($one($pdo, "
-      SELECT COUNT(*) n FROM students s
-      WHERE NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.student_id = s.id)
-    ", ['n'=>0])['n']),
-];
-$hygiene[] = [
-  'title' => 'Datëlindje jashtë kufirit',
-  'note'  => 'Mosha del nën 15 ose mbi 90 vjeç — ka gabim shtypi.',
-  'href'  => $ROUTES['students'],
-  'n'     => (int)($one($pdo, "
-      SELECT COUNT(*) n FROM persons
-      WHERE birth_date IS NOT NULL
-        AND TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) NOT BETWEEN 15 AND 90
-    ", ['n'=>0])['n']),
-];
-$hygiene[] = [
-  'title' => 'Pa numër personal',
-  'note'  => 'Identifikuesi bazë mungon në kartelë.',
-  'href'  => $ROUTES['students'],
-  'n'     => (int)($one($pdo, "
-      SELECT COUNT(*) n FROM persons
-      WHERE personal_number IS NULL OR personal_number = ''
-    ", ['n'=>0])['n']),
-];
-$hygiene[] = [
-  'title' => 'Grupe bosh',
-  'note'  => 'Grupe pa asnjë kursant të caktuar.',
-  'href'  => $ROUTES['groups'],
-  'n'     => (int)($one($pdo, "
-      SELECT COUNT(*) n FROM course_groups cg
-      WHERE NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.group_id = cg.id)
-    ", ['n'=>0])['n']),
-];
-
-/* ----- Prezantimi ----- */
 $greetHour = (int)date('G');
 $greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' : 'Mirëmbrëma');
 $whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Administrator')));
 
-$months = ['01'=>'Jan','02'=>'Shk','03'=>'Mar','04'=>'Pri','05'=>'Maj','06'=>'Qer',
-           '07'=>'Kor','08'=>'Gsh','09'=>'Sht','10'=>'Tet','11'=>'Nën','12'=>'Dhj'];
+$agoText = static function (?string $ts): string {
+  if (!$ts) return '';
+  $d = time() - (strtotime($ts) ?: time());
+  if ($d < 3600)   return max(1, (int)($d / 60)) . ' min';
+  if ($d < 86400)  return (int)($d / 3600) . ' orë';
+  if ($d < 2592000) return (int)($d / 86400) . ' ditë';
+  return date('d.m.Y', strtotime($ts));
+};
 
 $NAV_ACTIVE = 'dashboard';
 $pageTitle  = 'Fleta e punës – Regjistri QTA';
@@ -222,71 +102,80 @@ require __DIR__ . '/../shared/app_head.php';
 require __DIR__ . '/inc/navbar.php';
 ?>
 
-<main class="sheet sheet-wide">
+<main class="app-main">
 
-  <!-- ====================================================== BLLOKU I TITULLIT -->
   <div class="title-block">
     <div class="title-block-main">
       <div class="title-block-eyebrow">Fleta e punës</div>
       <h1><?= h($greeting) ?>, <?= h($whoShort) ?></h1>
-      <p class="title-block-note">Gjendja e regjistrit dhe çfarë tregojnë të dhënat.</p>
     </div>
     <div class="title-block-fields">
       <div class="title-block-field">
-        <span class="label">Data</span>
+        <span class="label">Sot</span>
         <span class="value"><?= h(date('d.m.Y')) ?></span>
       </div>
     </div>
   </div>
 
-  <!-- ============================================================== SHIFRAT -->
-  <section class="tally" aria-label="Gjendja e regjistrit">
-    <div class="tally-cell">
-      <span class="label">Në regjistër</span>
-      <span class="tally-value"><?= number_format((int)$k['students']) ?></span>
-      <span class="tally-foot">kursantë</span>
+  <!-- ====================================================== KËRKIMI I SHPEJTË -->
+  <section class="jump" aria-labelledby="jumpTitle">
+    <h2 id="jumpTitle" class="visually-hidden">Gjej një kursant</h2>
+    <form class="jump-form" method="get" action="students.php">
+      <div class="jump-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input type="text" name="q" autofocus
+               placeholder="Gjej kursant — emër, numër amze ose numër personal"
+               aria-label="Gjej kursant">
+      </div>
+      <button class="btn btn-ink" type="submit">Kërko</button>
+    </form>
+    <p class="jump-hint">Shtyp <kbd>/</kbd> kudo në sistem për t'u kthyer te kërkimi.</p>
+  </section>
+
+  <!-- ============================================================ VEPRIMET -->
+  <section class="mb-5" aria-labelledby="actTitle">
+    <div class="plate-head">
+      <h2 id="actTitle">Nis një punë</h2>
     </div>
-    <div class="tally-cell">
-      <span class="label">Grupe</span>
-      <span class="tally-value"><?= number_format((int)$k['groups']) ?></span>
-      <span class="tally-foot">mes. <?= h((string)($profile['avg_group'] ?? '—')) ?> kursantë</span>
-    </div>
-    <div class="tally-cell">
-      <span class="label">Module në përdorim</span>
-      <span class="tally-value"><?= number_format((int)$k['modules_used']) ?></span>
-      <span class="tally-foot">nga <?= number_format((int)$k['modules_all']) ?> gjithsej</span>
-    </div>
-    <div class="tally-cell">
-      <span class="label">Nota mesatare</span>
-      <span class="tally-value"><?= $k['avg_score'] !== null ? h((string)$k['avg_score']) : '—' ?></span>
-      <span class="tally-foot"><?= number_format((int)$k['scored']) ?> të vlerësuar</span>
+
+    <div class="actions">
+      <?php
+      $acts = [
+        ['register.php',                 'bi-person-plus',   'Regjistro kursant', 'Shto një person të ri në regjistër', true],
+        ['groups.php',                   'bi-collection',    'Grupet',            'Krijo grup, cakto data, mbyll',      true],
+        ['students_without_groups.php',  'bi-people',        'Cakto në grup',     'Kush pret dhe ku mund të shkojë',    false],
+        ['students.php',                 'bi-table',         'Kursantët',         'Të gjithë, me kërkim dhe filtra',    false],
+        ['courses.php',                  'bi-journal-text',  'Modulet',           'Zanatet dhe orët',                   false],
+        ['verify.php',                   'bi-patch-check',   'Verifiko',          'Kontrollo një certifikatë',          false],
+      ];
+      foreach ($acts as $a): ?>
+        <a class="act<?= $a[4] ? ' act-primary' : '' ?>" href="<?= h($a[0]) ?>">
+          <i class="bi <?= h($a[1]) ?>" aria-hidden="true"></i>
+          <b><?= h($a[2]) ?></b>
+          <span><?= h($a[3]) ?></span>
+        </a>
+      <?php endforeach; ?>
     </div>
   </section>
 
-  <!-- ================================================================ RITMI -->
-  <?php if ($rhythm): ?>
-    <section class="mb-5" aria-labelledby="rhythmTitle">
+  <!-- ========================================================= PRET PËR TY -->
+  <?php if ($waiting): ?>
+    <section class="mb-5" aria-labelledby="waitTitle">
       <div class="plate-head">
-        <h2 id="rhythmTitle">Ritmi i trajnimeve</h2>
-        <span class="label">Kursantë për muaj nisjeje</span>
+        <h2 id="waitTitle">Pret për ty</h2>
+        <span class="label"><?= count($waiting) ?> gjëra</span>
       </div>
 
-      <div class="bars">
-        <?php foreach ($rhythm as $r):
-          $n = (int)$r['students'];
-          $pct = $rhythmMax > 0 ? max(2, round($n / $rhythmMax * 100)) : 2; ?>
-          <div class="bar<?= $n === $rhythmMax ? ' is-peak' : '' ?>"
-               title="<?= h($r['ym']) ?>: <?= $n ?> kursantë në <?= (int)$r['groups'] ?> grupe">
-            <span class="bar-value"><?= $n ?></span>
-            <span class="bar-fill" style="height:<?= $pct ?>%"></span>
-          </div>
-        <?php endforeach; ?>
-      </div>
-
-      <div class="bars-axis">
-        <?php foreach ($rhythm as $r):
-          $mm = substr((string)$r['ym'], 5, 2); ?>
-          <span><?= h($months[$mm] ?? $mm) ?></span>
+      <div class="waiting">
+        <?php foreach ($waiting as $w): ?>
+          <a class="wait-row" href="<?= h($w['href']) ?>">
+            <span class="wait-n"><?= number_format($w['n']) ?></span>
+            <span class="wait-main">
+              <b><?= h($w['title']) ?></b>
+              <span><?= h($w['note']) ?></span>
+            </span>
+            <span class="wait-go"><?= h($w['cta']) ?> →</span>
+          </a>
         <?php endforeach; ?>
       </div>
     </section>
@@ -294,239 +183,63 @@ require __DIR__ . '/inc/navbar.php';
 
   <div class="row g-4 g-xl-5">
 
-    <!-- ============ KOLONA E MAJTË: listat e gjata ============================ -->
+    <!-- ======================================================== TË FUNDIT -->
     <div class="col-12 col-xl-7">
-
-      <!-- ------------------------------------------ Zanatet më të kërkuara -->
-      <section class="mb-5" aria-labelledby="modTitle">
-        <div class="plate-head">
-          <h2 id="modTitle">Zanatet më të kërkuara</h2>
-          <a class="label" href="<?= h($ROUTES['courses']) ?>">Të gjitha →</a>
-        </div>
-
-        <?php if ($topModules): ?>
-          <div class="rank">
-            <?php foreach ($topModules as $m):
-              $n = (int)$m['n'];
-              $pct = $topMax > 0 ? round($n / $topMax * 100) : 0;
-              $share = $enrolled > 0 ? round($n / $enrolled * 100) : 0; ?>
-              <a class="rank-row" href="<?= h($ROUTES['courses']) ?>"
-                 title="<?= h((string)$m['name']) ?> — <?= $n ?> kursantë (<?= $share ?>% e regjistrimeve)">
-                <span class="code"><?= h((string)$m['code']) ?></span>
-                <span class="rank-name"><?= h((string)$m['name']) ?></span>
-                <span class="rank-n"><?= $n ?></span>
-                <span class="rank-track"><span class="rank-bar" style="width:<?= $pct ?>%"></span></span>
+      <?php if ($recent): ?>
+        <section aria-labelledby="recTitle">
+          <div class="plate-head">
+            <h2 id="recTitle">Të fundit në regjistër</h2>
+            <a class="label" href="students.php">Të gjithë →</a>
+          </div>
+          <div class="recent">
+            <?php foreach ($recent as $r): ?>
+              <a class="recent-row" href="student_card.php?q=<?= urlencode((string)$r['nr_amze']) ?>">
+                <span class="code"><?= h((string)$r['nr_amze']) ?></span>
+                <span class="person"><?= h((string)($r['full_name'] ?: '—')) ?></span>
+                <span class="when"><?= h($agoText($r['created_at'] ?? null)) ?></span>
               </a>
             <?php endforeach; ?>
           </div>
-        <?php else: ?>
-          <div class="blank"><span class="blank-note">Ende asnjë kursant i caktuar në modul.</span></div>
-        <?php endif; ?>
-      </section>
-
-      <!-- ------------------------------------------------------- Origjina -->
-      <section aria-labelledby="originTitle">
-        <div class="plate-head">
-          <h2 id="originTitle">Nga vijnë</h2>
-          <span class="label">Vendlindja</span>
-        </div>
-
-        <?php if ($origins): ?>
-          <div class="rank">
-            <?php foreach ($origins as $o):
-              $n = (int)$o['n'];
-              $pct = $originMax > 0 ? round($n / $originMax * 100) : 0; ?>
-              <div class="rank-row rank-row-2col">
-                <span class="rank-name"><?= h((string)$o['birth_place']) ?></span>
-                <span class="rank-n"><?= $n ?></span>
-                <span class="rank-track"><span class="rank-bar" style="width:<?= $pct ?>%"></span></span>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        <?php else: ?>
-          <div class="blank"><span class="blank-note">Pa të dhëna vendlindjeje.</span></div>
-        <?php endif; ?>
-      </section>
+        </section>
+      <?php endif; ?>
     </div>
 
-    <!-- ============ KOLONA E DJATHTË: blloqe kompakte ======================== -->
+    <!-- ======================================================= DOKUMENTET -->
     <div class="col-12 col-xl-5">
-
-      <!-- ------------------------------------------------------ Vlerësimi -->
-      <section class="mb-5" aria-labelledby="scoreTitle">
+      <section aria-labelledby="docTitle">
         <div class="plate-head">
-          <h2 id="scoreTitle">Vlerësimi</h2>
-          <span class="label"><?= number_format((int)$k['scored']) ?> nga <?= number_format($enrolled) ?></span>
+          <h2 id="docTitle">Dokumentet</h2>
+          <span class="label">Gjenerohen nga grupi</span>
+        </div>
+        <p class="muted mb-3" style="font-size:var(--fs-sm)">
+          Këto akte lëshohen për një grup të caktuar. Hap grupin dhe zgjidh dokumentin që të duhet.
+        </p>
+        <div class="docs">
+          <?php
+          $docs = [
+            'Lista emërore',
+            'Proces verbal',
+            'Praktika profesionale',
+            'Rregullat e sigurimit teknik',
+          ];
+          foreach ($docs as $d): ?>
+            <a class="doc" href="groups.php">
+              <i class="bi bi-file-earmark-text" aria-hidden="true"></i><?= h($d) ?>
+            </a>
+          <?php endforeach; ?>
         </div>
 
-        <?php if ($bands): ?>
-          <div class="spread mb-3">
-            <?php foreach ($bands as $b):
-              $n = (int)$b['n'];
-              $pct = $bandMax > 0 ? max(1, round($n / $bandMax * 100)) : 1; ?>
-              <div class="spread-row<?= $n === $bandMax ? ' is-top' : '' ?>">
-                <span class="spread-band"><?= h((string)$b['band']) ?></span>
-                <span class="spread-track"><span class="spread-bar" style="width:<?= $pct ?>%"></span></span>
-                <span class="spread-n"><?= $n ?></span>
-              </div>
-            <?php endforeach; ?>
-          </div>
-
-          <dl style="margin:0">
-            <div class="datarow">
-              <dt>Nota mesatare</dt>
-              <dd><?= h((string)($k['avg_score'] ?? '—')) ?></dd>
-            </div>
-            <div class="datarow">
-              <dt>Ende pa notë</dt>
-              <dd><?= number_format(max(0, $enrolled - (int)$k['scored'])) ?></dd>
-            </div>
-          </dl>
-        <?php else: ?>
-          <div class="blank"><span class="blank-note">Ende asnjë provim i vlerësuar.</span></div>
-        <?php endif; ?>
-      </section>
-
-      <!-- --------------------------------------------------------- Profili -->
-      <section class="mb-5" aria-labelledby="profileTitle">
-        <div class="plate-head">
-          <h2 id="profileTitle">Profili</h2>
-          <span class="label">Kursanti tipik</span>
+        <div class="plate-head mt-5">
+          <h2>Kontrolli</h2>
         </div>
-
-        <dl style="margin:0 0 1.25rem">
-          <div class="datarow">
-            <dt>Mosha mesatare</dt>
-            <dd><?= $profile['avg_age'] !== null ? h((string)$profile['avg_age']) . ' vjeç' : '—' ?></dd>
-          </div>
-          <div class="datarow">
-            <dt>Kursantë për grup</dt>
-            <dd><?= h((string)($profile['avg_group'] ?? '—')) ?></dd>
-          </div>
-        </dl>
-
-        <?php if ($schooling && $schoolTotal > 0): ?>
-          <span class="label" style="margin-bottom:.5rem">Arsimi</span>
-          <div class="split">
-            <?php foreach ($schooling as $s): ?>
-              <span class="split-part" style="width:<?= round((int)$s['n'] / $schoolTotal * 100, 2) ?>%"></span>
-            <?php endforeach; ?>
-          </div>
-          <div class="split-key">
-            <?php foreach ($schooling as $s): ?>
-              <span class="split-key-item"><?= h((string)$s['label']) ?> <b><?= number_format((int)$s['n']) ?></b></span>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
-
-        <?php if ($genders && $genderTotal > 0): ?>
-          <span class="label" style="display:block;margin:1.25rem 0 .5rem">Gjinia</span>
-          <div class="split">
-            <?php foreach ($genders as $g): ?>
-              <span class="split-part" style="width:<?= round((int)$g['n'] / $genderTotal * 100, 2) ?>%"></span>
-            <?php endforeach; ?>
-          </div>
-          <div class="split-key">
-            <?php foreach ($genders as $g): ?>
-              <span class="split-key-item"><?= h((string)$g['label']) ?> <b><?= number_format((int)$g['n']) ?></b></span>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
-      </section>
-
-      <!-- ------------------------------------------------------ Aktiviteti -->
-      <section aria-labelledby="auditTitle">
-        <div class="plate-head">
-          <h2 id="auditTitle">Aktiviteti</h2>
-          <a class="label" href="<?= h($ROUTES['logs']) ?>">Auditimi →</a>
+        <div class="docs">
+          <a class="doc" href="logs.php"><i class="bi bi-clock-history" aria-hidden="true"></i>Kush ndryshoi çfarë</a>
+          <a class="doc" href="users.php"><i class="bi bi-shield-lock" aria-hidden="true"></i>Aksesi dhe rolet</a>
+          <a class="doc" href="agencies.php"><i class="bi bi-building" aria-hidden="true"></i>Agjencitë</a>
         </div>
-
-        <?php if ($actions && $actionTotal > 0): ?>
-          <div class="split">
-            <?php foreach ($actions as $a): ?>
-              <span class="split-part" style="width:<?= round((int)$a['n'] / $actionTotal * 100, 2) ?>%"></span>
-            <?php endforeach; ?>
-          </div>
-          <div class="split-key">
-            <?php
-            $actionWords = ['INSERT' => 'Shtim', 'UPDATE' => 'Ndryshim', 'DELETE' => 'Fshirje'];
-            foreach ($actions as $a):
-              $w = $actionWords[strtoupper((string)$a['action'])] ?? (string)$a['action']; ?>
-              <span class="split-key-item"><?= h($w) ?> <b><?= number_format((int)$a['n']) ?></b></span>
-            <?php endforeach; ?>
-          </div>
-
-          <dl style="margin:1.25rem 0 0">
-            <div class="datarow">
-              <dt>Veprime gjithsej</dt>
-              <dd><?= number_format($actionTotal) ?></dd>
-            </div>
-          </dl>
-        <?php else: ?>
-          <div class="blank"><span class="blank-note">Ende asnjë veprim i audituar.</span></div>
-        <?php endif; ?>
       </section>
     </div>
   </div>
-
-  <!-- ================================================ TË DHËNA QË DUHEN PARË -->
-  <?php $hygieneOpen = array_filter($hygiene, static fn($r) => $r['n'] > 0); ?>
-  <section class="mt-5" aria-labelledby="hygieneTitle">
-    <div class="plate-head">
-      <h2 id="hygieneTitle">Të dhëna që duhen parë</h2>
-      <span class="label"><?= count($hygieneOpen) ?> nga <?= count($hygiene) ?> kontrolle</span>
-    </div>
-
-    <?php if ($hygieneOpen): ?>
-      <div class="action-list">
-        <?php $i = 0; foreach ($hygieneOpen as $row): $i++; ?>
-          <a class="action-row" href="<?= h($row['href']) ?>">
-            <span class="no"><?= str_pad((string)$i, 2, '0', STR_PAD_LEFT) ?></span>
-            <span class="action-main">
-              <b><?= h($row['title']) ?></b>
-              <span><?= h($row['note']) ?></span>
-            </span>
-            <span class="action-count"><?= number_format($row['n']) ?></span>
-          </a>
-        <?php endforeach; ?>
-      </div>
-    <?php else: ?>
-      <div class="blank">
-        <span class="blank-title">Regjistri është i pastër</span>
-        <span class="blank-note">Asnjë nga kontrollet nuk gjeti të dhëna që kërkojnë ndreqje.</span>
-      </div>
-    <?php endif; ?>
-  </section>
-
-  <!-- ============================================================ SHKURTORET -->
-  <section class="mt-5" aria-labelledby="shortcutsTitle">
-    <div class="plate-head">
-      <h2 id="shortcutsTitle">Shko te</h2>
-    </div>
-
-    <div class="row g-2">
-      <?php
-      $shortcuts = [
-        ['href' => $ROUTES['students'], 'title' => 'Kursantët',   'note' => 'Regjistrimi dhe të dhënat'],
-        ['href' => $ROUTES['groups'],   'title' => 'Grupet',      'note' => 'Caktimi, provimet, mbyllja'],
-        ['href' => $ROUTES['courses'],  'title' => 'Modulet',     'note' => 'Zanatet dhe orët'],
-        ['href' => $ROUTES['agencies'], 'title' => 'Agjencitë',   'note' => 'Kompanitë dhe punonjësit'],
-        ['href' => $ROUTES['logs'],     'title' => 'Auditimi',    'note' => 'Kush ndryshoi çfarë'],
-        ['href' => 'users.php',         'title' => 'Përdoruesit', 'note' => 'Aksesi dhe rolet'],
-      ];
-      foreach ($shortcuts as $sc): ?>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <a class="shortcut" href="<?= h($sc['href']) ?>">
-            <span>
-              <b><?= h($sc['title']) ?></b>
-              <span><?= h($sc['note']) ?></span>
-            </span>
-            <i class="bi bi-arrow-right arrow"></i>
-          </a>
-        </div>
-      <?php endforeach; ?>
-    </div>
-  </section>
 
 </main>
 
