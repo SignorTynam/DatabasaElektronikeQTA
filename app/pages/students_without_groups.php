@@ -496,6 +496,12 @@ require __DIR__ . '/../shared/app_head.php';
 
   <!-- ================================================== LISTA E PRITJES ==== -->
   <?php if ($waiting): ?>
+    <?php
+      $tfTarget = '#waitTable';
+      $tfPlaceholder = 'Ngushto listën — emër, amzë ose modul';
+      $tfChips = [['label' => 'Pa modul', 'match' => 'Vendos modul']];
+      require __DIR__ . '/../shared/partials/table_filter.php';
+    ?>
     <div class="ledger">
       <table class="ledger-table" id="waitTable" data-sortable>
         <thead>

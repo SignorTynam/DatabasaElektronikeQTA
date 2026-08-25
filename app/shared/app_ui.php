@@ -186,7 +186,7 @@ if (!function_exists('qta_app_menu')) {
  */
 if (!function_exists('qta_app_can_search')) {
   function qta_app_can_search(string $role): bool {
-    return in_array(strtolower($role), ['administrator', 'editor'], true);
+    return in_array(strtolower($role), ['administrator', 'editor', 'agjencia'], true);
   }
 }
 

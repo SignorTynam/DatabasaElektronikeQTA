@@ -162,17 +162,17 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
     <div class="card-body">
       <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0" data-sortable>
           <thead class="table-light">
             <tr>
-              <th class="nowrap">Grupi</th>
-              <th>Moduli</th>
-              <th class="nowrap">AMZË</th>
-              <th class="nowrap">Fillimi</th>
-              <th class="nowrap">Mbarimi</th>
-              <th class="nowrap">Data e testit</th>
-              <th class="nowrap">Pikët</th>
-              <th class="nowrap">Statusi</th>
+              <th class="nowrap" data-sort="text">Grupi</th>
+              <th data-sort="text">Moduli</th>
+              <th class="nowrap" data-sort="num">AMZË</th>
+              <th class="nowrap" data-sort="date">Fillimi</th>
+              <th class="nowrap" data-sort="date">Mbarimi</th>
+              <th class="nowrap" data-sort="text">Data e testit</th>
+              <th class="nowrap" data-sort="num">Pikët</th>
+              <th class="nowrap" data-sort="text">Statusi</th>
             </tr>
           </thead>
           <tbody>

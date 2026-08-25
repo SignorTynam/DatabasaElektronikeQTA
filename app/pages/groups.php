@@ -1151,6 +1151,12 @@ require __DIR__ . '/../shared/app_head.php';
   ==================================================================== -->
 
   <?php if ($groups): ?>
+    <?php
+      $tfTarget = '#groupsTable';
+      $tfPlaceholder = 'Ngushto listën — modul, amzë ose datë';
+      $tfChips = [['label' => 'Të mbyllura', 'match' => 'Po'], ['label' => 'Të hapura', 'match' => 'Jo']];
+      require __DIR__ . '/../shared/partials/table_filter.php';
+    ?>
     <div class="ledger" data-table-wrap>
       <table class="ledger-table" id="groupsTable" data-sortable>
         <thead>

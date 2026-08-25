@@ -213,6 +213,12 @@ require __DIR__ . '/../shared/app_head.php';
       <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
     </div>
     <div class="card-body">
+      <?php
+        $tfTarget = '';
+        $tfPlaceholder = 'Ngushto listën — kompani ose NIPT';
+        $tfChips = [];
+        require __DIR__ . '/../shared/partials/table_filter.php';
+      ?>
       <div class="table-responsive mini-table">
         <table class="table align-middle mb-0" data-sortable>
           <thead class="table-light">

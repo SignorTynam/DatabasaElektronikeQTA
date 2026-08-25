@@ -123,7 +123,40 @@ body { padding-top: calc(var(--nav-h) + 2px); }
 /* --------------------------------------------------- 3. Anësoret djathtas */
 .app-tools { display: flex; align-items: center; gap: .4rem; margin-left: auto; }
 
-.app-find { position: relative; width: clamp(150px, 18vw, 230px); }
+.app-find { position: relative; width: clamp(150px, 18vw, 240px); }
+
+/* Kërkimi në kokëfletë nuk është fushë: është çelësi që hap paletën. */
+.app-find-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  width: clamp(160px, 18vw, 240px);
+  height: 30px;
+  padding: 0 .5rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.app-find-btn:hover { border-color: var(--ink); color: var(--ink); }
+.app-find-btn > span { flex: 1; text-align: left; }
+.app-find-btn kbd {
+  padding: .05rem .3rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--paper-deep);
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--pencil);
+}
+@media (max-width: 1099.98px) {
+  .app-find-btn { width: 30px; padding: 0; justify-content: center; }
+  .app-find-btn > span, .app-find-btn kbd { display: none; }
+}
 .app-find input {
   width: 100%;
   height: 30px;
@@ -253,7 +286,7 @@ body { padding-top: calc(var(--nav-h) + 2px); }
 
 @media (max-width: 1099.98px) {
   .app-burger { display: inline-flex; }
-  .app-find { display: none; }
+  .app-find:not(.app-find-btn) { display: none; }
 
   .app-nav {
     position: fixed;
@@ -1384,4 +1417,263 @@ table[data-sortable] thead th.is-desc::after {
 @media (max-width: 575.98px) {
   .jump-field input { height: 46px; font-size: var(--fs-md); }
   .jump-form .btn { height: 46px; padding-inline: .9rem; }
+}
+
+/* ============================================================================
+   KËRKIMI I MENJËHERSHËM — hapet kudo me Ctrl+K ose "/"
+   ----------------------------------------------------------------------------
+   Nuk është një faqe: është një sirtar mbi fletën. Rezultatet vijnë ndërsa
+   shkruan, të grupuara sipas llojit, dhe hapen me tastierë.
+   ========================================================================= */
+.pal-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: none;
+  padding: clamp(2rem, 10vh, 7rem) 1rem 2rem;
+  background: rgba(19, 18, 17, .38);
+}
+html[data-theme="dark"] .pal-veil { background: rgba(0, 0, 0, .62); }
+.pal-veil.is-open { display: block; }
+
+.pal {
+  width: min(660px, 100%);
+  margin-inline: auto;
+  border: 1px solid var(--rule-strong);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--r);
+  background: var(--paper-raised);
+  box-shadow: var(--lift-3);
+  overflow: hidden;
+}
+
+.pal-head { position: relative; border-bottom: 1px solid var(--rule); }
+.pal-head > .bi {
+  position: absolute;
+  left: .95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.05rem;
+  color: var(--pencil);
+  pointer-events: none;
+}
+.pal-head input {
+  width: 100%;
+  height: 56px;
+  padding: 0 5.5rem 0 2.7rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-record);
+  font-size: var(--fs-xl);
+}
+.pal-head input:focus { outline: 0; }
+.pal-head input::placeholder { font-family: var(--font-ui); font-size: var(--fs-md); color: var(--pencil-soft); }
+.pal-esc {
+  position: absolute;
+  right: .8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: .12rem .35rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper-deep);
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+
+/* Filtrat e llojit: kufizo kërkimin pa e rishkruar. */
+.pal-types { display: flex; gap: .3rem; padding: .5rem .7rem; border-bottom: 1px solid var(--rule-hair); }
+.pal-type {
+  padding: .16rem .5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pal-type:hover { color: var(--ink); border-color: var(--rule-strong); }
+.pal-type.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.pal-body { max-height: min(58vh, 460px); overflow-y: auto; }
+
+.pal-group-label {
+  position: sticky;
+  top: 0;
+  padding: .55rem .9rem .3rem;
+  background: var(--paper-raised);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--pencil);
+}
+
+.pal-item {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  width: 100%;
+  padding: .55rem .9rem;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.pal-item:hover,
+.pal-item.is-active {
+  background: var(--ref-wash);
+  border-left-color: var(--ref);
+  color: var(--ink);
+  text-decoration: none;
+}
+.pal-item > .bi { flex: 0 0 auto; font-size: 1rem; color: var(--pencil); }
+.pal-item.is-active > .bi { color: var(--ref); }
+.pal-item-main { flex: 1; min-width: 0; }
+.pal-item-title {
+  display: block;
+  font-family: var(--font-record);
+  font-size: var(--fs-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pal-item-title mark { background: var(--hold-wash); color: inherit; padding: 0 .05em; border-radius: 2px; }
+.pal-item-meta {
+  display: block;
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pal-item-code {
+  flex: 0 0 auto;
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+
+.pal-note { padding: 1.6rem 1rem; text-align: center; color: var(--pencil); font-size: var(--fs-sm); }
+
+.pal-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem 1rem;
+  padding: .5rem .9rem;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+  font-size: var(--fs-xs);
+  color: var(--pencil);
+}
+.pal-foot kbd {
+  padding: .06rem .28rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper-deep);
+  font-family: var(--font-code);
+  color: var(--ink);
+}
+
+@media (max-width: 575.98px) {
+  .pal-veil { padding-top: 1rem; }
+  .pal-head input { height: 48px; font-size: var(--fs-lg); }
+  .pal-body { max-height: 62vh; }
+  .pal-foot { display: none; }
+}
+
+/* ============================================================================
+   FILTRIM I MENJËHERSHËM I TABELËS
+   Punon mbi rreshtat në faqe: shkruaj dhe lista ngushtohet pa ringarkim.
+   ========================================================================= */
+.tfilter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  margin-bottom: .9rem;
+}
+
+.tfilter-field { position: relative; flex: 1 1 260px; min-width: 0; max-width: 420px; }
+.tfilter-field > .bi {
+  position: absolute;
+  left: .6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: .95rem;
+  color: var(--pencil);
+  pointer-events: none;
+}
+.tfilter-field input {
+  width: 100%;
+  height: 34px;
+  padding: 0 2rem 0 2rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+}
+.tfilter-field input:focus { outline: 0; border-color: var(--ref); box-shadow: var(--focus); }
+.tfilter-field input::placeholder { color: var(--pencil-soft); }
+
+.tfilter-clear {
+  position: absolute;
+  right: .3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  padding: .15rem;
+  border: 0;
+  background: none;
+  color: var(--pencil);
+  line-height: 1;
+  cursor: pointer;
+}
+.tfilter-clear:hover { color: var(--seal); }
+.tfilter.is-on .tfilter-clear { display: block; }
+
+.tfilter-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.tfilter-chip {
+  padding: .18rem .5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--pencil);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.tfilter-chip:hover { color: var(--ink); border-color: var(--rule-strong); }
+.tfilter-chip.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.tfilter-count {
+  margin-left: auto;
+  font-family: var(--font-code);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--pencil);
+  white-space: nowrap;
+}
+.tfilter-count.is-narrowed { color: var(--ref); }
+
+@media (max-width: 575.98px) {
+  .tfilter-field { max-width: none; flex-basis: 100%; }
+  .tfilter-count { margin-left: 0; }
 }

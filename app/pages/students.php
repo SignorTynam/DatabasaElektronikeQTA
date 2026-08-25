@@ -822,6 +822,12 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
 
     <div class="card-body">
+      <?php
+        $tfTarget = '';
+        $tfPlaceholder = 'Ngushto listën — emër, amzë, vendlindje, modul…';
+        $tfChips = [['label' => 'Pa modul', 'match' => '—']];
+        require __DIR__ . '/../shared/partials/table_filter.php';
+      ?>
       <div class="table-responsive mini-table">
         <table class="table align-middle mb-0" data-sortable>
           <thead class="table-light">

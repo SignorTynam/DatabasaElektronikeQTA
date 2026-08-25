@@ -132,11 +132,12 @@ $navIsActive = static function (array $item) use ($navActive): bool {
 
     <div class="app-tools">
       <?php if ($navSearch): ?>
-        <form class="app-find" role="search" method="get" action="students.php" data-app-search>
-          <input name="q" type="search" placeholder="Kërko kursant…" aria-label="Kërko kursant"
-                 value="<?= h((string)($_GET['q'] ?? '')) ?>">
-          <button type="submit" aria-label="Kërko"><i class="bi bi-search"></i></button>
-        </form>
+        <button class="app-find app-find-btn" type="button" data-open-palette
+                aria-label="Kërko në regjistër (Ctrl+K)">
+          <i class="bi bi-search" aria-hidden="true"></i>
+          <span>Kërko…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
       <?php endif; ?>
 
       <button class="app-tool" type="button" data-theme-toggle aria-label="Ndërro pamjen">
