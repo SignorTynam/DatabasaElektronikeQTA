@@ -11,14 +11,14 @@ qta_audit_attach($pdo);
    Toggle: Edit Mode (ruhet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['agencies_edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
     // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
     $qs = $_GET; unset($qs['edit']);
     $redir = 'agencies.php' . ($qs ? ('?' . http_build_query($qs)) : '');
     header('Location: ' . $redir);
     exit;
 }
-$EDIT_MODE = !empty($_SESSION['agencies_edit_mode']);
+$EDIT_MODE = !empty($_SESSION['edit_mode']);
 
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }

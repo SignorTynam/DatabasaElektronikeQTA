@@ -52,6 +52,13 @@ $navInit   = qta_app_initials($navWho);
 $navLabel  = qta_app_role_label($navRole);
 $navSub    = (string)($NAV_SUBTITLE ?? '');
 $navSearch = qta_app_can_search($navRole);
+$navSearchTypes = match ($navRole) {
+  'administrator' => 'student,group,course,agency,user,audit',
+  'editor'        => 'student,group,course,agency,audit',
+  'agjencia'      => 'student,group',
+  'student'       => 'student',
+  default         => '',
+};
 
 $navIsActive = static function (array $item) use ($navActive): bool {
   if (isset($item['key'])) {
@@ -65,7 +72,7 @@ $navIsActive = static function (array $item) use ($navActive): bool {
   return false;
 };
 ?>
-<header class="app-bar no-print">
+<header class="app-bar no-print" data-search-types="<?= h($navSearchTypes) ?>">
   <div class="app-bar-inner">
 
     <a class="app-mark" href="<?= h($navHome) ?>">
