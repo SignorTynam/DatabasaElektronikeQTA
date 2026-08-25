@@ -11,7 +11,7 @@ qta_audit_attach($pdo);
    Toggle: Edit Mode (ruhet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['agencies_edit_mode'] = ($_GET['edit'] === '1');
+    $_SESSION['agencies_edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
     // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
     $qs = $_GET; unset($qs['edit']);
     $redir = 'agencies.php' . ($qs ? ('?' . http_build_query($qs)) : '');
@@ -214,17 +214,17 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
     <div class="card-body">
       <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0" data-sortable>
           <thead class="table-light">
             <tr>
-              <th style="width:80px">ID</th>
-              <th>Emri i agjencisë</th>
-              <th>NIPT</th>
-              <th>Telefon</th>
-              <th>Adresë</th>
-              <th class="text-center">Studentë</th>
-              <th>Regjistruar</th>
-              <th class="text-end">Veprime</th>
+              <th style="width:80px" data-sort="text">ID</th>
+              <th data-sort="text">Emri i agjencisë</th>
+              <th data-sort="text">NIPT</th>
+              <th data-sort="text">Telefon</th>
+              <th data-sort="text">Adresë</th>
+              <th class="text-center" data-sort="text">Studentë</th>
+              <th data-sort="text">Regjistruar</th>
+              <th class="text-end" data-sort="none">Veprime</th>
             </tr>
           </thead>
           <tbody>

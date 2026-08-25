@@ -151,6 +151,84 @@
     });
   });
 
+  /* ------------------------------------------------- 6. Renditja e kolonave */
+  /* Gjenerike: çdo tabelë me [data-sortable] e merr. Lloji i kolonës thuhet
+     te th[data-sort] — "text", "num", "date". Tabelat me trupa të shumtë
+     (p.sh. grupet, ku çdo grup është një <tbody>) renditen si blloqe, që
+     rreshti i fëmijëve të mos ndahet kurrë nga i prindit. */
+  function cellKey(row, index, kind) {
+    var cell = row.cells[index];
+    if (!cell) return kind === 'text' ? '' : 0;
+    var raw = (cell.textContent || '').trim();
+
+    if (kind === 'num') {
+      var n = parseFloat(raw.replace(/[^0-9.,-]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
+      return isNaN(n) ? -Infinity : n;
+    }
+    if (kind === 'date') {
+      var m = raw.match(/(\d{2})[-.\/](\d{2})[-.\/](\d{4})/);
+      if (m) return new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+      var d = Date.parse(raw);
+      return isNaN(d) ? -Infinity : d;
+    }
+    return raw.toLowerCase();
+  }
+
+  function sortTable(table, index, kind, dir) {
+    var groups = table.tBodies.length > 1
+      ? Array.prototype.slice.call(table.tBodies)
+      : Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []);
+
+    var keyed = groups.map(function (node) {
+      var row = node.tagName === 'TBODY' ? node.rows[0] : node;
+      return { node: node, key: cellKey(row, index, kind) };
+    });
+
+    keyed.sort(function (a, b) {
+      if (a.key < b.key) return -dir;
+      if (a.key > b.key) return dir;
+      return 0;
+    });
+
+    if (table.tBodies.length > 1) {
+      keyed.forEach(function (k) { table.appendChild(k.node); });
+    } else {
+      var body = table.tBodies[0];
+      keyed.forEach(function (k) { body.appendChild(k.node); });
+    }
+  }
+
+  document.querySelectorAll('table[data-sortable]').forEach(function (table) {
+    var head = table.tHead;
+    if (!head) return;
+
+    Array.prototype.forEach.call(head.rows[0].cells, function (th, index) {
+      var kind = th.getAttribute('data-sort');
+      if (!kind || kind === 'none') return;
+
+      th.setAttribute('role', 'button');
+      th.setAttribute('tabindex', '0');
+
+      var activate = function () {
+        var asc = !th.classList.contains('is-asc');
+
+        Array.prototype.forEach.call(head.rows[0].cells, function (other) {
+          other.classList.remove('is-asc', 'is-desc');
+          other.removeAttribute('aria-sort');
+        });
+        th.classList.add(asc ? 'is-asc' : 'is-desc');
+        th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+
+        sortTable(table, index, kind, asc ? 1 : -1);
+      };
+
+      th.addEventListener('click', activate);
+      th.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
+      });
+    });
+  });
+
   /* ------------------------------------------------------ 6. Kthimi në krye */
   var toTop = document.querySelector('[data-back-top]');
   if (toTop) {

@@ -30,8 +30,7 @@ $CAN_EDIT = in_array($ROLE, ['administrator','editor'], true);
    EDIT MODE toggle (persistohet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-  $e = strtolower((string)$_GET['edit']);
-  $_SESSION['edit_mode'] = ($e === 'on');
+  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
   $qs = $_GET; unset($qs['edit']);
   $url = 'student_card.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
   header("Location: $url"); exit;

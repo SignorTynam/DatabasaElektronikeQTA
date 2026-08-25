@@ -27,8 +27,7 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-  $e = strtolower((string)$_GET['edit']);
-  $_SESSION['edit_mode'] = ($e === 'on');
+  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
   $qs = $_GET; unset($qs['edit']);
   $url = 'groups.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
   header("Location: $url"); exit;
@@ -993,52 +992,6 @@ foreach ($params as $k=>$v) $st->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO
 $st->execute();
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-/* Studentë pa grup (për tabelën poshtë) */
-$w2 = ["1=1"];
-$params2 = [];
-if ($q !== '') {
-  $w2[] = "(s.nr_amze LIKE :kw
-        OR p.personal_number LIKE :kw2
-        OR p.first_name LIKE :kw3
-        OR p.father_name LIKE :kw4
-        OR p.last_name LIKE :kw5)";
-  $params2[':kw']  = '%'.$q.'%';
-  $params2[':kw2'] = '%'.$q.'%';
-  $params2[':kw3'] = '%'.$q.'%';
-  $params2[':kw4'] = '%'.$q.'%';
-  $params2[':kw5'] = '%'.$q.'%';
-}
-$whereNoGroup = 'WHERE '.implode(' AND ', $w2);
-$sqlNoGroup = "
-  SELECT
-    s.id AS student_id, s.nr_amze,
-    p.first_name, p.father_name, p.last_name, p.personal_number, p.birth_date,
-    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-    el.code AS edu_code, el.label AS edu_label,
-
-    /* NEW: plan i modulit (mund të ketë më shumë se 1) */
-    COUNT(DISTINCT scp.course_id) AS planned_count,
-    MIN(cp.name) AS planned_first_name
-
-  FROM students s
-  LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
-  LEFT JOIN persons  p ON p.id = s.person_id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
-
-  /* NEW: planet e moduleve */
-  LEFT JOIN student_course_plans scp
-         ON scp.student_id = s.id AND scp.status = 'planned'
-  LEFT JOIN courses cp ON cp.id = scp.course_id
-
-  $whereNoGroup
-  GROUP BY s.id
-  HAVING COUNT(cgs.group_id) = 0
-  ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-";
-$ng = $pdo->prepare($sqlNoGroup);
-foreach ($params2 as $k=>$v) $ng->bindValue($k,$v,PDO::PARAM_STR);
-$ng->execute();
-$noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
 
 /* ===== Banner metrics ===== */
 try {
@@ -1117,24 +1070,12 @@ require __DIR__ . '/../shared/app_head.php';
         </div>
         <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
     <div class="d-flex flex-wrap align-items-center page-toolbar">
-      <button class="btn btn-soft-success btn-pill" data-bs-toggle="modal" data-bs-target="#qklReportModal" data-bs-title="Shkarko raportin për QKL">
+      <button class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#qklReportModal" data-bs-title="Shkarko raportin për QKL">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i> Raporti për QKL
       </button>
     </div>
   </div>
 
-  <?php if (isset($countNoGroup, $countPlannedNoGroup)): ?>
-    <div class="alert alert-primary status-banner d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-      <div class="metric">
-        <i class="bi bi-people me-1"></i>
-        <span><strong><?= number_format((int)$countNoGroup) ?></strong> studentë pa asnjë grup.</span>
-      </div>
-      <div class="metric">
-        <i class="bi bi-journal-text me-1"></i>
-        <span><strong><?= number_format((int)$countPlannedNoGroup) ?></strong> me modul (plan) por ende pa grup.</span>
-      </div>
-    </div>
-  <?php endif; ?>
 
   <div class="card mb-3">
     <div class="card-body">
@@ -1202,332 +1143,184 @@ require __DIR__ . '/../shared/app_head.php';
   uasort($groups, function($A, $B){ return ($A['min_amze'] <=> $B['min_amze']); });
   ?>
 
-  <?php if ($groups): foreach ($groups as $gid=>$g): ?>
-    <?php
-      $prefillAmze = [];
-      foreach ($g['students'] as $stRow) { $prefillAmze[] = (string)((int)$stRow['nr_amze']); }
-      $prefillAmzeStr = implode(', ', $prefillAmze);
-      $completed = (int)$g['header']['is_completed'] === 1;
-      $minLbl = ($g['min_amze']===PHP_INT_MAX) ? '—' : (string)$g['min_amze'];
-      $maxLbl = ($g['max_amze']===null ? '' : '–'.$g['max_amze']);
-    ?>
-    <div class="card mb-4">
-      <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <div class="d-flex align-items-center gap-3">
-          <h5 class="mb-0">
-            <i class="bi bi-collection me-2"></i>
-            Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_name']) ?>
-          </h5>
-          <small class="text-muted">AMZË: <?= htmlspecialchars($minLbl.$maxLbl) ?></small>
-          <span class="badge <?= $completed ? 'text-bg-success' : 'text-bg-danger' ?> group-badge" data-group="<?= (int)$gid ?>">
-            <?= $completed ? 'I përfunduar' : 'Jo i përfunduar' ?>
-          </span>
-          <div class="form-check form-switch ms-2" title="Ndrysho statusin e përfundimit">
-            <input class="form-check-input toggle-completed" type="checkbox"
-                   data-group="<?= (int)$gid ?>" <?= $completed ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
-            <label class="form-check-label small">Përfunduar</label>
-          </div>
-        </div>
-        <div class="d-flex flex-wrap align-items-center gap-2 group-toolbar">
-          <button class="btn btn-soft-secondary btn-pill collapse-toggle"
-                  data-bs-toggle="collapse"
-                  data-bs-target="#gBody_<?= (int)$gid ?>"
-                  aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
-            <i class="bi bi-chevron-down me-1"></i> Hap/Mbyll
-          </button>
+  <!-- ================================================ REGJISTRI I GRUPEVE ==
+       Një rresht për grup. Kursantët e grupit hapen brenda të njëjtës tabelë,
+       jo në një kartë më vete. Kështu 148 grupe lexohen si listë, jo si mur.
+       Të gjitha lidhjet e JS-së ekzistuese ruhen: .group-body, .group-badge,
+       #statusAlert_<gid>, .toggle-completed, .editable[data-field].
+  ==================================================================== -->
 
-          <button class="btn btn-soft-secondary btn-pill"
-                  data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
-                  title="Shto/hiq anëtarë (nëse kalon 10, ndahet automatikisht)">
-            <i class="bi bi-people me-1"></i> Anëtarët
-          </button>
-          <button class="btn btn-soft-secondary btn-pill"
-                  data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
-                  title="Ndrysho modulin e grupit">
-            <i class="bi bi-book me-1"></i> Moduli
-          </button>
-          <button class="btn btn-soft-danger btn-pill"
-                  data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
-                  title="Fshi grupin">
-            <i class="bi bi-trash me-1"></i> Fshi
-          </button>
-        </div>
-      </div>
+  <?php if ($groups): ?>
+    <div class="ledger" data-table-wrap>
+      <table class="ledger-table" id="groupsTable" data-sortable>
+        <thead>
+          <tr>
+            <th class="no" data-sort="num">Nr.</th>
+            <th data-sort="text">Moduli</th>
+            <th class="nowrap" data-sort="text">AMZË</th>
+            <th class="nowrap" data-sort="date">Fillimi</th>
+            <th class="nowrap" data-sort="date">Mbarimi</th>
+            <th class="nowrap num-col" data-sort="num">Kursantë</th>
+            <th class="nowrap num-col" data-sort="num">Me notë</th>
+            <th class="nowrap">Mbyllur</th>
+            <th class="col-actions" data-sort="none">Veprime</th>
+          </tr>
+        </thead>
 
-      <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
-        <div class="card-body">
+        <?php $gi = 0; foreach ($groups as $gid => $g):
+          $gi++;
+          $completed = (int)$g['header']['is_completed'] === 1;
+          $minLbl = ($g['min_amze'] === PHP_INT_MAX) ? '—' : (string)$g['min_amze'];
+          $maxLbl = ($g['max_amze'] === null ? '' : '–' . $g['max_amze']);
+          $nStud  = count($g['students']);
+          $nScored = 0;
+          foreach ($g['students'] as $srow) {
+            if ($srow['final_score'] !== null && $srow['final_score'] !== '') { $nScored++; }
+          }
+        ?>
+        <tbody class="grp" data-gid="<?= (int)$gid ?>">
 
-          <div id="statusAlert_<?= (int)$gid ?>" class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 mb-3 small">
-            <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
-            <?= $completed
-                  ? 'Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.'
-                  : 'Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.' ?>
-          </div>
+          <tr class="grp-row" data-gid="<?= (int)$gid ?>">
+            <td class="no"><?= str_pad((string)$gi, 3, '0', STR_PAD_LEFT) ?></td>
 
-          <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 text-muted small">
-            <div>
-              <span class="me-3">Fillimi:
-                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                      data-field="start_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                      title="DD-MM-YYYY"><?= htmlspecialchars(fmt_dMY($g['header']['start_date'])) ?></span>
-              </span>
-              <span class="me-3">Mbarimi:
-                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                      data-field="end_date" data-group="<?= (int)$g['header']['group_id'] ?>" data-student="0"
-                      title="DD-MM-YYYY (≥ data e fillimit)"><?= htmlspecialchars(fmt_dMY($g['header']['end_date'])) ?></span>
-              </span>
-            </div>
-          </div>
-
-          <div class="table-responsive mini-table">
-            <table class="table align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th class="nowrap">AMZË</th>
-                  <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                  <th class="nowrap">Datë testimi (student)</th>
-                  <th class="nowrap">Pikët përfundimtare</th>
-                  <th class="nowrap">Mosha</th>
-                  <th class="nowrap">Arsimi</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php if ($g['students']): foreach ($g['students'] as $r): ?>
-                  <tr>
-                    <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
-                    <td>
-                      <div class="fw-semibold">
-                        <?= htmlspecialchars(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
-                      </div>
-                      <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
-                    </td>
-
-                    <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
-                        title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
-                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                        <?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?>
-                      </span>
-                    </td>
-
-                    <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="0–100">
-                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                        <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
-                      </span>
-                    </td>
-
-                    <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                    <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
-                  </tr>
-                <?php endforeach; else: ?>
-                  <tr><td colspan="6" class="text-center text-muted">S’ka studentë në këtë grup.</td></tr>
-                <?php endif; ?>
-              </tbody>
-            </table>
-            <?php
-              if (empty($_SESSION['csrf_token'])) {
-                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-              }
-            ?>
-
-            <div class="d-flex justify-content-end mt-3 gap-2">
-              <button type="button"
-                      class="btn btn-soft-primary btn-pill"
-                      data-bs-toggle="modal"
-                      data-bs-target="#modalDownloadProcesVerbal"
-                      data-group-id="<?= (int)$gid ?>"
-                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-                <i class="bi bi-download me-1"></i> Shkarko proces verbalin
+            <td>
+              <button class="grp-open" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#gBody_<?= (int)$gid ?>"
+                      aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
+                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                <span class="person"><?= htmlspecialchars((string)$g['header']['course_name']) ?></span>
               </button>
+            </td>
 
-              <button type="button"
-                      class="btn btn-soft-secondary btn-pill"
-                      data-bs-toggle="modal"
-                      data-bs-target="#modalDownloadPraktikaProfesionale"
-                      data-group-id="<?= (int)$gid ?>"
-                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-                <i class="bi bi-download me-1"></i> Shkarko praktikën profesionale
-              </button>
+            <td class="nowrap code"><?= htmlspecialchars($minLbl . $maxLbl) ?></td>
 
-              <button type="button"
-                      class="btn btn-soft-secondary btn-pill"
-                      data-bs-toggle="modal"
-                      data-bs-target="#modalDownloadSigurimiTeknik"
-                      data-group-id="<?= (int)$gid ?>"
-                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-                <i class="bi bi-shield-check me-1"></i> Shkarko rregullat e sigurimit teknik
-              </button>
+            <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="start_date"
+                title="DD-MM-YYYY">
+              <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                    data-field="start_date" data-group="<?= (int)$gid ?>" data-student="0"><?= htmlspecialchars(fmt_dMY($g['header']['start_date'])) ?></span>
+            </td>
 
-              <button type="button"
-                      class="btn btn-soft-secondary btn-pill"
-                      data-bs-toggle="modal"
-                      data-bs-target="#modalDownloadListaEmerore"
-                      data-group-id="<?= (int)$gid ?>"
-                      data-csrf="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-                <i class="bi bi-list-ol me-1"></i> Shkarko listën emërore
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+            <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="end_date"
+                title="DD-MM-YYYY">
+              <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                    data-field="end_date" data-group="<?= (int)$gid ?>" data-student="0"><?= htmlspecialchars(fmt_dMY($g['header']['end_date'])) ?></span>
+            </td>
+
+            <td class="nowrap num-col num"><?= number_format($nStud) ?></td>
+
+            <td class="nowrap num-col num<?= ($nStud > 0 && $nScored < $nStud) ? ' is-partial' : '' ?>">
+              <?= number_format($nScored) ?>
+            </td>
+
+            <td class="nowrap">
+              <label class="switch" title="Ndrysho gjendjen e mbylljes">
+                <input class="form-check-input toggle-completed" type="checkbox"
+                       data-group="<?= (int)$gid ?>" <?= $completed ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                <span class="badge group-badge <?= $completed ? 'text-bg-success' : 'text-bg-secondary' ?>"
+                      data-group="<?= (int)$gid ?>"><?= $completed ? 'Po' : 'Jo' ?></span>
+              </label>
+            </td>
+
+            <td class="col-actions">
+              <div class="row-actions">
+                <button class="btn btn-sm btn-icon" type="button" title="Anëtarët e grupit"
+                        aria-label="Anëtarët e grupit"
+                        data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                  <i class="bi bi-people"></i>
+                </button>
+                <button class="btn btn-sm btn-icon" type="button" title="Ndrysho modulin"
+                        aria-label="Ndrysho modulin"
+                        data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                  <i class="bi bi-book"></i>
+                </button>
+                <button class="btn btn-sm btn-icon btn-seal" type="button" title="Fshi grupin"
+                        aria-label="Fshi grupin"
+                        data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="grp-kids">
+            <td colspan="9" class="grp-kids-cell">
+              <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
+                <div class="grp-inner">
+
+                  <div id="statusAlert_<?= (int)$gid ?>"
+                       class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 px-3 mb-3">
+                    <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
+                    <?= $completed
+                        ? 'Grupi është i mbyllur. Të dhënat nuk pritet të ndryshojnë më.'
+                        : 'Grupi është ende i hapur.' ?>
+                  </div>
+
+                  <?php if ($g['students']): ?>
+                    <table class="ledger-table grp-students">
+                      <thead>
+                        <tr>
+                          <th class="no">Nr.</th>
+                          <th class="nowrap">AMZË</th>
+                          <th>Kursanti</th>
+                          <th class="nowrap">Datë provimi</th>
+                          <th class="nowrap num-col">Pikët</th>
+                          <th class="nowrap num-col">Mosha</th>
+                          <th class="nowrap">Arsimi</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <?php foreach ($g['students'] as $si => $r): ?>
+                          <tr>
+                            <td class="no"><?= str_pad((string)($si + 1), 2, '0', STR_PAD_LEFT) ?></td>
+                            <td class="nowrap code"><?= htmlspecialchars((string)$r['nr_amze']) ?></td>
+                            <td>
+                              <span class="person"><?= htmlspecialchars(trim(($r['first_name'] ?? '') . ' ' . (($r['father_name'] ?? '') ? ($r['father_name'] . ' ') : '') . ($r['last_name'] ?? ''))) ?></span>
+                              <span class="code muted-2 d-block"><?= htmlspecialchars((string)($r['personal_number'] ?? '')) ?></span>
+                            </td>
+
+                            <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
+                                title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
+                              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?></span>
+                            </td>
+
+                            <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score">
+                              <span class="editable"><?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'], '0'), '.') : '—' ?></span>
+                            </td>
+
+                            <td class="nowrap num-col num"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+                            <td class="nowrap"><?= htmlspecialchars(($r['edu_code'] ? $r['edu_code'] . ' — ' : '') . ($r['edu_label'] ?? '—')) ?></td>
+                          </tr>
+                        <?php endforeach; ?>
+                      </tbody>
+                    </table>
+                  <?php else: ?>
+                    <div class="blank" style="padding:1.5rem 1rem">
+                      <span class="blank-note">Ky grup ende nuk ka kursantë të caktuar.</span>
+                    </div>
+                  <?php endif; ?>
+
+                </div>
+              </div>
+            </td>
+          </tr>
+
+        </tbody>
+        <?php endforeach; ?>
+      </table>
     </div>
 
-    <!-- MODAL: Modifiko anëtarët e grupit -->
-    <div class="modal fade" id="editMembersModal_<?= (int)$gid ?>" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
-        <form class="modal-content" method="post" action="groups.php" onsubmit="return confirmIfCompleted(this, <?= (int)$gid ?>)">
-          <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-          <input type="hidden" name="action" value="edit_members">
-          <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
-          <input type="hidden" name="force" value="0">
-          <div class="modal-header">
-            <h5 class="modal-title"><i class="bi bi-people me-1"></i> Modifiko anëtarët — Grup #<?= (int)$gid ?></h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <label class="form-label">AMZË që duhet të jenë në këtë grup (mund të kalojë 10 — ndahet automatikisht)</label>
-            <textarea name="amze_spec_members"
-                      class="form-control"
-                      rows="3"
-                      <?= $EDIT_MODE ? '' : 'disabled' ?>
-                      data-original-amze="<?= htmlspecialchars($prefillAmzeStr) ?>"
-                      placeholder="p.sh. 3400-3403, 3409"><?= htmlspecialchars($prefillAmzeStr) ?>
-            </textarea>
-            <div class="form-text">
-              Mund të shtosh ose heqësh AMZË. Nëse shkruan AMZË që s’ekziston, do të krijohet student i ri me të dhëna bosh. Nëse kalon 10, grupi ndahet automatikisht në disa grupe të balancuara (diferencë max 1 student).
-              <strong>Rregull:</strong> i njëjti person (sipas ID personale) nuk mund të jetë dy herë në të njëjtin modul.
-              <br><strong>Shënim:</strong> në momentin e shtimit në grup, fshihen automatikisht të gjithë planët <em>planned</em> të studentit.
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
-            <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj ndryshimet</button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <p class="muted mt-3" style="font-size:var(--fs-xs)">
+      <?= number_format(count($groups)) ?> grupe · kliko emrin e modulit për të parë kursantët.
+    </p>
 
-    <!-- MODAL: Ndrysho modulin e grupit -->
-    <div class="modal fade" id="editCourseModal_<?= (int)$gid ?>" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
-        <form class="modal-content" method="post" action="groups.php" onsubmit="return confirmIfCompleted(this, <?= (int)$gid ?>)">
-          <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-          <input type="hidden" name="action" value="update_group_course">
-          <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
-          <input type="hidden" name="force" value="0">
-
-          <div class="modal-header">
-            <h5 class="modal-title"><i class="bi bi-book me-1"></i> Ndrysho modulin — Grup #<?= (int)$gid ?></h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-
-          <div class="modal-body">
-            <label class="form-label">Zgjidh modul</label>
-            <select name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <?php foreach($courses as $c): ?>
-                <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === (int)$g['header']['course_id']) ? 'selected' : '' ?>>
-                  <?= htmlspecialchars($c['name']) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-            <div class="form-text">Ndryshon modulin (kursin) me të cilin lidhet ky grup.</div>
-          </div>
-
-          <div class="modal-footer">
-            <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
-            <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- MODAL: Fshi grupin -->
-    <div class="modal fade" id="deleteGroupModal_<?= (int)$gid ?>" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
-        <form class="modal-content" method="post" action="groups.php" onsubmit="return confirmIfCompleted(this, <?= (int)$gid ?>)">
-          <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-          <input type="hidden" name="action" value="delete_group">
-          <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
-          <input type="hidden" name="force" value="0">
-          <div class="modal-header">
-            <h5 class="modal-title text-danger"><i class="bi bi-trash me-1"></i> Fshi grupin #<?= (int)$gid ?></h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            Jeni i sigurt që doni të fshini këtë grup?<br/>
-            <strong>Kujdes:</strong> Kjo do të fshijë edhe lidhjet e studentëve me këtë grup (notat e ruajtura në këtë grup).
-            Studentët nuk fshihen nga sistemi.
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-            <button class="btn btn-danger btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Po, fshije</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-  <?php endforeach; else: ?>
-    <div class="card mb-4">
-      <div class="card-body">
-        <div class="alert alert-info mb-0"><i class="bi bi-info-circle me-1"></i>Nuk ka grupe ende. Krijo një të ri.</div>
-      </div>
+  <?php else: ?>
+    <div class="blank">
+      <span class="blank-title">Asnjë grup nuk përputhet</span>
+      <span class="blank-note">Provo të heqësh filtrin e modulit ose të pastrosh kërkimin.</span>
+      <a class="btn btn-sm mt-2" href="groups.php">Pastro filtrat</a>
     </div>
   <?php endif; ?>
 
-  <div class="card mb-4">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-person-dash me-2"></i>Studentë pa grup</h5>
-      <span class="text-muted small"><?= number_format(count($noGroup)) ?> student(ë)</span>
-    </div>
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
-          <tr>
-            <th class="nowrap">AMZË</th>
-            <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-            <th class="nowrap">Mosha</th>
-            <th class="nowrap">Gjendja modulit</th>
-            <th class="nowrap">Arsimi</th>
-          </tr>
-          </thead>
-          <tbody>
-          <?php if ($noGroup): foreach ($noGroup as $s): ?>
-            <tr>
-              <td class="nowrap"><?= htmlspecialchars($s['nr_amze']) ?></td>
-              <td>
-                <div class="fw-semibold">
-                  <?= htmlspecialchars(trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??''))) ?>
-                </div>
-                <div class="text-muted small"><?= htmlspecialchars($s['personal_number'] ?? '') ?></div>
-              </td>
-              <td class="nowrap"><?= $s['age'] !== null ? (int)$s['age'] : '—' ?></td>
-
-              <!-- NEW: Gjendja modulit -->
-              <td class="nowrap">
-                <?php if ((int)($s['planned_count'] ?? 0) > 0): ?>
-                  <span class="badge text-bg-primary me-1">Me modul</span>
-                  <span class="text-muted small" title="<?= htmlspecialchars((string)$s['planned_first_name']) ?>">
-                    <?= htmlspecialchars((string)$s['planned_first_name']) ?>
-                    <?php if ((int)$s['planned_count'] > 1): ?>
-                      +<?= (int)$s['planned_count'] - 1 ?>
-                    <?php endif; ?>
-                  </span>
-                <?php else: ?>
-                  <span class="badge text-bg-secondary">Pa modul</span>
-                <?php endif; ?>
-              </td>
-
-              <td><?= htmlspecialchars(($s['edu_code']? $s['edu_code'].' — ' : '').($s['edu_label'] ?? '—')) ?></td>
-            </tr>
-
-          <?php endforeach; else: ?>
-            <tr><td colspan="5" class="text-center text-muted">Të gjithë studentët janë në grupe.</td></tr>
-          <?php endif; ?>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
 
   <div class="text-center text-muted small mt-4">
     &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.

@@ -33,8 +33,7 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-    $e = strtolower((string)$_GET['edit']);
-    $_SESSION['edit_mode'] = ($e === 'on');
+    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
     // Heq parametër 'edit' nga URL duke bërë redirect në të njëjtën faqe pa të
     $qs = $_GET; unset($qs['edit']);
     $url = 'students.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
@@ -824,22 +823,22 @@ require __DIR__ . '/../shared/app_head.php';
 
     <div class="card-body">
       <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0" data-sortable>
           <thead class="table-light">
             <tr>
-              <th class="nowrap">Nr. Amzës</th>
-              <th>Emër</th>
-              <th>Atësi</th>
-              <th>Mbiemër</th>
-              <th class="nowrap">Nr. Personal</th>
-              <th class="nowrap">Datëlindja</th>
-              <th>Vendlindja</th>
-              <th>Arsimi</th>
-              <th>Moduli</th>
-              <th class="nowrap">Datat e modulit</th>
-              <th class="nowrap">Gjinia</th>
-              <th>Tel.</th>
-              <th class="col-actions text-center">Veprime</th>
+              <th class="nowrap" data-sort="num">Nr. Amzës</th>
+              <th data-sort="text">Emër</th>
+              <th data-sort="text">Atësi</th>
+              <th data-sort="text">Mbiemër</th>
+              <th class="nowrap" data-sort="num">Nr. Personal</th>
+              <th class="nowrap" data-sort="date">Datëlindja</th>
+              <th data-sort="date">Vendlindja</th>
+              <th data-sort="text">Arsimi</th>
+              <th data-sort="text">Moduli</th>
+              <th class="nowrap" data-sort="text">Datat e modulit</th>
+              <th class="nowrap" data-sort="text">Gjinia</th>
+              <th data-sort="text">Tel.</th>
+              <th class="col-actions text-center" data-sort="none">Veprime</th>
             </tr>
           </thead>
           <tbody>

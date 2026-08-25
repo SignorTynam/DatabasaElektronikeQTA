@@ -11,7 +11,7 @@ qta_audit_attach($pdo);
    Toggle: Edit Mode (ruhet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['courses_edit_mode'] = ($_GET['edit'] === '1');
+    $_SESSION['courses_edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
     // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
     $qs = $_GET; unset($qs['edit']);
     $redir = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
@@ -282,14 +282,14 @@ require __DIR__ . '/../shared/app_head.php';
         </div>
         <div class="card-body">
             <div class="table-responsive mini-table">
-                <table class="table align-middle mb-0">
+                <table class="table align-middle mb-0" data-sortable>
                     <thead class="table-light">
                         <tr>
-                            <th>Kod</th>
-                            <th>Emër</th>
-                            <th class="nowrap">Orë</th>
-                            <th class="nowrap">Krijuar më</th>
-                            <th class="nowrap text-end">Veprime</th>
+                            <th data-sort="text">Kod</th>
+                            <th data-sort="text">Emër</th>
+                            <th class="nowrap" data-sort="num">Orë</th>
+                            <th class="nowrap" data-sort="date">Krijuar më</th>
+                            <th class="nowrap text-end" data-sort="none">Veprime</th>
                         </tr>
                     </thead>
                     <tbody>

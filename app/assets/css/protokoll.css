@@ -922,3 +922,11 @@ textarea.input,
   line-height: 1.55;
   resize: vertical;
 }
+
+/* Brenda një grupi fushash, elementi pasardhës ndahet me një vijë — përndryshe
+   një <select> pa kornizë lexohet si tekst, jo si kontroll. */
+.input-group > .form-select:not(:first-child),
+.input-group > .select:not(:first-child),
+.input-group > .form-control:not(:first-child):not(.input-group-text + *) {
+  border-left: 1px solid var(--rule) !important;
+}

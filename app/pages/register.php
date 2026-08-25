@@ -26,8 +26,7 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-  $e = strtolower((string)$_GET['edit']);
-  $_SESSION['edit_mode'] = ($e === 'on');
+  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
   // hiq param 'edit' nga URL
   $qs = $_GET; unset($qs['edit']);
   $url = 'register.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
@@ -124,6 +123,7 @@ $list = $pdo->prepare("
     /* nga persons */
     p.first_name, p.father_name, p.last_name,
     p.personal_number,
+    p.phone,
     p.birth_date, p.birth_place,
     TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
 
@@ -243,18 +243,19 @@ require __DIR__ . '/../shared/app_head.php';
 
     <div class="card-body">
       <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0" data-sortable>
           <thead class="table-light">
           <tr>
-            <th class="nowrap">AMZË</th>
-            <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-            <th>Moduli</th>
-            <th class="nowrap">Datë fillimi</th>
-            <th class="nowrap">Datë mbarimi</th>
-            <th class="nowrap">Datë testimi</th>
-            <th class="nowrap">Pikët përfundimtare</th>
-            <th class="nowrap">Mosha</th>
-            <th class="nowrap">Arsimi</th>
+            <th class="nowrap" data-sort="num">AMZË</th>
+            <th data-sort="num">Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
+            <th data-sort="text">Moduli</th>
+            <th class="nowrap" data-sort="date">Datë fillimi</th>
+            <th class="nowrap" data-sort="date">Datë mbarimi</th>
+            <th class="nowrap" data-sort="date">Datë testimi</th>
+            <th class="nowrap" data-sort="num">Pikët përfundimtare</th>
+            <th class="nowrap" data-sort="text">Telefon</th>
+            <th class="nowrap" data-sort="num">Mosha</th>
+            <th class="nowrap" data-sort="text">Arsimi</th>
           </tr>
           </thead>
           <tbody>
@@ -320,11 +321,20 @@ require __DIR__ . '/../shared/app_head.php';
                 </span>
               </td>
 
+              <td class="nowrap">
+                <?php $ph = trim((string)($r['phone'] ?? '')); if ($ph === '—' || $ph === '-') { $ph = ''; } ?>
+                <?php if ($ph !== ''): ?>
+                  <a class="code" href="tel:<?= htmlspecialchars(preg_replace('/[^0-9+]/', '', $ph)) ?>"><?= htmlspecialchars($ph) ?></a>
+                <?php else: ?>
+                  <span class="muted-2">—</span>
+                <?php endif; ?>
+              </td>
+
               <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
               <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
             </tr>
           <?php endforeach; else: ?>
-            <tr><td colspan="8" class="text-center text-muted">Nuk u gjetën studentë.</td></tr>
+            <tr><td colspan="10" class="text-center text-muted">Nuk u gjetën studentë.</td></tr>
           <?php endif; ?>
           </tbody>
         </table>

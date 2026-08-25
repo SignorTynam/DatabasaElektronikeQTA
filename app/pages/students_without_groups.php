@@ -198,8 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-  $e = strtolower((string)$_GET['edit']);
-  $_SESSION['edit_mode'] = ($e === 'on');
+  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
   $qs = $_GET; unset($qs['edit']);
   $url = 'students_without_groups.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
   header("Location: $url"); exit;
@@ -394,223 +393,199 @@ require __DIR__ . '/../shared/app_head.php';
 <div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
 
 <main class="app-main">
+
   <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
     <div class="title-block-main">
-          <div class="title-block-eyebrow">Regjistri</div>
-          <h1>Studentë pa grupe</h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-    <div class="d-flex flex-wrap align-items-center page-toolbar"></div>
+      <div class="title-block-eyebrow">Regjistri</div>
+      <h1>Kursantë pa grup</h1>
+      <p class="title-block-note">Kush pret caktim, dhe në cilin grup mund të shkojë.</p>
+    </div>
+    <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
   </div>
 
-  <div class="alert alert-primary status-banner d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-    <div class="metric"><i class="bi bi-people me-1"></i> Gjithsej: <strong><?= number_format($totalStudents) ?></strong></div>
-    <div class="metric"><i class="bi bi-person-dash me-1"></i> Pa grup: <strong><?= number_format($countNoGroup) ?></strong></div>
-    <div class="metric"><i class="bi bi-journal-text me-1"></i> Me modul pa grup: <strong><?= number_format($countPlannedNoGroup) ?></strong></div>
-    <div class="metric"><i class="bi bi-slash-circle me-1"></i> Pa modul & pa grup: <strong><?= number_format($countNoPlanNoGroup) ?></strong></div>
-  </div>
+  <!-- ============================================================== SHIFRAT -->
+  <section class="tally" aria-label="Gjendja e pritjes">
+    <div class="tally-cell">
+      <span class="label">Në regjistër</span>
+      <span class="tally-value"><?= number_format($totalStudents) ?></span>
+      <span class="tally-foot">kursantë</span>
+    </div>
+    <div class="tally-cell<?= (int)$countNoGroup > 0 ? ' is-hold' : '' ?>">
+      <span class="label">Pa grup</span>
+      <span class="tally-value"><?= number_format((int)$countNoGroup) ?></span>
+      <span class="tally-foot">presin caktim</span>
+    </div>
+    <div class="tally-cell">
+      <span class="label">Me modul, pa grup</span>
+      <span class="tally-value"><?= number_format((int)$countPlannedNoGroup) ?></span>
+      <span class="tally-foot">gati për caktim</span>
+    </div>
+    <div class="tally-cell">
+      <span class="label">Pa modul</span>
+      <span class="tally-value"><?= number_format((int)$countNoPlanNoGroup) ?></span>
+      <span class="tally-foot">duhet modul së pari</span>
+    </div>
+  </section>
 
-  <div class="card mb-3">
-    <div class="card-body">
-      <form class="row g-2 align-items-end" method="get" action="students_without_groups.php">
-        <div class="col-md-9">
-          <div class="d-flex align-items-center">
-            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-            <div class="input-group flex-grow-1">
-              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-              <input type="text" name="q" value="<?= h($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZË/ID/Emri...">
-              <select name="course_id" class="form-select">
-                <option value="">— Modul —</option>
-                <?php foreach($courses as $c): ?>
-                  <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
-                    <?= h($c['name']) ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-          </div>
+  <!-- ============================================================== FILTRAT -->
+  <section class="leaf mb-4">
+    <div class="leaf-head">
+      <span class="ui-title">Gjej një kursant</span>
+    </div>
+    <div class="leaf-body">
+      <form class="row g-3 align-items-end" method="get" action="students_without_groups.php">
+        <div class="col-12 col-lg-6">
+          <label class="label" for="swgQ">Kërko</label>
+          <input class="input" id="swgQ" type="text" name="q" value="<?= h($q) ?>"
+                 placeholder="Emër, AMZË ose numër personal">
         </div>
-        <div class="col-md-3 text-end">
-          <a class="btn btn-soft-secondary btn-pill me-1" href="students_without_groups.php"><i class="bi bi-x-circle me-1"></i>Pastro</a>
-          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+        <div class="col-12 col-lg-4">
+          <label class="label" for="swgC">Moduli</label>
+          <select class="select" id="swgC" name="course_id">
+            <option value="">Të gjitha modulet</option>
+            <?php foreach ($courses as $c): ?>
+              <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>>
+                <?= h($c['name']) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="col-12 col-lg-2 d-flex gap-2">
+          <button class="btn btn-ink" type="submit">Apliko</button>
+          <a class="btn" href="students_without_groups.php">Pastro</a>
         </div>
       </form>
     </div>
+  </section>
+
+  <?php
+  /* Një listë e vetme: kursantët me modul të planifikuar dhe ata pa modul.
+     Më parë ishin dy seksione të ndara me karta për çdo modul — e njëjta punë
+     e ndarë në dhjetëra vende. */
+  $waiting = [];
+  foreach (($studentsByCourse ?? []) as $cid => $bucket) {
+    foreach (($bucket['rows'] ?? []) as $r) {
+      $r['plan_course_id']   = (int)$cid;
+      $r['plan_course_name'] = (string)($bucket['course_name'] ?? '');
+      $waiting[] = $r;
+    }
+  }
+  foreach (($noPlanNoGroupRows ?? []) as $r) {
+    $r['plan_course_id']   = 0;
+    $r['plan_course_name'] = '';
+    $waiting[] = $r;
+  }
+  ?>
+
+  <!-- ========================================================= VEPRIM MASIV -->
+  <div class="bulk-bar" id="bulkBar" hidden>
+    <span class="bulk-count"><b id="bulkN">0</b> të zgjedhur</span>
+    <label class="label" for="bulkGroup" style="margin:0">Cakto në</label>
+    <select class="select" id="bulkGroup" style="max-width:320px">
+      <option value="">— Zgjidh grupin —</option>
+      <?php foreach ($groupsMeta as $g): ?>
+        <option value="<?= (int)$g['id'] ?>" <?= !empty($g['full']) ? 'disabled' : '' ?>>
+          <?= h($g['course_name']) ?> · #<?= (int)$g['id'] ?> · <?= (int)$g['members'] ?>/10<?= !empty($g['full']) ? ' (plot)' : '' ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+    <button class="btn btn-sm btn-ink" type="button" id="bulkAssign" <?= $EDIT_MODE ? '' : 'disabled' ?>>Cakto</button>
+    <button class="btn btn-sm" type="button" id="bulkClear">Hiq zgjedhjen</button>
+    <span class="bulk-progress" id="bulkProgress"></span>
   </div>
 
-  <!-- ====== A: Me modul (plan) por pa grup – i ndarë sipas modulit ====== -->
-  <?php if (!empty($studentsByCourse)): ?>
-    <?php foreach ($studentsByCourse as $cid => $bucket): $rows = $bucket['rows'] ?? []; $cname = $bucket['course_name'] ?? '—'; ?>
-      <div class="card mb-4">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-book me-2"></i><?= h($cname) ?> — studentë pa grup</h5>
-          <span class="text-muted small"><?= number_format(count($rows)) ?> student(ë)</span>
-        </div>
-        <div class="card-body">
-          <div class="table-responsive mini-table">
-            <table class="table align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th class="nowrap">AMZË</th>
-                  <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                  <th class="nowrap">Zgjidh grup (<?= h($cname) ?>)</th>
-                  <th class="nowrap">Ndrysho / Hiq modul</th>
-                </tr>
-              </thead>
-              <tbody>
-              <?php foreach ($rows as $r): ?>
-                <?php
-                  $sid = (int)$r['student_id'];
-                  $availableGroups = $groupsByCourse[(int)$cid] ?? [];
-                ?>
-                <tr id="row_s<?= $sid ?>_c<?= (int)$cid ?>">
-                  <td class="nowrap"><?= h($r['nr_amze']) ?></td>
-                  <td>
-                    <div class="fw-semibold">
-                      <?= h(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
-                    </div>
-                    <div class="text-muted small"><?= h($r['personal_number'] ?? '') ?></div>
-                  </td>
-
-                  <td class="nowrap">
-                    <div class="d-flex gap-2">
-                      <select class="form-select form-select-sm" style="min-width:220px"
-                              data-role="group-select" data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <option value="">— Zgjidh grup —</option>
-                        <?php foreach($availableGroups as $g): ?>
-                          <option value="<?= (int)$g['id'] ?>" <?= $g['full'] ? 'disabled' : '' ?>>
-                            #<?= (int)$g['id'] ?> • <?= h(fmt_dMY($g['start_date']).' → '.fmt_dMY($g['end_date'])) ?>
-                            (<?= h($g['course_name']) ?>)
-                            <?= $g['full'] ? ' — [Full]' : ' — ['.(int)$g['members'].'/10]' ?>
-                          </option>
-                        <?php endforeach; ?>
-                      </select>
-                      <button class="btn btn-primary btn-sm" data-role="assign-btn"
-                              data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <i class="bi bi-plus-circle me-1"></i>Vendos
-                      </button>
-                    </div>
-                    <div class="small text-muted mt-1">
-                      Kapaciteti max 10 / grup. Nuk lejohet të ndiqet i njëjti modul dy herë (edhe sipas ID personale).
-                    </div>
-                  </td>
-
-                  <td class="nowrap">
-                    <div class="d-flex gap-2">
-                      <select class="form-select form-select-sm" style="min-width:220px"
-                              data-role="plan-select" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <?php foreach($courses as $c): ?>
-                          <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id']===(int)$cid)?'selected':'' ?>>
-                            <?= h($c['name']) ?>
-                          </option>
-                        <?php endforeach; ?>
-                      </select>
-                      <button class="btn btn-soft-secondary btn-sm" data-role="plan-btn"
-                              data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <i class="bi bi-arrow-repeat me-1"></i>Ruaj
-                      </button>
-                      <!-- NEW: Hiq planin për këtë modul -->
-                      <button class="btn btn-outline-danger btn-sm" data-role="plan-remove"
-                              data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <i class="bi bi-trash me-1"></i>Hiq
-                      </button>
-                    </div>
-                    <div class="small text-muted mt-1">Ndrysho ose hiq modulin e planifikuar të studentit.</div>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    <?php endforeach; ?>
-  <?php else: ?>
-    <div class="card mb-4"><div class="card-body">
-      <div class="alert alert-info mb-0"><i class="bi bi-info-circle me-1"></i>Nuk ka studentë me modul pa grup sipas filtrave.</div>
-    </div></div>
-  <?php endif; ?>
-
-  <!-- ====== B: Pa modul (pa grup) ====== -->
-  <div class="card mb-4">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-slash-circle me-2"></i>Studentë pa modul dhe pa grup</h5>
-      <span class="text-muted small"><?= number_format(count($noPlanNoGroupRows)) ?> student(ë)</span>
-    </div>
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th class="nowrap">AMZË</th>
-              <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-              <th class="nowrap">Vendos modul (plan)</th>
-              <th class="nowrap">Zgjidh grup (çdo modul)</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if ($noPlanNoGroupRows): foreach ($noPlanNoGroupRows as $s): $sid=(int)$s['student_id']; ?>
-            <tr id="row_s<?= $sid ?>_noplan">
-              <td class="nowrap"><?= h($s['nr_amze']) ?></td>
+  <!-- ================================================== LISTA E PRITJES ==== -->
+  <?php if ($waiting): ?>
+    <div class="ledger">
+      <table class="ledger-table" id="waitTable" data-sortable>
+        <thead>
+          <tr>
+            <th class="pick-col" data-sort="none">
+              <input type="checkbox" id="pickAll" aria-label="Zgjidh të gjithë" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            </th>
+            <th class="no" data-sort="num">Nr.</th>
+            <th class="nowrap" data-sort="num">AMZË</th>
+            <th data-sort="text">Kursanti</th>
+            <th data-sort="text">Moduli</th>
+            <th class="nowrap" data-sort="none">Cakto në grup</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($waiting as $i => $s):
+            $sid  = (int)$s['student_id'];
+            $pcid = (int)$s['plan_course_id'];
+            $groupsForRow = $pcid > 0 ? ($groupsByCourse[$pcid] ?? []) : $groupsMeta;
+            $full = trim(($s['first_name'] ?? '') . ' ' . (($s['father_name'] ?? '') ? ($s['father_name'] . ' ') : '') . ($s['last_name'] ?? ''));
+          ?>
+            <tr data-student="<?= $sid ?>">
+              <td class="pick-col">
+                <input type="checkbox" class="pick" data-student="<?= $sid ?>"
+                       aria-label="Zgjidh <?= h($full) ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+              </td>
+              <td class="no"><?= str_pad((string)($i + 1), 3, '0', STR_PAD_LEFT) ?></td>
+              <td class="nowrap code"><?= h((string)$s['nr_amze']) ?></td>
               <td>
-                <div class="fw-semibold">
-                  <?= h(trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??''))) ?>
-                </div>
-                <div class="text-muted small"><?= h($s['personal_number'] ?? '') ?></div>
+                <span class="person"><?= h($full) ?></span>
+                <span class="code muted-2 d-block"><?= h((string)($s['personal_number'] ?? '')) ?></span>
               </td>
 
-              <!-- Vendos modul (plan) -->
-              <td class="nowrap">
-                <div class="d-flex gap-2">
-                  <select class="form-select form-select-sm" style="min-width:260px"
-                          data-role="plan-select" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <option value="">— Zgjidh modul —</option>
-                    <?php foreach ($courses as $c): ?>
-                      <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
-                    <?php endforeach; ?>
-                  </select>
-                  <button class="btn btn-soft-secondary btn-sm" data-role="plan-btn"
-                          data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <i class="bi bi-arrow-repeat me-1"></i>Ruaj
-                  </button>
-                </div>
-                <div class="small text-muted mt-1">
-                  Cakto modulin e planifikuar për studentin (pa grup).
-                </div>
+              <td>
+                <?php if ($pcid > 0): ?>
+                  <?= h($s['plan_course_name']) ?>
+                <?php else: ?>
+                  <div class="d-flex gap-1 align-items-center">
+                    <select class="select inline-select" data-role="plan-select" data-student="<?= $sid ?>"
+                            <?= $EDIT_MODE ? '' : 'disabled' ?> aria-label="Vendos modulin">
+                      <option value="">— Vendos modul —</option>
+                      <?php foreach ($courses as $c): ?>
+                        <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                    <button class="btn btn-sm" type="button" data-role="plan-btn" data-student="<?= $sid ?>"
+                            <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
+                  </div>
+                <?php endif; ?>
               </td>
 
-              <!-- Zgjidh grup (çdo modul) -->
               <td class="nowrap">
-                <div class="d-flex gap-2">
-                  <select class="form-select form-select-sm" style="min-width:280px"
-                          data-role="group-select-any" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <option value="">— Zgjidh grup —</option>
-                    <?php foreach ($groupsMeta as $g): $isFull = ((int)$g['members'] >= 10); ?>
+                <div class="d-flex gap-1 align-items-center">
+                  <select class="select inline-select" style="min-width:210px"
+                          data-role="<?= $pcid > 0 ? 'group-select' : 'group-select-any' ?>"
+                          data-student="<?= $sid ?>" <?= $pcid > 0 ? 'data-course="' . $pcid . '"' : '' ?>
+                          <?= $EDIT_MODE ? '' : 'disabled' ?> aria-label="Zgjidh grupin">
+                    <option value="">— Grupi —</option>
+                    <?php foreach ($groupsForRow as $g):
+                      $isFull = ((int)$g['members'] >= 10); ?>
                       <option value="<?= (int)$g['id'] ?>" <?= $isFull ? 'disabled' : '' ?>>
-                        #<?= (int)$g['id'] ?> • <?= h($g['course_name']) ?> • <?= h(fmt_dMY($g['start_date']).' → '.fmt_dMY($g['end_date'])) ?>
-                        <?= $isFull ? ' — [Full]' : ' — ['.(int)$g['members'].'/10]' ?>
+                        <?php if ($pcid <= 0): ?><?= h($g['course_name']) ?> · <?php endif; ?>#<?= (int)$g['id'] ?> · <?= (int)$g['members'] ?>/10<?= $isFull ? ' (plot)' : '' ?>
                       </option>
                     <?php endforeach; ?>
                   </select>
-                  <button class="btn btn-primary btn-sm" data-role="assign-btn-any" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <i class="bi bi-plus-circle me-1"></i>Vendos
-                  </button>
+                  <button class="btn btn-sm btn-ink" type="button"
+                          data-role="<?= $pcid > 0 ? 'assign-btn' : 'assign-btn-any' ?>"
+                          data-student="<?= $sid ?>" <?= $pcid > 0 ? 'data-course="' . $pcid . '"' : '' ?>
+                          <?= $EDIT_MODE ? '' : 'disabled' ?>>Cakto</button>
                 </div>
               </td>
             </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="4" class="text-center text-muted">Asnjë student pa modul & pa grup.</td></tr>
-          <?php endif; ?>
-          </tbody>
-        </table>
-      </div>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     </div>
-  </div>
 
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+    <p class="muted mt-3" style="font-size:var(--fs-xs)">
+      <?= number_format(count($waiting)) ?> kursantë presin caktim. Zgjidh disa rreshta për t'i caktuar të gjithë njëherësh.
+    </p>
+
+  <?php else: ?>
+    <div class="blank">
+      <span class="blank-title">Askush nuk pret caktim</span>
+      <span class="blank-note">Të gjithë kursantët janë caktuar në një grup.</span>
+    </div>
+  <?php endif; ?>
+
 </main>
+
 
 <!-- FAB: Edit Mode -->
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
@@ -750,6 +725,92 @@ document.addEventListener('DOMContentLoaded', ()=>{ document.body.classList.add(
 <?php if ($flash_ok): ?>
 document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($flash_ok) ?>));
 <?php endif; ?>
+
+/* ===== Zgjedhje rreshtash dhe caktim masiv =====
+   Përdor të njëjtin endpoint si caktimi një-nga-një; asnjë veprim i ri nuk u
+   shtua në server. Ndryshimi është vetëm sa herë e thërret përdoruesi. */
+(function(){
+  const bar   = document.getElementById('bulkBar');
+  const nOut  = document.getElementById('bulkN');
+  const gSel  = document.getElementById('bulkGroup');
+  const btn   = document.getElementById('bulkAssign');
+  const clr   = document.getElementById('bulkClear');
+  const all   = document.getElementById('pickAll');
+  const prog  = document.getElementById('bulkProgress');
+  if (!bar) return;
+
+  const picks = () => Array.from(document.querySelectorAll('.pick:checked'));
+
+  function sync(){
+    const n = picks().length;
+    nOut.textContent = n;
+    bar.hidden = n === 0;
+    document.querySelectorAll('.pick').forEach(cb=>{
+      cb.closest('tr').classList.toggle('is-selected', cb.checked);
+    });
+    if (all) {
+      const boxes = document.querySelectorAll('.pick:not(:disabled)');
+      all.checked = n > 0 && n === boxes.length;
+      all.indeterminate = n > 0 && n < boxes.length;
+    }
+  }
+
+  document.addEventListener('change', e=>{
+    if (e.target.classList && e.target.classList.contains('pick')) sync();
+  });
+
+  if (all) all.addEventListener('change', ()=>{
+    document.querySelectorAll('.pick:not(:disabled)').forEach(cb=>{ cb.checked = all.checked; });
+    sync();
+  });
+
+  if (clr) clr.addEventListener('click', ()=>{
+    document.querySelectorAll('.pick').forEach(cb=>{ cb.checked = false; });
+    sync();
+  });
+
+  if (btn) btn.addEventListener('click', async ()=>{
+    if (!EDIT_MODE) return;
+    const gid = parseInt(gSel.value || '0', 10);
+    if (!gid){ notify('warning','Zgjidh grupin ku do t\'i caktosh.'); gSel.focus(); return; }
+
+    const ids = picks().map(cb => parseInt(cb.dataset.student, 10));
+    if (!ids.length) return;
+
+    btn.disabled = true;
+    let ok = 0;
+    const failed = [];
+
+    for (let i = 0; i < ids.length; i++){
+      prog.textContent = (i+1) + '/' + ids.length;
+      try{
+        const res  = await fetch(ENDPOINT, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Accept':'application/json'},
+          body: JSON.stringify({csrf:CSRF, action:'assign_to_group', student_id:ids[i], group_id:gid})
+        });
+        const json = await res.json();
+        if (json.ok) ok++; else failed.push(json.error || 'i papranuar');
+      }catch(e){ failed.push('gabim lidhjeje'); }
+    }
+
+    prog.textContent = '';
+    btn.disabled = false;
+
+    if (ok && !failed.length){
+      notify('success', ok + ' kursantë u caktuan në grup.');
+      setTimeout(()=>location.reload(), 700);
+    } else if (ok){
+      notify('warning', ok + ' u caktuan, ' + failed.length + ' jo: ' + failed[0]);
+      setTimeout(()=>location.reload(), 1600);
+    } else {
+      notify('danger', 'Asnjë nuk u caktua. ' + (failed[0] || ''));
+    }
+  });
+
+  sync();
+})();
+
 <?php if ($flash_err): ?>
 document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($flash_err) ?>));
 <?php endif; ?>
