@@ -244,14 +244,31 @@
       ? Array.prototype.slice.call(table.tBodies)
       : Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []);
     var total = units.length;
-    var haystack = units.map(function (u) { return (u.textContent || '').toLowerCase(); });
     var noun = box.getAttribute('data-tfilter-noun') || 'rreshta';
+
+    /* Teksti i dukshëm i rreshtit. Opsionet e listave rënëse nuk llogariten
+       (përndryshe çdo rresht me listë grupesh do të përputhej me çdo modul);
+       merret vetëm vlera e zgjedhur. Llogaritet sa herë, se teksti ndryshon. */
+    function textOf(unit) {
+      var out = '';
+      var walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (n) {
+          return n.parentElement && n.parentElement.closest('select, script, template') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      while (walker.nextNode()) out += ' ' + walker.currentNode.nodeValue;
+      Array.prototype.forEach.call(unit.querySelectorAll('select'), function (s) {
+        var o = s.options[s.selectedIndex];
+        if (o && o.value !== '') out += ' ' + o.textContent;
+      });
+      return out.replace(/\s+/g, ' ').toLowerCase();
+    }
 
     function apply() {
       var needle = input.value.trim().toLowerCase();
       var shown = 0;
-      units.forEach(function (u, i) {
-        var hit = needle === '' || haystack[i].indexOf(needle) !== -1;
+      units.forEach(function (u) {
+        var hit = needle === '' || textOf(u).indexOf(needle) !== -1;
         if (multi) u.style.display = hit ? '' : 'none'; else u.hidden = !hit;
         if (hit) shown++;
       });

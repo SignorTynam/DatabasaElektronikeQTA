@@ -560,6 +560,14 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
 .table .col-wide { min-width: 16rem; }
 .table .col-medium { min-width: 10rem; }
 
+/* Kutiza e zgjedhjes së rreshtit */
+.table .pick-col { width: 1%; padding-right: 0; }
+.table .pick-col .form-check-input { margin: 0; width: 1.15rem; height: 1.15rem; }
+
+/* Një zgjedhje + buton brenda qelizës (p.sh. "Zgjidh grupin" · "Cakto") */
+.inline-action { display: flex; align-items: center; gap: var(--sp-2); }
+.inline-action > .form-select { min-width: 12rem; max-width: 26rem; }
+
 /* Rresht bosh brenda tabelës */
 .table-empty {
   padding: var(--sp-8) var(--sp-4) !important;
@@ -1240,6 +1248,11 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   font-variant-numeric: tabular-nums;
 }
 .stat-note { color: var(--text-muted); font-size: var(--fs-xs); }
+@media (max-width: 575.98px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+  .stat { padding: var(--sp-3) var(--sp-4); }
+  .stat-value { font-size: var(--fs-xl); }
+}
 
 /* ================================================ 21. Lista çelës–vlerë */
 .kv {
