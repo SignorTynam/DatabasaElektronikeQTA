@@ -97,6 +97,22 @@ require_once __DIR__ . '/navbarMain.php';
       <h1 class="login-title" id="loginTitle">Hyr në llogari</h1>
       <p class="text-muted mb-4">Zgjidh kush je, pastaj shkruaj të dhënat.</p>
 
+      <?php if ($currentUser):
+        /* Dikush që është tashmë brenda arrin këtu kur hap një faqe që nuk i takon
+           rolit të tij. I themi qartë që nuk ka dalë nga llogaria. */
+        $meRole  = qta_public_role($currentUser);
+        $meName  = (string)(($currentUser['full_name'] ?? '') ?: ($currentUser['email'] ?? 'llogarinë tënde')); ?>
+        <div class="notice mb-4" role="status">
+          <i class="bi bi-person-check" aria-hidden="true"></i>
+          <span>
+            <b>Je tashmë brenda si <?= h($meName) ?>.</b>
+            Faqja që hape nuk është për këtë llogari.
+            <a href="<?= h(qta_public_panel_href($meRole)) ?>">Vazhdo te <?= h(mb_strtolower(qta_public_panel_label($meRole))) ?></a>
+            ose hyr më poshtë me një llogari tjetër.
+          </span>
+        </div>
+      <?php endif; ?>
+
       <?php if ($loginError): ?>
         <div class="alert alert-danger" role="alert" tabindex="-1" data-login-error>
           <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
