@@ -89,7 +89,7 @@ try {
   $require_edit = function() use ($CAN_EDIT, $EDIT_MODE) {
     if (!$CAN_EDIT || !$EDIT_MODE) {
       http_response_code(403);
-      echo json_encode(['ok'=>false,'error'=>'Kërkohet Edit Mode (administrator/editor).']); exit;
+      echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
     }
   };
 

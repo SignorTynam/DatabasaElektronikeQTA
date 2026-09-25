@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     header('Location: groups.php'); exit;
   }
   if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
-    http_response_code(400); $_SESSION['flash_err'] = 'CSRF token mismatch.'; header('Location: groups.php'); exit;
+    http_response_code(400); $_SESSION['flash_err'] = 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.'; header('Location: groups.php'); exit;
   }
 
   /* ===== Krijo grup (me ndarje inteligjente >10) ===== */

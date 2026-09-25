@@ -34,7 +34,7 @@ if (!is_array($in)) $in = $_POST;
 
 $csrf = $in['csrf'] ?? '';
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
-  http_response_code(400); echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+  http_response_code(400); echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 
 $action    = $in['action'] ?? '';

@@ -32,7 +32,7 @@ if (!in_array($meRole, ['administrator','editor'], true)) {
 /* Guard: Edit Mode duhet të jetë ON */
 if (empty($_SESSION['courses_edit_mode'])) {
     http_response_code(403);
-    echo json_encode(['ok'=>false,'error'=>'Aktivizo mënyrën e redaktimit.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
 }
 
 /* Lexo input (JSON ose form) */
@@ -45,7 +45,7 @@ $csrf      = $data['csrf'] ?? '';
 
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 
 try {

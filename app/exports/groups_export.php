@@ -79,14 +79,16 @@ if (!$me || !in_array($role, ['administrator', 'editor'], true)) {
   exit;
 }
 
+/* POST (i preferuar: tokeni nuk del në URL) ose GET për lidhjet e vjetra */
+$request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $csrfSession = $_SESSION['csrf_token'] ?? '';
-$csrfQuery = $_GET['csrf'] ?? '';
+$csrfQuery = (string)($request['csrf'] ?? '');
 if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
   qta_fail(403, 'CSRF është i pavlefshëm ose mungon.');
 }
 
-$type = strtolower(trim((string)($_GET['type'] ?? '')));
-$format = strtolower(trim((string)($_GET['f'] ?? 'xlsx')));
+$type = strtolower(trim((string)($request['type'] ?? '')));
+$format = strtolower(trim((string)($request['f'] ?? 'xlsx')));
 
 if ($type !== 'qkl') {
   qta_fail(400, 'Parametri type i panjohur. Përdor type=qkl.');
@@ -95,8 +97,8 @@ if (!in_array($format, ['xlsx', 'pdf'], true)) {
   qta_fail(400, 'Format i panjohur. Për Raportin për QKL përdor vetëm f=xlsx ose f=pdf.');
 }
 
-$amzeStart = filter_input(INPUT_GET, 'amze_start', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$amzeEnd = filter_input(INPUT_GET, 'amze_end', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$amzeStart = filter_var($request['amze_start'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$amzeEnd = filter_var($request['amze_end'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$amzeStart || !$amzeEnd) {
   qta_fail(400, 'Intervali AMZË është i pavlefshëm. AMZË fillimi dhe AMZË mbarimi duhet të jenë numra pozitivë.');
 }

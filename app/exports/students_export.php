@@ -95,17 +95,19 @@ if (!$currentUser || !in_array($role, array('administrator','editor'), true)) {
 }
 
 /* CSRF (GET) */
+/* POST (i preferuar: tokeni nuk del në URL) ose GET për lidhjet e vjetra */
+$request     = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $csrfSession = $_SESSION['csrf_token'] ?? '';
-$csrfQuery   = $_GET['csrf'] ?? '';
+$csrfQuery   = (string)($request['csrf'] ?? '');
 if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
     qta_fail(403, 'CSRF gabim ose mungon.');
 }
 
 /* Parametra */
-$f          = strtolower(trim($_GET['f'] ?? 'xlsx'));  // xlsx|pdf|docx
-$q          = trim($_GET['q'] ?? '');
-$edu        = trim($_GET['edu'] ?? '');
-$incomplete = isset($_GET['incomplete']) && $_GET['incomplete'] === '1';
+$f          = strtolower(trim($request['f'] ?? 'xlsx'));  // xlsx|pdf|docx
+$q          = trim($request['q'] ?? '');
+$edu        = trim($request['edu'] ?? '');
+$incomplete = isset($request['incomplete']) && $request['incomplete'] === '1';
 
 /* ===============================
    Filtrat – njësoj si students.php

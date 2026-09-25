@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
   $payload = json_decode(file_get_contents('php://input'), true) ?: [];
   try {
     if (empty($payload['csrf']) || !hash_equals($_SESSION['csrf_token'], (string)$payload['csrf'])) {
-      throw new RuntimeException('CSRF token mismatch.');
+      throw new RuntimeException('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
     }
     $action = (string)($payload['action'] ?? '');
 

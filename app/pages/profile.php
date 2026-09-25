@@ -65,7 +65,7 @@ $CSRF = $_SESSION['csrf_token'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $token = $_POST['csrf'] ?? '';
   if (empty($token) || !hash_equals($_SESSION['csrf_token'], $token)) {
-    http_response_code(400); exit('CSRF token mismatch.');
+    http_response_code(400); exit('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
   }
 
   $action = $_POST['action'] ?? '';

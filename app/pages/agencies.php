@@ -60,7 +60,7 @@ if($agencyRoleId===null) exit('Mungon roli "agjencia".');
 if($_SERVER['REQUEST_METHOD']==='POST'){
   $token=$_POST['csrf']??'';
   if(empty($token)||!hash_equals($_SESSION['csrf_token'],$token)){
-    http_response_code(400); exit('CSRF token mismatch.');
+    http_response_code(400); exit('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
   }
   if(!$EDIT_MODE){
     flash('err','Aktivizo <strong>Mënyrën e redaktimit</strong> për të kryer veprime.');

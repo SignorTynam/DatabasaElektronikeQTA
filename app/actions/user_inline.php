@@ -39,7 +39,7 @@ $value   = $data['value'] ?? null;
 
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 if ($user_id <= 0) {
     http_response_code(400);

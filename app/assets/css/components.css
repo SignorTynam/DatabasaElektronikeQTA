@@ -556,6 +556,10 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
 
 .row-actions { display: inline-flex; flex-wrap: nowrap; gap: var(--sp-1); }
 
+/* Gjerësi minimale për kolonat me tekst të gjatë (emra modulesh, adresa). */
+.table .col-wide { min-width: 16rem; }
+.table .col-medium { min-width: 10rem; }
+
 /* Rresht bosh brenda tabelës */
 .table-empty {
   padding: var(--sp-8) var(--sp-4) !important;

@@ -34,7 +34,7 @@ if (!$me || !in_array($role, ['administrator','editor'], true)) {
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 if (!$EDIT_MODE) {
   http_response_code(403);
-  echo json_encode(['ok'=>false,'error'=>'Edit Mode është OFF. Aktivizo për të bërë ndryshime.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
 }
 
 /* Input */
@@ -45,7 +45,7 @@ if(!is_array($data)) $data = $_POST;
 $csrf = $data['csrf'] ?? '';
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$csrf)) {
   http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 
 $action     = $data['action'] ?? '';
