@@ -4,6 +4,7 @@ session_start();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
+require_once __DIR__ . '/../shared/themeli.php';
 
 /* ------------------------------
    Guard: vetëm përdorues i loguar me rol "agjencia"
@@ -26,7 +27,7 @@ if (!$currentUser || $currentUser['role_name'] !== 'agjencia') {
   header('Location: selectProfile.php'); exit;
 }
 
-/* Marrim entitetin e agjencisë për këtë user */
+/* Agjencia e këtij përdoruesi */
 $astmt = $pdo->prepare("SELECT * FROM agencies WHERE user_id = :uid LIMIT 1");
 $astmt->execute([':uid' => $currentUser['id']]);
 $AGENCY = $astmt->fetch(PDO::FETCH_ASSOC);
@@ -37,17 +38,13 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
-   Parametra kërkimi & paginimi
+   Kërkimi dhe faqet
 --------------------------------*/
-$q      = trim($_GET['q'] ?? '');
+$q      = trim((string)($_GET['q'] ?? ''));
 $page   = max(1, (int)($_GET['page'] ?? 1));
-$limit  = 20;
+$limit  = 25;
 $offset = ($page - 1) * $limit;
 
-/* ------------------------------
-   SQL bazë (vetëm studentët e kësaj agjencie)
-   - lastg: grupi i fundit për student (sipas start_date)
---------------------------------*/
 $params = [':agid' => (int)$AGENCY['id']];
 $whereQ = '';
 if ($q !== '') {
@@ -58,13 +55,11 @@ if ($q !== '') {
               OR p.father_name LIKE :kw4
               OR p.last_name LIKE :kw5
             )";
-  $params[':kw']  = '%'.$q.'%';
-  $params[':kw2'] = '%'.$q.'%';
-  $params[':kw3'] = '%'.$q.'%';
-  $params[':kw4'] = '%'.$q.'%';
-  $params[':kw5'] = '%'.$q.'%';
+  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) { $params[$k] = '%' . $q . '%'; }
 }
 
+/* Vetëm punonjësit e kësaj agjencie; për secilin, grupi i fundit (sipas datës së fillimit).
+   Data e provimit është e çdo kursanti (cgs); ajo e grupit është kolonë e vjetër. */
 $sqlBase = "
   FROM agency_students asg
   JOIN students s ON s.id = asg.student_id
@@ -83,29 +78,28 @@ $sqlBase = "
   ) lastg ON lastg.student_id = s.id
   LEFT JOIN course_group_students cgs ON cgs.group_id = lastg.group_id AND cgs.student_id = s.id
   LEFT JOIN course_groups cg ON cg.id = lastg.group_id
+  LEFT JOIN courses c ON c.id = cg.course_id
   WHERE asg.agency_id = :agid
   $whereQ
 ";
 
-/* total */
-$count = $pdo->prepare("SELECT COUNT(*) ".$sqlBase);
+$count = $pdo->prepare("SELECT COUNT(*) " . $sqlBase);
 $count->execute($params);
 $total = (int)$count->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
 
-/* list */
 $list = $pdo->prepare("
   SELECT
     s.id AS student_id,
     s.nr_amze,
     p.first_name, p.father_name, p.last_name,
     p.personal_number,
-    p.birth_date, p.birth_place,
     TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-    el.code AS edu_code, el.label AS edu_label,
-    lastg.group_id, cg.start_date, cg.end_date, cg.exam_date,
+    el.label AS edu_label,
+    lastg.group_id, c.name AS course_name, cg.start_date, cg.end_date,
+    COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
     cgs.final_score
-  ".$sqlBase."
+  " . $sqlBase . "
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT :lim OFFSET :off
 ");
@@ -117,127 +111,112 @@ $list->bindValue(':off', $offset, PDO::PARAM_INT);
 $list->execute();
 $rows = $list->fetchAll(PDO::FETCH_ASSOC);
 
-/* për navbar2.php: cilin item të aktivizojmë */
-$NAV_ACTIVE = 'students'; // ose 'register'
+$NAV_ACTIVE = 'agency_students';
+$HELP_TOPIC = 'agency_students';
+require __DIR__ . '/inc/navbar2.php';
 
-$pageTitle = 'Regjistri – QTA Agjenci';
+$pageTitle = 'Punonjësit tanë';
 require __DIR__ . '/../shared/app_head.php';
+$company = (string)($AGENCY['company_name'] ?: 'Agjencia');
 ?>
 
+<main class="app-main" id="main" tabindex="-1">
 
-<?php require __DIR__ . '/inc/navbar2.php'; ?>
+  <header class="page-head">
+    <div class="page-head-main">
+      <span class="eyebrow"><?= h($company) ?></span>
+      <h1 class="page-title">Punonjësit tanë</h1>
+      <p class="page-lead">Punonjësit tuaj që janë regjistruar në QTA, me modulin e fundit, provimin dhe rezultatin.</p>
+    </div>
+    <div class="page-actions">
+      <?= qta_help_button() ?>
+      <?php if ($total > 0):
+        $exportAction = 'register_export_agency.php';
+        $exportFields = ['q' => $q];
+        $exportTitle  = 'Shkarko listën e punonjësve si';
+        require __DIR__ . '/../shared/partials/export_menu.php';
+      endif; ?>
+    </div>
+  </header>
 
-<main class="app-main">
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <div class="title-block-main">
-          <div class="title-block-eyebrow">Regjistri</div>
-          <h1>Regjistri i studentëve</h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-    <form class="d-flex" method="get" action="register_agjencia.php">
-      <div class="input-group">
-        <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-        <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZËS/ID/Emrit...">
-        <button class="btn btn-outline-secondary" type="button" onclick="window.location='register_agjencia.php'">
-          <i class="bi bi-x-circle me-1"></i>Pastro
-        </button>
-        <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="card">
-    <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Regjistri</h5>
-      <div class="d-flex align-items-center gap-2">
-        <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
-        <div class="export-actions" role="group" aria-label="Eksporto regjistrin">
-          <?php foreach ([
-            'xlsx' => ['bi-file-earmark-excel', 'Excel', 'btn-outline-success'],
-            'pdf'  => ['bi-file-earmark-pdf', 'PDF', 'btn-outline-danger'],
-            'docx' => ['bi-file-earmark-word', 'Word', 'btn-outline-primary'],
-          ] as $exportFormat => [$exportIcon, $exportLabel, $exportClass]): ?>
-            <form method="post" action="register_export_agency.php">
-              <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
-              <input type="hidden" name="f" value="<?= h($exportFormat) ?>">
-              <input type="hidden" name="q" value="<?= h($q) ?>">
-              <button class="btn <?= h($exportClass) ?>" type="submit">
-                <i class="bi <?= h($exportIcon) ?> me-1" aria-hidden="true"></i><?= h($exportLabel) ?>
-              </button>
-            </form>
-          <?php endforeach; ?>
-        </div>
+  <form class="filters filters-compact" method="get" action="register_agjencia.php" role="search" aria-label="Kërko punonjës">
+    <div class="filter-field is-grow">
+      <label class="visually-hidden" for="raQ">Kërko një punonjës</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="raQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
       </div>
     </div>
+    <div class="filter-actions">
+      <?php if ($q !== ''): ?><a class="btn btn-ghost" href="register_agjencia.php">Pastro</a><?php endif; ?>
+      <button class="btn btn-secondary" type="submit">Kërko</button>
+    </div>
+  </form>
 
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
+  <section class="section" aria-labelledby="raTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="raTitle">
+        <?= $q !== '' ? 'Punonjësit që përputhen' : 'Të gjithë punonjësit' ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
+      </h2>
+      <a class="section-link" href="groups_agjencia.php">Shiko sipas grupeve</a>
+    </div>
+
+    <?php if ($rows): ?>
+      <div class="table-responsive">
+        <table class="table" id="agencyStudentsTable" data-sortable>
+          <thead>
             <tr>
-              <th class="nowrap">AMZË</th>
-              <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-              <th class="nowrap">Datë fillimi</th>
-              <th class="nowrap">Datë mbarimi</th>
-              <th class="nowrap">Datë testimi</th>
-              <th class="nowrap">Pikët përfundimtare</th>
-              <th class="nowrap">Mosha</th>
-              <th class="nowrap">Arsimi</th>
+              <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
+              <th scope="col" data-sort="text">Punonjësi</th>
+              <th scope="col" class="col-wide" data-sort="text">Moduli i fundit</th>
+              <th scope="col" class="nowrap" data-sort="date">Provimi</th>
+              <th scope="col" data-sort="text">Gjendja</th>
+              <th scope="col" class="nowrap num-col" data-sort="num">Mosha</th>
             </tr>
           </thead>
           <tbody>
-          <?php if ($rows): foreach ($rows as $r):
-              $full = trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''));
-          ?>
-            <tr>
-              <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
-              <td>
-                <div class="fw-semibold"><?= htmlspecialchars($full ?: '—') ?></div>
-                <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '—') ?></div>
-              </td>
-              <td class="nowrap"><span class="readonly"><?= htmlspecialchars($r['start_date'] ?: '—') ?></span></td>
-              <td class="nowrap"><span class="readonly"><?= htmlspecialchars($r['end_date'] ?: '—') ?></span></td>
-              <td class="nowrap"><span class="readonly"><?= htmlspecialchars($r['exam_date'] ?: '—') ?></span></td>
-              <td class="nowrap">
-                <span class="readonly">
-                  <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
-                </span>
-              </td>
-              <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-              <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
-            </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="8" class="text-center text-muted">Nuk u gjetën studentë për këtë agjenci.</td></tr>
-          <?php endif; ?>
+            <?php foreach ($rows as $r):
+              $full = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? ''); ?>
+              <tr>
+                <td class="nowrap" data-sort-value="<?= (int)$r['nr_amze'] ?>"><span class="id-code"><?= h((string)$r['nr_amze']) ?></span></td>
+                <td>
+                  <a class="person-name" href="student_card.php?sid=<?= (int)$r['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
+                  <?php if (!empty($r['personal_number'])): ?><span class="cell-sub code"><?= h((string)$r['personal_number']) ?></span><?php endif; ?>
+                </td>
+                <td class="col-wide">
+                  <?php if (!empty($r['group_id'])): ?>
+                    <?= h((string)$r['course_name']) ?>
+                    <span class="cell-sub"><?= h(qta_date($r['start_date'])) ?> – <?= h(qta_date($r['end_date'])) ?></span>
+                  <?php else: ?>
+                    <span class="text-muted">Ende pa grup</span>
+                  <?php endif; ?>
+                </td>
+                <td class="nowrap" data-sort-value="<?= h((string)($r['exam_date'] ?? '')) ?>"><?= h(qta_date($r['exam_date'] ?? null)) ?></td>
+                <td><?= qta_enrollment_status($r) ?></td>
+                <td class="nowrap num-col"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+              </tr>
+            <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <?php if ($totalPages > 1): ?>
-    <div class="card-footer bg-white">
-      <nav aria-label="Page navigation">
-        <ul class="pagination mb-0 justify-content-end">
-          <?php
-            $base = 'register_agjencia.php?'.http_build_query(array_filter(['q'=>$q!==''?$q:null]));
-            $prev = max(1,$page-1);
-            $next = min($totalPages,$page+1);
-            $sep  = (str_contains($base,'?') ? '&' : '?');
-          ?>
-          <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=1">«</a></li>
-          <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $prev ?>">‹</a></li>
-          <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-          <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $next ?>">›</a></li>
-          <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $totalPages ?>">»</a></li>
-        </ul>
-      </nav>
-    </div>
+      <?php if ($totalPages > 1):
+        $pBase = 'register_agjencia.php?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
+        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
+        <nav class="pager mt-3" aria-label="Faqet e listës">
+          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
+          <span class="text-muted small">Faqja <?= $page ?> nga <?= $totalPages ?></span>
+          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+        </nav>
+      <?php endif; ?>
+
+    <?php else: ?>
+      <?= $q !== ''
+        ? qta_empty('Asnjë punonjës nuk përputhet', 'Provo një pjesë tjetër të emrit ose numrin e amzës.', 'bi-search', '<a class="btn btn-secondary" href="register_agjencia.php">Pastro kërkimin</a>')
+        : qta_empty('Ende pa punonjës në regjistër', 'Kur QTA regjistron punonjësit tuaj në trajnim, ata shfaqen këtu.', 'bi-people', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
     <?php endif; ?>
-  </div>
-
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+  </section>
 </main>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>

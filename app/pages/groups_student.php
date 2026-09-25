@@ -4,9 +4,10 @@ session_start();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
+require_once __DIR__ . '/../shared/themeli.php';
 
 /* ------------------------------
-   Guard: vetëm student i loguar
+   Guard: vetëm kursant i loguar
 ------------------------------- */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
@@ -14,204 +15,139 @@ $u = $pdo->prepare("
   FROM users u JOIN roles r ON r.id=u.role_id
   WHERE u.id=:id LIMIT 1
 ");
-$u->execute([':id'=>$_SESSION['user_id']]);
+$u->execute([':id' => $_SESSION['user_id']]);
 $currentUser = $u->fetch();
-if (!$currentUser || $currentUser['role_name']!=='student') { header('Location: selectProfile.php'); exit; }
-
-/* Helper HTML safe */
-if (!function_exists('h')) {
-  function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-}
+if (!$currentUser || $currentUser['role_name'] !== 'student') { header('Location: selectProfile.php'); exit; }
 
 /* ------------------------------
-   Profili bazë i studentit
+   Personi i kësaj llogarie
 ------------------------------- */
 $S0 = $pdo->prepare("
-  SELECT 
-    s.id,
-    s.person_id,
-    s.education_level_id,
-    p.personal_number
+  SELECT s.id, s.person_id, p.personal_number
   FROM students s
   JOIN persons p ON p.id = s.person_id
   WHERE s.user_id = :uid
   LIMIT 1
 ");
-$S0->execute([':uid'=>$_SESSION['user_id']]);
+$S0->execute([':uid' => $_SESSION['user_id']]);
 $meStud = $S0->fetch();
-
-if (!$meStud) { exit('Profili i studentit nuk u gjet.'); }
-
-$personId       = (int)$meStud['person_id'];
-$personalNumber = (string)($meStud['personal_number'] ?? '');
-
-/* Etiketat e arsimit (opsionale) */
-$edu = ['code'=>null,'label'=>null];
-if (!empty($meStud['education_level_id'])) {
-  $E = $pdo->prepare("SELECT code,label FROM education_levels WHERE id=:id");
-  $E->execute([':id'=>(int)$meStud['education_level_id']]);
-  $er = $E->fetch();
-  if ($er) $edu = ['code'=>$er['code'],'label'=>$er['label']];
-}
+$personId = $meStud ? (int)$meStud['person_id'] : 0;
 
 /* ------------------------------
-   AMZË-t për këtë person
-------------------------------- */
-$myAmze = [];
-if ($personId > 0) {
-  $A = $pdo->prepare("
-    SELECT DISTINCT s.nr_amze
-    FROM students s
-    WHERE s.person_id = :pid
-      AND s.nr_amze IS NOT NULL AND s.nr_amze <> ''
-    ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-  ");
-  $A->execute([':pid'=>$personId]);
-  $myAmze = array_map(fn($r)=> (string)$r['nr_amze'], $A->fetchAll(PDO::FETCH_ASSOC));
-}
-
-
-/* ------------------------------
-   Grupet e studentit (për të gjitha AMZË-t e tij)
-   – lidhje përmes person_id
+   Modulet (të gjitha regjistrimet e personit)
 ------------------------------- */
 $groups = [];
+$planned = [];
 if ($personId > 0) {
   $G = $pdo->prepare("
     SELECT
       cg.id AS group_id, cg.start_date, cg.end_date,
       c.code AS course_code, c.name AS course_name, c.hours,
-      cgs.final_score, cgs.exam_date AS my_exam,
+      cgs.final_score, cgs.exam_date,
       s.nr_amze
     FROM students s
     JOIN course_group_students cgs ON cgs.student_id = s.id
     JOIN course_groups cg ON cg.id = cgs.group_id
     JOIN courses c ON c.id = cg.course_id
     WHERE s.person_id = :pid
-    ORDER BY cg.start_date DESC, cg.id DESC,
-             CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+    ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC
   ");
-  $G->execute([':pid'=>$personId]);
+  $G->execute([':pid' => $personId]);
   $groups = $G->fetchAll(PDO::FETCH_ASSOC);
-} else {
-  /* Fallback shumë i rrallë: nëse s’ka person_id (s’duhet të ndodhë),
-     shfaq vetëm grupet e rreshtit aktual të students */
-  $G = $pdo->prepare("
-    SELECT
-      cg.id AS group_id, cg.start_date, cg.end_date,
-      c.code AS course_code, c.name AS course_name, c.hours,
-      cgs.final_score, cgs.exam_date AS my_exam,
-      s.nr_amze
-    FROM course_group_students cgs
-    JOIN course_groups cg ON cg.id = cgs.group_id
-    JOIN courses c ON c.id = cg.course_id
-    JOIN students s ON s.id = cgs.student_id
-    WHERE s.id = :sid
-    ORDER BY cg.start_date DESC, cg.id DESC
+
+  /* Module të zgjedhura që presin grup */
+  $P = $pdo->prepare("
+    SELECT c.code AS course_code, c.name AS course_name, c.hours, s.nr_amze
+    FROM student_course_plans scp
+    JOIN students s ON s.id = scp.student_id
+    JOIN courses c ON c.id = scp.course_id
+    WHERE s.person_id = :pid AND scp.status = 'planned'
+    ORDER BY c.name
   ");
-  $G->execute([':sid'=>(int)$meStud['id']]);
-  $groups = $G->fetchAll(PDO::FETCH_ASSOC);
+  $P->execute([':pid' => $personId]);
+  $planned = $P->fetchAll(PDO::FETCH_ASSOC);
 }
 
-/* KPI të thjeshta */
-$k_total_groups = count($groups);
-$allScores = array_values(array_filter(array_map(
-  fn($r)=> $r['final_score']!==null ? (float)$r['final_score'] : null, $groups
-), fn($v)=> $v!==null));
-$k_avg_score = $allScores ? round(array_sum($allScores)/count($allScores), 2) : null;
-$k_pass_rate = null;
-if ($allScores) {
-  $pass = 0; foreach ($allScores as $sc) if ($sc >= 50) $pass++;
-  $k_pass_rate = round(($pass / count($allScores)) * 100, 1);
-}
+$scored = array_values(array_filter($groups, static fn($g) => $g['final_score'] !== null));
+$passed = count(array_filter($scored, static fn($g) => (float)$g['final_score'] >= 50));
+$hoursDone = array_sum(array_map(static fn($g) => (float)$g['final_score'] >= 50 ? (int)$g['hours'] : 0, $scored));
 
-/* Navbar studenti */
-$NAV_ACTIVE = 'groups'; // (navbar3 ka vetëm Dashboard/Profili; kjo thjesht mban stilin)
+$NAV_ACTIVE = 'student_groups';
+$HELP_TOPIC = 'student_groups';
 require __DIR__ . '/inc/navbar3.php';
 
-$pageTitle = 'Grupet e mia – QTA';
+$pageTitle = 'Modulet e mia';
 require __DIR__ . '/../shared/app_head.php';
 ?>
 
+<main class="app-main" id="main" tabindex="-1">
 
-<main class="app-main">
-
-  <div class="title-block">
-    <div class="title-block-main">
-      <div class="title-block-eyebrow">Kartela ime</div>
-      <h1>Grupet e mia</h1>
-      <p class="title-block-note">Modulet ku je caktuar, datat dhe rezultatet.</p>
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Modulet e mia</h1>
+      <p class="page-lead">Çdo modul ku je regjistruar: datat e mësimit, provimi dhe rezultati. Kalon me 50 pikë e lart.</p>
     </div>
-    <div class="title-block-fields">
-      <div class="title-block-field">
-        <span class="label">Grupe</span>
-        <span class="value"><?= number_format((int)$k_total_groups) ?></span>
+    <div class="page-actions">
+      <?= qta_help_button() ?>
+    </div>
+  </header>
+
+  <?php if ($groups): ?>
+    <div class="stats mb-4" aria-label="Përmbledhje">
+      <div class="stat">
+        <span class="stat-label">Module</span>
+        <span class="stat-value"><?= count($groups) + count($planned) ?></span>
       </div>
-      <div class="title-block-field">
-        <span class="label">Data</span>
-        <span class="value"><?= h(date('d.m.Y')) ?></span>
+      <div class="stat">
+        <span class="stat-label">Të kaluara</span>
+        <span class="stat-value"><?= $passed ?></span>
       </div>
-    </div>
-  </div>
-
-  <!-- Tabela: grupet (read-only) -->
-  <section class="card">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-mortarboard me-2"></i>Grupet e mia</h5>
-      <span class="text-muted small"><?= number_format($k_total_groups) ?> grup(e)</span>
-    </div>
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0" data-sortable>
-          <thead class="table-light">
-            <tr>
-              <th class="nowrap" data-sort="text">Grupi</th>
-              <th data-sort="text">Moduli</th>
-              <th class="nowrap" data-sort="num">AMZË</th>
-              <th class="nowrap" data-sort="date">Fillimi</th>
-              <th class="nowrap" data-sort="date">Mbarimi</th>
-              <th class="nowrap" data-sort="text">Data e testit</th>
-              <th class="nowrap" data-sort="num">Pikët</th>
-              <th class="nowrap" data-sort="text">Statusi</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if ($groups): foreach ($groups as $g):
-            $today = date('Y-m-d');
-            $status = 'Aktiv';
-            if ($g['final_score'] !== null) {
-              $status = ((float)$g['final_score'] >= 50) ? 'Përfunduar (kaloi)' : 'Përfunduar (jo-kalues)';
-            } elseif (!empty($g['my_exam'])) {
-              $status = ($g['my_exam'] >= $today) ? ('Test më '.$g['my_exam']) : 'Test i kaluar';
-            } elseif (!empty($g['end_date']) && $g['end_date'] < $today) {
-              $status = 'Mbyllur';
-            }
-          ?>
-            <tr>
-              <td class="nowrap">#<?= (int)$g['group_id'] ?></td>
-              <td><?= h(($g['course_code'] ?? '').' · '.($g['course_name'] ?? '')) ?></td>
-              <td class="nowrap"><?= h($g['nr_amze'] ?? '—') ?></td>
-              <td class="nowrap"><?= h($g['start_date'] ?? '') ?></td>
-              <td class="nowrap"><?= h($g['end_date'] ?? '') ?></td>
-              <td class="nowrap"><?= h($g['my_exam'] ?? '—') ?></td>
-              <td class="nowrap"><?= $g['final_score']!==null ? rtrim(rtrim((string)$g['final_score'],'0'),'.') : '—' ?></td>
-              <td class="nowrap"><span class="badge badge-soft rounded-pill"><?= h($status) ?></span></td>
-            </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="8" class="text-center text-muted">Aktualisht s’je i regjistruar në asnjë grup.</td></tr>
-          <?php endif; ?>
-          </tbody>
-        </table>
+      <div class="stat">
+        <span class="stat-label">Orë të përfunduara</span>
+        <span class="stat-value"><?= number_format((int)$hoursDone, 0, ',', '.') ?></span>
       </div>
     </div>
-  </section>
+  <?php endif; ?>
 
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+  <?php if ($groups || $planned): ?>
+    <ul class="enroll-list">
+      <?php foreach ($groups as $g): ?>
+        <li class="enroll">
+          <div class="enroll-main">
+            <span class="enroll-code"><?= h((string)$g['course_code']) ?> · Nr. i amzës <?= h((string)$g['nr_amze']) ?></span>
+            <h2 class="enroll-title"><?= h((string)$g['course_name']) ?></h2>
+            <dl class="enroll-meta">
+              <div><dt>Mësimi</dt><dd><?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?></dd></div>
+              <div><dt>Provimi</dt><dd><?= h(qta_date($g['exam_date'] ?? null, 'pa datë ende')) ?></dd></div>
+              <?php if (!empty($g['hours'])): ?><div><dt>Orë</dt><dd><?= (int)$g['hours'] ?></dd></div><?php endif; ?>
+            </dl>
+          </div>
+          <?= qta_enrollment_status($g) ?>
+        </li>
+      <?php endforeach; ?>
+      <?php foreach ($planned as $p): ?>
+        <li class="enroll">
+          <div class="enroll-main">
+            <span class="enroll-code"><?= h((string)$p['course_code']) ?> · Nr. i amzës <?= h((string)$p['nr_amze']) ?></span>
+            <h2 class="enroll-title"><?= h((string)$p['course_name']) ?></h2>
+            <p class="text-muted small mb-0">Je regjistruar. QTA do të të caktojë në grupin e radhës dhe do të njoftohesh për datat.</p>
+          </div>
+          <?= qta_status('Pret grupin', 'warning', 'bi-hourglass-split') ?>
+        </li>
+      <?php endforeach; ?>
+    </ul>
+
+    <?php if ($passed): ?>
+      <div class="notice is-sunken mt-4">
+        <i class="bi bi-qr-code" aria-hidden="true"></i>
+        <span>Modulet e kaluara mund t'i verifikojë kushdo me kodin tënd QR — e gjen te <a href="dashboard_student.php">Kreu</a>.</span>
+      </div>
+    <?php endif; ?>
+  <?php else: ?>
+    <?= qta_empty('Ende pa module', 'Kur QTA të regjistrojë në një modul, ai shfaqet këtu me datat dhe rezultatin.', 'bi-journal', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
+  <?php endif; ?>
 </main>
 
-<!-- JS -->
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
 </html>

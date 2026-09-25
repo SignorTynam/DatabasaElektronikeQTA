@@ -4,6 +4,7 @@ session_start();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
+require_once __DIR__ . '/../shared/themeli.php';
 
 /* ------------------------------
    Guard: vetëm përdorues i loguar me rol "agjencia"
@@ -25,257 +26,249 @@ if (!$currentUser || $currentUser['role_name'] !== 'agjencia') {
   header('Location: selectProfile.php'); exit;
 }
 
-/* Agjencia e këtij user-i */
+/* Agjencia e këtij përdoruesi */
 $astmt = $pdo->prepare("SELECT * FROM agencies WHERE user_id = :uid LIMIT 1");
 $astmt->execute([':uid' => $currentUser['id']]);
 $AGENCY = $astmt->fetch(PDO::FETCH_ASSOC);
 if (!$AGENCY) { header('Location: selectProfile.php'); exit; }
 
 /* ------------------------------
-   Filtra kërkimi
+   Filtrat
 --------------------------------*/
-$q            = trim($_GET['q'] ?? '');
-$courseFilter = trim($_GET['course_id'] ?? '');  // opsional
+$q            = trim((string)($_GET['q'] ?? ''));
+$courseFilter = trim((string)($_GET['course_id'] ?? ''));
 
-/* Merr kurset për dropdown */
-$courses = $pdo->query("SELECT id, code, name FROM courses ORDER BY code")->fetchAll(PDO::FETCH_ASSOC);
+$courses = $pdo->query("SELECT id, code, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
-/* ------------------------------
-   Query: rreshta (grup + student i agjencisë)
---------------------------------*/
 $params = [':agid' => (int)$AGENCY['id']];
 $w = ["asg.agency_id = :agid"];
-
 if ($q !== '') {
-$w[] = "(s.nr_amze LIKE :kw
-         OR p.personal_number LIKE :kw2
-         OR p.first_name LIKE :kw3
-         OR p.father_name LIKE :kw4
-         OR p.last_name LIKE :kw5)";
-  $params[':kw']  = '%'.$q.'%';
-  $params[':kw2'] = '%'.$q.'%';
-  $params[':kw3'] = '%'.$q.'%';
-  $params[':kw4'] = '%'.$q.'%';
-  $params[':kw5'] = '%'.$q.'%';
+  $w[] = "(s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2 OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
+  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) { $params[$k] = '%' . $q . '%'; }
 }
 if ($courseFilter !== '' && ctype_digit($courseFilter)) {
   $w[] = "cg.course_id = :cf";
   $params[':cf'] = (int)$courseFilter;
 }
-$whereSql = 'WHERE '.implode(' AND ', $w);
+$whereSql = 'WHERE ' . implode(' AND ', $w);
 
+/* Grupet ku ka punonjës të kësaj agjencie (vetëm ata punonjës shfaqen) */
 $sql = "
   SELECT
-    cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.exam_date,
-    c.code AS course_code, c.name AS course_name,
+    cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
+    c.code AS course_code, c.name AS course_name, c.hours,
     s.id AS student_id, s.nr_amze,
     p.first_name, p.father_name, p.last_name, p.personal_number,
-    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-    el.code AS edu_code, el.label AS edu_label,
+    COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
     cgs.final_score
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
-  LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
-  LEFT JOIN students s ON s.id = cgs.student_id
+  JOIN course_group_students cgs ON cgs.group_id = cg.id
+  JOIN students s ON s.id = cgs.student_id
   LEFT JOIN persons p ON p.id = s.person_id
-  LEFT JOIN agency_students asg ON asg.student_id = s.id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
+  JOIN agency_students asg ON asg.student_id = s.id
   $whereSql
   ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
 ";
 $st = $pdo->prepare($sql);
-foreach ($params as $k=>$v) $st->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO::PARAM_STR);
+foreach ($params as $k => $v) $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
 $st->execute();
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-/* Grupim në PHP: group_id => header + students (vetëm të kësaj agjencie) */
 $groups = [];
 foreach ($rows as $r) {
   $gid = (int)$r['group_id'];
   if (!isset($groups[$gid])) {
-    $groups[$gid] = [
-      'header' => [
-        'group_id'=>$gid,
-        'course_id'=>$r['course_id'],
-        'course_code'=>$r['course_code'],
-        'course_name'=>$r['course_name'],
-        'start_date'=>$r['start_date'],
-        'end_date'=>$r['end_date'],
-        'exam_date'=>$r['exam_date'],
-      ],
-      'students' => []
-    ];
+    $groups[$gid] = ['header' => $r, 'students' => []];
   }
-  if ($r['student_id']) $groups[$gid]['students'][] = $r; // vetëm studentët e kësaj agjencie
+  $groups[$gid]['students'][] = $r;
 }
 
-/* Studentë të agjencisë pa grup */
+/* Punonjës pa grup */
 $params2 = [':agid' => (int)$AGENCY['id']];
 $w2 = ["asg.agency_id = :agid"];
 if ($q !== '') {
-$w2[] = "(s.nr_amze LIKE :kw
-          OR p.personal_number LIKE :kw2
-          OR p.first_name LIKE :kw3
-          OR p.father_name LIKE :kw4
-          OR p.last_name LIKE :kw5)";
-  $params2[':kw']  = '%'.$q.'%';
-  $params2[':kw2'] = '%'.$q.'%';
-  $params2[':kw3'] = '%'.$q.'%';
-  $params2[':kw4'] = '%'.$q.'%';
-  $params2[':kw5'] = '%'.$q.'%';
+  $w2[] = "(s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2 OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
+  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) { $params2[$k] = '%' . $q . '%'; }
 }
-$whereNoGroup = 'WHERE '.implode(' AND ', $w2);
-$sqlNoGroup = "
-  SELECT
-    s.id AS student_id, s.nr_amze,
-    p.first_name, p.father_name, p.last_name, p.personal_number,
-    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
-    el.code AS edu_code, el.label AS edu_label
+$ng = $pdo->prepare("
+  SELECT s.id AS student_id, s.nr_amze, p.first_name, p.father_name, p.last_name, p.personal_number
   FROM students s
   LEFT JOIN persons p ON p.id = s.person_id
   JOIN agency_students asg ON asg.student_id = s.id
   LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
-  $whereNoGroup
+  WHERE " . implode(' AND ', $w2) . "
   GROUP BY s.id
   HAVING COUNT(cgs.group_id) = 0
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-";
-$ng = $pdo->prepare($sqlNoGroup);
-foreach ($params2 as $k=>$v) $ng->bindValue($k,$v, is_int($v)?PDO::PARAM_INT:PDO::PARAM_STR);
+");
+foreach ($params2 as $k => $v) $ng->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
 $ng->execute();
-$noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
+$noGroup = ($courseFilter === '') ? $ng->fetchAll(PDO::FETCH_ASSOC) : [];
 
-/* Navbar active key */
-$NAV_ACTIVE = 'groups';
+$today = date('Y-m-d');
+$groupState = static function (array $g) use ($today): string {
+  if ((int)$g['is_completed'] === 1) return qta_status('Përfunduar', 'success', 'bi-check-circle-fill');
+  if ((string)$g['start_date'] > $today) return qta_status('Nis ' . qta_when_label((string)$g['start_date']), 'info', 'bi-calendar-event');
+  if ((string)$g['end_date'] >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
+  return qta_status('Në provime', 'warning', 'bi-hourglass-split');
+};
 
-$pageTitle = 'Grupe – QTA Agjenci';
+$NAV_ACTIVE = 'agency_groups';
+$HELP_TOPIC = 'agency_groups';
+require __DIR__ . '/inc/navbar2.php';
+
+$pageTitle = 'Grupet';
 require __DIR__ . '/../shared/app_head.php';
+$hasFilters = ($q !== '' || $courseFilter !== '');
 ?>
 
+<main class="app-main" id="main" tabindex="-1">
 
-<?php require __DIR__ . '/inc/navbar2.php'; ?>
+  <header class="page-head">
+    <div class="page-head-main">
+      <span class="eyebrow"><?= h((string)($AGENCY['company_name'] ?: 'Agjencia')) ?></span>
+      <h1 class="page-title">Grupet</h1>
+      <p class="page-lead">Grupet ku janë punonjësit tuaj: moduli, datat dhe rezultati i secilit. Kliko një grup për të parë punonjësit.</p>
+    </div>
+    <div class="page-actions">
+      <?= qta_help_button() ?>
+    </div>
+  </header>
 
-<main class="app-main">
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <div class="title-block-main">
-          <div class="title-block-eyebrow">Regjistri</div>
-          <h1>Grupe – <?= htmlspecialchars($AGENCY['company_name'] ?? 'Agjencia') ?></h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-    <form class="d-flex" method="get" action="groups_agjencia.php">
-      <div class="input-group">
-        <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-        <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko studentë sipas AMZË/ID/Emri...">
-        <select name="course_id" class="form-select">
-          <option value="">— Modul —</option>
-          <?php foreach($courses as $c): ?>
-            <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
-              <?= htmlspecialchars($c['code'].' — '.$c['name']) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-        <button class="btn btn-outline-secondary" type="button" onclick="window.location='groups_agjencia.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-        <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
+  <form class="filters" method="get" action="groups_agjencia.php" role="search" aria-label="Kërko grupe">
+    <div class="filter-field is-grow">
+      <label class="form-label" for="gaQ">Kërko një punonjës</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="gaQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
       </div>
-    </form>
-  </div>
+    </div>
+    <div class="filter-field">
+      <label class="form-label" for="gaC">Moduli</label>
+      <select class="form-select" id="gaC" name="course_id">
+        <option value="">Të gjitha modulet</option>
+        <?php foreach ($courses as $c): ?>
+          <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="filter-actions">
+      <?php if ($hasFilters): ?><a class="btn btn-ghost" href="groups_agjencia.php">Pastro</a><?php endif; ?>
+      <button class="btn btn-secondary" type="submit">Kërko</button>
+    </div>
+  </form>
 
-  <?php if ($groups): foreach ($groups as $gid=>$g): ?>
-    <div class="card mb-4">
-      <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <div class="d-flex align-items-center gap-3">
-          <h5 class="mb-0">
-            <i class="bi bi-collection me-2"></i>
-            Grup #<?= (int)$g['header']['group_id'] ?> — <?= htmlspecialchars($g['header']['course_code'].' · '.$g['header']['course_name']) ?>
-          </h5>
-        </div>
-        <div class="text-muted small">
-          <span class="me-3">Fillimi: <span class="readonly"><?= htmlspecialchars($g['header']['start_date']) ?></span></span>
-          <span class="me-3">Mbarimi: <span class="readonly"><?= htmlspecialchars($g['header']['end_date']) ?></span></span>
-          <span>Testi: <span class="readonly"><?= htmlspecialchars($g['header']['exam_date'] ?: '—') ?></span></span>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="table-responsive mini-table">
-          <table class="table align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th class="nowrap">AMZË</th>
-                <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                <th class="nowrap">Pikët përfundimtare</th>
-                <th class="nowrap">Mosha</th>
-                <th class="nowrap">Arsimi</th>
-              </tr>
-            </thead>
+  <section class="section" aria-labelledby="gaTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="gaTitle"><?= $hasFilters ? 'Grupet që përputhen' : 'Grupet' ?> <span class="count"><?= count($groups) ?></span></h2>
+    </div>
+
+    <?php if ($groups): ?>
+      <div class="table-responsive">
+        <table class="table" id="agencyGroupsTable">
+          <thead>
+            <tr>
+              <th scope="col" class="col-wide">Moduli</th>
+              <th scope="col" class="nowrap">Datat</th>
+              <th scope="col" class="nowrap num-col">Punonjës</th>
+              <th scope="col">Gjendja</th>
+            </tr>
+          </thead>
+          <?php foreach ($groups as $gid => $g):
+            $hd = $g['header'];
+            $n = count($g['students']);
+            $passed = count(array_filter($g['students'], static fn($s) => $s['final_score'] !== null && (float)$s['final_score'] >= 50)); ?>
             <tbody>
-            <?php if ($g['students']): foreach ($g['students'] as $r): ?>
               <tr>
-                <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
-                <td>
-                  <div class="fw-semibold">
-                    <?= htmlspecialchars(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
-                  </div>
-                  <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '') ?></div>
+                <td class="col-wide">
+                  <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#gaBody<?= (int)$gid ?>" aria-expanded="false" aria-controls="gaBody<?= (int)$gid ?>">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    <span>
+                      <span class="person-name"><?= h((string)$hd['course_name']) ?></span>
+                      <span class="cell-sub">Grupi #<?= (int)$gid ?><?= !empty($hd['hours']) ? ' · ' . (int)$hd['hours'] . ' orë' : '' ?></span>
+                    </span>
+                  </button>
                 </td>
-                <td class="nowrap"><span class="readonly">
-                  <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
-                </span></td>
-                <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
+                <td class="nowrap"><?= h(qta_date($hd['start_date'])) ?> – <?= h(qta_date($hd['end_date'])) ?></td>
+                <td class="nowrap num-col"><?= $n ?><?php if ($passed): ?><span class="cell-sub"><?= $passed ?> kaluan</span><?php endif; ?></td>
+                <td><?= $groupState($hd) ?></td>
               </tr>
-            <?php endforeach; else: ?>
-              <tr><td colspan="5" class="text-center text-muted">S’ka studentë të kësaj agjencie në këtë grup.</td></tr>
-            <?php endif; ?>
+              <tr class="row-details">
+                <td colspan="4">
+                  <div class="collapse" id="gaBody<?= (int)$gid ?>">
+                    <div class="row-details-inner">
+                      <div class="table-responsive">
+                        <table class="table table-sm">
+                          <thead>
+                            <tr>
+                              <th scope="col" class="nowrap">Nr. i amzës</th>
+                              <th scope="col">Punonjësi</th>
+                              <th scope="col" class="nowrap">Provimi</th>
+                              <th scope="col">Rezultati</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php foreach ($g['students'] as $s):
+                              $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? ''); ?>
+                              <tr>
+                                <td class="nowrap"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
+                                <td>
+                                  <a class="person-name" href="student_card.php?sid=<?= (int)$s['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
+                                  <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
+                                </td>
+                                <td class="nowrap"><?= h(qta_date($s['exam_date'] ?? null)) ?></td>
+                                <td><?= qta_enrollment_status($s) ?></td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
             </tbody>
-          </table>
-        </div>
+          <?php endforeach; ?>
+        </table>
       </div>
-    </div>
-  <?php endforeach; else: ?>
-    <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>Nuk u gjetën grupe për studentët e kësaj agjencie.</div>
-  <?php endif; ?>
+    <?php else: ?>
+      <?= $hasFilters
+        ? qta_empty('Asnjë grup nuk përputhet', 'Provo një modul tjetër ose pastro kërkimin.', 'bi-search', '<a class="btn btn-secondary" href="groups_agjencia.php">Pastro kërkimin</a>')
+        : qta_empty('Punonjësit tuaj nuk janë ende në grupe', 'Kur QTA i cakton në një grup, grupi shfaqet këtu me datat e mësimit dhe provimit.', 'bi-collection') ?>
+    <?php endif; ?>
+  </section>
 
-  <!-- Studentë të agjencisë pa grup -->
-  <div class="card mb-4">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-person-dash me-2"></i>Studentë pa grup</h5>
-      <span class="text-muted small"><?= number_format(count($noGroup)) ?> student(ë)</span>
-    </div>
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
-          <tr>
-            <th class="nowrap">AMZË</th>
-            <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-            <th class="nowrap">Mosha</th>
-            <th class="nowrap">Arsimi</th>
-          </tr>
+  <?php if ($noGroup): ?>
+    <section class="section" aria-labelledby="gaNoGroup">
+      <div class="section-head">
+        <h2 class="section-title" id="gaNoGroup">Presin një grup <span class="count"><?= count($noGroup) ?></span></h2>
+        <span class="section-meta">QTA i cakton në grupin e radhës të modulit të tyre.</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col" class="nowrap">Nr. i amzës</th>
+              <th scope="col">Punonjësi</th>
+            </tr>
           </thead>
           <tbody>
-          <?php if ($noGroup): foreach ($noGroup as $s): ?>
-            <tr>
-              <td class="nowrap"><?= htmlspecialchars($s['nr_amze']) ?></td>
-              <td>
-                <div class="fw-semibold"><?= htmlspecialchars(trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??''))) ?></div>
-                <div class="text-muted small"><?= htmlspecialchars($s['personal_number'] ?? '') ?></div>
-              </td>
-              <td class="nowrap"><?= $s['age'] !== null ? (int)$s['age'] : '—' ?></td>
-              <td><?= htmlspecialchars(($s['edu_code']? $s['edu_code'].' — ' : '').($s['edu_label'] ?? '—')) ?></td>
-            </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="4" class="text-center text-muted">Të gjithë studentët e kësaj agjencie janë në grupe.</td></tr>
-          <?php endif; ?>
+            <?php foreach ($noGroup as $s):
+              $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? ''); ?>
+              <tr>
+                <td class="nowrap"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
+                <td>
+                  <a class="person-name" href="student_card.php?sid=<?= (int)$s['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
+                  <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
-
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+    </section>
+  <?php endif; ?>
 </main>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
