@@ -1,6 +1,9 @@
 # QTA Design System — Claude-inspired Portal Revamp
 
-Status: design specification and migration baseline.
+Status: **implemented as "Themeli"** on branch `revamp/super-portal`.
+Start with **THEMELI.md** (what exists in the code: tokens, components, JS/PHP helpers,
+writing guide) and **PROGRESS.md** (phases, defects fixed, open items). The files below
+are the original specification and audit baseline.
 
 Repository state audited:
 - repository: SignorTynam/DatabasaElektronikeQTA
@@ -32,6 +35,9 @@ QTA adapts those principles to a certification registry. We do not claim that th
 
 ## Documentation map
 
+- THEMELI.md — the implemented system (read first).
+- PROGRESS.md — progress ledger, defects fixed, security fixes, open items.
+- SUPER-PORTAL-PROMPT.md — the execution prompt that drove the implementation.
 - FOUNDATIONS.md — design DNA, layout, palette, typography, spacing, radii, motion.
 - COMPONENTS.md — shell and reusable component contracts.
 - ACCESSIBILITY.md — WCAG 2.2 AA and keyboard/ARIA requirements.
@@ -53,3 +59,7 @@ The desired end state is a small set of semantic CSS modules:
 - page-specific CSS only when a page has a truly unique visualization.
 
 Bootstrap may remain as a transitional layout/behavior dependency, but QTA's appearance must come from QTA components and tokens.
+
+**End state reached:** tokens.css, base.css, components.css, shell.css, public.css (+ the
+standalone error.css). protokoll.css, app.css, legacy-map.css and claude-ui.css were removed
+after a repository-wide reference scan showed no page loading them.

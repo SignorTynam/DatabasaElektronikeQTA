@@ -15,7 +15,11 @@ Claude is the interaction reference, not the product subject. Copy its restraint
 
 ## Required context
 
-Read:
+Read first:
+- docs/design-system/THEMELI.md — the implemented system ("Themeli"): tokens, components, JS/PHP helpers, page anatomy, writing guide. Reuse these; do not invent a per-page vocabulary.
+- docs/design-system/PROGRESS.md — what is done and what is still open.
+
+Background specification:
 - docs/design-system/FOUNDATIONS.md
 - docs/design-system/COMPONENTS.md
 - docs/design-system/ACCESSIBILITY.md
@@ -53,7 +57,7 @@ Pass 2 — critique:
 
 ## Typography
 
-Use one functional sans-serif for UI and one clearly distinct serif only where it improves hierarchy. The recommended baseline is IBM Plex Sans for UI and Source Serif 4 for display/section headings. Do not use monospace as decorative metadata. Reserve monospace for identifiers, codes, AMZË values, tokens, or technically tabular data.
+Use one functional sans-serif for UI and one clearly distinct serif only where it improves hierarchy. The implemented baseline is Atkinson Hyperlegible Next for UI (chosen for legibility for non-technical users), Atkinson Hyperlegible Mono for identifiers, and Source Serif 4 for page titles (tokens `--font-sans`, `--font-mono`, `--font-display`). Do not use monospace as decorative metadata. Reserve monospace for identifiers, codes, AMZË values, tokens, or technically tabular data.
 
 Use sentence case. Avoid tracked all-caps labels. Keep prose line length generally below 80 characters.
 
@@ -86,17 +90,9 @@ Target WCAG 2.2 AA:
 
 ## Legacy migration
 
-The current branch contains a PROTOKOLL design system and legacy-map.css. Do not patch the old visual model. Migrate the markup/component, then remove the compatibility selector once no page uses it.
+Done on `revamp/super-portal`: the PROTOKOLL layer and legacy-map.css (with app.css, protokoll.css, claude-ui.css) are removed; every page uses the Themeli shell.
 
-The following are migration targets, not permanent architecture:
-- app/assets/css/legacy-map.css
-- app/shared/inc/navbar.php
-- app/shared/inc/navbar2.php
-- app/shared/inc/navbar3.php
-- app/shared/inc/navbar4.php
-- app/pages/inc/navbar*.php wrappers
-
-Do not delete them until references are migrated and verified.
+The role navbars (`app/shared/inc/navbar*.php` and the `app/pages/inc/navbar*.php` wrappers) remain on purpose: they are thin role entry points into the shared shell (`app/shared/inc/app_navbar.php`). Remove them only after a repository-wide reference scan and a browser check for every role.
 
 ## Verification
 

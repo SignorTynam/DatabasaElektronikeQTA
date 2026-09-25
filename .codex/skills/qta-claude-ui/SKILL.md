@@ -11,6 +11,7 @@ Preserve QTA's identity and workflows while applying the repository design contr
 
 Read only the references needed for the task:
 
+- First, read [`docs/design-system/THEMELI.md`](../../../docs/design-system/THEMELI.md): the implemented system on `revamp/super-portal` (tokens, components, JS/PHP helpers, page anatomy, writing guide). Where it differs from the documents below, it wins. Domain terms in the UI are now `Kursantët` (not `Studentët`), `Nr. i amzës`, `Grupet`, `Modulet`, `Agjencitë`, `Historiku i ndryshimeve`.
 - For any visual change, read [`docs/ui-ux/claude-inspired-design-system.md`](../../../docs/ui-ux/claude-inspired-design-system.md).
 - For forms, tables, dialogs, navigation, responsive behavior, or states, also read [`docs/ui-ux/ux-accessibility-standard.md`](../../../docs/ui-ux/ux-accessibility-standard.md).
 - For migration or cleanup work, read [`docs/ui-ux/current-state-audit.md`](../../../docs/ui-ux/current-state-audit.md).
