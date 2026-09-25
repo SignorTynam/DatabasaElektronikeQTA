@@ -15,6 +15,7 @@ $activeRole = match ($requested) {
   'student'  => 'student',
   default    => 'staff',
 };
+$roleFromUrl = isset($_GET['role']);
 
 $loginError = null;
 if (!empty($_SESSION['login_error'])) {
@@ -32,70 +33,57 @@ if (empty($_SESSION['csrf_login'])) {
 }
 $CSRF = $_SESSION['csrf_login'];
 
+/* Renditja sipas numrit të përdoruesve: kursantët janë më të shumtët. */
 $roles = [
-  'staff' => [
-    'title' => 'Staf i QTA-së',
-    'text'  => 'Hyj me email-in e punës',
-    'icon'  => 'bi-person-workspace',
-    'label' => 'Email-i i punës',
-    'type'  => 'email',
-    'placeholder' => 'emri@qta.al',
-    'help'  => 'Email-i me të cilin të ka regjistruar administratori i QTA-së.',
-    'forgot' => 'Kërkoji administratorit të QTA-së të ta rivendosë fjalëkalimin.',
-  ],
-  'agjencia' => [
-    'title' => 'Agjenci',
-    'text'  => 'Hyj me NIPT-in e kompanisë',
-    'icon'  => 'bi-building',
-    'label' => 'NIPT-i i agjencisë',
-    'type'  => 'text',
-    'placeholder' => 'p.sh. L12345678Q',
-    'help'  => 'NIPT-i ka 10 shenja: një shkronjë, tetë shifra dhe një shkronjë.',
-    'forgot' => 'Për siguri, fjalëkalimin e rivendos vetëm QTA. Na telefono ose na shkruaj nga email-i i kompanisë.',
-  ],
   'student' => [
     'title' => 'Kursant',
-    'text'  => 'Hyj me numrin personal',
     'icon'  => 'bi-person-badge',
+    'hint'  => 'Hyn me numrin personal të kartës së identitetit.',
     'label' => 'Numri personal',
     'type'  => 'text',
     'placeholder' => 'p.sh. J75010110A',
-    'help'  => 'Numri personal nga karta e identitetit (10 shenja).',
+    'help'  => '10 shenja, siç janë në kartën e identitetit.',
     'forgot' => 'Për siguri, fjalëkalimin e rivendos vetëm QTA. Na telefono ose eja në zyrë me kartën e identitetit.',
+  ],
+  'agjencia' => [
+    'title' => 'Agjenci',
+    'icon'  => 'bi-buildings',
+    'hint'  => 'Hyn me NIPT-in e kompanisë.',
+    'label' => 'NIPT-i i kompanisë',
+    'type'  => 'text',
+    'placeholder' => 'p.sh. L12345678Q',
+    'help'  => '10 shenja: një shkronjë, 8 shifra dhe një shkronjë.',
+    'forgot' => 'Për siguri, fjalëkalimin e rivendos vetëm QTA. Na telefono ose na shkruaj nga email-i i kompanisë.',
+  ],
+  'staff' => [
+    'title' => 'Staf i QTA',
+    'icon'  => 'bi-person-workspace',
+    'hint'  => 'Hyn me email-in e punës.',
+    'label' => 'Email-i i punës',
+    'type'  => 'email',
+    'placeholder' => 'emri@qta.al',
+    'help'  => 'Email-i me të cilin të regjistroi administratori.',
+    'forgot' => 'Kërkoji një administratori të QTA-së të të vendosë një fjalëkalim të ri.',
   ],
 ];
 $active = $roles[$activeRole];
 
 $NAV_ACTIVE = 'login';
 $pageTitle = 'Hyr në sistem — Regjistri QTA';
-$pageDescription = 'Hyr në Regjistrin QTA si staf, agjenci ose kursant.';
+$pageDescription = 'Hyr në Regjistrin QTA si kursant, agjenci ose staf.';
+$pageBodyClass = 'page-signin';
 $pageScripts = [qta_asset('app/assets/js/login-ui.js')];
 
 require_once __DIR__ . '/../shared/public_head.php';
 require_once __DIR__ . '/navbarMain.php';
 ?>
-<main id="main" tabindex="-1">
-  <div class="wrap login-layout">
+<main id="main" tabindex="-1" class="signin">
 
-    <aside class="login-aside">
-      <span class="hero-eyebrow"><i class="bi bi-lock" aria-hidden="true"></i>Hyrje e sigurt</span>
-      <h2>Mirë se erdhe në Regjistrin QTA</h2>
-      <p class="lead-text mb-4">Me llogarinë tënde ndjek regjistrimet, grupet, provimet dhe certifikatat. Secili sheh vetëm atë që i përket.</p>
-      <dl class="kv mb-4">
-        <dt>Stafi</dt><dd>Regjistron kursantët, cakton grupet, shënon provimet.</dd>
-        <dt>Agjencia</dt><dd>Ndjek punonjësit e vet dhe dokumentet e tyre.</dd>
-        <dt>Kursanti</dt><dd>Sheh modulet, provimet dhe kodin QR të certifikatave.</dd>
-      </dl>
-      <div class="notice">
-        <i class="bi bi-qr-code-scan" aria-hidden="true"></i>
-        <span>Do vetëm të kontrollosh një certifikatë? Nuk duhet llogari —
-          <a href="verify.php">hap verifikimin</a>.</span>
-      </div>
-    </aside>
-
-    <section class="login-card" aria-labelledby="loginTitle">
-      <h1 class="login-title" id="loginTitle">Hyr në llogari</h1>
-      <p class="text-muted mb-4">Zgjidh kush je, pastaj shkruaj të dhënat.</p>
+  <!-- Modulli është i pari: kjo është arsyeja pse ke ardhur këtu. -->
+  <section class="signin-main" aria-labelledby="loginTitle">
+    <div class="signin-form">
+      <h1 class="signin-title" id="loginTitle">Hyr në llogari</h1>
+      <p class="signin-sub">Zgjidh llojin e llogarisë, pastaj shkruaj të dhënat.</p>
 
       <?php if ($currentUser):
         /* Dikush që është tashmë brenda arrin këtu kur hap një faqe që nuk i takon
@@ -120,33 +108,33 @@ require_once __DIR__ . '/navbarMain.php';
         </div>
       <?php endif; ?>
 
-      <form method="post" action="login_handler.php" data-login-form novalidate>
+      <form method="post" action="login_handler.php" data-login-form <?= $roleFromUrl ? 'data-role-fixed' : '' ?> novalidate>
         <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
 
-        <fieldset class="role-options">
-          <legend class="form-label mb-2">Kush je?</legend>
+        <fieldset class="role-switch">
+          <legend class="visually-hidden">Lloji i llogarisë</legend>
           <?php foreach ($roles as $key => $r): ?>
-            <label class="role-option">
+            <label class="role-tab">
               <input type="radio" name="role" value="<?= h($key) ?>" <?= $key === $activeRole ? 'checked' : '' ?>
                      data-label="<?= h($r['label']) ?>" data-type="<?= h($r['type']) ?>"
                      data-placeholder="<?= h($r['placeholder']) ?>" data-help="<?= h($r['help']) ?>"
-                     data-forgot="<?= h($r['forgot']) ?>">
-              <span class="role-option-icon"><i class="bi <?= h($r['icon']) ?>" aria-hidden="true"></i></span>
-              <span class="role-option-text"><b><?= h($r['title']) ?></b><span><?= h($r['text']) ?></span></span>
-              <span class="role-option-check" aria-hidden="true"></span>
+                     data-hint="<?= h($r['hint']) ?>" data-forgot="<?= h($r['forgot']) ?>">
+              <i class="bi <?= h($r['icon']) ?>" aria-hidden="true"></i>
+              <span><?= h($r['title']) ?></span>
             </label>
           <?php endforeach; ?>
         </fieldset>
+        <p class="role-hint" data-role-hint aria-live="polite"><?= h($active['hint']) ?></p>
 
         <div class="mb-3">
           <label class="form-label" for="identifier" data-id-label><?= h($active['label']) ?></label>
           <input class="form-control form-control-lg<?= $active['type'] === 'email' ? '' : ' input-code' ?>"
                  id="identifier" name="identifier" type="<?= h($active['type']) ?>"
                  placeholder="<?= h($active['placeholder']) ?>" value="<?= h($rememberedId) ?>"
-                 autocomplete="username" autocapitalize="off" spellcheck="false" required
-                 aria-describedby="idHelp idError">
+                 autocomplete="username" autocapitalize="<?= $active['type'] === 'email' ? 'off' : 'characters' ?>"
+                 spellcheck="false" required aria-describedby="idHelp idError">
           <p class="form-text" id="idHelp" data-id-help><?= h($active['help']) ?></p>
-          <p class="invalid-feedback" id="idError">Shkruaj identifikimin tënd.</p>
+          <p class="invalid-feedback" id="idError">Shkruaj këtë fushë për të hyrë.</p>
         </div>
 
         <div class="mb-2">
@@ -169,21 +157,58 @@ require_once __DIR__ . '/navbarMain.php';
           <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Hyr
         </button>
 
-        <p class="mt-3 mb-0">
-          <button class="btn btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#forgotHelp"
-                  aria-expanded="false" aria-controls="forgotHelp">Harrove fjalëkalimin?</button>
-        </p>
-        <div class="collapse" id="forgotHelp">
-          <div class="notice mt-1">
-            <i class="bi bi-key" aria-hidden="true"></i>
-            <span><span data-forgot-text><?= h($active['forgot']) ?></span>
-              Tel. <a href="tel:+355698778837">+355 69 877 8837</a> · <a href="contact.php">Kontakt</a></span>
+        <details class="signin-help">
+          <summary>Harrove fjalëkalimin?</summary>
+          <div class="signin-help-body">
+            <p class="mb-2" data-forgot-text><?= h($active['forgot']) ?></p>
+            <p class="mb-0">
+              <a href="tel:+355698778837"><i class="bi bi-telephone" aria-hidden="true"></i>+355 69 877 8837</a>
+              <span class="text-subtle" aria-hidden="true">·</span>
+              <a href="contact.php">Kontakt</a>
+            </p>
           </div>
-        </div>
+        </details>
       </form>
-    </section>
 
-  </div>
+      <p class="signin-safe">
+        <i class="bi bi-shield-check" aria-hidden="true"></i>
+        QTA nuk ta kërkon kurrë fjalëkalimin me telefon ose email. Mos e ndaj me askënd.
+      </p>
+    </div>
+  </section>
+
+  <!-- Pse ekziston regjistri — në të majtë në kompjuter, poshtë modulit në telefon. -->
+  <aside class="signin-brand" aria-label="Rreth Regjistrit QTA">
+    <div class="signin-brand-body">
+      <p class="signin-brand-eyebrow">Qendra e Trajnimeve të Avancuara</p>
+      <p class="signin-brand-title">Kualifikimet profesionale, të regjistruara dhe të verifikueshme.</p>
+      <ul class="signin-points">
+        <li>
+          <span class="signin-point-icon"><i class="bi bi-qr-code-scan" aria-hidden="true"></i></span>
+          <span><b>Verifikohen me një skanim</b>Kushdo e kontrollon një certifikatë me kamerën e telefonit, pa llogari.</span>
+        </li>
+        <li>
+          <span class="signin-point-icon"><i class="bi bi-clock-history" aria-hidden="true"></i></span>
+          <span><b>Asgjë nuk humbet</b>Çdo ndryshim ruhet: kush e bëri, kur dhe çfarë ishte më parë.</span>
+        </li>
+        <li>
+          <span class="signin-point-icon"><i class="bi bi-person-lock" aria-hidden="true"></i></span>
+          <span><b>Secili sheh të vetat</b>Agjencia sheh punonjësit e saj, kursanti vetëm veten.</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="signin-verify">
+      <div>
+        <b>Do vetëm të kontrollosh një certifikatë?</b>
+        <span>Nuk të duhet llogari.</span>
+      </div>
+      <a class="btn signin-verify-btn" href="verify.php">
+        Verifiko certifikatë<i class="bi bi-arrow-right" aria-hidden="true"></i>
+      </a>
+    </div>
+  </aside>
+
 </main>
 <?php
 require_once __DIR__ . '/../shared/footer.php';

@@ -79,8 +79,8 @@ $links = [
               <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Dil nga llogaria</a></li>
             </ul>
           </div>
-        <?php else: ?>
-          <a class="btn btn-primary" href="selectProfile.php"<?= $NAV_ACTIVE === 'login' ? ' aria-current="page"' : '' ?>>
+        <?php elseif ($NAV_ACTIVE !== 'login'): /* në faqen e hyrjes butoni do të ishte i tepërt */ ?>
+          <a class="btn btn-primary" href="selectProfile.php">
             <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Hyr
           </a>
         <?php endif; ?>
