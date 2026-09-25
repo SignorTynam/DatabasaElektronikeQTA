@@ -47,7 +47,7 @@ $links = [
 
     <button class="btn btn-secondary masthead-menu-btn" type="button" data-mast-toggle
             aria-expanded="false" aria-controls="mastNav">
-      <i class="bi bi-list" aria-hidden="true"></i>Menuja
+      <i class="bi bi-list" aria-hidden="true"></i><span class="masthead-menu-label">Menuja</span>
     </button>
 
     <nav class="masthead-nav" id="mastNav" aria-label="Navigimi kryesor">
