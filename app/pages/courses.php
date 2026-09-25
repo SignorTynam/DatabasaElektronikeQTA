@@ -72,29 +72,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'create_course') {
         try {
-            if (!$EDIT_MODE) { throw new RuntimeException('Aktivizo mënyrën e redaktimit për të shtuar module.'); }
+            if (!$EDIT_MODE) { throw new RuntimeException('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.'); }
 
             $code  = trim($_POST['code'] ?? '');
             $name  = trim($_POST['name'] ?? '');
             $hours = trim($_POST['hours'] ?? '');
 
             if ($code === '' || $name === '' || $hours === '') {
-                throw new RuntimeException('Plotësoni fushat: Kod, Emër, Orë.');
+                throw new RuntimeException('Plotëso kodin, emrin dhe orët e modulit.');
             }
             if (!ctype_digit($hours) || (int)$hours < 1 || (int)$hours > 65535) {
-                throw new RuntimeException('“Orë” duhet të jetë numër i plotë ≥ 1.');
+                throw new RuntimeException('Orët duhet të jenë një numër i plotë, p.sh. 40.');
             }
 
             $q = $pdo->prepare("SELECT COUNT(*) FROM courses WHERE code = :c");
             $q->execute([':c'=>$code]);
             if ((int)$q->fetchColumn() > 0) {
-                throw new RuntimeException('Ky kod kursi ekziston tashmë.');
+                throw new RuntimeException('Ky kod i përket një moduli tjetër. Zgjidh një kod tjetër.');
             }
 
             $st = $pdo->prepare("INSERT INTO courses (code, name, hours) VALUES (:c, :n, :h)");
             $st->execute([':c'=>$code, ':n'=>$name, ':h'=>(int)$hours]);
 
-            flash('ok', 'Moduli u shtua me sukses.');
+            flash('ok', 'Moduli "' . $code . ' — ' . $name . '" u shtua.');
         } catch (Throwable $e) {
             flash('err', $e->getMessage());
         }
@@ -103,15 +103,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete_course') {
         try {
-            if (!$EDIT_MODE) { throw new RuntimeException('Aktivizo mënyrën e redaktimit për të fshirë module.'); }
+            if (!$EDIT_MODE) { throw new RuntimeException('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.'); }
 
             $course_id = (int)($_POST['course_id'] ?? 0);
-            if ($course_id <= 0) throw new RuntimeException('Kurs i pavlefshëm.');
+            if ($course_id <= 0) throw new RuntimeException('Moduli nuk u gjet. Rifresko faqen.');
 
             $cinfo = $pdo->prepare("SELECT code, name FROM courses WHERE id=:id LIMIT 1");
             $cinfo->execute([':id'=>$course_id]);
             $ci = $cinfo->fetch(PDO::FETCH_ASSOC);
-            if (!$ci) throw new RuntimeException('Moduli nuk u gjet.');
+            if (!$ci) throw new RuntimeException('Moduli nuk u gjet. Rifresko faqen.');
+
+            /* Mbrojtje: fshirja e modulit fshin (CASCADE) edhe grupet, datat e provimeve
+               dhe pikët. Moduli me grupe nuk fshihet — grupet zhvendosen ose fshihen së pari. */
+            $gc = $pdo->prepare("SELECT COUNT(*) FROM course_groups WHERE course_id=:id");
+            $gc->execute([':id'=>$course_id]);
+            $groupCount = (int)$gc->fetchColumn();
+            if ($groupCount > 0) {
+                throw new RuntimeException('Moduli "' . $ci['name'] . '" ka ' . $groupCount . ($groupCount === 1 ? ' grup' : ' grupe') . ' dhe nuk u fshi. Zhvendosi grupet te një modul tjetër ose fshiji ato së pari.');
+            }
 
             $del = $pdo->prepare("DELETE FROM courses WHERE id=:id");
             $del->execute([':id'=>$course_id]);
@@ -124,15 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-/* ------------------------------
-   Helpers
-------------------------------- */
-function fmt_dmy(?string $iso): string {
-    if (!$iso) return '—';
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars((string)$iso, ENT_QUOTES, 'UTF-8');
-    $ts = strtotime($iso);
-    return $ts ? date('d-m-Y', $ts) : '—';
-}
+require_once __DIR__ . '/../shared/themeli.php';
 
 /* ------------------------------
    Kërkim + Paginim
@@ -206,590 +207,436 @@ $ok  = flash('ok');
 $err = flash('err');
 
 $NAV_ACTIVE = 'courses';
+$HELP_TOPIC = 'courses';
+if ($isAdmin) require __DIR__ . '/inc/navbar.php';
+else          require __DIR__ . '/inc/navbar4.php';
 
-$pageTitle = 'Modulet – QTA ' . ($isAdmin ? 'Admin' : 'Editor');
-$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+/* Sa kursantë e kanë zgjedhur çdo modul, por nuk janë ende në grup */
+$plannedByCourse = [];
+foreach ($pdo->query("SELECT course_id, COUNT(*) AS n FROM student_course_plans WHERE status='planned' GROUP BY course_id")->fetchAll(PDO::FETCH_ASSOC) as $pr) {
+    $plannedByCourse[(int)$pr['course_id']] = (int)$pr['n'];
+}
+
+$openAdd = $EDIT_MODE && isset($_GET['add']);
+$addHref = 'courses.php?' . http_build_query(['edit' => '1', 'add' => '1']);
+$today   = date('Y-m-d');
+$groupState = static function (array $g) use ($today): string {
+    if ((int)$g['is_completed'] === 1) return qta_status('I mbyllur', 'success', 'bi-lock-fill');
+    if ((string)$g['start_date'] > $today) return qta_status('Nis ' . qta_when_label((string)$g['start_date']), 'info', 'bi-calendar-event');
+    if ((string)$g['end_date'] >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
+    return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
+};
+
+$pageTitle = 'Modulet';
 require __DIR__ . '/../shared/app_head.php';
 ?>
 
+<main class="app-main" id="main" tabindex="-1">
 
-<?php
-    // Navbar sipas rolit
-    if ($isAdmin) {
-        require __DIR__ . '/inc/navbar.php';
-    } elseif ($roleName === 'editor') {
-        require __DIR__ . '/inc/navbar4.php';
-    }
-?>
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Modulet</h1>
+      <p class="page-lead">Katalogu i moduleve që ofron QTA. Çdo grup ndjek një modul; orët e modulit dalin në certifikatë dhe në raporte.</p>
+    </div>
+    <div class="page-actions">
+      <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+      <?php if ($EDIT_MODE): ?>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#addCourseModal">
+          <i class="bi bi-plus-lg" aria-hidden="true"></i>Shto modul
+        </button>
+      <?php else: ?>
+        <a class="btn btn-primary" href="<?= h($addHref) ?>"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto modul</a>
+      <?php endif; ?>
+    </div>
+  </header>
 
-<!-- Toast container -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
+  <form class="filters filters-compact" method="get" action="courses.php" role="search" aria-label="Kërko module">
+    <div class="filter-field is-grow">
+      <label class="visually-hidden" for="cQ">Kërko një modul</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="cQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Kërko sipas kodit ose emrit të modulit">
+      </div>
+    </div>
+    <div class="filter-actions">
+      <?php if ($q !== ''): ?>
+        <a class="btn btn-ghost" href="courses.php">Pastro</a>
+      <?php endif; ?>
+      <button class="btn btn-secondary" type="submit">Kërko</button>
+    </div>
+  </form>
 
-<main class="app-main">
-    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-        <div class="title-block-main">
-          <div class="title-block-eyebrow">Katalogu</div>
-          <h1>Modulet</h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
 
-        <div class="d-flex align-items-center page-toolbar">
-            <?php
-                // Build toggle URL (preserve query params except 'edit')
-                $qs = $_GET;
-                $qs['edit'] = $EDIT_MODE ? '0' : '1';
-                $toggleUrl = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
-            ?>
-</div>
+  <section class="section" aria-labelledby="coursesTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="coursesTitle">
+        <?= $q !== '' ? 'Modulet që përputhen' : 'Të gjitha modulet' ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
+      </h2>
+      <?php if ($EDIT_MODE && $courses): ?>
+        <span class="section-meta">Kliko kodin, emrin ose orët për t'i ndryshuar.</span>
+      <?php endif; ?>
     </div>
 
-    <?php if (!$EDIT_MODE): ?>
-        <div class="alert alert-secondary py-2">
-            <i class="bi bi-info-circle me-1"></i>
-            Aktivizo <strong>Mënyrën e redaktimit</strong> për të ndryshuar qelizat, për të shtuar ose fshirë module dhe për të zhvendosur grupe.
-        </div>
-    <?php endif; ?>
-
-    <!-- Kërkim -->
-    <div class="card mb-3">
-        <div class="card-body">
-            <form class="row g-2 align-items-end" method="get" action="courses.php">
-                <div class="col-md-9">
-                    <div class="d-flex align-items-center">
-                        <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-                        <div class="input-group flex-grow-1">
-                            <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-                            <input type="text" name="q" class="form-control border-0"
-                                   placeholder="Kërko sipas Kodit ose Emrit..."
-                                   value="<?= htmlspecialchars($q) ?>">
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3 text-end">
-                    <button class="btn btn-soft-secondary btn-pill me-1" type="button"
-                            onclick="window.location='courses.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-                    <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Tabela -->
-    <div class="card">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0"><i class="bi bi-book me-2"></i>Lista e moduleve</h5>
-            <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
-        </div>
-        <div class="card-body">
-            <?php
-              $tfTarget = '';
-              $tfPlaceholder = 'Ngushto listën — kod ose emër moduli';
-              $tfChips = [];
-              require __DIR__ . '/../shared/partials/table_filter.php';
-            ?>
-            <div class="table-responsive mini-table">
-                <table class="table align-middle mb-0" data-sortable>
-                    <thead class="table-light">
-                        <tr>
-                            <th data-sort="text">Kod</th>
-                            <th data-sort="text">Emër</th>
-                            <th class="nowrap" data-sort="num">Orë</th>
-                            <th class="nowrap" data-sort="date">Krijuar më</th>
-                            <th class="nowrap text-end" data-sort="none">Veprime</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php if ($courses): ?>
-                        <?php foreach ($courses as $c): $cid=(int)$c['course_id']; ?>
-                            <?php
-                              $grList = $groupsByCourse[$cid] ?? [];
-                              $grCount = count($grList);
-                            ?>
+    <?php if ($courses): ?>
+      <div class="table-responsive">
+        <table class="table" id="coursesTable" data-sortable>
+          <thead>
+            <tr>
+              <th scope="col" class="nowrap" data-sort="text">Kodi</th>
+              <th scope="col" class="col-wide" data-sort="text">Moduli</th>
+              <th scope="col" class="nowrap num-col" data-sort="num">Orë</th>
+              <th scope="col" class="nowrap" data-sort="num">Grupe</th>
+              <th scope="col" class="nowrap num-col" data-sort="num">Kursantë</th>
+              <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
+            </tr>
+          </thead>
+          <?php foreach ($courses as $c):
+            $cid = (int)$c['course_id'];
+            $grList = $groupsByCourse[$cid] ?? [];
+            $grCount = count($grList);
+            $members = array_sum(array_map(static fn($g) => (int)$g['members'], $grList));
+            $plannedN = $plannedByCourse[$cid] ?? 0;
+          ?>
+          <tbody data-course="<?= $cid ?>">
+            <tr>
+              <td class="cell nowrap" data-id="<?= $cid ?>" data-field="code">
+                <span class="editable id-code" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="Kodi i modulit"' : '' ?>><?= h((string)$c['code']) ?></span>
+              </td>
+              <td class="cell col-wide" data-id="<?= $cid ?>" data-field="name">
+                <span class="editable person-name" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="Emri i modulit"' : '' ?>><?= h((string)$c['name']) ?></span>
+                <?php if ($plannedN): ?><span class="cell-sub"><?= h(qta_plural($plannedN, 'kursant e ka zgjedhur, pa grup ende', 'kursantë e kanë zgjedhur, pa grup ende')) ?></span><?php endif; ?>
+              </td>
+              <td class="cell nowrap num-col" data-id="<?= $cid ?>" data-field="hours" title="Numër i plotë, p.sh. 40">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" inputmode="numeric" <?= $EDIT_MODE ? 'role="textbox" aria-label="Orët e modulit"' : '' ?>><?= (int)$c['hours'] ?></span>
+              </td>
+              <td class="nowrap" data-sort-value="<?= $grCount ?>">
+                <?php if ($grCount): ?>
+                  <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courseGroups_<?= $cid ?>"
+                          aria-expanded="false" aria-controls="courseGroups_<?= $cid ?>">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i><span><?= h(qta_plural($grCount, 'grup', 'grupe')) ?></span>
+                  </button>
+                <?php else: ?>
+                  <span class="text-muted">Asnjë grup</span>
+                <?php endif; ?>
+              </td>
+              <td class="nowrap num-col" data-count-members><?= $members ?></td>
+              <td class="col-actions">
+                <?php if ($EDIT_MODE): ?>
+                  <button type="button" class="btn btn-ghost btn-sm btn-icon" data-bs-toggle="modal" data-bs-target="#deleteCourseModal"
+                          data-course-id="<?= $cid ?>" data-course-code="<?= h((string)$c['code']) ?>" data-course-name="<?= h((string)$c['name']) ?>"
+                          data-course-groups="<?= $grCount ?>" data-course-planned="<?= $plannedN ?>"
+                          aria-label="Fshi modulin <?= h((string)$c['name']) ?>" title="Fshi modulin">
+                    <i class="bi bi-trash" aria-hidden="true"></i>
+                  </button>
+                <?php endif; ?>
+              </td>
+            </tr>
+            <?php if ($grCount): ?>
+              <tr class="row-details">
+                <td colspan="6">
+                  <div class="collapse" id="courseGroups_<?= $cid ?>">
+                    <div class="row-details-inner">
+                      <div class="table-responsive">
+                        <table class="table table-sm">
+                          <thead>
                             <tr>
-                                <td class="cell" data-id="<?= $cid ?>" data-field="code">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= htmlspecialchars($c['code']) ?></span>
-                                </td>
-                                <td class="cell" data-id="<?= $cid ?>" data-field="name">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= htmlspecialchars($c['name']) ?></span>
-                                </td>
-                                <td class="cell nowrap" data-id="<?= $cid ?>" data-field="hours" title="Numër i plotë ≥ 1">
-                                    <span class="editable" contenteditable="<?= $EDIT_MODE?'true':'false' ?>" tabindex="<?= $EDIT_MODE?0:-1 ?>"><?= (int)$c['hours'] ?></span>
-                                </td>
-                                <td class="text-muted small nowrap"><?= htmlspecialchars($c['created_at']) ?></td>
-                                <td class="text-end">
-                                    <div class="btn-group">
-                                      <button
-                                        class="btn btn-soft-secondary btn-pill btn-toggle-groups"
-                                        type="button"
-                                        data-bs-toggle="collapse"
-                                        data-bs-target="#courseGroups_<?= $cid ?>"
-                                        aria-expanded="false"
-                                        aria-controls="courseGroups_<?= $cid ?>"
-                                      >
-                                        <i class="bi bi-chevron-down me-1"></i>
-                                        Grupe <span class="badge bg-secondary align-text-bottom"><?= $grCount ?></span>
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        class="btn btn-outline-danger btn-sm"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#deleteCourseModal"
-                                        data-course-id="<?= $cid ?>"
-                                        data-course-code="<?= htmlspecialchars($c['code'], ENT_QUOTES) ?>"
-                                        data-course-name="<?= htmlspecialchars($c['name'], ENT_QUOTES) ?>"
-                                        <?= $EDIT_MODE?'':'disabled' ?>
-                                        title="<?= $EDIT_MODE?'Fshi këtë modul':'Aktivizo Edit Mode për të fshirë' ?>"
-                                      >
-                                        <i class="bi bi-trash me-1"></i> Fshi
-                                      </button>
-                                    </div>
-                                </td>
+                              <th scope="col" class="nowrap">Grupi</th>
+                              <th scope="col" class="nowrap">Datat</th>
+                              <th scope="col" class="nowrap num-col">Kursantë</th>
+                              <th scope="col">Gjendja</th>
+                              <th scope="col" class="col-actions"><span class="visually-hidden">Veprime</span></th>
                             </tr>
-
-                            <!-- Row i grupeve (collapse) -->
-                            <tr class="collapse" id="courseGroups_<?= $cid ?>">
-                              <td colspan="5" class="bg-light">
-                                <div class="p-3">
-                                  <?php if ($grList): ?>
-                                    <div class="table-responsive">
-                                      <table class="table table-sm align-middle mb-0">
-                                        <thead>
-                                          <tr>
-                                            <th class="nowrap">Grup</th>
-                                            <th>Datat</th>
-                                            <th class="nowrap">Anëtarë</th>
-                                            <th class="nowrap">Status</th>
-                                            <th class="text-end nowrap">Veprime</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody id="groupsBody_<?= $cid ?>">
-                                          <?php foreach ($grList as $g): ?>
-                                            <?php
-                                              $gid = (int)$g['id'];
-                                              $completed = (int)$g['is_completed'] === 1;
-                                              $dates = fmt_dmy($g['start_date']).' → '.fmt_dmy($g['end_date']);
-                                            ?>
-                                            <tr id="groupRow_<?= $gid ?>">
-                                              <td class="nowrap">
-                                                <i class="bi bi-collection me-1"></i>
-                                                Grup #<?= $gid ?>
-                                              </td>
-                                              <td><?= htmlspecialchars($dates) ?></td>
-                                              <td class="nowrap"><?= (int)$g['members'] ?></td>
-                                              <td>
-                                                <span class="badge <?= $completed?'text-bg-success':'text-bg-danger' ?>">
-                                                  <?= $completed?'I përfunduar':'Jo i përfunduar' ?>
-                                                </span>
-                                              </td>
-                                              <td class="text-end">
-                                                <button
-                                                  class="btn btn-soft-primary btn-sm btn-pill"
-                                                  type="button"
-                                                  data-bs-toggle="modal"
-                                                  data-bs-target="#moveGroupModal"
-                                                  data-group-id="<?= $gid ?>"
-                                                  data-current-course="<?= $cid ?>"
-                                                  <?= $EDIT_MODE ? '' : 'disabled' ?>
-                                                  title="Zhvendos këtë grup te modul tjetër"
-                                                >
-                                                  <i class="bi bi-arrows-move me-1"></i> Zhvendos grupin
-                                                </button>
-                                                <a class="btn btn-outline-secondary btn-sm" href="groups.php?q=&course_id=<?= $cid ?>#gBody_<?= $gid ?>" target="_blank">
-                                                  <i class="bi bi-box-arrow-up-right me-1"></i> Hap te “Grupe”
-                                                </a>
-                                              </td>
-                                            </tr>
-                                          <?php endforeach; ?>
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  <?php else: ?>
-                                    <div class="text-muted small">Nuk ka grupe për këtë modul.</div>
+                          </thead>
+                          <tbody>
+                            <?php foreach ($grList as $g): $gid = (int)$g['id']; ?>
+                              <tr id="groupRow_<?= $gid ?>" data-members="<?= (int)$g['members'] ?>">
+                                <td class="nowrap"><a href="groups.php?course_id=<?= $cid ?>">Grupi #<?= $gid ?></a></td>
+                                <td class="nowrap"><?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?></td>
+                                <td class="nowrap num-col"><?= (int)$g['members'] ?>/10</td>
+                                <td><?= $groupState($g) ?></td>
+                                <td class="col-actions">
+                                  <?php if ($EDIT_MODE): ?>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#moveGroupModal"
+                                            data-group-id="<?= $gid ?>" data-current-course="<?= $cid ?>" data-completed="<?= (int)$g['is_completed'] ?>"
+                                            data-group-label="Grupi #<?= $gid ?> · <?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?>">
+                                      <i class="bi bi-arrow-left-right" aria-hidden="true"></i>Kalo te një modul tjetër
+                                    </button>
                                   <?php endif; ?>
-                                </div>
-                              </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <tr><td colspan="5" class="text-center text-muted">Nuk u gjet asnjë modul.</td></tr>
-                    <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+                                </td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            <?php endif; ?>
+          </tbody>
+          <?php endforeach; ?>
+        </table>
+      </div>
 
-        <?php if ($totalPages > 1): ?>
-        <div class="card-footer bg-white">
-            <nav aria-label="Page navigation">
-                <ul class="pagination mb-0 justify-content-end">
-                    <?php
-                    $base = 'courses.php?'.http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
-                    $prev = max(1, $page-1);
-                    $next = min($totalPages, $page+1);
-                    ?>
-                    <li class="page-item <?= $page<=1?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=1">«</a>
-                    </li>
-                    <li class="page-item <?= $page<=1?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $prev ?>">‹</a>
-                    </li>
-                    <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
-                    </li>
-                    <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-                        <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
-                    </li>
-                </ul>
-            </nav>
-        </div>
-        <?php endif; ?>
-    </div>
+      <?php if ($totalPages > 1):
+        $pBase = 'courses.php?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
+        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
+        <nav class="pager mt-3" aria-label="Faqet e listës">
+          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
+          <span class="text-muted small">Faqja <?= $page ?> nga <?= $totalPages ?></span>
+          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+        </nav>
+      <?php endif; ?>
 
-    <div class="text-center text-muted small mt-4">
-        &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-    </div>
+    <?php else: ?>
+      <?= $q !== ''
+        ? qta_empty('Asnjë modul nuk përputhet', 'Provo një fjalë tjetër nga emri ose kodi.', 'bi-search', '<a class="btn btn-secondary" href="courses.php">Pastro kërkimin</a>')
+        : qta_empty('Ende pa module', 'Shto modulin e parë që ofron QTA, p.sh. "Punime në lartësi".', 'bi-journal-plus', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto modul</a>') ?>
+    <?php endif; ?>
+  </section>
 </main>
 
-<!-- FAB: Shto modul (poshtë djathtas) -->
-<?php if ($EDIT_MODE): ?>
-<button class="btn btn-primary btn-fab" type="button"
-        data-bs-toggle="modal" data-bs-target="#addCourseModal"
-        aria-label="Shto modul">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php else: ?>
-<button class="btn btn-soft-secondary btn-fab" type="button" disabled
-        title="Aktivizo Edit Mode për të shtuar modul">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php endif; ?>
-
-<!-- MODAL: Shto Modul -->
-<div class="modal fade" id="addCourseModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form class="modal-content" method="post">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+<!-- Dialog: shto modul -->
+<div class="modal fade" id="addCourseModal" tabindex="-1" aria-labelledby="addCourseTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="courses.php" data-loading>
+      <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_course">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-bookmark-plus me-1"></i> Shto modul</h5>
+        <h2 class="modal-title" id="addCourseTitle"><i class="bi bi-journal-plus" aria-hidden="true"></i>Shto një modul</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
         <div class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label">Kod *</label>
-                <input type="text" name="code" class="form-control" placeholder="p.sh. QTA-ALGO" <?= $EDIT_MODE?'required':'disabled' ?>>
-            </div>
-            <div class="col-md-5">
-                <label class="form-label">Emër *</label>
-                <input type="text" name="name" class="form-control" placeholder="p.sh. Algoritme" <?= $EDIT_MODE?'required':'disabled' ?>>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Orë *</label>
-                <input type="number" name="hours" class="form-control" min="1" step="1" placeholder="p.sh. 30" <?= $EDIT_MODE?'required':'disabled' ?>>
-            </div>
-        </div>
-        <div class="form-text mt-2">
-            Krijon një rresht në <code>courses</code> (kolonat: <code>code, name, hours</code>).
+          <div class="col-12">
+            <label class="form-label" for="acName">Emri i modulit <span class="req" aria-hidden="true">*</span></label>
+            <input id="acName" type="text" name="name" class="form-control" placeholder="p.sh. Punime në lartësi dhe përdorimi i rripave" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          </div>
+          <div class="col-7">
+            <label class="form-label" for="acCode">Kodi <span class="req" aria-hidden="true">*</span></label>
+            <input id="acCode" type="text" name="code" class="form-control input-code" placeholder="p.sh. LRT-02" required aria-describedby="acCodeHelp" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <div class="form-text" id="acCodeHelp">I shkurtër dhe i veçantë për çdo modul.</div>
+          </div>
+          <div class="col-5">
+            <label class="form-label" for="acHours">Orë mësimi <span class="req" aria-hidden="true">*</span></label>
+            <input id="acHours" type="number" name="hours" class="form-control" min="1" max="65535" step="1" inputmode="numeric" placeholder="p.sh. 40" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Shto modul</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-check-lg" aria-hidden="true"></i>Shto modulin</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- MODAL: Fshi modul -->
-<div class="modal fade" id="deleteCourseModal" tabindex="-1" aria-labelledby="deleteCourseLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" method="post" action="courses.php">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+<!-- Dialog: fshi modul -->
+<div class="modal fade" id="deleteCourseModal" tabindex="-1" aria-labelledby="deleteCourseTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="courses.php" data-loading>
+      <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="delete_course">
       <input type="hidden" name="course_id" id="deleteCourseId" value="">
-      <div class="modal-header">
-        <h5 class="modal-title" id="deleteCourseLabel"><i class="bi bi-trash me-1"></i> Fshi modul</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <p>Jeni i sigurt që dëshironi të fshini modulin:</p>
-        <ul class="mb-2">
-          <li><strong>Kod:</strong> <span id="delCode"></span></li>
-          <li><strong>Emër:</strong> <span id="delName"></span></li>
-        </ul>
-        <div class="alert alert-warning small mb-0">
-          <i class="bi bi-exclamation-triangle me-1"></i>
-          <strong>Kujdes:</strong> Fshirja mund të <u>shkaktojë fshirje kaskadë</u> të grupeve dhe pjesëmarrjeve të lidhura me këtë modul (nëse FK janë ON).
+      <div class="modal-body pt-4">
+        <span class="confirm-icon is-danger"><i class="bi bi-trash" aria-hidden="true"></i></span>
+        <h2 class="modal-title mb-2" id="deleteCourseTitle">Të fshihet moduli?</h2>
+        <p class="mb-2"><b id="delName"></b> <span class="code text-muted" id="delCode"></span></p>
+        <div id="delBlocked" class="alert alert-warning mb-0" hidden>
+          <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+          <div><b>Ky modul ka <span id="delGroups"></span>.</b> Një modul me grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët. Kaloji grupet te një modul tjetër ose fshiji ato te "Grupet".</div>
+        </div>
+        <div id="delAllowed">
+          <p class="text-muted mb-0">Moduli hiqet nga katalogu. <span id="delPlanned"></span>Kjo nuk mund të kthehet mbrapsht.</p>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-danger btn-pill" type="submit" <?= $EDIT_MODE?'':'disabled' ?>>Po, fshije</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-danger" type="submit" id="delSubmit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-trash" aria-hidden="true"></i>Po, fshije modulin</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- MODAL: Zhvendos grupin te modul tjetër -->
-<div class="modal fade" id="moveGroupModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" id="moveGroupForm" onsubmit="return false;">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-      <input type="hidden" name="group_id" id="mv_group_id" value="">
+<!-- Dialog: kalo grupin te një modul tjetër -->
+<div class="modal fade" id="moveGroupModal" tabindex="-1" aria-labelledby="moveGroupTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="moveGroupForm">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-arrows-move me-1"></i> Zhvendos grupin</h5>
+        <div>
+          <span class="eyebrow mb-0" id="mvGroupLabel">Grupi</span>
+          <h2 class="modal-title" id="moveGroupTitle"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>Kalo grupin te një modul tjetër</h2>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label">Moduli i ri</label>
-          <select id="mv_target_course" class="form-select" required <?= $EDIT_MODE?'':'disabled' ?>>
-            <option value="">— Zgjidh modul —</option>
-            <?php foreach ($allCourses as $ac): ?>
-              <option value="<?= (int)$ac['id'] ?>">
-                <?= htmlspecialchars($ac['code'].' — '.$ac['name']) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <div class="form-text">Grupi do të lidhet me modulin e zgjedhur.</div>
-        </div>
+        <label class="form-label" for="mvTarget">Moduli i ri</label>
+        <select id="mvTarget" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          <option value="">Zgjidh modulin</option>
+          <?php foreach ($allCourses as $ac): ?>
+            <option value="<?= (int)$ac['id'] ?>"><?= h((string)$ac['name']) ?> (<?= h((string)$ac['code']) ?>)</option>
+          <?php endforeach; ?>
+        </select>
+        <p class="form-text mb-0">Përdore për të korrigjuar një gabim: të gjithë kursantët e grupit kalojnë në modulin e ri, me datat dhe pikët e tyre.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-soft-secondary btn-pill" type="button" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit" id="mv_submit" <?= $EDIT_MODE?'':'disabled' ?>>Zhvendos</button>
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary" type="submit" id="mvSubmit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Kalo grupin</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- JS -->
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'courses_inline_update.php';
 const EDIT_ENABLED = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Toast helper */
-function notify(type, text, opts={}){
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
+function notify(type, text, opts={}){ return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null; }
+function cleanText(s){ return (s || '').replace(/\s+/g,' ').trim(); }
 
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+async function post(payload){
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Accept':'application/json'},
+    body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
+  });
+  const json = await res.json().catch(()=> null);
+  if (!json || !json.ok) throw new Error((json && json.error) || 'Ndryshimi nuk u ruajt. Provo sërish.');
+  return json;
 }
 
-function cleanText(s) { return (s || '').replace(/\s+/g,' ').trim(); }
+/* ===== Redaktimi në tabelë (kodi, emri, orët) ===== */
+function flashCell(cell, cls){ cell.classList.add(cls); setTimeout(()=>cell.classList.remove(cls), cls === 'cell-err' ? 1200 : 800); }
 
-/* ===== Inline save për fushat e modulit ===== */
-async function saveInline(courseId, field, value, cell, displayEl) {
-  try {
-    cell.classList.add('cell-saving');
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json', 'Accept':'application/json'},
-      body: JSON.stringify({ action: 'update_field', csrf: CSRF, course_id: courseId, field, value })
-    });
-    const json = await res.json();
+async function saveInline(el){
+  const cell = el.closest('td.cell');
+  const field = cell.dataset.field;
+  const cid = parseInt(cell.dataset.id, 10);
+  const prev = el.dataset.prev ?? '';
+  const value = cleanText(el.textContent);
+  el.textContent = value;
+  if (value === cleanText(prev)) return;
+
+  let problem = '';
+  if (field === 'hours' && !/^\d+$/.test(value)) problem = 'Orët duhet të jenë një numër i plotë, p.sh. 40.';
+  else if (field === 'hours' && parseInt(value, 10) < 1) problem = 'Orët duhet të jenë të paktën 1.';
+  else if (field === 'code' && value === '') problem = 'Kodi nuk mund të mbetet bosh.';
+  else if (field === 'name' && value === '') problem = 'Emri nuk mund të mbetet bosh.';
+  if (problem){ el.textContent = prev; flashCell(cell, 'cell-err'); notify('warning', problem); return; }
+
+  cell.classList.add('cell-saving');
+  try{
+    const json = await post({action:'update_field', course_id: cid, field, value});
+    el.textContent = json.display ?? value;
+    el.dataset.prev = el.textContent;
     cell.classList.remove('cell-saving');
-    if (!json.ok) throw new Error(json.error || 'Gabim i panjohur.');
-    if (displayEl) { displayEl.textContent = json.display ?? (value || ''); }
-    cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
-    notify('success','U ruajt me sukses.');
-  } catch (e) {
-    console.error(e);
-    cell.classList.remove('cell-saving'); cell.classList.add('cell-err');
-    setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-    notify('danger', e.message || 'Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
+    flashCell(cell, 'cell-ok');
+    notify('success', 'Ndryshimi u ruajt.');
+  }catch(e){
+    cell.classList.remove('cell-saving');
+    el.textContent = prev;
+    flashCell(cell, 'cell-err');
+    notify('danger', e.message);
   }
 }
 
-/* ===== Navigim me TAB ndër qeliza (spreadsheet-like) ===== */
-function getEditableList(){
-  return Array.from(document.querySelectorAll('td.cell .editable[contenteditable="true"]'));
-}
-function focusNeighbor(current, backwards=false){
-  const list = getEditableList();
-  const idx = list.indexOf(current);
-  if (idx === -1) return;
-  const nextIdx = backwards ? Math.max(0, idx-1) : Math.min(list.length-1, idx+1);
-  const target = list[nextIdx];
-  if (target && target !== current){
-    target.focus();
-    // Vendos caret në fund
-    const r = document.createRange(); const s = window.getSelection();
-    r.selectNodeContents(target); r.collapse(false); s.removeAllRanges(); s.addRange(r);
-  }
-}
-
-/* Inline editing: vetëm kur Edit Mode është ON */
 if (EDIT_ENABLED) {
   document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el => {
-    let oldVal = el.textContent;
-
-    el.addEventListener('focus', () => { oldVal = el.textContent; el.dataset.prev = oldVal; });
-
+    el.dataset.prev = cleanText(el.textContent);
+    el.addEventListener('focus', () => { el.dataset.prev = cleanText(el.textContent); });
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
-      if (ev.key === 'Tab') {
-        ev.preventDefault();
-        const cell = el.closest('td.cell');
-        const field = cell.dataset.field;
-        const cid = parseInt(cell.dataset.id, 10);
-        const newVal = cleanText(el.textContent);
-        if (newVal !== cleanText(oldVal)) {
-          // ruaj para se të lëvizë fokusi
-          saveInline(cid, field, newVal, cell, el).finally(()=>{
-            setTimeout(()=> focusNeighbor(el, ev.shiftKey), 0);
-          });
-        } else {
-          setTimeout(()=> focusNeighbor(el, ev.shiftKey), 0);
-        }
-      }
-      if (ev.key === 'Escape') {
-        ev.preventDefault();
-        el.textContent = el.dataset.prev || oldVal;
-        el.blur();
-      }
+      if (ev.key === 'Escape') { ev.preventDefault(); el.textContent = el.dataset.prev || ''; el.blur(); }
     });
-
-    el.addEventListener('blur', () => {
-      const cell = el.closest('td.cell');
-      const field = cell.dataset.field;
-      const cid = parseInt(cell.dataset.id, 10);
-      const newVal = cleanText(el.textContent);
-      if (newVal === cleanText(oldVal)) return;
-
-      if (field === 'hours') {
-        if (newVal === '' || isNaN(newVal) || parseInt(newVal,10) < 1) {
-          el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-          notify('warning','Fusha “Orë” duhet të jetë numër i plotë ≥ 1.');
-          return;
-        }
-      }
-      if (field === 'code' && newVal === '') {
-        el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-        notify('warning','Kodi nuk mund të jetë bosh.');
-        return;
-      }
-      if (field === 'name' && newVal === '') {
-        el.textContent = oldVal; cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-        notify('warning','Emri nuk mund të jetë bosh.');
-        return;
-      }
-
-      saveInline(cid, field, newVal, cell, el);
+    el.addEventListener('paste', (ev) => {
+      ev.preventDefault();
+      const text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
+      document.execCommand('insertText', false, cleanText(text));
     });
+    el.addEventListener('blur', () => saveInline(el));
   });
 }
 
-/* Modal fshirjeje i ripërdorshëm */
-const deleteModal = document.getElementById('deleteCourseModal');
-if (deleteModal) {
-  deleteModal.addEventListener('show.bs.modal', event => {
-    const button = event.relatedTarget;
-    if (!button || button.hasAttribute('disabled')) { event.preventDefault(); return; }
-    const id   = button.getAttribute('data-course-id');
-    const code = button.getAttribute('data-course-code') || '';
-    const name = button.getAttribute('data-course-name') || '';
+/* ===== Fshirja e modulit: e bllokuar kur ka grupe ===== */
+document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', (ev) => {
+  const btn = ev.relatedTarget;
+  if (!btn) { ev.preventDefault(); return; }
+  const groups = parseInt(btn.dataset.courseGroups || '0', 10);
+  const planned = parseInt(btn.dataset.coursePlanned || '0', 10);
+  document.getElementById('deleteCourseId').value = btn.dataset.courseId;
+  document.getElementById('delName').textContent = btn.dataset.courseName || '';
+  document.getElementById('delCode').textContent = btn.dataset.courseCode ? '· ' + btn.dataset.courseCode : '';
+  document.getElementById('delGroups').textContent = groups === 1 ? '1 grup' : groups + ' grupe';
+  document.getElementById('delPlanned').textContent = planned
+    ? (planned === 1 ? '1 kursant e ka zgjedhur këtë modul dhe do ta humbasë zgjedhjen. ' : planned + ' kursantë e kanë zgjedhur këtë modul dhe do ta humbasin zgjedhjen. ')
+    : '';
+  document.getElementById('delBlocked').hidden = groups === 0;
+  document.getElementById('delAllowed').hidden = groups > 0;
+  document.getElementById('delSubmit').hidden = groups > 0;
+});
 
-    document.getElementById('deleteCourseId').value = id;
-    document.getElementById('delCode').textContent  = code;
-    document.getElementById('delName').textContent  = name;
-  });
-}
+/* ===== Kalimi i një grupi te një modul tjetër ===== */
+(function(){
+  const modal = document.getElementById('moveGroupModal');
+  if (!modal) return;
+  const sel = document.getElementById('mvTarget');
+  let groupId = 0, currentCourse = 0, completed = false;
 
-/* Modal: Zhvendos grupin */
-const moveModal = document.getElementById('moveGroupModal');
-let MV_groupId = null;
-let MV_currentCourse = null;
-if (moveModal){
-  moveModal.addEventListener('show.bs.modal', (ev)=>{
+  modal.addEventListener('show.bs.modal', (ev) => {
     const btn = ev.relatedTarget;
-    if (!btn || btn.hasAttribute('disabled')) { ev.preventDefault(); return; }
-    MV_groupId = parseInt(btn.getAttribute('data-group-id')||'0',10)||0;
-    MV_currentCourse = parseInt(btn.getAttribute('data-current-course')||'0',10)||0;
-
-    document.getElementById('mv_group_id').value = MV_groupId;
-    const sel = document.getElementById('mv_target_course');
-    if (sel) {
-      Array.from(sel.options).forEach(opt=>{
-        if (parseInt(opt.value,10) === MV_currentCourse) opt.disabled = true;
-        else opt.disabled = false;
-      });
-      sel.value = '';
-    }
+    if (!btn) { ev.preventDefault(); return; }
+    groupId = parseInt(btn.dataset.groupId || '0', 10);
+    currentCourse = parseInt(btn.dataset.currentCourse || '0', 10);
+    completed = btn.dataset.completed === '1';
+    document.getElementById('mvGroupLabel').textContent = btn.dataset.groupLabel || 'Grupi';
+    Array.from(sel.options).forEach(o => { o.disabled = parseInt(o.value, 10) === currentCourse; });
+    sel.value = '';
   });
 
-  document.getElementById('mv_submit')?.addEventListener('click', async ()=>{
-    const sel = document.getElementById('mv_target_course');
-    const newCourse = parseInt(sel.value||'0',10)||0;
-    if (!MV_groupId || !newCourse || newCourse === MV_currentCourse){
-      notify('warning','Zgjidh një modul të vlefshëm.'); return;
-    }
-    try{
-      const res = await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify({
-          action: 'move_group_course',
-          csrf: CSRF,
-          group_id: MV_groupId,
-          new_course_id: newCourse
-        })
+  document.getElementById('moveGroupForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const target = parseInt(sel.value || '0', 10);
+    if (!target) { notify('warning', 'Zgjidh modulin ku do të kalojë grupi.'); sel.focus(); return; }
+    let force = 0;
+    if (completed) {
+      const ok = await window.qtaConfirm({
+        title: 'Ky grup është i mbyllur',
+        message: 'Dokumentet e këtij grupi mund të jenë lëshuar tashmë. Je i sigurt që do ta kalosh te një modul tjetër?',
+        confirm: 'Po, kaloje', danger: false
       });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'Nuk u zhvendos.');
-      // Hiq rreshtin e grupit nga lista aktuale
-      const row = document.getElementById('groupRow_'+MV_groupId);
-      row?.parentElement?.removeChild(row);
-
-      // Përditëso badge e numrit të grupeve në buton
-      const wrap = document.getElementById('groupsBody_'+MV_currentCourse);
-      const btn = document.querySelector(`[data-bs-target="#courseGroups_${MV_currentCourse}"] .badge`);
-      if (wrap && btn){
-        const left = wrap.querySelectorAll('tr').length;
-        btn.textContent = left;
-      }
-
-      bootstrap.Modal.getInstance(moveModal)?.hide();
-      notify('success','Grupi u zhvendos me sukses.');
-    }catch(err){
-      notify('danger', err.message || 'Zhvendosja dështoi.');
+      if (!ok) return;
+      force = 1;
+    }
+    const btn = document.getElementById('mvSubmit');
+    btn.disabled = true; btn.classList.add('is-loading');
+    try {
+      await post({action:'move_group_course', group_id: groupId, new_course_id: target, force});
+      sessionStorage.setItem('qtaFlash', 'Grupi #' + groupId + ' kaloi te moduli i ri.');
+      location.reload();
+    } catch (e) {
+      btn.disabled = false; btn.classList.remove('is-loading');
+      notify('danger', e.message);
     }
   });
-}
+})();
 
-/* Flash -> Toast sapo ngarkohet faqja */
+/* Mesazhet pas ringarkimit */
+document.addEventListener('DOMContentLoaded', () => {
+  let queued = null;
+  try { queued = sessionStorage.getItem('qtaFlash'); sessionStorage.removeItem('qtaFlash'); } catch (e) { queued = null; }
+  if (queued) notify('success', queued);
 <?php if ($ok): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($ok) ?>));
+  notify('success', <?= json_encode($ok, JSON_UNESCAPED_UNICODE) ?>);
 <?php endif; ?>
 <?php if ($err): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($err) ?>));
+  notify('danger', <?= json_encode($err, JSON_UNESCAPED_UNICODE) ?>, {autohide: false});
 <?php endif; ?>
+});
 </script>
 </body>
 </html>
