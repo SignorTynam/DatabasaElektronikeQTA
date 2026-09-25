@@ -5,7 +5,7 @@ require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
-/* ===== Guard: vetëm STUDENT ===== */
+/* ===== Vetëm kursanti ===== */
 if (!isset($_SESSION['user_id'])) { header('Location: selectProfile.php'); exit; }
 $u = $pdo->prepare("
   SELECT u.id, u.full_name, u.email, r.name AS role_name
@@ -16,12 +16,10 @@ $u->execute([':id'=>$_SESSION['user_id']]);
 $currentUser = $u->fetch(PDO::FETCH_ASSOC);
 if (!$currentUser || ($currentUser['role_name']??'')!=='student') { header('Location: selectProfile.php'); exit; }
 
-/* ===== Helpers ===== */
-function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-function i($v): int { return (int)$v; }
+require_once __DIR__ . '/../shared/themeli.php';
 $today = date('Y-m-d');
 
-/* ===== Profili bazë i studentit ===== */
+/* ===== Profili bazë i kursantit ===== */
 $baseQ = $pdo->prepare("
   SELECT s.id AS sid, s.person_id, p.personal_number
   FROM students s JOIN persons p ON p.id=s.person_id
@@ -29,13 +27,13 @@ $baseQ = $pdo->prepare("
 ");
 $baseQ->execute([':uid'=>$_SESSION['user_id']]);
 $base = $baseQ->fetch(PDO::FETCH_ASSOC);
-if (!$base) { exit('Profili i studentit nuk u gjet.'); }
+if (!$base) { exit('Profili i kursantit nuk u gjet.'); }
 
 $baseSid        = (int)$base['sid'];
 $basePersonId   = (int)$base['person_id'];
 $personalNumber = (string)($base['personal_number'] ?? '');
 
-/* Të gjitha regjistrimet (AMZË) për të njëjtin person_id */
+/* Të gjitha regjistrimet (AMZË) të të njëjtit person */
 $amzeRows = $pdo->prepare("
   SELECT id, nr_amze FROM students
   WHERE person_id=:pid
@@ -47,9 +45,9 @@ $amzeRows = $amzeRows->fetchAll(PDO::FETCH_ASSOC);
 $studentIds = $amzeRows ? array_values(array_unique(array_map(fn($r)=>(int)$r['id'], $amzeRows))) : [$baseSid];
 $amzeList   = array_values(array_filter(array_map(fn($r)=>$r['nr_amze'] ?? null, $amzeRows)));
 
-/* Info personale + arsimi */
+/* Të dhënat personale + arsimi */
 $S = $pdo->prepare("
-  SELECT 
+  SELECT
     p.first_name, p.father_name, p.last_name, p.birth_date, p.birth_place,
     s.nr_amze, p.personal_number, p.phone,
     el.code AS edu_code, el.label AS edu_label
@@ -59,9 +57,9 @@ $S = $pdo->prepare("
   WHERE s.id=:sid LIMIT 1
 ");
 $S->execute([':sid'=>$baseSid]);
-$stud = $S->fetch(PDO::FETCH_ASSOC);
+$stud = $S->fetch(PDO::FETCH_ASSOC) ?: [];
 
-/* Kompania e caktuar (maksimumi 1 sipas skemës) */
+/* Agjencia (maksimumi 1 sipas skemës) */
 $company = null;
 if ($studentIds) {
   $ph = implode(',', array_fill(0, count($studentIds), '?'));
@@ -76,7 +74,7 @@ if ($studentIds) {
   $company = $C->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
-/* Grupe për TË GJITHË student_id-t */
+/* Grupet për të gjitha regjistrimet */
 $groups = [];
 if ($studentIds) {
   $ph = implode(',', array_fill(0, count($studentIds), '?'));
@@ -84,10 +82,11 @@ if ($studentIds) {
     SELECT cg.id AS group_id, cg.start_date, cg.end_date,
            c.code AS course_code, c.name AS course_name, c.hours,
            cgs.final_score, cgs.exam_date AS my_exam,
-           cgs.student_id
+           cgs.student_id, s.nr_amze
     FROM course_group_students cgs
     JOIN course_groups cg ON cg.id=cgs.group_id
     JOIN courses c ON c.id=cg.course_id
+    JOIN students s ON s.id=cgs.student_id
     WHERE cgs.student_id IN ($ph)
     ORDER BY cg.start_date DESC, cg.id DESC
   ");
@@ -95,214 +94,207 @@ if ($studentIds) {
   $groups = $G->fetchAll(PDO::FETCH_ASSOC);
 }
 
-/* ===== KPI & përmbledhje ===== */
-$k_total_groups   = count($groups);
-$k_active_groups  = 0;
-$k_completed      = 0;
-$k_upcoming_tests = 0;
-$totalHours       = 0;
-
-$allScores = [];
-foreach ($groups as $g) {
-  $totalHours += (int)($g['hours'] ?? 0);
-  $isActive   = !empty($g['start_date']) && !empty($g['end_date']) && ($today >= $g['start_date'] && $today <= $g['end_date']);
-  $isEnded    = !empty($g['end_date']) && $g['end_date'] < $today;
-  if ($isActive) $k_active_groups++;
-  if ($isEnded)  $k_completed++;
-  if (!empty($g['my_exam']) && $g['my_exam'] >= $today) $k_upcoming_tests++;
-  if ($g['final_score'] !== null) $allScores[] = (float)$g['final_score'];
-}
-$k_avg_score = $allScores ? round(array_sum($allScores)/count($allScores), 2) : null;
-$k_pass_rate = null;
-if ($allScores) {
-  $passed = 0; foreach ($allScores as $sc) if ($sc >= 50) $passed++;
-  $k_pass_rate = round(($passed / count($allScores)) * 100, 1);
+/* Modulet e planifikuara që ende s'kanë grup */
+$planned = [];
+if ($studentIds) {
+  $ph = implode(',', array_fill(0, count($studentIds), '?'));
+  $P = $pdo->prepare("
+    SELECT c.code AS course_code, c.name AS course_name, s.nr_amze
+    FROM student_course_plans scp
+    JOIN courses c ON c.id = scp.course_id
+    JOIN students s ON s.id = scp.student_id
+    WHERE scp.student_id IN ($ph) AND scp.group_id IS NULL AND scp.status = 'planned'
+    ORDER BY c.name ASC
+  ");
+  $P->execute($studentIds);
+  $planned = $P->fetchAll(PDO::FETCH_ASSOC);
 }
 
-/* Teste në të ardhmen (Top 5) */
-$upcoming = array_values(array_filter($groups, fn($r)=> !empty($r['my_exam']) && $r['my_exam'] >= $today));
-usort($upcoming, fn($a,$b)=> strcmp($a['my_exam'], $b['my_exam']));
-$upcoming = array_slice($upcoming, 0, 5);
-
-/* Data për grafiqe */
-$scoreLabels = [];
-$scoreData   = [];
-foreach (array_reverse($groups) as $r) { // të vjetrit më parë
-  if ($r['final_score'] !== null) {
-    $scoreLabels[] = trim(($r['course_code'] ?? 'Kurs')." #".$r['group_id']);
-    $scoreData[]   = (float)$r['final_score'];
+/* Kodi QR i verifikimit: tokeni i personit (ose i regjistrimit si rezervë) */
+$verifyUrl = null;
+$verifyToken = null;
+try {
+  $q = $pdo->prepare("SELECT token FROM person_qr_tokens WHERE person_id = :pid LIMIT 1");
+  $q->execute([':pid' => $basePersonId]);
+  $verifyToken = $q->fetchColumn() ?: null;
+  if ($verifyToken) {
+    $verifyUrl = qta_absolute_url('verify.php') . '?pid=' . $basePersonId . '&t=' . rawurlencode((string)$verifyToken);
+  } else {
+    $q = $pdo->prepare("SELECT token FROM student_qr_tokens WHERE student_id = :sid LIMIT 1");
+    $q->execute([':sid' => $baseSid]);
+    $verifyToken = $q->fetchColumn() ?: null;
+    if ($verifyToken) {
+      $verifyUrl = qta_absolute_url('verify.php') . '?sid=' . $baseSid . '&t=' . rawurlencode((string)$verifyToken);
+    }
   }
+} catch (Throwable $e) {
+  $verifyUrl = null;
 }
 
-/* Orët sipas modulit (bar) */
-$hoursByCourse = [];
-foreach ($groups as $r) {
-  $key = ($r['course_code'] ?? '').' · '.($r['course_name'] ?? '');
-  $hoursByCourse[$key] = ($hoursByCourse[$key] ?? 0) + (int)($r['hours'] ?? 0);
-}
-$hoursLabels = array_keys($hoursByCourse);
-$hoursData   = array_values($hoursByCourse);
-
-/* Status split (doughnut) */
-$statusCounts = [
-  'Aktive'   => $k_active_groups,
-  'Të mbyllura' => $k_completed,
-  'Me test në pritje' => $k_upcoming_tests,
-];
-$statusLabels = array_keys($statusCounts);
-$statusData   = array_values($statusCounts);
-
-/* Navbar studenti */
-$NAV_ACTIVE = 'dashboard';
-require __DIR__ . '/inc/navbar3.php';
-
-$pageTitle = 'Kartela ime – Regjistri QTA';
-require __DIR__ . '/../shared/app_head.php';
-
-/* ---------------------------------------------------------------------------
-   Vetëm nga $groups, që logjika sipër e ka kufizuar te ky kursant.
-   Asnjë pyetje e re dhe asnjë fushë më tepër.
-   ------------------------------------------------------------------------ */
-$myScores = [];
-foreach ($groups as $g) {
-  if ($g['final_score'] !== null && $g['final_score'] !== '') { $myScores[] = (float)$g['final_score']; }
-}
-$avgScore = $myScores ? round(array_sum($myScores) / count($myScores), 1) : null;
-
-/* Çfarë pret kursantin: provime të caktuara që ende s'kanë notë. */
-$upcomingExams = [];
+/* Provimi i radhës: provim i caktuar, pa notë, sot ose më vonë */
+$nextExam = null;
 foreach ($groups as $g) {
   $hasScore = $g['final_score'] !== null && $g['final_score'] !== '';
-  if (!$hasScore && !empty($g['my_exam'])) { $upcomingExams[] = $g; }
+  if (!$hasScore && !empty($g['my_exam']) && $g['my_exam'] >= $today) {
+    if ($nextExam === null || strcmp((string)$g['my_exam'], (string)$nextExam['my_exam']) < 0) {
+      $nextExam = $g;
+    }
+  }
 }
-usort($upcomingExams, static fn($a, $b) => strcmp((string)$a['my_exam'], (string)$b['my_exam']));
+$passedCount = count(array_filter($groups, static fn($g) => $g['final_score'] !== null && (float)$g['final_score'] >= 50));
 
-$greetHour = (int)date('G');
-$greeting  = $greetHour < 12 ? 'Mirëmëngjes' : ($greetHour < 18 ? 'Mirëdita' : 'Mirëmbrëma');
-$whoShort  = trim((string)($currentUser['full_name'] ?: ($currentUser['email'] ?? 'Kursant')));
+$fullName  = qta_full_name($stud['first_name'] ?? '', $stud['father_name'] ?? '', $stud['last_name'] ?? '');
+$firstName = trim((string)($stud['first_name'] ?? '')) ?: trim((string)strtok((string)($currentUser['full_name'] ?? ''), ' '));
+
+$NAV_ACTIVE  = 'dashboard';
+$HELP_TOPIC  = 'dashboard_student';
+$pageTitle   = 'Faqja ime';
+$pageScripts = $verifyUrl ? ['https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'] : [];
+
+require __DIR__ . '/../shared/app_head.php';
+require __DIR__ . '/inc/navbar3.php';
 ?>
 
-<main class="app-main">
+<main class="app-main" id="main" tabindex="-1">
 
-  <div class="title-block">
-    <div class="title-block-main">
-      <div class="title-block-eyebrow">Kartela ime</div>
-      <h1><?= h($greeting) ?>, <?= h($whoShort) ?></h1>
+  <header class="page-head">
+    <div class="page-head-main">
+      <span class="eyebrow"><?= h(ucfirst(qta_today_label())) ?></span>
+      <h1 class="page-title"><?= h(qta_greeting()) ?><?= $firstName !== '' ? ', ' . h($firstName) : '' ?></h1>
+      <p class="page-lead">Këtu sheh modulet ku je regjistruar, provimet dhe rezultatet e tua.</p>
     </div>
-    <div class="title-block-fields">
-      <?php if (!empty($company)): ?>
-        <div class="title-block-field">
-          <span class="label">Agjencia</span>
-          <span class="value" style="font-family:var(--font-record)"><?= h((string)$company) ?></span>
+    <div class="page-actions">
+      <?= qta_help_button() ?>
+    </div>
+  </header>
+
+  <?php if ($nextExam): ?>
+    <section class="section" aria-label="Provimi yt i radhës">
+      <div class="callout">
+        <span class="callout-icon"><i class="bi bi-calendar-event" aria-hidden="true"></i></span>
+        <div class="callout-body">
+          <span class="callout-label">Provimi yt i radhës · <?= h(qta_when_label((string)$nextExam['my_exam'])) ?></span>
+          <span class="callout-title"><?= h((string)$nextExam['course_name']) ?></span>
+          <span class="callout-text">
+            <?= h(ucfirst(qta_weekday((int)date('N', strtotime((string)$nextExam['my_exam']))))) ?>,
+            <?= h(qta_date((string)$nextExam['my_exam'])) ?>. Merr me vete një dokument identifikimi.
+          </span>
         </div>
-      <?php endif; ?>
-      <div class="title-block-field">
-        <span class="label">Sot</span>
-        <span class="value"><?= h(date('d.m.Y')) ?></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ VEPRIMET -->
-  <section class="mb-5" aria-labelledby="actTitle">
-    <div class="plate-head"><h2 id="actTitle">Çfarë mund të bësh</h2></div>
-    <div class="actions">
-      <a class="act act-primary" href="groups_student.php">
-        <i class="bi bi-mortarboard" aria-hidden="true"></i>
-        <b>Modulet e mia</b><span>Datat, provimet dhe pikët</span>
-      </a>
-      <a class="act act-primary" href="verify.php">
-        <i class="bi bi-patch-check" aria-hidden="true"></i>
-        <b>Verifiko certifikatën</b><span>Kontrollo me kod ose QR</span>
-      </a>
-      <a class="act" href="profile.php">
-        <i class="bi bi-person" aria-hidden="true"></i>
-        <b>Profili im</b><span>Të dhënat e mia</span>
-      </a>
-      <a class="act" href="contact.php">
-        <i class="bi bi-envelope" aria-hidden="true"></i>
-        <b>Shkruaji QTA-së</b><span>Për pyetje ose ndreqje të dhënash</span>
-      </a>
-    </div>
-  </section>
-
-  <!-- ========================================================= PRET PËR TY -->
-  <?php if ($upcomingExams): ?>
-    <section class="mb-5" aria-labelledby="waitTitle">
-      <div class="plate-head">
-        <h2 id="waitTitle">Provime të caktuara</h2>
-        <span class="label"><?= count($upcomingExams) ?> në pritje</span>
-      </div>
-      <div class="waiting">
-        <?php foreach (array_slice($upcomingExams, 0, 5) as $g): ?>
-          <a class="wait-row" href="groups_student.php">
-            <span class="wait-n" style="font-size:var(--fs-sm);min-width:5rem">
-              <?= h(date('d.m.Y', strtotime((string)$g['my_exam']))) ?>
-            </span>
-            <span class="wait-main">
-              <b><?= h((string)$g['course_name']) ?></b>
-              <span>Ende pa notë të regjistruar.</span>
-            </span>
-            <span class="wait-go">Shiko →</span>
-          </a>
-        <?php endforeach; ?>
       </div>
     </section>
   <?php endif; ?>
 
-  <!-- ======================================================== MODULET E MIA -->
-  <section aria-labelledby="myTitle">
-    <div class="plate-head">
-      <h2 id="myTitle">Modulet e mia</h2>
-      <a class="label" href="groups_student.php">Të plota →</a>
+  <div class="row g-4 g-xl-5">
+    <div class="col-12 col-lg-7">
+      <section class="section" aria-labelledby="modTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="modTitle">Modulet e mia</h2>
+          <?php if ($groups): ?>
+            <span class="section-meta"><?= h($passedCount . ' nga ' . count($groups)) ?> të kaluara</span>
+          <?php endif; ?>
+        </div>
+
+        <?php if ($groups || $planned): ?>
+          <ul class="enroll-list">
+            <?php foreach ($groups as $g): ?>
+              <li class="enroll">
+                <div class="enroll-main">
+                  <span class="enroll-code"><?= h((string)$g['course_code']) ?></span>
+                  <h3 class="enroll-title"><?= h((string)$g['course_name']) ?></h3>
+                  <dl class="enroll-meta">
+                    <div><dt>Trajnimi</dt><dd><?= h(qta_date((string)$g['start_date'])) ?> – <?= h(qta_date((string)$g['end_date'])) ?></dd></div>
+                    <div><dt>Provimi</dt><dd><?= h(qta_date((string)($g['my_exam'] ?? ''), 'pa caktuar')) ?></dd></div>
+                    <div><dt>Nr. i amzës</dt><dd class="code"><?= h((string)$g['nr_amze']) ?></dd></div>
+                  </dl>
+                </div>
+                <div><?= qta_enrollment_status($g) ?></div>
+              </li>
+            <?php endforeach; ?>
+            <?php foreach ($planned as $p): ?>
+              <li class="enroll">
+                <div class="enroll-main">
+                  <span class="enroll-code"><?= h((string)$p['course_code']) ?></span>
+                  <h3 class="enroll-title"><?= h((string)$p['course_name']) ?></h3>
+                  <dl class="enroll-meta">
+                    <div><dt>Nr. i amzës</dt><dd class="code"><?= h((string)$p['nr_amze']) ?></dd></div>
+                  </dl>
+                </div>
+                <div><?= qta_status('Pret caktimin në grup', 'neutral', 'bi-hourglass-split') ?></div>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        <?php else: ?>
+          <?= qta_empty('Ende pa module', 'Sapo QTA të të caktojë në një grup, moduli dhe datat shfaqen këtu.', 'bi-mortarboard') ?>
+        <?php endif; ?>
+      </section>
     </div>
 
-    <?php if ($groups): ?>
-      <div class="ledger">
-        <table class="ledger-table" data-sortable>
-          <thead>
-            <tr>
-              <th class="no" data-sort="none">Nr.</th>
-              <th data-sort="text">Moduli</th>
-              <th class="nowrap" data-sort="date">Nisi</th>
-              <th class="nowrap" data-sort="date">Mbaroi</th>
-              <th class="nowrap" data-sort="date">Provimi</th>
-              <th class="nowrap num-col" data-sort="num">Nota</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($groups as $i => $g):
-              $score = $g['final_score'];
-              $hasScore = $score !== null && $score !== ''; ?>
-              <tr>
-                <td class="no"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></td>
-                <td><span class="person"><?= h((string)$g['course_name']) ?></span></td>
-                <td class="nowrap num"><?= !empty($g['start_date']) ? h(date('d.m.Y', strtotime((string)$g['start_date']))) : '—' ?></td>
-                <td class="nowrap num"><?= !empty($g['end_date']) ? h(date('d.m.Y', strtotime((string)$g['end_date']))) : '—' ?></td>
-                <td class="nowrap num"><?= !empty($g['my_exam']) ? h(date('d.m.Y', strtotime((string)$g['my_exam']))) : '—' ?></td>
-                <td class="nowrap num-col num"><?= $hasScore ? h((string)$score) : '—' ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-
-      <?php if ($avgScore !== null): ?>
-        <p class="muted mt-3" style="font-size:var(--fs-xs)">
-          Mesatarja jote: <b class="code" style="color:var(--ink)"><?= h((string)$avgScore) ?></b>
-          nga <?= count($myScores) ?> module të vlerësuara.
-        </p>
+    <div class="col-12 col-lg-5">
+      <?php if ($verifyUrl): ?>
+        <section class="section" aria-labelledby="qrTitle">
+          <div class="section-head">
+            <h2 class="section-title" id="qrTitle">Kodi im QR</h2>
+          </div>
+          <div class="panel text-center">
+            <div class="qr-frame mb-3" data-qr="<?= h($verifyUrl) ?>" data-qr-size="184" data-qr-alt="Kodi QR i verifikimit të certifikatave të mia">
+              <span class="text-muted small">Po përgatitet kodi…</span>
+            </div>
+            <p class="mb-3 text-muted">Tregoja këtë kod inspektorit. Ai e skanon me telefon dhe sheh që certifikatat e tua janë të vërteta.</p>
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+              <button class="btn btn-secondary" type="button" data-bs-toggle="modal" data-bs-target="#qrModal">
+                <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>Shfaq më të madh
+              </button>
+              <a class="btn btn-ghost" href="<?= h($verifyUrl) ?>">
+                <i class="bi bi-patch-check" aria-hidden="true"></i>Shiko verifikimin
+              </a>
+            </div>
+          </div>
+        </section>
       <?php endif; ?>
 
-    <?php else: ?>
-      <div class="blank">
-        <span class="blank-title">Ende pa module</span>
-        <span class="blank-note">Sapo administrata të të caktojë në një grup, moduli shfaqet këtu.</span>
-      </div>
-    <?php endif; ?>
-  </section>
+      <section class="section" aria-labelledby="meTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="meTitle">Të dhënat e mia</h2>
+        </div>
+        <div class="panel">
+          <dl class="kv">
+            <dt>Emri i plotë</dt><dd><?= h($fullName !== '' ? $fullName : '—') ?></dd>
+            <dt>Numri personal</dt><dd class="code"><?= h($personalNumber !== '' ? $personalNumber : ($stud['personal_number'] ?? '—')) ?></dd>
+            <dt>Datëlindja</dt><dd><?= h(qta_date($stud['birth_date'] ?? null)) ?></dd>
+            <dt>Vendlindja</dt><dd><?= h((string)(($stud['birth_place'] ?? '') ?: '—')) ?></dd>
+            <dt>Telefoni</dt><dd><?= h((string)(($stud['phone'] ?? '') ?: '—')) ?></dd>
+            <dt>Arsimi</dt><dd><?= h((string)(($stud['edu_label'] ?? '') ?: '—')) ?></dd>
+            <dt>Agjencia</dt><dd><?= h((string)($company['company_name'] ?? 'Pa agjenci')) ?></dd>
+            <dt><?= count($amzeList) > 1 ? 'Nr. e amzës' : 'Nr. i amzës' ?></dt>
+            <dd class="code"><?= h($amzeList ? implode(', ', $amzeList) : '—') ?></dd>
+          </dl>
+        </div>
+        <div class="notice mt-3">
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          <span>Diçka nuk është e saktë? <a href="contact.php">Na shkruaj</a> dhe e ndreqim ne. Ti nuk mund t'i ndryshosh vetë këto të dhëna.</span>
+        </div>
+      </section>
+    </div>
+  </div>
 
 </main>
+
+<?php if ($verifyUrl): ?>
+<div class="modal fade" id="qrModal" tabindex="-1" aria-labelledby="qrModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="qrModalTitle">Kodi im QR</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div class="qr-frame" data-qr="<?= h($verifyUrl) ?>" data-qr-size="280" data-qr-alt="Kodi QR i verifikimit, i zmadhuar"></div>
+        <p class="mt-3 mb-0 text-muted"><?= h($fullName) ?></p>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>

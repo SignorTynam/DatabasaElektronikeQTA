@@ -471,6 +471,27 @@
     if (btn) { btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true'); }
   });
 
+  /* Kodet QR: <div data-qr="URL" data-qr-size="200">. Libraria (qrcodejs)
+     ngarkohet vetëm nga faqet që e kanë nevojë, prandaj presim DOMContentLoaded. */
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.QRCode) return;
+    document.querySelectorAll('[data-qr]').forEach(function (el) {
+      var size = parseInt(el.getAttribute('data-qr-size') || '200', 10);
+      el.innerHTML = '';
+      new window.QRCode(el, {
+        text: el.getAttribute('data-qr'),
+        width: size,
+        height: size,
+        colorDark: '#1f1e1b',
+        colorLight: '#ffffff',
+        correctLevel: window.QRCode.CorrectLevel.M
+      });
+      el.removeAttribute('title');
+      var img = el.querySelector('img');
+      if (img) img.setAttribute('alt', el.getAttribute('data-qr-alt') || 'Kodi QR i verifikimit');
+    });
+  });
+
   /* ------------------------------------------ 8. Kërkimi në regjistër */
   /* Hapet me Ctrl+K, "/" ose butonin "Kërko…". Serveri vendos kufijtë e rolit;
      ndërfaqja vetëm paraqet aftësitë e lejuara. Fushat e kërkimit brenda

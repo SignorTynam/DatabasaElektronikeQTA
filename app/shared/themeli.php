@@ -196,6 +196,46 @@ if (!function_exists('qta_score_status')) {
   }
 }
 
+if (!function_exists('qta_enrollment_status')) {
+  /**
+   * Gjendja e një regjistrimi (kursant në grup) me fjalë të thjeshta.
+   * Pret: start_date, end_date, exam_date, final_score (çdonjëra mund të mungojë).
+   */
+  function qta_enrollment_status(array $row): string {
+    $score = $row['final_score'] ?? null;
+    if ($score !== null && $score !== '') {
+      return qta_score_status($score);
+    }
+    $exam = (string)($row['exam_date'] ?? $row['my_exam'] ?? '');
+    if ($exam !== '') {
+      return qta_score_status(null, $exam);
+    }
+    $today = date('Y-m-d');
+    $start = substr((string)($row['start_date'] ?? ''), 0, 10);
+    $end   = substr((string)($row['end_date'] ?? ''), 0, 10);
+    if ($start !== '' && $start > $today) {
+      return qta_status('Nis ' . qta_when_label($start), 'info', 'bi-calendar-event');
+    }
+    if ($start !== '' && $end !== '' && $today >= $start && $today <= $end) {
+      return qta_status('Në mësim', 'accent', 'bi-easel');
+    }
+    if ($end !== '' && $end < $today) {
+      return qta_status('Pret datën e provimit', 'warning');
+    }
+    return qta_status('Pa grup ende', 'neutral');
+  }
+}
+
+if (!function_exists('qta_absolute_url')) {
+  /** URL e plotë (me host) — p.sh. për kodin QR të verifikimit. */
+  function qta_absolute_url(string $path): string {
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+      || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
+    return ($https ? 'https://' : 'http://') . $host . qta_url($path);
+  }
+}
+
 if (!function_exists('qta_help_button')) {
   /** Butoni "Si funksionon?" që hap panelin e ndihmës së faqes. */
   function qta_help_button(string $label = 'Si funksionon?'): string {

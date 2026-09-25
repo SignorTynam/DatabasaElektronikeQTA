@@ -1540,6 +1540,103 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
 }
 .val-arrow { margin: 0 .25rem; color: var(--text-subtle); }
 
+/* ================================================ 24f2. Regjistrimet (modulet) */
+.enroll-list {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.enroll {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.enroll-main { flex: 1 1 18rem; min-width: 0; }
+.enroll-code {
+  display: inline-block;
+  margin-bottom: .2rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.enroll-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+}
+.enroll-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.enroll-meta > div { display: flex; gap: .375rem; }
+.enroll-meta dt { color: var(--text-muted); font-weight: var(--fw-regular); }
+.enroll-meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ======================================================== 24f3. Kodi QR */
+/* Gjithnjë e zezë mbi të bardhë — skanerat kanë nevojë për kontrast. */
+.qr-frame {
+  display: inline-grid;
+  place-items: center;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: #fff;
+  line-height: 0;
+}
+.qr-frame canvas,
+.qr-frame img { display: block; max-width: 100%; height: auto; }
+.qr-code-text {
+  display: block;
+  margin-top: var(--sp-2);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: .04em;
+  word-break: break-all;
+}
+
+/* ================================================= 24f4. Theksim (callout) */
+.callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-xl);
+  background: var(--accent-soft);
+}
+.callout-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--accent-text);
+  font-size: 1.35rem;
+}
+.callout-body { flex: 1 1 16rem; min-width: 0; }
+.callout-label { display: block; color: var(--accent-text); font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.callout-title { display: block; margin: .125rem 0; font-size: var(--fs-lg); font-weight: var(--fw-bold); line-height: 1.3; }
+.callout-text { display: block; color: var(--text-muted); font-size: var(--fs-sm); }
+.callout.is-info { border-color: var(--info-border); background: var(--info-soft); }
+.callout.is-info .callout-icon,
+.callout.is-info .callout-label { color: var(--info); }
+
 /* ====================================================== 24g. Shiriti i zgjedhjes */
 .bulk-bar {
   position: sticky;
