@@ -62,7 +62,7 @@ function fmt_dMY(?string $iso): string {
   if (!$iso) return '—';
   if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
   $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
+  return $ts ? date('d.m.Y', $ts) : '—';
 }
 /* Helper: prano dd-mm-yyyy ose yyyy-mm-dd dhe kthe në yyyy-mm-dd */
 function to_iso_date(?string $v): ?string {

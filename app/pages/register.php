@@ -45,14 +45,6 @@ $CSRF = $_SESSION['csrf_token'];
 $flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
 $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
 
-/* Helper: formatim datash për shfaqje (dd-mm-yyyy) */
-function fmt_dMY(?string $iso): string {
-  if (!$iso) return '—';
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars($iso, ENT_QUOTES, 'UTF-8');
-  $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
-}
-
 /* Kërkim dhe filtrat */
 $q          = trim($_GET['q'] ?? '');
 $from_amze  = trim($_GET['from_amze'] ?? ''); // Fillo nga ky nr AMZË
@@ -170,217 +162,171 @@ $toggleUrl = 'register.php?' . http_build_query(array_filter([
   'edit' => ($EDIT_MODE ? 'off' : 'on'),
 ]));
 
-$pageTitle = 'Regjistri – QTA ' . ($role==='editor' ? 'Editor' : 'Admin');
-$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+$pageTitle  = 'Regjistri i plotë';
+$NAV_ACTIVE = 'register_full';
+$HELP_TOPIC = 'register';
+$hasFilters = ($q !== '' || $from_amze !== '');
+$exportAction = 'register_export.php';
+$exportFields = ['q' => $q, 'from_amze' => $from_amze];
 require __DIR__ . '/../shared/app_head.php';
+
+if ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
+else require __DIR__ . '/inc/navbar.php';
 ?>
 
+<main class="app-main is-wide" id="main" tabindex="-1">
 
-<?php
-  // Render navbar brenda body për të shmangur “headers already sent”
-  if ($role === 'editor') require __DIR__ . '/inc/navbar4.php';
-  else require __DIR__ . '/inc/navbar.php';
-?>
-
-<!-- Toasts: poshtë MAJTAS -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
-
-<main class="app-main">
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <div class="title-block-main">
-          <div class="title-block-eyebrow">Regjistri</div>
-          <h1>Regjistri i studentëve</h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-  </div>
-
-  <!-- Kërkim & Filtrim -->
-  <div class="card mb-3">
-    <div class="card-body">
-      <form class="row g-2 align-items-end" method="get" action="register.php">
-        <div class="col-lg-9">
-          <div class="d-flex align-items-center">
-            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-            <div class="input-group flex-grow-1">
-              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-              <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZËS/ID personale/Emrit...">
-              <span class="input-group-text bg-light border-0">Fillo nga AMZË</span>
-              <input type="text" name="from_amze" value="<?= htmlspecialchars($from_amze) ?>" class="form-control border-0" placeholder="p.sh. 1050">
-            </div>
-          </div>
-        </div>
-        <div class="col-lg-3 text-end">
-          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='register.php'">
-            <i class="bi bi-x-circle me-1"></i>Pastro
-          </button>
-          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-        </div>
-      </form>
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Regjistri i plotë</h1>
+      <p class="page-lead">Çdo rresht është një regjistrim: kursanti, moduli, datat e grupit, provimi dhe pikët. Me ndryshimet e hapura, datat dhe pikët ndryshohen direkt në tabelë.</p>
     </div>
-  </div>
+    <div class="page-actions">
+      <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+    </div>
+  </header>
 
-  <div class="card">
-    <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Regjistri</h5>
-      <div class="d-flex align-items-center gap-2">
-        <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
-        <div class="export-actions" role="group" aria-label="Eksporto regjistrin">
-          <?php foreach ([
-            'xlsx' => ['bi-file-earmark-excel', 'Excel', 'btn-soft-success'],
-            'pdf'  => ['bi-file-earmark-pdf', 'PDF', 'btn-soft-danger'],
-            'docx' => ['bi-file-earmark-word', 'Word', 'btn-soft-primary'],
-          ] as $exportFormat => [$exportIcon, $exportLabel, $exportClass]): ?>
-            <form method="post" action="register_export.php">
-              <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
-              <input type="hidden" name="f" value="<?= h($exportFormat) ?>">
-              <input type="hidden" name="q" value="<?= h($q) ?>">
-              <input type="hidden" name="from_amze" value="<?= h($from_amze) ?>">
-              <button class="btn <?= h($exportClass) ?>" type="submit">
-                <i class="bi <?= h($exportIcon) ?> me-1" aria-hidden="true"></i><?= h($exportLabel) ?>
-              </button>
-            </form>
-          <?php endforeach; ?>
-        </div>
+  <form class="filters" method="get" action="register.php" role="search" aria-label="Kërko në regjistër">
+    <div class="filter-field is-grow">
+      <label class="form-label" for="fQ">Kërko</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="fQ" type="search" name="q" value="<?= h($q) ?>"
+               placeholder="Emri, numri personal ose nr. i amzës">
       </div>
     </div>
+    <div class="filter-field">
+      <label class="form-label" for="fFrom">Nis nga nr. i amzës</label>
+      <input class="form-control input-code" id="fFrom" type="text" name="from_amze" value="<?= h($from_amze) ?>"
+             placeholder="p.sh. 1050" inputmode="numeric">
+    </div>
+    <div class="filter-actions">
+      <?php if ($hasFilters): ?>
+        <a class="btn btn-ghost" href="register.php"><i class="bi bi-x-lg" aria-hidden="true"></i>Pastro kërkimin</a>
+      <?php endif; ?>
+      <button class="btn btn-secondary" type="submit"><i class="bi bi-search" aria-hidden="true"></i>Kërko</button>
+    </div>
+  </form>
 
-    <div class="card-body">
-      <?php
-        $tfTarget = '';
-        $tfPlaceholder = 'Ngushto listën — emër, amzë, modul…';
-        $tfChips = [];
-        require __DIR__ . '/../shared/partials/table_filter.php';
-      ?>
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0" data-sortable>
-          <thead class="table-light">
+  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
+
+  <section class="section" aria-labelledby="listTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="listTitle">
+        <?= $hasFilters ? 'Rezultatet' : 'Të gjitha regjistrimet' ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
+      </h2>
+      <?php require __DIR__ . '/../shared/partials/export_menu.php'; ?>
+    </div>
+
+    <?php
+      $tfTarget = '#registerTable';
+      $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, modul…';
+      $tfChips = [['label' => 'Kaloi', 'match' => 'kaloi'], ['label' => 'Pa provim', 'match' => 'pret']];
+      $tfNoun = 'regjistrime';
+      require __DIR__ . '/../shared/partials/table_filter.php';
+    ?>
+
+    <div class="table-responsive">
+      <table class="table" id="registerTable" data-sortable>
+        <thead>
           <tr>
-            <th class="nowrap" data-sort="num">AMZË</th>
-            <th data-sort="num">Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-            <th data-sort="text">Moduli</th>
-            <th class="nowrap" data-sort="date">Datë fillimi</th>
-            <th class="nowrap" data-sort="date">Datë mbarimi</th>
-            <th class="nowrap" data-sort="date">Datë testimi</th>
-            <th class="nowrap" data-sort="num">Pikët përfundimtare</th>
-            <th class="nowrap" data-sort="text">Telefon</th>
-            <th class="nowrap" data-sort="num">Mosha</th>
-            <th class="nowrap" data-sort="text">Arsimi</th>
+            <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
+            <th scope="col" class="col-medium" data-sort="text">Kursanti</th>
+            <th scope="col" class="col-wide" data-sort="text">Moduli</th>
+            <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
+            <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
+            <th scope="col" class="nowrap" data-sort="date">Provimi</th>
+            <th scope="col" class="nowrap num-col" data-sort="num">Pikët</th>
+            <th scope="col" data-sort="text">Gjendja</th>
+            <th scope="col" class="nowrap" data-sort="text">Telefoni</th>
+            <th scope="col" class="nowrap num-col" data-sort="num">Mosha</th>
+            <th scope="col" data-sort="text">Arsimi</th>
           </tr>
-          </thead>
-          <tbody>
-          <?php if ($rows): foreach ($rows as $r):
-            $sid = (int)$r['student_id'];
-            $gid = $r['group_id'] !== null ? (int)$r['group_id'] : 0;
-            $full = trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''));
-            ?>
-            <tr>
-              <td class="nowrap"><?= htmlspecialchars($r['nr_amze']) ?></td>
-
-              <td>
-                <div class="fw-semibold"><?= htmlspecialchars($full) ?></div>
-                <div class="text-muted small"><?= htmlspecialchars($r['personal_number'] ?? '—') ?></div>
-              </td>
-
-              <td class="nowrap">
-                <?php
-                  $moduleLabel = '—';
-
-                  // Nëse ka grup të fundit, shfaq kursin + (opsional) grupin
-                  if (!empty($r['group_id'])) {
-                    $course = $r['course_name'] ?? '';
-                    $gname  = $r['group_name'] ?? '';
-
-                    if ($course !== '' && $gname !== '') $moduleLabel = $course.' — '.$gname;
-                    elseif ($course !== '')              $moduleLabel = $course;
-                    elseif ($gname !== '')               $moduleLabel = $gname;
-                    else                                 $moduleLabel = '—';
-                  } else {
-                    // Nëse s’ka grup, shfaq planin (nëse ekziston)
-                    $moduleLabel = $r['planned_course_name'] ?? '—';
-                    if (trim((string)$moduleLabel) === '') $moduleLabel = '—';
-                  }
-
-                  echo htmlspecialchars($moduleLabel, ENT_QUOTES, 'UTF-8');
-                ?>
-              </td>
-
-              <!-- start_date (inline grup) -->
-              <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="start_date"
-                  title="DD-MM-YYYY">
-                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['start_date'])) ?></span>
-              </td>
-
-              <!-- end_date (inline grup) -->
-              <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="end_date"
-                  title="DD-MM-YYYY (≥ data e fillimit)">
-                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['end_date'])) ?></span>
-              </td>
-
-              <!-- exam_date (inline student) -->
-              <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date"
-                  title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
-                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?></span>
-              </td>
-
-              <!-- final_score (inline student) -->
-              <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score"
-                  title="0–100 (me presje ose pikë)">
-                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>">
-                  <?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'],'0'),'.') : '—' ?>
-                </span>
-              </td>
-
-              <td class="nowrap">
-                <?php $ph = trim((string)($r['phone'] ?? '')); if ($ph === '—' || $ph === '-') { $ph = ''; } ?>
-                <?php if ($ph !== ''): ?>
-                  <a class="code" href="tel:<?= htmlspecialchars(preg_replace('/[^0-9+]/', '', $ph)) ?>"><?= htmlspecialchars($ph) ?></a>
-                <?php else: ?>
-                  <span class="muted-2">—</span>
-                <?php endif; ?>
-              </td>
-
-              <td class="nowrap"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-              <td><?= htmlspecialchars(($r['edu_code']? $r['edu_code'].' — ' : '').($r['edu_label'] ?? '—')) ?></td>
-            </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="10" class="text-center text-muted">Nuk u gjetën studentë.</td></tr>
-          <?php endif; ?>
-          </tbody>
-        </table>
-      </div>
+        </thead>
+        <tbody>
+        <?php if ($rows): foreach ($rows as $r):
+          $sid = (int)$r['student_id'];
+          $gid = $r['group_id'] !== null ? (int)$r['group_id'] : 0;
+          $full = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? '');
+          if (!empty($r['group_id'])) {
+            $moduleLabel = trim((string)($r['course_name'] ?? '')) ?: '—';
+          } else {
+            $moduleLabel = trim((string)($r['planned_course_name'] ?? '')) ?: '—';
+          }
+          $ph = trim((string)($r['phone'] ?? ''));
+          if ($ph === '—' || $ph === '-') { $ph = ''; }
+          $scoreText = $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'], '0'), '.') : '—';
+        ?>
+          <tr data-row data-start="<?= h((string)($r['start_date'] ?? '')) ?>" data-end="<?= h((string)($r['end_date'] ?? '')) ?>" data-has-group="<?= $gid ? '1' : '0' ?>">
+            <td class="nowrap"><span class="id-code"><?= h((string)$r['nr_amze']) ?></span></td>
+            <td>
+              <a class="person-name" href="student_card.php?sid=<?= $sid ?>"><?= h($full !== '' ? $full : '—') ?></a>
+              <span class="cell-sub code"><?= h((string)($r['personal_number'] ?? '—')) ?></span>
+            </td>
+            <td class="col-wide"><?= h($moduleLabel) ?><?= empty($r['group_id']) && $moduleLabel !== '—' ? ' <span class="cell-sub">i planifikuar, pa grup</span>' : '' ?></td>
+            <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="start_date" title="Data e fillimit të grupit (dd.mm.vvvv)">
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['start_date'])) ?></span>
+            </td>
+            <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="end_date" title="Data e mbarimit, jo para fillimit (dd.mm.vvvv)">
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['end_date'])) ?></span>
+            </td>
+            <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date" title="Data e provimit, jo para mbarimit të grupit (dd.mm.vvvv)">
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['exam_date'])) ?></span>
+            </td>
+            <td class="cell nowrap num-col" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët 0–100. Kalon me 50 e lart.">
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($scoreText) ?></span>
+            </td>
+            <td data-status>
+              <?= $gid ? qta_enrollment_status(['start_date' => $r['start_date'], 'end_date' => $r['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']])
+                       : qta_status('Pret caktimin në grup', 'neutral', 'bi-hourglass-split') ?>
+            </td>
+            <td class="nowrap">
+              <?php if ($ph !== ''): ?>
+                <a class="code" href="tel:<?= h(preg_replace('/[^0-9+]/', '', $ph) ?? '') ?>"><?= h($ph) ?></a>
+              <?php else: ?>
+                <span class="text-subtle">—</span>
+              <?php endif; ?>
+            </td>
+            <td class="nowrap num-col"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+            <td><?= h((string)(($r['edu_label'] ?? '') ?: '—')) ?></td>
+          </tr>
+        <?php endforeach; else: ?>
+          <tr><td colspan="11" class="table-empty">
+            <?= $hasFilters ? 'Asnjë regjistrim nuk përputhet me kërkimin. Provo tjetër emër ose shtyp "Pastro kërkimin".' : 'Regjistri është bosh. Regjistro kursantë te "Të gjithë kursantët".' ?>
+          </td></tr>
+        <?php endif; ?>
+        </tbody>
+      </table>
     </div>
 
-    <?php if ($totalPages>1): ?>
-      <div class="card-footer bg-white">
-        <nav aria-label="Page navigation">
-          <ul class="pagination mb-0 justify-content-end">
-            <?php
-              $base='register.php?'.http_build_query(array_filter([
-                'q'=>$q!==''?$q:null,
-                'from_amze'=>$from_amze!==''?$from_amze:null,
-              ]));
-              $prev=max(1,$page-1); $next=min($totalPages,$page+1);
-              $sep = (str_contains($base,'?')?'&':'?');
-            ?>
-            <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=1">«</a></li>
-            <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $prev ?>">‹</a></li>
-            <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $next ?>">›</a></li>
-            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.$sep ?>page=<?= $totalPages ?>">»</a></li>
-          </ul>
-        </nav>
-      </div>
+    <?php if ($totalPages > 1):
+      $base = 'register.php?' . http_build_query(array_filter([
+        'q'         => $q !== '' ? $q : null,
+        'from_amze' => $from_amze !== '' ? $from_amze : null,
+      ]));
+      $sep = str_contains($base, '=') ? '&' : '';
+    ?>
+      <nav class="pager" aria-label="Faqet e regjistrit">
+        <span>Faqja <?= $page ?> nga <?= $totalPages ?> · <?= h(qta_plural($total, 'regjistrim', 'regjistrime')) ?></span>
+        <ul class="pagination">
+          <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
+            <a class="page-link" href="<?= h($base . $sep . 'page=' . max(1, $page - 1)) ?>" aria-label="Faqja e mëparshme"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+          </li>
+          <?php for ($p = max(1, $page - 2); $p <= min($totalPages, $page + 2); $p++): ?>
+            <li class="page-item <?= $p === $page ? 'active' : '' ?>">
+              <a class="page-link" href="<?= h($base . $sep . 'page=' . $p) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            </li>
+          <?php endfor; ?>
+          <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
+            <a class="page-link" href="<?= h($base . $sep . 'page=' . min($totalPages, $page + 1)) ?>" aria-label="Faqja tjetër"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+          </li>
+        </ul>
+      </nav>
     <?php endif; ?>
-  </div>
-
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+  </section>
 </main>
-
-<!-- FAB Stack: vetëm Edit Mode -->
-<div class="fab-stack" role="group" aria-label="Veprime shpejta">
-</div>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
@@ -389,52 +335,58 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'register_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Compact mode si te faqet e tjera */
-document.addEventListener('DOMContentLoaded', ()=>document.body.classList.add('compact'));
-
-/* Toast helper — identik me students_without_groups.php */
+/* Njoftimet: sistemi i përbashkët (app.js) */
 function notify(type, text, opts={}){
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
-
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+  return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null;
 }
-
-/* Për kompatibilitet me kodin ekzistues */
 function showMsg(type, text){ notify(type, text); }
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
-/* DD-MM-YYYY -> YYYY-MM-DD për server */
+/* dd.mm.vvvv (ose dd-mm-vvvv) -> vvvv-mm-dd për serverin */
 function normalizeDateForServer(v){
   const s = clean(v);
   if (s === '' || s === '—') return '';
-  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-  if (!m) throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
-  return `${m[3]}-${m[2]}-${m[1]}`;
+  const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+  if (!m) throw new Error('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.2026.');
+  return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+}
+function toIso(v){ try { return normalizeDateForServer(v); } catch(e){ return ''; } }
+
+/* Gjendja e rreshtit — e njëjta logjikë si në server (Kalon me ≥ 50) */
+function statusHtml(label, variant, icon){
+  const span = document.createElement('span');
+  span.className = 'status status-' + variant;
+  span.innerHTML = '<i class="bi ' + icon + '" aria-hidden="true"></i>';
+  span.appendChild(document.createTextNode(label));
+  return span.outerHTML;
+}
+function refreshStatus(row){
+  const cell = row.querySelector('[data-status]');
+  if (!cell || row.dataset.hasGroup !== '1') return;
+  const scoreTxt = clean(row.querySelector('td[data-field="final_score"] .editable')?.textContent);
+  const exam = toIso(row.querySelector('td[data-field="exam_date"] .editable')?.textContent);
+  const start = toIso(row.querySelector('td[data-field="start_date"] .editable')?.textContent);
+  const end = toIso(row.querySelector('td[data-field="end_date"] .editable')?.textContent);
+  const today = new Date().toISOString().slice(0,10);
+  const days = d => Math.round((new Date(d+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+  const when = d => { const n = days(d); return n===0?'sot':n===1?'nesër':n>1?('pas '+n+' ditësh'):(Math.abs(n)+' ditë më parë'); };
+  let html;
+  if (scoreTxt !== '' && scoreTxt !== '—' && !isNaN(scoreTxt.replace(',','.'))) {
+    const n = parseFloat(scoreTxt.replace(',','.'));
+    html = n >= 50 ? statusHtml('Kaloi · '+scoreTxt, 'success', 'bi-check-circle-fill') : statusHtml('Nuk kaloi · '+scoreTxt, 'danger', 'bi-x-circle-fill');
+  } else if (exam) {
+    html = days(exam) >= 0 ? statusHtml('Provimi '+when(exam), 'info', 'bi-calendar-event') : statusHtml('Pret rezultatin', 'warning', 'bi-clock-fill');
+  } else if (start && start > today) {
+    html = statusHtml('Nis '+when(start), 'info', 'bi-calendar-event');
+  } else if (start && end && today >= start && today <= end) {
+    html = statusHtml('Në mësim', 'accent', 'bi-easel');
+  } else if (end && end < today) {
+    html = statusHtml('Pret datën e provimit', 'warning', 'bi-clock-fill');
+  } else {
+    html = statusHtml('Pa provim ende', 'neutral', 'bi-dash-circle');
+  }
+  cell.innerHTML = html;
 }
 
 async function saveInline(payload, cell, displayEl, oldVal){
@@ -452,25 +404,26 @@ async function saveInline(payload, cell, displayEl, oldVal){
     if(!json.ok){
       if(displayEl) displayEl.textContent = oldVal;
       cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-      notify('danger', json.error || 'Gabim i panjohur.');
+      notify('danger', json.error || 'Ndryshimi nuk u ruajt.');
       return;
     }
 
     if(displayEl){
       displayEl.textContent = json.display ?? displayEl.textContent;
     }
+    refreshStatus(cell.closest('tr'));
     cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
-    notify('success','U ruajt me sukses.');
+    notify('success','Ndryshimi u ruajt.');
   }catch(e){
     console.error(e);
     cell.classList.remove('cell-saving');
     if(displayEl) displayEl.textContent = oldVal;
     cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
-    notify('danger', 'Nuk u krye veprimi. Kontrollo lidhjen ose provo sërish.');
+    notify('danger', 'Ndryshimi nuk u ruajt. Kontrollo lidhjen dhe provo sërish.');
   }
 }
 
-/* inline handlers */
+/* Redaktimi në tabelë */
 document.querySelectorAll('td.cell .editable').forEach(el=>{
   let oldVal = el.textContent;
 
@@ -491,7 +444,7 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
 
     if(['start_date','end_date','exam_date'].includes(field)){
       try {
-        newVal = normalizeDateForServer(newVal); // -> yyyy-mm-dd ose '' (=> null)
+        newVal = normalizeDateForServer(newVal);
       } catch(err){
         el.textContent = oldVal;
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
@@ -509,41 +462,39 @@ document.querySelectorAll('td.cell .editable').forEach(el=>{
       if(isNaN(n)){
         el.textContent = oldVal;
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
-        notify('danger','Nota duhet të jetë numër.');
+        notify('danger','Pikët duhet të jenë numër nga 0 deri në 100.');
         return;
       }
       saveInline({action:'update_final_score', student_id:studentId, group_id:groupId, final_score:n}, cell, el, oldVal);
       return;
     }
 
+    const noGroup = 'Ky kursant nuk është ende në një grup. Caktoje te "Kursantët pa grup".';
     if(field==='start_date'){
-      if(!groupId){ el.textContent = oldVal; notify('danger','Ky student s’ka grup.'); return; }
+      if(!groupId){ el.textContent = oldVal; notify('warning', noGroup); return; }
       saveInline({action:'update_group_start', student_id:studentId, group_id:groupId, start_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
     if(field==='end_date'){
-      if(!groupId){ el.textContent = oldVal; notify('danger','Ky student s’ka grup.'); return; }
+      if(!groupId){ el.textContent = oldVal; notify('warning', noGroup); return; }
       saveInline({action:'update_group_end', student_id:studentId, group_id:groupId, end_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
     if(field==='exam_date'){
-      if(!groupId){ el.textContent = oldVal; notify('danger','Ky student s’ka grup.'); return; }
+      if(!groupId){ el.textContent = oldVal; notify('warning', noGroup); return; }
       saveInline({action:'update_student_exam_date', student_id:studentId, group_id:groupId, exam_date:(newVal===''?null:newVal)}, cell, el, oldVal);
       return;
     }
   });
 });
-</script>
-<script>
-/* === Auto-viza për datat (DD-MM-YYYY) në contenteditable === */
+
+/* Maska e datës dd.mm.vvvv */
 function maskToDDMMYYYY(input) {
-  const digits = String(input || '').replace(/\D/g, '').slice(0, 8); // max 8 shifra
-  const d = digits.slice(0, 2);
-  const m = digits.slice(2, 4);
-  const y = digits.slice(4, 8);
+  const digits = String(input || '').replace(/\D/g, '').slice(0, 8);
+  const d = digits.slice(0, 2), m = digits.slice(2, 4), y = digits.slice(4, 8);
   let out = d;
-  if (digits.length > 2) out += '-' + m;
-  if (digits.length > 4) out += '-' + y;
+  if (digits.length > 2) out += '.' + m;
+  if (digits.length > 4) out += '.' + y;
   return out;
 }
 function placeCaretAtEnd(el) {
@@ -557,10 +508,7 @@ function placeCaretAtEnd(el) {
 function attachDateMask(el) {
   el.addEventListener('input', () => {
     const masked = maskToDDMMYYYY(el.textContent);
-    if (el.textContent !== masked) {
-      el.textContent = masked;
-      placeCaretAtEnd(el);
-    }
+    if (el.textContent !== masked) { el.textContent = masked; placeCaretAtEnd(el); }
   });
   el.addEventListener('paste', (e) => {
     e.preventDefault();
@@ -570,23 +518,15 @@ function attachDateMask(el) {
   });
 }
 
-/* === Maskë e thjeshtë për notën (lejo vetëm shifra dhe një presje/pikë) === */
+/* Pikët: vetëm shifra dhe një presje/pikë */
 function attachScoreMask(el){
   el.addEventListener('input', ()=>{
-    let t = el.textContent;
-    // Hiq çdo karakter që s’është shifër, presje apo pikë
-    t = t.replace(/[^0-9,\.]/g,'');
-    // Lejo vetëm një presje/pikë
+    let t = el.textContent.replace(/[^0-9,\.]/g,'');
     const firstSep = t.search(/[,.]/);
     if (firstSep !== -1){
-      const head = t.slice(0, firstSep + 1);
-      const tail = t.slice(firstSep + 1).replace(/[,.]/g,'');
-      t = head + tail;
+      t = t.slice(0, firstSep + 1) + t.slice(firstSep + 1).replace(/[,.]/g,'');
     }
-    if (el.textContent !== t){
-      el.textContent = t;
-      placeCaretAtEnd(el);
-    }
+    if (el.textContent !== t){ el.textContent = t; placeCaretAtEnd(el); }
   });
 }
 
@@ -595,17 +535,14 @@ document.querySelectorAll(
   'td.cell[data-field="end_date"] .editable,'  +
   'td.cell[data-field="exam_date"] .editable'
 ).forEach(attachDateMask);
-
 document.querySelectorAll('td.cell[data-field="final_score"] .editable').forEach(attachScoreMask);
 
-/* Shfaq toaste nga sesi (flash) ose gjendja e Edit Mode */
 <?php if ($flash_ok): ?>
 document.addEventListener('DOMContentLoaded', ()=> notify('success', <?= json_encode($flash_ok) ?>));
 <?php endif; ?>
 <?php if ($flash_err): ?>
 document.addEventListener('DOMContentLoaded', ()=> notify('danger', <?= json_encode($flash_err) ?>));
 <?php endif; ?>
-
 </script>
 
 </body>
