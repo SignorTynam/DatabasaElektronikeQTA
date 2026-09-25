@@ -1,157 +1,205 @@
 /* ============================================================================
-   QTA · PROTOKOLL — sjellja e panelit.
-   Vetëm shtresa e ndërfaqes; asnjë endpoint nuk preket.
+   THEMELI — sjellja e panelit (faqet pas hyrjes).
+   Vetëm shtresa e ndërfaqes: asnjë endpoint, leje apo rregull biznesi nuk
+   ndryshon këtu.
+     1. Pamja (e çelët · sipas pajisjes · e errët)
+     2. Menuja anësore dhe sirtari në celular
+     3. Kthimi në krye, ankorat, tooltip-et
+     4. Filtrimi i menjëhershëm i tabelave
+     5. Renditja e kolonave
+     6. Njoftimet (toast) dhe dialogu i konfirmimit
+     7. Kopjo, shfaq fjalëkalimin, gjendja "po punon"
+     8. Kërkimi në regjistër (Ctrl K)
    ========================================================================= */
 (function () {
   'use strict';
 
   var root = document.documentElement;
   var THEME_KEY = 'qta_theme';
-  var DENSITY_KEY = 'qta_density';
   var SIDEBAR_KEY = 'qta_sidebar';
 
+  function store(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* ruajtja e bllokuar */ }
+  }
+  function read(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
   /* ------------------------------------------------------------- 1. Pamja */
-  function resolveTheme() {
-    var stored = localStorage.getItem(THEME_KEY);
-    if (stored === 'dark' || stored === 'light') return stored;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function currentMode() {
+    var mode = read(THEME_KEY);
+    return mode === 'light' || mode === 'dark' ? mode : 'system';
   }
 
-  function paintThemeButtons(theme) {
-    var archive = theme === 'dark';
+  function applyTheme(mode) {
+    var dark = mode === 'dark' || (mode === 'system' && media && media.matches);
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    root.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+    root.setAttribute('data-theme-mode', mode);
+    document.querySelectorAll('[data-theme-set]').forEach(function (item) {
+      item.setAttribute('aria-checked', item.getAttribute('data-theme-set') === mode ? 'true' : 'false');
+    });
     document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
-      btn.setAttribute('title', archive ? 'Fleta origjinale' : 'Kopja e arkivit');
-      btn.setAttribute('aria-label', archive ? 'Kalo te fleta origjinale' : 'Kalo te kopja e arkivit');
+      btn.setAttribute('aria-label', dark ? 'Kalo në pamjen e çelët' : 'Kalo në pamjen e errët');
+      btn.setAttribute('title', dark ? 'Pamja e çelët' : 'Pamja e errët');
       var icon = btn.querySelector('i');
-      if (icon) icon.className = archive ? 'bi bi-sun' : 'bi bi-circle-half';
-      var label = btn.querySelector('[data-theme-label]');
-      if (label) label.textContent = archive ? 'Fleta origjinale' : 'Kopja e arkivit';
+      if (icon) icon.className = dark ? 'bi bi-sun' : 'bi bi-moon-stars';
     });
   }
 
-  function setTheme(theme) {
-    root.setAttribute('data-theme', theme);
-    localStorage.setItem(THEME_KEY, theme);
-    paintThemeButtons(theme);
+  function setTheme(mode) {
+    store(THEME_KEY, mode);
+    applyTheme(mode);
   }
 
-  setTheme(resolveTheme());
-
-  /* --------------------------------------------------------- 2. Densiteti */
-  function setDensity(mode) {
-    document.body.classList.toggle('dense', mode === 'dense');
-    localStorage.setItem(DENSITY_KEY, mode);
-    document.querySelectorAll('[data-density-toggle]').forEach(function (btn) {
-      var dense = mode === 'dense';
-      btn.setAttribute('aria-pressed', dense ? 'true' : 'false');
-      btn.setAttribute('title', dense ? 'Rreshta të gjerë' : 'Rreshta të ngjeshur');
+  applyTheme(currentMode());
+  if (media && media.addEventListener) {
+    media.addEventListener('change', function () {
+      if (currentMode() === 'system') applyTheme('system');
     });
   }
 
-  setDensity(localStorage.getItem(DENSITY_KEY) === 'dense' ? 'dense' : 'normal');
+  /* ---------------------------------------- 2. Menuja anësore dhe sirtari */
+  var sidebar = document.querySelector('[data-sidebar]');
+  var backdrop = document.querySelector('.sidebar-backdrop');
+  var drawerTrigger = null;
+  var desktop = window.matchMedia('(min-width: 992px)');
 
-  /* --------------------------------------------------------- 2b. Sidebar */
-  function setSidebar(mode) {
-    var collapsed = mode === 'collapsed';
-    document.body.classList.toggle('sidebar-collapsed', collapsed);
-    localStorage.setItem(SIDEBAR_KEY, collapsed ? 'collapsed' : 'expanded');
+  function paintRailButtons() {
+    var rail = root.getAttribute('data-sidebar') === 'rail';
     document.querySelectorAll('[data-sidebar-toggle]').forEach(function (btn) {
-      btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-      btn.setAttribute('aria-label', collapsed ? 'Zgjero menunë anësore' : 'Ngushto menunë anësore');
-      btn.setAttribute('title', collapsed ? 'Zgjero menunë' : 'Ngushto menunë');
+      btn.setAttribute('aria-pressed', rail ? 'true' : 'false');
+      btn.setAttribute('aria-label', rail ? 'Zgjero menunë' : 'Ngushto menunë');
+      btn.setAttribute('title', rail ? 'Zgjero menunë' : 'Ngushto menunë');
     });
   }
 
-  setSidebar(localStorage.getItem(SIDEBAR_KEY) === 'collapsed' ? 'collapsed' : 'expanded');
+  function toggleRail() {
+    var rail = root.getAttribute('data-sidebar') === 'rail';
+    if (rail) root.removeAttribute('data-sidebar'); else root.setAttribute('data-sidebar', 'rail');
+    store(SIDEBAR_KEY, rail ? 'expanded' : 'collapsed');
+    paintRailButtons();
+  }
+  paintRailButtons();
 
-  /* ------------------------------------------------------------ 3. Klikimet */
+  function focusables(container) {
+    return Array.prototype.filter.call(
+      container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      function (el) { return el.offsetParent !== null; }
+    );
+  }
+
+  function setInert(on) {
+    ['.topbar', 'main', '.app-footer', '.back-top'].forEach(function (sel) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        if (on) el.setAttribute('inert', ''); else el.removeAttribute('inert');
+      });
+    });
+  }
+
+  function openDrawer(trigger) {
+    if (!sidebar || desktop.matches) return;
+    drawerTrigger = trigger || document.querySelector('[data-drawer-open]');
+    sidebar.classList.add('is-open');
+    sidebar.setAttribute('role', 'dialog');
+    sidebar.setAttribute('aria-modal', 'true');
+    if (backdrop) {
+      backdrop.hidden = false;
+      requestAnimationFrame(function () { backdrop.classList.add('is-on'); });
+    }
+    document.querySelectorAll('[data-drawer-open]').forEach(function (b) { b.setAttribute('aria-expanded', 'true'); });
+    document.body.style.overflow = 'hidden';
+    setInert(true);
+    var first = sidebar.querySelector('.nav-item.is-active') || focusables(sidebar)[0];
+    if (first) setTimeout(function () { first.focus(); }, 60);
+  }
+
+  function closeDrawer(restoreFocus) {
+    if (!sidebar || !sidebar.classList.contains('is-open')) return;
+    sidebar.classList.remove('is-open');
+    sidebar.removeAttribute('role');
+    sidebar.removeAttribute('aria-modal');
+    if (backdrop) {
+      backdrop.classList.remove('is-on');
+      setTimeout(function () { backdrop.hidden = true; }, 200);
+    }
+    document.querySelectorAll('[data-drawer-open]').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+    document.body.style.overflow = '';
+    setInert(false);
+    if (restoreFocus !== false && drawerTrigger) drawerTrigger.focus();
+  }
+
+  if (desktop.addEventListener) {
+    desktop.addEventListener('change', function (e) { if (e.matches) closeDrawer(false); });
+  }
+
+  /* ------------------------------------------ 3. Klikimet e përgjithshme */
   document.addEventListener('click', function (event) {
-    var themeBtn = event.target.closest('[data-theme-toggle]');
-    if (themeBtn) {
+    var t = event.target;
+    if (!t.closest) return;
+
+    var themeSet = t.closest('[data-theme-set]');
+    if (themeSet) { setTheme(themeSet.getAttribute('data-theme-set')); return; }
+
+    var themeToggle = t.closest('[data-theme-toggle]');
+    if (themeToggle) {
       event.preventDefault();
       setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
       return;
     }
 
-    var densityBtn = event.target.closest('[data-density-toggle]');
-    if (densityBtn) {
-      event.preventDefault();
-      setDensity(document.body.classList.contains('dense') ? 'normal' : 'dense');
-      return;
+    if (t.closest('[data-sidebar-toggle]')) { event.preventDefault(); toggleRail(); return; }
+
+    var opener = t.closest('[data-drawer-open]');
+    if (opener) { event.preventDefault(); openDrawer(opener); return; }
+
+    if (t.closest('[data-drawer-close]')) { event.preventDefault(); closeDrawer(); return; }
+
+    if (sidebar && sidebar.classList.contains('is-open') && t.closest('.sidebar a.nav-item')) {
+      closeDrawer(false);
     }
 
-    var sidebarBtn = event.target.closest('[data-sidebar-toggle]');
-    if (sidebarBtn) {
-      event.preventDefault();
-      setSidebar(document.body.classList.contains('sidebar-collapsed') ? 'expanded' : 'collapsed');
-      return;
-    }
-
-    var topBtn = event.target.closest('[data-back-top]');
-    if (topBtn) {
+    if (t.closest('[data-back-top]')) {
       event.preventDefault();
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-
-    /* Menuja kryesore në celular */
-    var navBtn = event.target.closest('[data-nav-toggle]');
-    if (navBtn) {
-      event.preventDefault();
-      var nav = document.getElementById('appNav');
-      if (nav) {
-        var open = nav.classList.toggle('is-open');
-        navBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      }
-      return;
-    }
-
-    /* Nënmenutë: në celular hapen me klikim, në desktop me hover/fokus. */
-    var subBtn = event.target.closest('[data-sub-toggle]');
-    if (subBtn && window.matchMedia('(max-width: 1099.98px)').matches) {
-      event.preventDefault();
-      var sub = document.getElementById(subBtn.getAttribute('aria-controls'));
-      if (sub) {
-        var shown = sub.style.display === 'block';
-        sub.style.display = shown ? 'none' : 'block';
-        subBtn.setAttribute('aria-expanded', shown ? 'false' : 'true');
-      }
     }
   });
 
-  /* -------------------------------------------------- 4. Shkurtore tastiere */
   document.addEventListener('keydown', function (event) {
-    var tag = (event.target.tagName || '').toLowerCase();
-    var typing = tag === 'input' || tag === 'textarea' || tag === 'select' || event.target.isContentEditable;
-
-    if (event.key === '/' && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      var find = document.querySelector('[data-app-search] input, .app-find input');
-      if (find) {
-        event.preventDefault();
-        find.focus();
-        find.select();
-      }
-      return;
-    }
-
-    if (event.key === 'Escape') {
-      var nav = document.getElementById('appNav');
-      if (nav && nav.classList.contains('is-open')) {
-        nav.classList.remove('is-open');
-        var t = document.querySelector('[data-nav-toggle]');
-        if (t) { t.setAttribute('aria-expanded', 'false'); t.focus(); }
-      }
-      if (event.target && typeof event.target.matches === 'function'
-          && event.target.matches('[data-table-filter]')) {
-        event.target.value = '';
-        event.target.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+    if (!sidebar || !sidebar.classList.contains('is-open')) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeDrawer(); return; }
+    if (event.key === 'Tab') {
+      var items = focusables(sidebar);
+      if (!items.length) return;
+      var first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }
   });
 
-  /* --------------------------------------- 5b. Filtrimi i menjëhershëm */
-  /* Zëvendëson filtrin e vjetër: mban parasysh tabelat me trupa të shumtë
-     (grupet), numëron sa mbeten dhe pranon filtra të shpejtë me një klik. */
+  var toTop = document.querySelector('[data-back-top]');
+  if (toTop) {
+    var onScroll = function () { toTop.classList.toggle('is-on', window.scrollY > 480); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+
+  if (window.bootstrap && window.bootstrap.Tooltip) {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+      new window.bootstrap.Tooltip(el);
+    });
+  }
+
+  /* --------------------------------------- 4. Filtrimi i menjëhershëm */
+  /* Mban parasysh tabelat me trupa të shumtë (grupet), numëron sa mbeten
+     dhe pranon filtra të shpejtë me një klik. */
   document.querySelectorAll('[data-tfilter]').forEach(function (box) {
     var input = box.querySelector('[data-table-filter]');
     var count = box.querySelector('[data-tfilter-count]');
@@ -160,7 +208,7 @@
     if (!input) return;
 
     var sel = input.getAttribute('data-table-filter');
-    var table = sel ? document.querySelector(sel) : document.querySelector('.app-main table');
+    var table = sel ? document.querySelector(sel) : document.querySelector('main table');
     if (!table) return;
 
     var multi = table.tBodies.length > 1;
@@ -168,79 +216,60 @@
       ? Array.prototype.slice.call(table.tBodies)
       : Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []);
     var total = units.length;
-
-    /* Teksti i çdo njësie lexohet një herë, jo në çdo shtypje. */
     var haystack = units.map(function (u) { return (u.textContent || '').toLowerCase(); });
+    var noun = box.getAttribute('data-tfilter-noun') || 'rreshta';
 
     function apply() {
       var needle = input.value.trim().toLowerCase();
       var shown = 0;
-
       units.forEach(function (u, i) {
         var hit = needle === '' || haystack[i].indexOf(needle) !== -1;
-        if (multi) {
-          u.style.display = hit ? '' : 'none';
-        } else {
-          u.hidden = !hit;
-        }
+        if (multi) u.style.display = hit ? '' : 'none'; else u.hidden = !hit;
         if (hit) shown++;
       });
-
       box.classList.toggle('is-on', needle !== '');
       if (count) {
-        count.textContent = needle === ''
-          ? total + (total === 1 ? ' zë' : ' zëra')
-          : shown + ' nga ' + total;
+        count.textContent = needle === '' ? total + ' ' + noun : shown + ' nga ' + total + ' ' + noun;
         count.classList.toggle('is-narrowed', needle !== '');
       }
     }
 
-    var t = null;
-    input.addEventListener('input', function () {
-      clearTimeout(t);
-      t = setTimeout(apply, 90);
-    });
-
+    var timer = null;
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(apply, 90); });
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { e.stopPropagation(); input.value = ''; apply(); }
     });
-
     if (clear) clear.addEventListener('click', function () {
       input.value = '';
-      Array.prototype.forEach.call(chips, function (c) { c.classList.remove('is-on'); });
+      Array.prototype.forEach.call(chips, function (c) { c.classList.remove('is-on'); c.setAttribute('aria-pressed', 'false'); });
       apply();
       input.focus();
     });
-
     Array.prototype.forEach.call(chips, function (chip) {
+      chip.setAttribute('aria-pressed', 'false');
       chip.addEventListener('click', function () {
         var on = chip.classList.contains('is-on');
-        Array.prototype.forEach.call(chips, function (c) { c.classList.remove('is-on'); });
+        Array.prototype.forEach.call(chips, function (c) { c.classList.remove('is-on'); c.setAttribute('aria-pressed', 'false'); });
         if (on) {
           input.value = '';
         } else {
           chip.classList.add('is-on');
+          chip.setAttribute('aria-pressed', 'true');
           input.value = chip.getAttribute('data-tfilter-chip') || '';
         }
         apply();
       });
     });
-
     apply();
   });
 
-  /* ------------------------------------------------- 6. Renditja e kolonave */
-  /* Gjenerike: çdo tabelë me [data-sortable] e merr. Lloji i kolonës thuhet
-     te th[data-sort] — "text", "num", "date". Tabelat me trupa të shumtë
-     (p.sh. grupet, ku çdo grup është një <tbody>) renditen si blloqe, që
-     rreshti i fëmijëve të mos ndahet kurrë nga i prindit. */
+  /* ------------------------------------------------- 5. Renditja e kolonave */
   function cellKey(row, index, kind) {
     var cell = row.cells[index];
     if (!cell) return kind === 'text' ? '' : 0;
-    var raw = (cell.textContent || '').trim();
-
+    var raw = (cell.getAttribute('data-sort-value') || cell.textContent || '').trim();
     if (kind === 'num') {
-      var n = parseFloat(raw.replace(/[^0-9.,-]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
+      var n = parseFloat(raw.replace(/[^0-9.,-]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
       return isNaN(n) ? -Infinity : n;
     }
     if (kind === 'date') {
@@ -253,53 +282,43 @@
   }
 
   function sortTable(table, index, kind, dir) {
-    var groups = table.tBodies.length > 1
+    var multi = table.tBodies.length > 1;
+    var groups = multi
       ? Array.prototype.slice.call(table.tBodies)
       : Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []);
-
     var keyed = groups.map(function (node) {
       var row = node.tagName === 'TBODY' ? node.rows[0] : node;
       return { node: node, key: cellKey(row, index, kind) };
     });
-
     keyed.sort(function (a, b) {
+      if (typeof a.key === 'string' && typeof b.key === 'string') return a.key.localeCompare(b.key, 'sq') * dir;
       if (a.key < b.key) return -dir;
       if (a.key > b.key) return dir;
       return 0;
     });
-
-    if (table.tBodies.length > 1) {
-      keyed.forEach(function (k) { table.appendChild(k.node); });
-    } else {
-      var body = table.tBodies[0];
-      keyed.forEach(function (k) { body.appendChild(k.node); });
-    }
+    var parent = multi ? table : table.tBodies[0];
+    keyed.forEach(function (k) { parent.appendChild(k.node); });
   }
 
   document.querySelectorAll('table[data-sortable]').forEach(function (table) {
     var head = table.tHead;
     if (!head) return;
-
     Array.prototype.forEach.call(head.rows[0].cells, function (th, index) {
       var kind = th.getAttribute('data-sort');
       if (!kind || kind === 'none') return;
-
-      th.setAttribute('role', 'button');
       th.setAttribute('tabindex', '0');
-
+      th.setAttribute('aria-sort', 'none');
+      th.setAttribute('title', 'Rendit sipas kësaj kolone');
       var activate = function () {
         var asc = !th.classList.contains('is-asc');
-
         Array.prototype.forEach.call(head.rows[0].cells, function (other) {
           other.classList.remove('is-asc', 'is-desc');
-          other.removeAttribute('aria-sort');
+          if (other.hasAttribute('aria-sort')) other.setAttribute('aria-sort', 'none');
         });
         th.classList.add(asc ? 'is-asc' : 'is-desc');
         th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
-
         sortTable(table, index, kind, asc ? 1 : -1);
       };
-
       th.addEventListener('click', activate);
       th.addEventListener('keydown', function (event) {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
@@ -307,43 +326,162 @@
     });
   });
 
-  /* --------------------------------------------------- 6b. Kthimi në krye */
-  var toTop = document.querySelector('[data-back-top]');
-  if (toTop) {
-    var onScroll = function () { toTop.classList.toggle('is-on', window.scrollY > 420); };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+  /* ------------------------------------ 6. Njoftimet dhe konfirmimi */
+  var toastTitles = { success: 'U krye', danger: 'Nuk u krye', warning: 'Kujdes', info: 'Për dijeni', primary: 'Për dijeni' };
+  var toastIcons = { success: 'bi-check-circle-fill', danger: 'bi-x-circle-fill', warning: 'bi-exclamation-triangle-fill', info: 'bi-info-circle-fill', primary: 'bi-info-circle-fill' };
+
+  window.qtaToast = function (message, variant, title, options) {
+    variant = variant || 'info';
+    options = options || {};
+    var area = document.querySelector('[data-toast-area]');
+    if (!area) {
+      area = document.createElement('div');
+      area.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+      area.setAttribute('data-toast-area', '');
+      document.body.appendChild(area);
+    }
+    var el = document.createElement('div');
+    el.className = 'toast toast-' + variant;
+    el.setAttribute('role', variant === 'danger' ? 'alert' : 'status');
+    el.setAttribute('aria-live', variant === 'danger' ? 'assertive' : 'polite');
+    el.setAttribute('aria-atomic', 'true');
+    el.innerHTML =
+      '<div class="toast-header"><i class="bi ' + (toastIcons[variant] || toastIcons.info) + ' me-2" aria-hidden="true"></i>' +
+      '<strong class="me-auto"></strong>' +
+      '<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll njoftimin"></button></div>' +
+      '<div class="toast-body"></div>';
+    el.querySelector('strong').textContent = title || toastTitles[variant] || toastTitles.info;
+    el.querySelector('.toast-body').textContent = message;
+    area.appendChild(el);
+    if (window.bootstrap) {
+      var toast = new window.bootstrap.Toast(el, { autohide: options.autohide !== false, delay: options.delay || 4200 });
+      toast.show();
+      el.addEventListener('hidden.bs.toast', function () { el.remove(); });
+    }
+    return el;
+  };
+
+  /* Pajtueshmëri: faqet e vjetra thërrasin notify(type, message, opts). */
+  if (typeof window.notify !== 'function') {
+    window.notify = function (type, message, opts) {
+      return window.qtaToast(message, type, opts && opts.title, opts);
+    };
   }
 
-  /* ------------------------------------------- 7. Mbyll menunë pas klikimit */
-  document.querySelectorAll('.app-nav a.app-nav-link').forEach(function (link) {
-    link.addEventListener('click', function () {
-      var nav = document.getElementById('appNav');
-      if (nav) nav.classList.remove('is-open');
+  /* Dialog konfirmimi i aksesueshëm — zëvendëson confirm() të shfletuesit.
+     qtaConfirm({title, message, confirm, cancel, danger}) → Promise<boolean> */
+  window.qtaConfirm = function (opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      if (!window.bootstrap || !window.bootstrap.Modal) {
+        resolve(window.confirm(opts.message || opts.title || 'Je i sigurt?'));
+        return;
+      }
+      var id = 'qtaConfirm' + Date.now();
+      var danger = opts.danger !== false;
+      var wrap = document.createElement('div');
+      wrap.innerHTML =
+        '<div class="modal fade" id="' + id + '" tabindex="-1" aria-labelledby="' + id + 'T" aria-describedby="' + id + 'D">' +
+          '<div class="modal-dialog modal-dialog-centered"><div class="modal-content">' +
+            '<div class="modal-body pt-4">' +
+              '<span class="confirm-icon' + (danger ? ' is-danger' : '') + '"><i class="bi ' + (danger ? 'bi-exclamation-octagon' : 'bi-question-circle') + '" aria-hidden="true"></i></span>' +
+              '<h2 class="modal-title mb-2" id="' + id + 'T">' + esc(opts.title || 'Je i sigurt?') + '</h2>' +
+              '<p class="text-muted mb-0" id="' + id + 'D">' + esc(opts.message || '') + '</p>' +
+            '</div>' +
+            '<div class="modal-footer">' +
+              '<button type="button" class="btn btn-secondary" data-qta-cancel>' + esc(opts.cancel || 'Anulo') + '</button>' +
+              '<button type="button" class="btn ' + (danger ? 'btn-danger' : 'btn-primary') + '" data-qta-ok>' + esc(opts.confirm || 'Po, vazhdo') + '</button>' +
+            '</div>' +
+          '</div></div>' +
+        '</div>';
+      var modalEl = wrap.firstChild;
+      document.body.appendChild(modalEl);
+      var modal = new window.bootstrap.Modal(modalEl);
+      var answered = false;
+      modalEl.querySelector('[data-qta-ok]').addEventListener('click', function () { answered = true; modal.hide(); resolve(true); });
+      modalEl.querySelector('[data-qta-cancel]').addEventListener('click', function () { modal.hide(); });
+      modalEl.addEventListener('shown.bs.modal', function () { modalEl.querySelector('[data-qta-cancel]').focus(); });
+      modalEl.addEventListener('hidden.bs.modal', function () {
+        if (!answered) resolve(false);
+        modal.dispose();
+        modalEl.remove();
+      });
+      modal.show();
     });
+  };
+
+  /* Formularët/lidhjet me data-confirm pyesin para se të vazhdojnë. */
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute('data-confirm') || form.dataset.confirmed === '1') return;
+    event.preventDefault();
+    var submitter = event.submitter || null;
+    window.qtaConfirm({
+      title: form.getAttribute('data-confirm-title') || 'Je i sigurt?',
+      message: form.getAttribute('data-confirm'),
+      confirm: form.getAttribute('data-confirm-ok') || 'Po, vazhdo',
+      danger: form.getAttribute('data-confirm-danger') !== '0'
+    }).then(function (ok) {
+      if (!ok) return;
+      form.dataset.confirmed = '1';
+      if (form.requestSubmit) form.requestSubmit(submitter || undefined); else form.submit();
+    });
+  }, true);
+
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest ? event.target.closest('a[data-confirm]') : null;
+    if (!link) return;
+    event.preventDefault();
+    window.qtaConfirm({
+      title: link.getAttribute('data-confirm-title') || 'Je i sigurt?',
+      message: link.getAttribute('data-confirm'),
+      confirm: link.getAttribute('data-confirm-ok') || 'Po, vazhdo',
+      danger: link.getAttribute('data-confirm-danger') !== '0'
+    }).then(function (ok) { if (ok) window.location.href = link.href; });
   });
 
-  /* ------------------------------------------ 8. Kërkimi inteligjent global */
-  /* Hapet me Ctrl+K, "/", nga çelësi i kokëfletës dhe nga çdo fushë q/search.
-     Serveri vendos kufijtë e rolit; ndërfaqja vetëm paraqet aftësitë e lejuara. */
+  /* -------------------------------------- 7. Kopjo, fjalëkalimi, "po punon" */
+  document.addEventListener('click', function (event) {
+    var copyBtn = event.target.closest ? event.target.closest('[data-copy]') : null;
+    if (copyBtn) {
+      var text = copyBtn.getAttribute('data-copy') || '';
+      var done = function () { window.qtaToast(copyBtn.getAttribute('data-copy-message') || 'U kopjua.', 'success'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { window.qtaToast('Shfletuesi nuk lejoi kopjimin.', 'warning'); });
+      }
+      return;
+    }
+    var pw = event.target.closest ? event.target.closest('[data-password-toggle]') : null;
+    if (pw) {
+      var input = document.querySelector(pw.getAttribute('data-password-toggle'));
+      if (!input) return;
+      var show = input.getAttribute('type') === 'password';
+      input.setAttribute('type', show ? 'text' : 'password');
+      pw.setAttribute('aria-pressed', show ? 'true' : 'false');
+      pw.setAttribute('aria-label', show ? 'Fshih fjalëkalimin' : 'Shfaq fjalëkalimin');
+      var icon = pw.querySelector('i');
+      if (icon) icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    }
+  });
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form || !form.matches || !form.matches('form[data-loading]') || event.defaultPrevented) return;
+    var btn = event.submitter || form.querySelector('button[type="submit"], button:not([type])');
+    if (btn) { btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true'); }
+  });
+
+  /* ------------------------------------------ 8. Kërkimi në regjistër */
+  /* Hapet me Ctrl+K, "/" ose butonin "Kërko…". Serveri vendos kufijtë e rolit;
+     ndërfaqja vetëm paraqet aftësitë e lejuara. Fushat e kërkimit brenda
+     faqeve mbeten fusha të zakonshme — nuk rrëmbehen më nga paleta. */
   (function () {
-    var veil, input, body, types, summary, filtersPanel, filterToggle, pageAction;
+    var veil, input, body, types, summary, filtersPanel, filterToggle;
     var sortSelect, statusSelect, periodSelect, matchSelect, limitSelect;
-    var timer = null, seq = 0, controller = null;
-    var active = -1, flat = [], only = '', sourceInput = null;
+    var timer = null, seq = 0, controller = null, lastFocus = null;
+    var active = -1, flat = [], only = '';
     var sort = 'relevance', status = 'any', period = 'any', matchMode = 'contains', limit = '6';
     var available = [];
-
-    var typeLabels = {
-      student: 'Kursantë', group: 'Grupe', course: 'Module', agency: 'Agjenci',
-      user: 'Llogari', audit: 'Auditim'
-    };
-
-    function esc(value) {
-      return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-      });
-    }
 
     function mark(text, needle) {
       var raw = String(text == null ? '' : text);
@@ -355,26 +493,23 @@
     function build() {
       veil = document.createElement('div');
       veil.className = 'pal-veil';
-      veil.setAttribute('role', 'dialog');
-      veil.setAttribute('aria-modal', 'true');
-      veil.setAttribute('aria-label', 'Kërko në regjistër');
       veil.innerHTML =
-        '<div class="pal">' +
+        '<div class="pal" role="dialog" aria-modal="true" aria-labelledby="palTitle">' +
+          '<h2 class="visually-hidden" id="palTitle">Kërko në regjistër</h2>' +
           '<div class="pal-head">' +
             '<i class="bi bi-search" aria-hidden="true"></i>' +
-            '<input type="text" autocomplete="off" spellcheck="false" ' +
-                   'placeholder="Kërko emër, AMZË, telefon, grup, modul…" aria-label="Kërko">' +
-            '<span class="pal-head-tag">Kërkim inteligjent</span>' +
-            '<button class="pal-close" type="button" aria-label="Mbyll"><span>esc</span></button>' +
+            '<input type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palResults" ' +
+                   'aria-autocomplete="list" placeholder="Shkruaj emër, AMZË, telefon, grup ose modul…" aria-label="Kërko në regjistër">' +
+            '<button class="pal-close" type="button" aria-label="Mbyll kërkimin">Esc</button>' +
           '</div>' +
-          '<div class="pal-types" role="tablist" aria-label="Kufizo llojin">' +
-            '<button class="pal-type is-on" type="button" data-type="" role="tab">Të gjitha</button>' +
-            '<button class="pal-type" type="button" data-type="student" role="tab">Kursantë</button>' +
-            '<button class="pal-type" type="button" data-type="group" role="tab">Grupe</button>' +
-            '<button class="pal-type" type="button" data-type="course" role="tab">Module</button>' +
-            '<button class="pal-type" type="button" data-type="agency" role="tab">Agjenci</button>' +
-            '<button class="pal-type" type="button" data-type="user" role="tab">Llogari</button>' +
-            '<button class="pal-type" type="button" data-type="audit" role="tab">Auditim</button>' +
+          '<div class="pal-types" role="group" aria-label="Kërko vetëm te">' +
+            '<button class="pal-type is-on" type="button" data-type="" aria-pressed="true">Të gjitha</button>' +
+            '<button class="pal-type" type="button" data-type="student" aria-pressed="false">Kursantë</button>' +
+            '<button class="pal-type" type="button" data-type="group" aria-pressed="false">Grupe</button>' +
+            '<button class="pal-type" type="button" data-type="course" aria-pressed="false">Module</button>' +
+            '<button class="pal-type" type="button" data-type="agency" aria-pressed="false">Agjenci</button>' +
+            '<button class="pal-type" type="button" data-type="user" aria-pressed="false">Llogari</button>' +
+            '<button class="pal-type" type="button" data-type="audit" aria-pressed="false">Historik</button>' +
           '</div>' +
           '<div class="pal-tools">' +
             '<span class="pal-summary" data-pal-summary aria-live="polite">Gati për kërkim</span>' +
@@ -385,38 +520,34 @@
                 '<option value="newest">Më të rejat</option><option value="oldest">Më të vjetrat</option>' +
               '</select>' +
             '</label>' +
-            '<button class="pal-filter-toggle" type="button" data-pal-filter-toggle aria-expanded="false">' +
-              '<i class="bi bi-sliders2" aria-hidden="true"></i> Filtra <span class="pal-filter-count">0</span>' +
+            '<button class="pal-filter-toggle" type="button" data-pal-filter-toggle aria-expanded="false" aria-controls="palFilters">' +
+              '<i class="bi bi-sliders2" aria-hidden="true"></i> Më shumë opsione <span class="pal-filter-count">0</span>' +
             '</button>' +
           '</div>' +
-          '<div class="pal-filters" data-pal-filters hidden>' +
+          '<div class="pal-filters" id="palFilters" data-pal-filters hidden>' +
             '<label><span>Gjendja</span><select data-pal-status>' +
-              '<option value="any">Çfarëdo gjendjeje</option><option value="active">Aktive / të hapura</option>' +
-              '<option value="closed">Të mbyllura</option><option value="ungrouped">Pa grup / caktim</option>' +
+              '<option value="any">Çdo gjendje</option><option value="active">Aktive / në vazhdim</option>' +
+              '<option value="closed">Të mbyllura</option><option value="ungrouped">Pa grup</option>' +
             '</select></label>' +
             '<label><span>Periudha</span><select data-pal-period>' +
-              '<option value="any">Çfarëdo periudhe</option><option value="30">30 ditët e fundit</option>' +
+              '<option value="any">Çdo periudhë</option><option value="30">30 ditët e fundit</option>' +
               '<option value="90">90 ditët e fundit</option><option value="365">12 muajt e fundit</option>' +
             '</select></label>' +
-            '<label><span>Përputhja</span><select data-pal-match>' +
+            '<label><span>Si të krahasoj</span><select data-pal-match>' +
               '<option value="contains">Përmban fjalën</option><option value="prefix">Fillon me</option>' +
-              '<option value="exact">Përputhje e saktë</option>' +
+              '<option value="exact">Saktësisht e njëjtë</option>' +
             '</select></label>' +
-            '<label><span>Rezultate / lloj</span><select data-pal-limit>' +
-              '<option value="6">6 rezultate</option><option value="10">10 rezultate</option><option value="15">15 rezultate</option>' +
+            '<label><span>Sa rezultate</span><select data-pal-limit>' +
+              '<option value="6">6 për lloj</option><option value="10">10 për lloj</option><option value="15">15 për lloj</option>' +
             '</select></label>' +
-            '<button class="pal-reset" type="button" data-pal-reset><i class="bi bi-arrow-counterclockwise"></i> Pastro filtrat</button>' +
+            '<button class="pal-reset" type="button" data-pal-reset><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Rikthe opsionet</button>' +
           '</div>' +
-          '<div class="pal-body" role="listbox" aria-live="polite"></div>' +
-          '<button class="pal-page-action" type="button" data-pal-page-action hidden>' +
-            '<i class="bi bi-funnel" aria-hidden="true"></i><span>Filtro faqen aktuale</span><kbd>alt ↵</kbd>' +
-          '</button>' +
-          '<div class="pal-foot">' +
+          '<div class="pal-body" id="palResults" role="listbox" aria-label="Rezultatet"></div>' +
+          '<div class="pal-foot" aria-hidden="true">' +
             '<span><kbd>↑</kbd><kbd>↓</kbd> lëviz</span>' +
-            '<span><kbd>enter</kbd> hap</span>' +
-            '<span><kbd>tab</kbd> ndrysho llojin</span>' +
-            '<span><kbd>alt</kbd><kbd>enter</kbd> filtro faqen</span>' +
-            '<span><kbd>esc</kbd> mbyll</span>' +
+            '<span><kbd>Enter</kbd> hap</span>' +
+            '<span><kbd>Tab</kbd> ndrysho llojin</span>' +
+            '<span><kbd>Esc</kbd> mbyll</span>' +
           '</div>' +
         '</div>';
       document.body.appendChild(veil);
@@ -427,18 +558,15 @@
       summary = veil.querySelector('[data-pal-summary]');
       filtersPanel = veil.querySelector('[data-pal-filters]');
       filterToggle = veil.querySelector('[data-pal-filter-toggle]');
-      pageAction = veil.querySelector('[data-pal-page-action]');
       sortSelect = veil.querySelector('[data-pal-sort]');
       statusSelect = veil.querySelector('[data-pal-status]');
       periodSelect = veil.querySelector('[data-pal-period]');
       matchSelect = veil.querySelector('[data-pal-match]');
       limitSelect = veil.querySelector('[data-pal-limit]');
 
-      veil.addEventListener('mousedown', function (event) {
-        if (event.target === veil) close();
-      });
+      veil.addEventListener('mousedown', function (event) { if (event.target === veil) close(); });
       veil.querySelector('.pal-close').addEventListener('click', close);
-      input.addEventListener('input', function () { updatePageAction(); schedule(); });
+      input.addEventListener('input', function () { schedule(); });
 
       Array.prototype.forEach.call(types, function (button) {
         button.addEventListener('click', function () {
@@ -464,7 +592,6 @@
         status = 'any'; period = 'any'; matchMode = 'contains'; limit = '6'; sort = 'relevance';
         syncControls(); updateFilterCount(); input.focus(); schedule(0);
       });
-      pageAction.addEventListener('click', applyToPage);
 
       body.addEventListener('mousemove', function (event) {
         var item = event.target.closest ? event.target.closest('.pal-item') : null;
@@ -484,14 +611,9 @@
       limitSelect.value = limit;
     }
 
-    function filtersChanged() {
-      updateFilterCount();
-      input.focus();
-      schedule(0);
-    }
+    function filtersChanged() { updateFilterCount(); schedule(0); }
 
     function updateFilterCount() {
-      if (!filterToggle) return;
       var count = 0;
       if (status !== 'any') count++;
       if (period !== 'any') count++;
@@ -501,16 +623,13 @@
       filterToggle.classList.toggle('has-filters', count > 0);
     }
 
-    function contextType(element) {
-      var explicit = element && element.getAttribute ? element.getAttribute('data-search-type') : '';
-      if (explicit) return explicit;
+    function contextType() {
       var page = (window.location.pathname.split('/').pop() || '').toLowerCase();
-      if (page === 'groups.php' || page === 'groups_agjencia.php' || page === 'groups_student.php') return 'group';
+      if (/^groups/.test(page)) return 'group';
       if (page === 'courses.php') return 'course';
       if (page === 'agencies.php') return 'agency';
       if (page === 'users.php' || page === 'editors.php') return 'user';
-      if (page === 'logs.php' || page === 'logs_editor.php') return 'audit';
-      if (/student|register/.test(page)) return 'student';
+      if (/^logs/.test(page)) return 'audit';
       return '';
     }
 
@@ -524,8 +643,7 @@
       if (list && list.length) available = list.slice();
       Array.prototype.forEach.call(types, function (button) {
         var value = button.getAttribute('data-type') || '';
-        var allowed = value === '' || !available.length || available.indexOf(value) >= 0;
-        button.hidden = !allowed;
+        button.hidden = !(value === '' || !available.length || available.indexOf(value) >= 0);
       });
       if (only && available.length && available.indexOf(only) < 0) setType('');
     }
@@ -535,27 +653,25 @@
       Array.prototype.forEach.call(types, function (button) {
         var selected = (button.getAttribute('data-type') || '') === only;
         button.classList.toggle('is-on', selected);
-        button.setAttribute('aria-selected', selected ? 'true' : 'false');
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
       });
     }
 
-    function open(seed, trigger) {
+    function open(seed) {
       if (!veil) build();
-      sourceInput = trigger && isPageSearch(trigger) ? trigger : null;
+      lastFocus = document.activeElement;
       available = typesFromPage();
       applyCapabilities(available);
-      setType(sourceInput ? contextType(sourceInput) : '');
-
+      var ctx = contextType();
+      setType(available.indexOf(ctx) >= 0 ? ctx : '');
       sort = 'relevance'; status = 'any'; period = 'any'; matchMode = 'contains'; limit = '6';
       syncControls(); updateFilterCount();
       filtersPanel.hidden = true;
       filterToggle.setAttribute('aria-expanded', 'false');
-
       input.value = seed || '';
       flat = []; active = -1;
       veil.classList.add('is-open');
       document.documentElement.style.overflow = 'hidden';
-      updatePageAction();
       renderStart();
       input.focus();
       input.select();
@@ -563,16 +679,17 @@
     }
 
     function close() {
-      if (!veil) return;
+      if (!veil || !veil.classList.contains('is-open')) return;
       clearTimeout(timer);
       if (controller) controller.abort();
       veil.classList.remove('is-open');
       document.documentElement.style.overflow = '';
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
     }
 
     function schedule(delay) {
       clearTimeout(timer);
-      timer = setTimeout(run, delay === 0 ? 0 : 180);
+      timer = setTimeout(run, delay === 0 ? 0 : 200);
     }
 
     function recent() {
@@ -584,73 +701,47 @@
       if (!term || term.length < 2) return;
       var list = recent().filter(function (item) { return item.toLocaleLowerCase() !== term.toLocaleLowerCase(); });
       list.unshift(term);
-      try { localStorage.setItem('qta_recent_searches', JSON.stringify(list.slice(0, 6))); } catch (error) { /* private mode */ }
+      store('qta_recent_searches', JSON.stringify(list.slice(0, 6)));
     }
 
     function renderStart() {
       var items = recent();
       summary.textContent = 'Gati për kërkim';
+      input.removeAttribute('aria-activedescendant');
       if (!items.length) {
-        body.innerHTML = '<div class="pal-welcome"><i class="bi bi-stars"></i>' +
-          '<b>Kërko në të gjithë regjistrin</b><span>Shkruaj të paktën dy shenja. Mund të përdorësh emër të plotë, atësi, AMZË, telefon, kod moduli ose numër grupi.</span></div>';
+        body.innerHTML = '<div class="pal-welcome"><i class="bi bi-search" aria-hidden="true"></i>' +
+          '<b>Kërko në të gjithë regjistrin</b><span>Shkruaj të paktën dy shkronja: emër, atësi, numër amze, telefon, kod moduli ose numër grupi.</span></div>';
         return;
       }
       body.innerHTML = '<div class="pal-recent"><span class="pal-recent-label">Kërkimet e fundit</span>' +
         items.map(function (item) {
-          return '<button type="button" data-pal-recent="' + esc(item) + '"><i class="bi bi-clock-history"></i>' + esc(item) + '</button>';
+          return '<button type="button" data-pal-recent="' + esc(item) + '"><i class="bi bi-clock-history" aria-hidden="true"></i>' + esc(item) + '</button>';
         }).join('') + '</div>';
       body.querySelectorAll('[data-pal-recent]').forEach(function (button) {
         button.addEventListener('click', function () {
           input.value = button.getAttribute('data-pal-recent') || '';
-          updatePageAction(); input.focus(); schedule(0);
+          input.focus();
+          schedule(0);
         });
       });
     }
 
     function renderLoading() {
       body.setAttribute('aria-busy', 'true');
-      body.innerHTML = '<div class="pal-loading"><span></span><span></span><span></span></div>';
+      body.innerHTML = '<div class="pal-loading" aria-hidden="true"><span></span><span></span><span></span></div>';
       summary.textContent = 'Po kërkoj…';
-    }
-
-    function updatePageAction() {
-      if (!pageAction) return;
-      var q = input.value.trim();
-      var usable = sourceInput && sourceInput.form && q.length >= 2;
-      pageAction.hidden = !usable;
-      if (usable) {
-        var heading = document.querySelector('main h1, main h2');
-        var where = heading ? heading.textContent.trim() : 'faqen aktuale';
-        pageAction.querySelector('span').textContent = 'Filtro “' + q + '” te ' + where;
-      }
-    }
-
-    function applyToPage() {
-      var q = input.value.trim();
-      if (!sourceInput || !sourceInput.form || q.length < 2) return;
-      remember(q);
-      sourceInput.value = q;
-      var form = sourceInput.form;
-      close();
-      form.submit();
     }
 
     function run() {
       var q = input.value.trim();
-      updatePageAction();
-      if (q.length < 2) {
-        flat = []; active = -1; renderStart(); return;
-      }
+      if (q.length < 2) { flat = []; active = -1; renderStart(); return; }
 
       var mine = ++seq;
       if (controller) controller.abort();
       controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       renderLoading();
 
-      var params = new URLSearchParams({
-        q: q, sort: sort, status: status, period: period,
-        match: matchMode, limit: limit
-      });
+      var params = new URLSearchParams({ q: q, sort: sort, status: status, period: period, match: matchMode, limit: limit });
       if (only) params.set('type', only);
 
       fetch('app/actions/search_advanced.php?' + params.toString(), {
@@ -660,7 +751,7 @@
       })
         .then(function (response) {
           return response.json().then(function (json) {
-            if (!response.ok && !json.error) json.error = 'Kërkimi dështoi.';
+            if (!response.ok && !json.error) json.error = 'Kërkimi nuk u krye.';
             return json;
           });
         })
@@ -668,25 +759,24 @@
           if (mine !== seq) return;
           body.removeAttribute('aria-busy');
           if (!json.ok) {
-            body.innerHTML = '<div class="pal-message is-error"><i class="bi bi-exclamation-triangle"></i><b>' +
-              esc(json.error || 'Kërkimi dështoi.') + '</b><span>Provo sërish ose rifresko faqen.</span></div>';
-            summary.textContent = 'Kërkimi dështoi'; flat = []; active = -1; return;
+            body.innerHTML = '<div class="pal-message is-error"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><b>' +
+              esc(json.error || 'Kërkimi nuk u krye.') + '</b><span>Provo sërish pas pak ose rifresko faqen.</span></div>';
+            summary.textContent = 'Kërkimi nuk u krye'; flat = []; active = -1; return;
           }
           applyCapabilities(json.capabilities || []);
           updateTypeCounts(json.counts || {});
           if (!json.total) {
-            body.innerHTML = '<div class="pal-message"><i class="bi bi-search"></i><b>Asgjë nuk u gjet</b>' +
-              '<span>Nuk ka përputhje me “' + esc(q) + '”. Provo “përmban fjalën” ose pastro filtrat.</span></div>';
-            summary.textContent = '0 rezultate · ' + (json.took_ms || 0) + ' ms';
+            body.innerHTML = '<div class="pal-message"><i class="bi bi-search" aria-hidden="true"></i><b>Nuk u gjet asgjë</b>' +
+              '<span>Asnjë përputhje për “' + esc(q) + '”. Kontrollo drejtshkrimin ose provo vetëm një pjesë të emrit.</span></div>';
+            summary.textContent = 'Asnjë rezultat';
             flat = []; active = -1; return;
           }
-
-          var html = '';
+          var html = '', n = 0;
           (json.groups || []).forEach(function (group) {
-            html += '<div class="pal-group-label"><span>' + esc(group.label) + '</span><b>' + group.items.length + '</b></div>';
+            html += '<div class="pal-group-label" role="presentation"><span>' + esc(group.label) + '</span><b>' + group.items.length + '</b></div>';
             group.items.forEach(function (item) {
               var state = /^(active|closed|ungrouped|neutral|insert|update|delete)$/.test(item.status || '') ? item.status : 'neutral';
-              html += '<a class="pal-item" role="option" aria-selected="false" href="' + esc(item.href) + '">' +
+              html += '<a class="pal-item" id="palItem' + (n++) + '" role="option" aria-selected="false" href="' + esc(item.href) + '">' +
                         '<span class="pal-item-icon"><i class="bi ' + esc(item.icon || 'bi-dot') + '" aria-hidden="true"></i></span>' +
                         '<span class="pal-item-main">' +
                           '<span class="pal-item-title">' + mark(item.title, q) + '</span>' +
@@ -696,21 +786,21 @@
                           (item.status_label ? '<span class="pal-status is-' + state + '">' + esc(item.status_label) + '</span>' : '') +
                           (item.code ? '<span class="pal-item-code">' + mark(item.code, q) + '</span>' : '') +
                         '</span>' +
-                        '<i class="bi bi-arrow-up-right pal-item-open" aria-hidden="true"></i>' +
+                        '<i class="bi bi-arrow-right pal-item-open" aria-hidden="true"></i>' +
                       '</a>';
             });
           });
           body.innerHTML = html;
           flat = Array.prototype.slice.call(body.querySelectorAll('.pal-item'));
           active = flat.length ? 0 : -1;
-          summary.textContent = json.total + (json.total === 1 ? ' rezultat' : ' rezultate') + ' · ' + (json.took_ms || 0) + ' ms';
+          summary.textContent = json.total + (json.total === 1 ? ' rezultat' : ' rezultate');
           paint();
         })
         .catch(function (error) {
           if (error && error.name === 'AbortError') return;
           if (mine !== seq) return;
           body.removeAttribute('aria-busy');
-          body.innerHTML = '<div class="pal-message is-error"><i class="bi bi-wifi-off"></i><b>Lidhja dështoi</b><span>Kontrollo lidhjen dhe provo sërish.</span></div>';
+          body.innerHTML = '<div class="pal-message is-error"><i class="bi bi-wifi-off" aria-hidden="true"></i><b>Nuk u lidh me serverin</b><span>Kontrollo internetin dhe provo sërish.</span></div>';
           summary.textContent = 'Pa lidhje'; flat = []; active = -1;
         });
     }
@@ -735,7 +825,12 @@
         element.classList.toggle('is-active', selected);
         element.setAttribute('aria-selected', selected ? 'true' : 'false');
       });
-      if (active >= 0 && flat[active]) flat[active].scrollIntoView({ block: 'nearest' });
+      if (active >= 0 && flat[active]) {
+        input.setAttribute('aria-activedescendant', flat[active].id);
+        flat[active].scrollIntoView({ block: 'nearest' });
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
     }
 
     function step(delta) {
@@ -752,33 +847,24 @@
       list[(index + delta + list.length) % list.length].click();
     }
 
-    function isPageSearch(element) {
-      if (!element || !element.matches || element.getAttribute('data-pal-off') === '1') return false;
-      if (element.getAttribute('data-search-native') === '1') return false;
-      if (veil && veil.contains(element)) return false;
-      return element.matches('input[name="q"], input[type="search"], .jump-field input');
-    }
-
     document.addEventListener('keydown', function (event) {
       var tag = (event.target.tagName || '').toLowerCase();
       var typing = tag === 'input' || tag === 'textarea' || tag === 'select' || event.target.isContentEditable;
+      var allowed = !!document.querySelector('[data-open-palette]');
 
-      if ((event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K')) {
+      if (allowed && (event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K')) {
         event.preventDefault();
-        open(typing && event.target.value ? event.target.value : '', isPageSearch(event.target) ? event.target : null);
+        open(typing && event.target.value && !(veil && veil.contains(event.target)) ? event.target.value : '');
         return;
       }
-      if (event.key === '/' && !typing) {
-        event.preventDefault(); open('', null); return;
-      }
+      if (allowed && event.key === '/' && !typing) { event.preventDefault(); open(''); return; }
       if (!veil || !veil.classList.contains('is-open')) return;
 
       if (event.key === 'Escape') { event.preventDefault(); close(); }
       else if (event.key === 'ArrowDown') { event.preventDefault(); step(1); }
       else if (event.key === 'ArrowUp') { event.preventDefault(); step(-1); }
-      else if (event.key === 'Tab') { event.preventDefault(); cycleType(event.shiftKey ? -1 : 1); }
-      else if (event.key === 'Enter' && event.altKey) { event.preventDefault(); applyToPage(); }
-      else if (event.key === 'Enter' && active >= 0 && flat[active]) {
+      else if (event.key === 'Tab' && event.target === input) { event.preventDefault(); cycleType(event.shiftKey ? -1 : 1); }
+      else if (event.key === 'Enter' && event.target === input && active >= 0 && flat[active]) {
         event.preventDefault();
         remember(input.value.trim());
         window.location.href = flat[active].getAttribute('href');
@@ -787,59 +873,7 @@
 
     document.addEventListener('click', function (event) {
       var trigger = event.target.closest ? event.target.closest('[data-open-palette]') : null;
-      if (trigger) { event.preventDefault(); open('', null); }
-    });
-
-    /* Delegimi e mbulon edhe fushat që shtohen më vonë nga modale/komponentë. */
-    document.addEventListener('pointerdown', function (event) {
-      var target = event.target;
-      if (!isPageSearch(target)) return;
-      event.preventDefault();
-      open(target.value || '', target);
-    }, true);
-    document.addEventListener('focusin', function (event) {
-      if (!isPageSearch(event.target)) return;
-      open(event.target.value || '', event.target);
+      if (trigger) { event.preventDefault(); closeDrawer(false); open(''); }
     });
   })();
-
-  /* --------------------------------------------------------- 9. Tooltip-et */
-  if (window.bootstrap && window.bootstrap.Tooltip) {
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-      new window.bootstrap.Tooltip(el);
-    });
-  }
-
-  /* ----------------------------------------------------------- 10. Njoftimet */
-  window.qtaToast = function (message, variant, title) {
-    variant = variant || 'info';
-
-    var area = document.querySelector('[data-toast-area]');
-    if (!area) {
-      area = document.createElement('div');
-      area.className = 'toast-container position-fixed bottom-0 start-0 p-3';
-      area.setAttribute('data-toast-area', '');
-      document.body.appendChild(area);
-    }
-
-    var titles = { success: 'Regjistruar', danger: 'E papranuar', warning: 'Kujdes', info: 'Shënim' };
-
-    var el = document.createElement('div');
-    el.className = 'toast qta-toast toast-' + variant;
-    el.setAttribute('role', 'status');
-    el.setAttribute('aria-live', 'polite');
-    el.innerHTML =
-      '<div class="toast-header"><strong class="me-auto"></strong>' +
-      '<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button></div>' +
-      '<div class="toast-body"></div>';
-    el.querySelector('strong').textContent = title || titles[variant] || titles.info;
-    el.querySelector('.toast-body').textContent = message;
-    area.appendChild(el);
-
-    if (window.bootstrap) {
-      var t = new window.bootstrap.Toast(el, { delay: 3600 });
-      t.show();
-      el.addEventListener('hidden.bs.toast', function () { el.remove(); });
-    }
-  };
 })();

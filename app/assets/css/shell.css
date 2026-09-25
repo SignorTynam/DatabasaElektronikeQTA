@@ -1,0 +1,308 @@
+/* ============================================================================
+   THEMELI — Shell-i i aplikacionit (faqet pas hyrjes)
+   ----------------------------------------------------------------------------
+   Desktop (≥ 992px): menu anësore e përhershme 248px, e ngushtueshme në 72px.
+   Celular/tablet:    shirit i sipërm + menuja si sirtar (drawer) i aksesueshëm.
+   E njëjta listë menuje shërben për të dyja — asnjë dublikim lejesh.
+   ========================================================================= */
+
+body.app { min-height: 100vh; }
+
+/* ------------------------------------------------------ Menuja anësore */
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: var(--z-shell);
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 4rem;
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+}
+
+.brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: .625rem;
+  min-width: 0;
+  padding: .375rem;
+  border-radius: var(--r-md);
+  color: var(--text);
+  text-decoration: none;
+}
+.brand:hover { background: var(--surface-hover); color: var(--text); }
+.brand-logo { flex: none; width: auto; height: 24px; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.brand-text b {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-close { display: none; }
+
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: calc(100% - var(--sp-6));
+  min-height: var(--control-h);
+  margin: 0 var(--sp-3) var(--sp-3);
+  padding: 0 .5rem 0 .75rem;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  text-align: left;
+  transition: border-color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.sidebar-search:hover { border-color: var(--border-strong); color: var(--text); }
+.sidebar-search > span { flex: 1; }
+.sidebar-search kbd { font-size: var(--fs-2xs); }
+
+.sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--sp-3) var(--sp-3);
+  overflow-y: auto;
+}
+.nav-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.nav-section { margin-top: var(--sp-4); }
+.nav-heading {
+  margin: 0 0 var(--sp-1);
+  padding: 0 .75rem;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .01em;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 .75rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+  text-decoration: none;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.nav-item > .bi { flex: none; width: 1.25rem; font-size: 1.05rem; text-align: center; }
+.nav-item:hover { background: var(--surface-hover); color: var(--text); }
+.nav-item.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-xs), inset 0 0 0 1px var(--border);
+}
+.nav-item.is-active > .bi { color: var(--accent-text); }
+.nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  top: .55rem;
+  bottom: .55rem;
+  left: -.75rem;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--action);
+}
+.nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sidebar-foot {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.account-btn {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  width: 100%;
+  min-height: 3rem;
+  margin-top: var(--sp-1);
+  padding: .375rem .5rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.account-btn:hover,
+.account-btn[aria-expanded="true"] { border-color: var(--border); background: var(--surface); }
+.account-text { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.25; }
+.account-text b { overflow: hidden; font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
+.account-text span { color: var(--text-muted); font-size: var(--fs-2xs); }
+.account-btn > .bi { color: var(--text-muted); }
+.account-menu { min-width: 15rem; }
+.account-menu .theme-choice[aria-checked="true"] { color: var(--accent-text); }
+.account-menu .theme-choice[aria-checked="true"]::after {
+  content: "\F26E";
+  margin-left: auto;
+  font-family: "bootstrap-icons";
+  font-size: .9rem;
+}
+
+.sidebar-rail-toggle { flex: none; }
+
+/* ----------------------------------------------- Shiriti i sipërm (celular) */
+.topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: var(--z-shell);
+  display: none;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--topbar-h);
+  padding: 0 var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--canvas) 94%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.topbar-brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+}
+.topbar-brand img { height: 22px; width: auto; }
+.topbar-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-actions { display: flex; gap: 2px; }
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-backdrop);
+  background: var(--overlay);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease);
+}
+.sidebar-backdrop.is-on { opacity: 1; }
+
+/* -------------------------------------------------------- Hapësira e punës */
+.app-main {
+  width: 100%;
+  max-width: var(--content-max);
+  min-height: calc(100vh - 3.5rem);
+  margin-inline: auto;
+  padding: clamp(1.5rem, 3vw, 2.5rem) clamp(1rem, 3vw, 2.5rem) var(--sp-12);
+}
+.app-main.is-wide { max-width: var(--content-wide); }
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding: var(--sp-4) calc(var(--touch-min) + var(--sp-8)) var(--sp-6) clamp(1rem, 3vw, 2.5rem);
+  color: var(--text-subtle);
+  font-size: var(--fs-xs);
+}
+.app-footer a { color: var(--text-muted); }
+
+/* --------------------------------------------------------------- Desktop */
+@media (min-width: 992px) {
+  body.app { padding-left: var(--sidebar-w); }
+
+  /* Menuja e ngushtuar: vetëm ikona, emrat mbeten për lexuesit e ekranit. */
+  :root[data-sidebar="rail"] body.app { padding-left: var(--sidebar-w-rail); }
+  :root[data-sidebar="rail"] .sidebar { width: var(--sidebar-w-rail); }
+  :root[data-sidebar="rail"] .sidebar-head { flex-direction: column; padding-inline: var(--sp-2); }
+  :root[data-sidebar="rail"] .brand { justify-content: center; }
+  :root[data-sidebar="rail"] .brand-logo { height: 20px; }
+  :root[data-sidebar="rail"] .brand-text,
+  :root[data-sidebar="rail"] .nav-heading,
+  :root[data-sidebar="rail"] .sidebar-search > span,
+  :root[data-sidebar="rail"] .sidebar-search > kbd,
+  :root[data-sidebar="rail"] .account-text,
+  :root[data-sidebar="rail"] .account-btn > .bi-three-dots {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  :root[data-sidebar="rail"] .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  :root[data-sidebar="rail"] .sidebar-search {
+    justify-content: center;
+    width: 2.5rem;
+    margin-inline: auto;
+    padding: 0;
+  }
+  :root[data-sidebar="rail"] .sidebar-nav,
+  :root[data-sidebar="rail"] .sidebar-foot { padding-inline: var(--sp-3); }
+  :root[data-sidebar="rail"] .nav-section { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
+  :root[data-sidebar="rail"] .nav-item { justify-content: center; padding: 0; }
+  :root[data-sidebar="rail"] .nav-item.is-active::before { left: -.75rem; }
+  :root[data-sidebar="rail"] .account-btn { justify-content: center; padding: .375rem 0; }
+  :root[data-sidebar="rail"] .sidebar-rail-toggle > .bi { transform: scaleX(-1); }
+}
+
+/* --------------------------------------------------- Celular dhe tablet */
+@media (max-width: 991.98px) {
+  body.app { padding-top: var(--topbar-h); }
+  .topbar { display: flex; }
+
+  .sidebar {
+    z-index: var(--z-drawer);
+    width: min(20rem, 88vw);
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    visibility: hidden;
+    transform: translateX(-102%);
+    transition: transform var(--dur-3) var(--ease), visibility 0s linear var(--dur-3);
+  }
+  .sidebar.is-open {
+    visibility: visible;
+    transform: none;
+    transition: transform var(--dur-3) var(--ease), visibility 0s;
+  }
+  .sidebar-close { display: inline-flex; }
+  .sidebar-rail-toggle { display: none; }
+  .nav-item { min-height: var(--touch-min); }
+}
+
+/* ------------------------------------------------------------------ Print */
+@media print {
+  body.app { padding: 0 !important; }
+  .sidebar, .topbar, .sidebar-backdrop, .app-footer, .back-top { display: none !important; }
+  .app-main { max-width: none; padding: 0; }
+}

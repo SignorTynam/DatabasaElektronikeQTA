@@ -1,41 +1,17 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/url.php';
+require_once __DIR__ . '/themeli.php';
 
 /**
- * app_ui.php — Ndihmësit e përbashkët të panelit (faqet e brendshme).
+ * app_ui.php — Ndihmësit e shell-it të panelit (faqet pas hyrjes).
  * Vetëm shtresa e prezantimit: nuk prek skemën apo query-t e databazës.
+ * Menuja përcaktohet VETËM këtu; desktopi dhe celulari vizatojnë të njëjtën.
  */
-
-if (!function_exists('h')) {
-  function h(?string $s): string {
-    return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8');
-  }
-}
 
 if (!function_exists('qta_app_initials')) {
   function qta_app_initials(?string $name): string {
-    $name = trim((string)$name);
-    if ($name === '') {
-      return 'Q';
-    }
-
-    $parts = preg_split('/\s+/', $name) ?: [];
-    $initials = '';
-    foreach ($parts as $part) {
-      if ($part === '') {
-        continue;
-      }
-      $letter = function_exists('mb_substr') ? mb_substr($part, 0, 1, 'UTF-8') : substr($part, 0, 1);
-      $initials .= function_exists('mb_strtoupper') ? mb_strtoupper($letter, 'UTF-8') : strtoupper($letter);
-      $length = function_exists('mb_strlen') ? mb_strlen($initials, 'UTF-8') : strlen($initials);
-      if ($length >= 2) {
-        break;
-      }
-    }
-
-    return $initials !== '' ? $initials : 'Q';
+    return qta_initials($name);
   }
 }
 
@@ -45,7 +21,7 @@ if (!function_exists('qta_app_role_label')) {
       'administrator' => 'Administrator',
       'editor' => 'Editor',
       'agjencia', 'agency' => 'Agjenci',
-      'student' => 'Student',
+      'student' => 'Kursant',
       default => 'Përdorues',
     };
   }
@@ -102,6 +78,7 @@ if (!function_exists('qta_app_active_key')) {
       'groups_agjencia.php'         => 'agency_groups',
       'groups_student.php'          => 'student_groups',
       'profile.php'                 => 'profile',
+      'ndihme.php'                  => 'help',
     ];
 
     return $map[$script] ?? '';
@@ -110,72 +87,70 @@ if (!function_exists('qta_app_active_key')) {
 
 /**
  * Struktura e menusë sipas rolit.
- * Çdo zë: ['key'|'keys', 'label', 'href', 'icon'] ose një dropdown me 'children'.
+ * Çdo zë: ['key', 'label', 'href', 'icon']. Seksionet: ['label', 'children' => [...]].
+ * Seksionet janë tituj të dukshëm, jo nënmenu të fshehura: përdoruesi i sheh
+ * gjithnjë të gjitha vendet ku mund të shkojë.
  */
 if (!function_exists('qta_app_menu')) {
   function qta_app_menu(string $role): array {
     $role = strtolower($role);
 
-    $studentsItem = ['key' => 'users_students', 'label' => 'Studentët',       'href' => 'students.php',     'icon' => 'bi-mortarboard'];
-    $cardItem     = ['key' => 'student_card',   'label' => 'Kartela e studentit', 'href' => 'student_card.php', 'icon' => 'bi-credit-card-2-front'];
-    $agenciesItem = ['key' => 'users_agencies', 'label' => 'Agjencitë',       'href' => 'agencies.php',     'icon' => 'bi-building'];
-
-    $registerGroup = [
-      'label' => 'Regjistri',
-      'icon' => 'bi-journal-text',
+    $learners = [
+      'label' => 'Kursantët',
       'children' => [
-        ['key' => 'register_full',            'label' => 'Regjistri i plotë',   'href' => 'register.php',                'icon' => 'bi-journal-bookmark'],
-        ['key' => 'register_groups',          'label' => 'Regjistri me grupe',  'href' => 'groups.php',                  'icon' => 'bi-people-fill'],
-        ['key' => 'students_without_groups',  'label' => 'Studentët pa grupe',  'href' => 'students_without_groups.php', 'icon' => 'bi-person-x'],
+        ['key' => 'users_students',          'label' => 'Të gjithë kursantët',  'href' => 'students.php',                'icon' => 'bi-people'],
+        ['key' => 'student_card',            'label' => 'Kartela e kursantit',  'href' => 'student_card.php',            'icon' => 'bi-person-vcard'],
+        ['key' => 'students_without_groups', 'label' => 'Kursantët pa grup',    'href' => 'students_without_groups.php', 'icon' => 'bi-person-exclamation'],
+      ],
+    ];
+
+    $training = [
+      'label' => 'Grupet dhe provimet',
+      'children' => [
+        ['key' => 'register_groups', 'label' => 'Grupet',            'href' => 'groups.php',   'icon' => 'bi-collection'],
+        ['key' => 'register_full',   'label' => 'Regjistri i plotë', 'href' => 'register.php', 'icon' => 'bi-journal-text'],
+        ['key' => 'courses',         'label' => 'Modulet',           'href' => 'courses.php',  'icon' => 'bi-book'],
       ],
     ];
 
     return match ($role) {
       'administrator' => [
-        ['key' => 'dashboard', 'label' => 'Dashboard', 'href' => 'dashboard_admin.php', 'icon' => 'bi-speedometer2'],
+        ['key' => 'dashboard', 'label' => 'Kreu', 'href' => 'dashboard_admin.php', 'icon' => 'bi-house-door'],
+        $learners,
+        $training,
         [
-          'label' => 'Përdorues',
-          'icon' => 'bi-people',
+          'label' => 'Administrimi',
           'children' => [
-            ['key' => 'users_admins',  'label' => 'Administratorët', 'href' => 'users.php',   'icon' => 'bi-shield-lock'],
-            ['key' => 'users_editors', 'label' => 'Editorët',        'href' => 'editors.php', 'icon' => 'bi-pencil-square'],
-            $agenciesItem,
-            $studentsItem,
-            $cardItem,
+            ['key' => 'users_agencies', 'label' => 'Agjencitë',               'href' => 'agencies.php', 'icon' => 'bi-building'],
+            ['key' => 'users_admins',   'label' => 'Administratorët',         'href' => 'users.php',    'icon' => 'bi-shield-lock'],
+            ['key' => 'users_editors',  'label' => 'Editorët',                'href' => 'editors.php',  'icon' => 'bi-pencil-square'],
+            ['key' => 'logs',           'label' => 'Historiku i ndryshimeve', 'href' => 'logs.php',     'icon' => 'bi-clock-history'],
           ],
         ],
-        $registerGroup,
-        ['key' => 'courses', 'label' => 'Modulet', 'href' => 'courses.php', 'icon' => 'bi-book'],
-        ['key' => 'logs',    'label' => 'Logs',    'href' => 'logs.php',    'icon' => 'bi-clipboard-data'],
       ],
 
       'editor' => [
-        ['key' => 'dashboard', 'label' => 'Dashboard', 'href' => 'dashboard_editor.php', 'icon' => 'bi-speedometer2'],
+        ['key' => 'dashboard', 'label' => 'Kreu', 'href' => 'dashboard_editor.php', 'icon' => 'bi-house-door'],
+        $learners,
+        $training,
         [
-          'label' => 'Përdorues',
-          'icon' => 'bi-people',
-          'children' => [$agenciesItem, $studentsItem, $cardItem],
-        ],
-        $registerGroup,
-        ['key' => 'courses', 'label' => 'Modulet', 'href' => 'courses.php',     'icon' => 'bi-book'],
-        ['key' => 'logs',    'label' => 'Logs',    'href' => 'logs_editor.php', 'icon' => 'bi-clipboard-data'],
-      ],
-
-      'agjencia', 'agency' => [
-        ['key' => 'dashboard', 'label' => 'Dashboard', 'href' => 'dashboard_agjencia.php', 'icon' => 'bi-speedometer2'],
-        [
-          'label' => 'Regjistrimet',
-          'icon' => 'bi-journal-text',
+          'label' => 'Tjetër',
           'children' => [
-            ['key' => 'agency_students', 'label' => 'Regjistro kursantë', 'href' => 'register_agjencia.php', 'icon' => 'bi-person-plus'],
-            ['key' => 'agency_groups',   'label' => 'Grupet e mia',       'href' => 'groups_agjencia.php',   'icon' => 'bi-people-fill'],
+            ['key' => 'users_agencies', 'label' => 'Agjencitë',   'href' => 'agencies.php',    'icon' => 'bi-building'],
+            ['key' => 'logs',           'label' => 'Historiku im', 'href' => 'logs_editor.php', 'icon' => 'bi-clock-history'],
           ],
         ],
       ],
 
+      'agjencia', 'agency' => [
+        ['key' => 'dashboard',       'label' => 'Kreu',            'href' => 'dashboard_agjencia.php', 'icon' => 'bi-house-door'],
+        ['key' => 'agency_students', 'label' => 'Punonjësit tanë', 'href' => 'register_agjencia.php',  'icon' => 'bi-people'],
+        ['key' => 'agency_groups',   'label' => 'Grupet',          'href' => 'groups_agjencia.php',    'icon' => 'bi-collection'],
+      ],
+
       'student' => [
-        ['key' => 'dashboard',      'label' => 'Dashboard',    'href' => 'dashboard_student.php', 'icon' => 'bi-speedometer2'],
-        ['key' => 'student_groups', 'label' => 'Certifikimet', 'href' => 'groups_student.php',    'icon' => 'bi-patch-check'],
+        ['key' => 'dashboard',      'label' => 'Kreu',          'href' => 'dashboard_student.php', 'icon' => 'bi-house-door'],
+        ['key' => 'student_groups', 'label' => 'Modulet e mia', 'href' => 'groups_student.php',    'icon' => 'bi-patch-check'],
       ],
 
       default => [],
@@ -184,7 +159,19 @@ if (!function_exists('qta_app_menu')) {
 }
 
 /**
- * A ka roli të drejtë për kërkim global të studentëve në navbar?
+ * Lidhjet dytësore, të njëjta për të gjitha rolet.
+ */
+if (!function_exists('qta_app_secondary_menu')) {
+  function qta_app_secondary_menu(): array {
+    return [
+      ['key' => 'verify', 'label' => 'Verifiko certifikatë', 'href' => 'verify.php', 'icon' => 'bi-qr-code-scan'],
+      ['key' => 'help',   'label' => 'Ndihmë',               'href' => 'ndihme.php', 'icon' => 'bi-question-circle'],
+    ];
+  }
+}
+
+/**
+ * A ka roli të drejtë për kërkim global në regjistër?
  */
 if (!function_exists('qta_app_can_search')) {
   function qta_app_can_search(string $role): bool {
