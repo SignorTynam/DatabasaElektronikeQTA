@@ -407,6 +407,8 @@
       }
       var id = 'qtaConfirm' + Date.now();
       var danger = opts.danger !== false;
+      /* Pas përgjigjes, fokusi kthehet te kontrolli që e hapi pyetjen. */
+      var returnTo = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
       var wrap = document.createElement('div');
       wrap.innerHTML =
         '<div class="modal fade" id="' + id + '" tabindex="-1" aria-labelledby="' + id + 'T" aria-describedby="' + id + 'D">' +
@@ -433,6 +435,9 @@
         if (!answered) resolve(false);
         modal.dispose();
         modalEl.remove();
+        if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+          try { returnTo.focus({ preventScroll: true }); } catch (e) { /* kontrolli s'merr dot fokus */ }
+        }
       });
       modal.show();
     });
@@ -518,6 +523,23 @@
       var img = el.querySelector('img');
       if (img) img.setAttribute('alt', el.getAttribute('data-qr-alt') || 'Kodi QR i verifikimit');
     });
+  });
+
+  /* Dialog që hapet vetë kur faqja vjen nga një lidhje, p.sh. "Krijo grup" →
+     groups.php?create=1. <div class="modal" data-open-on-load="create">.
+     Parametri hiqet nga adresa, që rifreskimi të mos e rihapë dialogun. */
+  document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.querySelector('.modal[data-open-on-load]');
+    if (!modal || !window.bootstrap) return;
+    window.bootstrap.Modal.getOrCreateInstance(modal).show();
+    var param = modal.getAttribute('data-open-on-load');
+    if (param && window.history && window.history.replaceState) {
+      try {
+        var url = new URL(window.location.href);
+        url.searchParams.delete(param);
+        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      } catch (e) { /* adresa mbetet siç është */ }
+    }
   });
 
   /* ------------------------------------------ 8. Kërkimi në regjistër */

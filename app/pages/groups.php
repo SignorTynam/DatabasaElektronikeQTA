@@ -55,20 +55,18 @@ if (!$maleGenderId) { exit('Konfigurim i mangët: mungon gjinia Mashkull në tab
 /* ------------------------------
    Helpers
 ------------------------------- */
-function fmt_dMY(?string $iso): string {
-  if (!$iso) return '—';
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars($iso, ENT_QUOTES, 'UTF-8');
-  $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
-}
+/* Pranon dd.mm.vvvv, dd-mm-vvvv, dd/mm/vvvv ose vvvv-mm-dd; kthen vvvv-mm-dd ose null */
 function dmy_to_iso(?string $s): ?string {
   if ($s === null) return null;
   $s = trim($s);
   if ($s === '') return null;
-  if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $s, $m)) {
-    return "{$m[3]}-{$m[2]}-{$m[1]}";
+  if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/', $s, $m)) {
+    $d = (int)$m[1]; $mo = (int)$m[2]; $y = (int)$m[3];
+    return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : null;
   }
-  if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) return $s;
+  if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m)) {
+    return checkdate((int)$m[2], (int)$m[3], (int)$m[1]) ? $s : null;
+  }
   return null;
 }
 function parseAmzeRanges(string $s): array {
@@ -153,13 +151,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         throw new RuntimeException('Zgjidh një modul.');
       }
       if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) {
-        throw new RuntimeException('Data e fillimit duhet në formatin DD-MM-YYYY.');
+        throw new RuntimeException('Shkruaje datën e fillimit si dd.mm.vvvv, p.sh. 05.03.2026.');
       }
       if (!$end_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) {
-        throw new RuntimeException('Data e mbarimit duhet në formatin DD-MM-YYYY.');
+        throw new RuntimeException('Shkruaje datën e mbarimit si dd.mm.vvvv, p.sh. 30.03.2026.');
       }
       if ($end_date < $start_date) {
-        throw new RuntimeException('Data e mbarimit duhet të jetë ≥ datës së fillimit.');
+        throw new RuntimeException('Data e mbarimit nuk mund të jetë para datës së fillimit.');
       }
 
       // ---------------------------------------------------
@@ -171,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if ($amze_spec !== '') {
         $nums = parseAmzeRanges($amze_spec); // tashmë të renditura dhe unike
         if (!$nums) {
-          throw new RuntimeException('Nuk u gjet asnjë AMZË e vlefshme.');
+          throw new RuntimeException('Nuk gjeta asnjë numër amze. Shkruaji si 3400-3403, 3409.');
         }
 
         $amzeToStudent = [];
@@ -211,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $dupRows
           );
           throw new RuntimeException(
-            'Procesi u ndërpre: këto AMZË janë tashmë pjesë e një grupi: ' . implode(', ', $items)
+            'Grupi nuk u krijua: këta numra amze janë tashmë në një grup: ' . implode(', ', $items)
           );
         }
       }
@@ -241,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
 
-        $_SESSION['flash_ok'] = 'Grupi u krijua me sukses (pa studentë).';
+        $_SESSION['flash_ok'] = 'Grupi u krijua pa kursantë. Shtoji kur të jenë gati.';
         header('Location: groups.php');
         exit;
       }
@@ -286,7 +284,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $hitPN
           );
           throw new RuntimeException(
-            'Disa persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: ' . implode(', ', $items)
+            'Disa persona e kanë ndjekur tashmë këtë modul (sipas numrit personal): ' . implode(', ', $items)
           );
         }
       }
@@ -342,7 +340,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           continue;
         }
         if (count($chunk) > 10) {
-          throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10).');
+          throw new RuntimeException('Ndarja në grupe nuk doli e saktë. Asgjë nuk u ruajt — provo sërish.');
         }
 
         $st = $pdo->prepare("
@@ -391,7 +389,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $range = ($c['amze_min'] !== null)
           ? ' (AMZË ' . $c['amze_min'] . ($c['amze_max'] && $c['amze_max'] !== $c['amze_min'] ? '–' . $c['amze_max'] : '') . ')'
           : '';
-        $_SESSION['flash_ok'] = 'Grupi u krijua me sukses. (' . $c['count'] . ' studentë)' . $range;
+        $_SESSION['flash_ok'] = 'Grupi u krijua me ' . $c['count'] . ' kursantë' . $range . '.';
       } else {
         $parts = array_map(function ($r) {
           $range = ($r['amze_min'] !== null)
@@ -421,12 +419,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $force     = (int)($_POST['force'] ?? 0);
 
     try {
-      if ($group_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+      if ($group_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh një modul për grupin.');
 
       $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
       $is_completed = (int)($gRow->fetchColumn() ?? 0);
-      if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i përfunduar. Konfirmo ndryshimin.'); }
+      if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i mbyllur. Konfirmo që do ta ndryshosh.'); }
 
       $q = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
       $q->execute([':id'=>$course_id]);
@@ -466,7 +464,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
           if ($hitPN) {
             $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-            throw new RuntimeException('Ndërrimi i modulit s’lejohet: disa persona e kanë ndjekur tashmë këtë modul: '.implode(', ', $items));
+            throw new RuntimeException('Moduli nuk u ndryshua: disa persona e kanë ndjekur tashmë modulin e ri: '.implode(', ', $items));
           }
         }
       }
@@ -481,7 +479,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         'actor_user_id'=>$_SESSION['user_id'] ?? null
       ]);
 
-      $_SESSION['flash_ok'] = 'Moduli i grupit u përditësua.';
+      $_SESSION['flash_ok'] = 'Moduli i grupit u ndryshua.';
     } catch (Throwable $e) {
       $_SESSION['flash_err'] = $e->getMessage();
     }
@@ -496,7 +494,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
     try {
       if ($group_id <= 0) {
-        throw new RuntimeException('Grup i pavlefshëm.');
+        throw new RuntimeException('Grupi nuk u gjet.');
       }
 
       // Marrim të dhënat bazë të grupit (për kopjim në grupet e reja)
@@ -515,7 +513,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       }
 
       if ($is_completed && !$force) {
-        throw new RuntimeException('Ky grup është i përfunduar. Konfirmo ndryshimin.');
+        throw new RuntimeException('Ky grup është i mbyllur. Konfirmo që do ta ndryshosh.');
       }
 
       // Anëtarët ekzistues të grupit
@@ -590,7 +588,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
 
-        $_SESSION['flash_ok'] = 'Grupi u boshatis.';
+        $_SESSION['flash_ok'] = 'Të gjithë kursantët u hoqën nga grupi.';
         header('Location: groups.php');
         exit;
       }
@@ -622,7 +620,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $conf
           );
           throw new RuntimeException(
-            'Procesi u ndërpre: këta studentë janë tashmë pjesë e një grupi tjetër: ' . implode(', ', $items)
+            'Asgjë nuk ndryshoi: këta kursantë janë tashmë në një grup tjetër: ' . implode(', ', $items)
           );
         }
 
@@ -667,7 +665,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
               $hitPN
             );
             throw new RuntimeException(
-              'Disa persona (sipas ID personale) e kanë ndjekur tashmë këtë modul: ' . implode(', ', $items)
+              'Disa persona e kanë ndjekur tashmë këtë modul (sipas numrit personal): ' . implode(', ', $items)
             );
           }
         }
@@ -719,7 +717,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
 
-        $_SESSION['flash_ok'] = 'Anëtarët e grupit u përditësuan.';
+        $_SESSION['flash_ok'] = 'Kursantët e grupit u ruajtën.';
       } else {
           // === >10 studentë -> ndahet automatikisht në grupe të balancuara (diff max 1) ===
 
@@ -734,7 +732,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
           // Siguri: mos lejo student_id duplikat (në rast anomalish në DB)
           if (count($studentIdsOrdered) !== count(array_unique($studentIdsOrdered))) {
-            throw new RuntimeException('Procesi u ndërpre: u gjetën studentë të duplikuar në listë.');
+            throw new RuntimeException('Asgjë nuk ndryshoi: i njëjti kursant del dy herë në listë.');
           }
 
           $total        = count($studentIdsOrdered);
@@ -757,7 +755,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
             if (!$chunkIds) continue;
             if (count($chunkIds) > 10) {
-              throw new RuntimeException('Ndërprerë: ndarje e pasaktë (>10 në një grup).');
+              throw new RuntimeException('Ndarja në grupe nuk doli e saktë. Asgjë nuk u ruajt — provo sërish.');
             }
 
             $chunks[] = [
@@ -768,7 +766,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           }
 
           if (!$chunks) {
-            throw new RuntimeException('Ndërprerë: nuk u arrit të ndahen anëtarët në grupe.');
+            throw new RuntimeException('Kursantët nuk u ndanë dot në grupe. Asgjë nuk u ruajt — provo sërish.');
           }
 
           // Fshi vetëm ata që po HIQEN (jo të gjithë) – që të mos humbasin exam_date/final_score për të tjerët
@@ -870,20 +868,20 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           // === Multi-toasts (një toast për çdo veprim) ===
           $_SESSION['flash_ok_list'] = $_SESSION['flash_ok_list'] ?? [];
 
-          $_SESSION['flash_ok_list'][] = 'Grupi #' . $group_id . ' u nda në ' . count($created) . ' grupe (balancim automatik).';
+          $_SESSION['flash_ok_list'][] = 'Grupi #' . $group_id . ' u nda në ' . count($created) . ' grupe të barabarta.';
 
           foreach ($created as $r) {
             $range = ($r['amze_min'] !== null)
               ? ' [AMZË ' . $r['amze_min'] . ($r['amze_max'] && $r['amze_max'] !== $r['amze_min'] ? '–' . $r['amze_max'] : '') . ']'
               : '';
-            $_SESSION['flash_ok_list'][] = 'Grupi #' . $r['group_id'] . ' u formua me ' . $r['count'] . ' studentë' . $range . '.';
+            $_SESSION['flash_ok_list'][] = 'Grupi #' . $r['group_id'] . ' ka tani ' . $r['count'] . ' kursantë' . $range . '.';
           }
 
           if ($toAdd) {
-            $_SESSION['flash_ok_list'][] = 'U shtuan ' . count($toAdd) . ' studentë të rinj në ndarje.';
+            $_SESSION['flash_ok_list'][] = 'U shtuan ' . count($toAdd) . ' kursantë të rinj.';
           }
           if ($toRemove) {
-            $_SESSION['flash_ok_list'][] = 'U hoqën ' . count($toRemove) . ' studentë nga grupi.';
+            $_SESSION['flash_ok_list'][] = 'U hoqën ' . count($toRemove) . ' kursantë nga grupi.';
           }
         }
     } catch (Throwable $e) {
@@ -903,12 +901,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $force     = (int)($_POST['force'] ?? 0);
 
     try {
-      if ($group_id<=0) throw new RuntimeException('Grup i pavlefshëm.');
+      if ($group_id<=0) throw new RuntimeException('Grupi nuk u gjet.');
 
       $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
       $is_completed = (int)($gRow->fetchColumn() ?? 0);
-      if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i përfunduar. Konfirmo fshirjen.'); }
+      if ($is_completed && !$force) { throw new RuntimeException('Ky grup është i mbyllur. Konfirmo që do ta fshish.'); }
 
       $exists = $pdo->prepare("SELECT 1 FROM course_groups WHERE id=:g");
       $exists->execute([':g'=>$group_id]);
@@ -925,7 +923,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         'actor_user_id'=>$_SESSION['user_id'] ?? null
       ]);
 
-      $_SESSION['flash_ok'] = 'Grupi u fshi me sukses.';
+      $_SESSION['flash_ok'] = 'Grupi u fshi. Kursantët e tij janë tani te "Kursantët pa grup".';
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
       $_SESSION['flash_err'] = $e->getMessage();
@@ -1042,437 +1040,482 @@ $flash_js = [
 ];
 
 /* Navbar */
-$NAV_ACTIVE = 'groups';
+$NAV_ACTIVE = 'register_groups';
+$HELP_TOPIC = 'groups';
 if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
 else require __DIR__ . '/inc/navbar4.php';
 
-/* Build toggle URL që ruan parametrat */
-$toggleUrl = 'groups.php?' . http_build_query(array_filter([
-  'q' => ($q !== '' ? $q : null),
-  'course_id' => ($courseFilter !== '' ? $courseFilter : null),
-  'edit' => ($EDIT_MODE ? 'off' : 'on'),
-]));
+$openCreate = $EDIT_MODE && isset($_GET['create']);
+$createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1']);
+$hasFilters = ($q !== '' || $courseFilter !== '');
+$today = date('Y-m-d');
 
-$pageTitle = 'Grupe – QTA ' . ($role==='editor' ? 'Editor' : 'Admin');
-$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+$pageTitle = 'Grupet';
 require __DIR__ . '/../shared/app_head.php';
+
+/* Grupimi i rreshtave: një grup me kursantët e vet, renditur sipas amzës së parë */
+$groups = [];
+foreach ($rows as $r) {
+  $gid = (int)$r['group_id'];
+  if (!isset($groups[$gid])) {
+    $groups[$gid] = [
+      'header' => [
+        'group_id' => $gid,
+        'course_id' => $r['course_id'],
+        'course_name' => $r['course_name'],
+        'start_date' => $r['start_date'],
+        'end_date' => $r['end_date'],
+        'is_completed' => (int)$r['is_completed'],
+      ],
+      'students' => [],
+    ];
+  }
+  if ($r['student_id']) $groups[$gid]['students'][] = $r;
+}
+foreach ($groups as $gid => &$g) {
+  $amzes = [];
+  foreach ($g['students'] as $stRow) {
+    if (!empty($stRow['nr_amze'])) $amzes[] = (int)$stRow['nr_amze'];
+  }
+  $g['min_amze'] = $amzes ? min($amzes) : PHP_INT_MAX;
+  $g['max_amze'] = $amzes ? max($amzes) : null;
+}
+unset($g);
+uasort($groups, function ($A, $B) { return ($A['min_amze'] <=> $B['min_amze']); });
+
+/* Gjendja e grupit me fjalë */
+$groupStatus = static function (array $h) use ($today): string {
+  if ((int)$h['is_completed'] === 1) return qta_status('I mbyllur', 'success', 'bi-lock-fill');
+  $start = (string)$h['start_date']; $end = (string)$h['end_date'];
+  if ($start > $today) return qta_status('Nis ' . qta_when_label($start), 'info', 'bi-calendar-event');
+  if ($end >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
+  return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
+};
 ?>
 
+<main class="app-main is-wide" id="main" tabindex="-1">
 
-<!-- Toast container -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
-
-<main class="app-main">
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <div class="title-block-main">
-          <div class="title-block-eyebrow">Regjistri</div>
-          <h1>Grupe</h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-    <div class="d-flex flex-wrap align-items-center page-toolbar">
-      <button class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#qklReportModal" data-bs-title="Shkarko raportin për QKL">
-        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Raporti për QKL
-      </button>
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Grupet</h1>
+      <p class="page-lead">Çdo grup ndjek një modul në data të caktuara, me deri në 10 kursantë. Hap një grup për provimet, pikët dhe dokumentet.</p>
     </div>
-  </div>
+    <div class="page-actions">
+      <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+      <button class="btn btn-secondary" type="button" data-bs-toggle="modal" data-bs-target="#qklReportModal">
+        <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>Raporti për QKL
+      </button>
+      <?php if ($EDIT_MODE): ?>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+          <i class="bi bi-plus-lg" aria-hidden="true"></i>Krijo grup
+        </button>
+      <?php else: ?>
+        <a class="btn btn-primary" href="<?= h($createHref) ?>"><i class="bi bi-plus-lg" aria-hidden="true"></i>Krijo grup</a>
+      <?php endif; ?>
+    </div>
+  </header>
 
+  <form class="filters" method="get" action="groups.php" role="search" aria-label="Kërko grupe">
+    <div class="filter-field is-grow">
+      <label class="form-label" for="fQ">Kërko një kursant</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="fQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
+      </div>
+    </div>
+    <div class="filter-field">
+      <label class="form-label" for="fCourse">Moduli</label>
+      <select class="form-select" id="fCourse" name="course_id">
+        <option value="">Të gjitha modulet</option>
+        <?php foreach ($courses as $c): ?>
+          <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h($c['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="filter-actions">
+      <?php if ($hasFilters): ?>
+        <a class="btn btn-ghost" href="groups.php"><i class="bi bi-x-lg" aria-hidden="true"></i>Pastro kërkimin</a>
+      <?php endif; ?>
+      <button class="btn btn-secondary" type="submit"><i class="bi bi-search" aria-hidden="true"></i>Kërko</button>
+    </div>
+  </form>
 
-  <div class="card mb-3">
-    <div class="card-body">
-      <form class="row g-2 align-items-end" method="get" action="groups.php">
-        <div class="col-md-9">
-          <div class="d-flex align-items-center">
-            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-            <div class="input-group flex-grow-1">
-              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-              <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko studentë sipas AMZË/ID/Emri...">
-              <select name="course_id" class="form-select">
-                <option value="">— Modul —</option>
-                <?php foreach($courses as $c): ?>
-                  <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
-                    <?= htmlspecialchars($c['name']) ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
+  <?php if ($countNoGroup > 0): ?>
+    <div class="notice mb-4">
+      <i class="bi bi-people" aria-hidden="true"></i>
+      <span><b><?= h(qta_plural($countNoGroup, 'kursant pret', 'kursantë presin')) ?> një grup.</b>
+        <a href="students_without_groups.php">Caktoji në grup</a> ose shto numrat e tyre të amzës kur krijon një grup të ri.</span>
+    </div>
+  <?php endif; ?>
+
+  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
+
+  <section class="section" aria-labelledby="groupsTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="groupsTitle">
+        <?= $hasFilters ? 'Grupet që përputhen' : 'Të gjitha grupet' ?>
+        <span class="count"><?= number_format(count($groups), 0, ',', '.') ?></span>
+      </h2>
+      <?php if ($groups): ?>
+        <button id="toggleAllBtn" class="btn btn-ghost" type="button" aria-pressed="false">
+          <i class="bi bi-arrows-expand" id="toggleAllIcon" aria-hidden="true"></i><span id="toggleAllText">Hap të gjitha</span>
+        </button>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($groups): ?>
+      <?php
+        $tfTarget = '#groupsTable';
+        $tfPlaceholder = 'Filtro — modul, amzë ose datë';
+        $tfChips = [['label' => 'Të mbyllura', 'match' => 'I mbyllur'], ['label' => 'Në mësim', 'match' => 'Në mësim'], ['label' => 'Presin mbylljen', 'match' => 'Pret mbylljen']];
+        $tfNoun = 'grupe';
+        require __DIR__ . '/../shared/partials/table_filter.php';
+      ?>
+      <div class="table-responsive">
+        <table class="table" id="groupsTable" data-sortable>
+          <thead>
+            <tr>
+              <th scope="col" class="col-wide" data-sort="text">Moduli</th>
+              <th scope="col" class="nowrap" data-sort="text">Nr. i amzës</th>
+              <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
+              <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
+              <th scope="col" class="nowrap num-col" data-sort="num">Kursantë</th>
+              <th scope="col" class="nowrap num-col" data-sort="num">Me pikë</th>
+              <th scope="col" data-sort="text">Gjendja</th>
+              <th scope="col" class="nowrap" data-sort="none">Mbyllur</th>
+              <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
+            </tr>
+          </thead>
+
+          <?php foreach ($groups as $gid => $g):
+            $h0 = $g['header'];
+            $completed = (int)$h0['is_completed'] === 1;
+            $minLbl = ($g['min_amze'] === PHP_INT_MAX) ? '—' : (string)$g['min_amze'];
+            $maxLbl = ($g['max_amze'] === null || $g['max_amze'] === $g['min_amze']) ? '' : '–' . $g['max_amze'];
+            $nStud = count($g['students']);
+            $nScored = 0;
+            foreach ($g['students'] as $srow) {
+              if ($srow['final_score'] !== null && $srow['final_score'] !== '') { $nScored++; }
+            }
+            $groupLabel = 'Grupi #' . (int)$gid . ' · ' . $h0['course_name'];
+          ?>
+          <tbody class="grp" data-gid="<?= (int)$gid ?>">
+            <tr>
+              <td class="col-wide">
+                <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#gBody_<?= (int)$gid ?>"
+                        aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
+                  <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                  <span>
+                    <span class="person-name"><?= h((string)$h0['course_name']) ?></span>
+                    <span class="cell-sub">Grupi #<?= (int)$gid ?></span>
+                  </span>
+                </button>
+              </td>
+              <td class="nowrap"><span class="id-code"><?= h($minLbl . $maxLbl) ?></span></td>
+              <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="start_date" title="Data e fillimit (dd.mm.vvvv)">
+                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                      data-field="start_date" data-group="<?= (int)$gid ?>" data-student="0"><?= h(qta_date($h0['start_date'])) ?></span>
+              </td>
+              <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="end_date" title="Data e mbarimit (dd.mm.vvvv)">
+                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                      data-field="end_date" data-group="<?= (int)$gid ?>" data-student="0"><?= h(qta_date($h0['end_date'])) ?></span>
+              </td>
+              <td class="nowrap num-col"><?= $nStud ?><span class="text-subtle">/10</span></td>
+              <td class="nowrap num-col<?= ($nStud > 0 && $nScored < $nStud) ? ' text-warning' : '' ?>"><?= $nScored ?></td>
+              <td data-group-status="<?= (int)$gid ?>"><?= $groupStatus($h0) ?></td>
+              <td class="nowrap">
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input toggle-completed" type="checkbox" role="switch" id="gDone_<?= (int)$gid ?>"
+                         data-group="<?= (int)$gid ?>" <?= $completed ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                  <label class="form-check-label group-badge" for="gDone_<?= (int)$gid ?>" data-group="<?= (int)$gid ?>"><?= $completed ? 'Po' : 'Jo' ?></label>
+                </div>
+              </td>
+              <td class="col-actions">
+                <?php if ($EDIT_MODE): ?>
+                  <div class="dropdown">
+                    <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                      Ndrysho<i class="bi bi-chevron-down" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>"><i class="bi bi-people" aria-hidden="true"></i>Kursantët e grupit</button></li>
+                      <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho modulin</button></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><button class="dropdown-item text-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>"><i class="bi bi-trash" aria-hidden="true"></i>Fshi grupin</button></li>
+                    </ul>
+                  </div>
+                <?php endif; ?>
+              </td>
+            </tr>
+
+            <tr class="row-details">
+              <td colspan="9">
+                <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
+                  <div class="row-details-inner">
+
+                    <div id="statusAlert_<?= (int)$gid ?>" class="notice mb-3">
+                      <i class="bi <?= $completed ? 'bi-lock' : 'bi-unlock' ?>" aria-hidden="true"></i>
+                      <span><?= $completed
+                        ? '<b>Grupi është i mbyllur.</b> Ndryshimet kërkojnë konfirmim, sepse dokumentet mund të jenë lëshuar.'
+                        : '<b>Grupi është i hapur.</b> Kur të mbarojnë provimet, shëno "Mbyllur".' ?></span>
+                    </div>
+
+                    <?php if ($g['students']): ?>
+                      <div class="table-responsive">
+                        <table class="table table-sm">
+                          <thead>
+                            <tr>
+                              <th scope="col" class="nowrap">Nr. i amzës</th>
+                              <th scope="col">Kursanti</th>
+                              <th scope="col" class="nowrap">Data e provimit</th>
+                              <th scope="col" class="nowrap num-col">Pikët</th>
+                              <th scope="col">Gjendja</th>
+                              <th scope="col" class="nowrap num-col">Mosha</th>
+                              <th scope="col" class="nowrap">Arsimi</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php foreach ($g['students'] as $r):
+                              $full = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? ''); ?>
+                              <tr data-student-row>
+                                <td class="nowrap"><span class="id-code"><?= h((string)$r['nr_amze']) ?></span></td>
+                                <td>
+                                  <a class="person-name" href="student_card.php?sid=<?= (int)$r['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër') ?></a>
+                                  <?php if (!empty($r['personal_number'])): ?><span class="cell-sub code"><?= h((string)$r['personal_number']) ?></span><?php endif; ?>
+                                </td>
+                                <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date" title="Jo para mbarimit të grupit (dd.mm.vvvv)">
+                                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['exam_date'])) ?></span>
+                                </td>
+                                <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="Pikët 0–100. Kalon me 50 e lart.">
+                                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= $r['final_score'] !== null ? h(rtrim(rtrim((string)$r['final_score'], '0'), '.')) : '—' ?></span>
+                                </td>
+                                <td data-status><?= qta_enrollment_status(['start_date' => $h0['start_date'], 'end_date' => $h0['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']]) ?></td>
+                                <td class="nowrap num-col"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+                                <td class="nowrap"><?= h((string)(($r['edu_label'] ?? '') ?: '—')) ?></td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    <?php else: ?>
+                      <?= qta_empty('Grupi është bosh', $EDIT_MODE ? 'Shto kursantë nga "Ndrysho → Kursantët e grupit".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
+                    <?php endif; ?>
+
+                    <div class="doc-actions">
+                      <span class="doc-actions-label">Dokumentet e grupit:</span>
+                      <?php foreach ([
+                        'proces_verbal' => ['bi-file-earmark-check', 'Procesverbali'],
+                        'lista_emerore' => ['bi-list-ol', 'Lista emërore'],
+                        'praktika_profesionale' => ['bi-tools', 'Praktika profesionale'],
+                        'rregullat_sigurimi_teknik' => ['bi-shield-check', 'Rregullat e sigurisë'],
+                      ] as $docKey => [$docIcon, $docLabel]): ?>
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#groupDocModal"
+                                data-doc="<?= h($docKey) ?>" data-group-id="<?= (int)$gid ?>" data-group-label="<?= h($groupLabel) ?>">
+                          <i class="bi <?= h($docIcon) ?>" aria-hidden="true"></i><?= h($docLabel) ?>
+                        </button>
+                      <?php endforeach; ?>
+                    </div>
+
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+          <?php endforeach; ?>
+        </table>
+      </div>
+      <p class="text-muted small mt-2 mb-0">Kliko emrin e modulit për të parë kursantët e grupit.</p>
+    <?php else: ?>
+      <?= qta_empty(
+            $hasFilters ? 'Asnjë grup nuk përputhet' : 'Ende nuk ka grupe',
+            $hasFilters ? 'Provo një modul tjetër ose pastro kërkimin.' : 'Krijo grupin e parë dhe shto numrat e amzës së kursantëve.',
+            'bi-collection',
+            $hasFilters ? '<a class="btn btn-secondary" href="groups.php">Pastro kërkimin</a>' : '<a class="btn btn-primary" href="' . h($createHref) . '">Krijo grup</a>'
+          ) ?>
+    <?php endif; ?>
+  </section>
+</main>
+
+<?php foreach ($groups as $gid => $g):
+  $h0 = $g['header'];
+  $prefillAmze = [];
+  foreach ($g['students'] as $stRow) { $prefillAmze[] = (string)((int)$stRow['nr_amze']); }
+  $prefillAmzeStr = implode(', ', $prefillAmze);
+?>
+  <!-- Dialog: kursantët e grupit #<?= (int)$gid ?> -->
+  <div class="modal fade" id="editMembersModal_<?= (int)$gid ?>" tabindex="-1" aria-labelledby="emTitle_<?= (int)$gid ?>" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="groups.php" data-group-form>
+        <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+        <input type="hidden" name="action" value="edit_members">
+        <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
+        <input type="hidden" name="force" value="0">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow mb-0">Grupi #<?= (int)$gid ?> · <?= h((string)$h0['course_name']) ?></span>
+            <h2 class="modal-title" id="emTitle_<?= (int)$gid ?>"><i class="bi bi-people" aria-hidden="true"></i>Kursantët e grupit</h2>
           </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
         </div>
-        <div class="col-md-3 text-end">
-          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='groups.php'">
-            <i class="bi bi-x-circle me-1"></i>Pastro
-          </button>
-          <button class="btn btn-primary btn-pill" type="submit">
-            <i class="bi bi-funnel me-1"></i>Apliko
-          </button>
+        <div class="modal-body">
+          <label class="form-label" for="emAmze_<?= (int)$gid ?>">Numrat e amzës në këtë grup</label>
+          <textarea id="emAmze_<?= (int)$gid ?>" name="amze_spec_members" class="form-control input-code" rows="3"
+                    aria-describedby="emHelp_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>
+                    data-original-amze="<?= h($prefillAmzeStr) ?>" placeholder="p.sh. 3400-3403, 3409"><?= h($prefillAmzeStr) ?></textarea>
+          <div class="form-text" id="emHelp_<?= (int)$gid ?>">
+            Shkruaj numra të ndarë me presje ose intervale me vizë, p.sh. <span class="code">3400-3403, 3409</span>.
+            Shto ose hiq numra për të shtuar ose hequr kursantë.
+          </div>
+          <ul class="text-muted small mt-3 mb-0 ps-3">
+            <li>Më shumë se 10 kursantë? Grupi ndahet vetë në grupe të barabarta (para ruajtjes të tregohet si).</li>
+            <li>Një person nuk mund ta ndjekë dy herë të njëjtin modul.</li>
+            <li>Një numër amze që nuk ekziston krijon një kursant të ri pa të dhëna, për t'u plotësuar më vonë.</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+          <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-check-lg" aria-hidden="true"></i>Ruaj ndryshimet</button>
         </div>
       </form>
     </div>
   </div>
 
-  <div id="msgBox" class="mb-3" style="display:none;"></div>
-
-  <?php
-  $groups = [];
-  foreach ($rows as $r) {
-    $gid = (int)$r['group_id'];
-    if (!isset($groups[$gid])) {
-      $groups[$gid] = [
-        'header' => [
-          'group_id'=>$gid,
-          'course_id'=>$r['course_id'],
-          'course_name'=>$r['course_name'],
-          'start_date'=>$r['start_date'],
-          'end_date'=>$r['end_date'],
-          'is_completed'=>(int)$r['is_completed']
-        ],
-        'students' => []
-      ];
-    }
-    if ($r['student_id']) $groups[$gid]['students'][] = $r;
-  }
-
-  foreach ($groups as $gid => &$g) {
-    $amzes = [];
-    foreach ($g['students'] as $stRow) {
-      if (!empty($stRow['nr_amze'])) $amzes[] = (int)$stRow['nr_amze'];
-    }
-    $g['min_amze'] = $amzes ? min($amzes) : PHP_INT_MAX;
-    $g['max_amze'] = $amzes ? max($amzes) : null;
-  }
-  unset($g);
-  uasort($groups, function($A, $B){ return ($A['min_amze'] <=> $B['min_amze']); });
-  ?>
-
-  <!-- ================================================ REGJISTRI I GRUPEVE ==
-       Një rresht për grup. Kursantët e grupit hapen brenda të njëjtës tabelë,
-       jo në një kartë më vete. Kështu 148 grupe lexohen si listë, jo si mur.
-       Të gjitha lidhjet e JS-së ekzistuese ruhen: .group-body, .group-badge,
-       #statusAlert_<gid>, .toggle-completed, .editable[data-field].
-  ==================================================================== -->
-
-  <?php if ($groups): ?>
-    <?php
-      $tfTarget = '#groupsTable';
-      $tfPlaceholder = 'Ngushto listën — modul, amzë ose datë';
-      $tfChips = [['label' => 'Të mbyllura', 'match' => 'Po'], ['label' => 'Të hapura', 'match' => 'Jo']];
-      require __DIR__ . '/../shared/partials/table_filter.php';
-    ?>
-    <div class="ledger" data-table-wrap>
-      <table class="ledger-table" id="groupsTable" data-sortable>
-        <thead>
-          <tr>
-            <th class="no" data-sort="num">Nr.</th>
-            <th data-sort="text">Moduli</th>
-            <th class="nowrap" data-sort="text">AMZË</th>
-            <th class="nowrap" data-sort="date">Fillimi</th>
-            <th class="nowrap" data-sort="date">Mbarimi</th>
-            <th class="nowrap num-col" data-sort="num">Kursantë</th>
-            <th class="nowrap num-col" data-sort="num">Me notë</th>
-            <th class="nowrap">Mbyllur</th>
-            <th class="col-actions" data-sort="none">Veprime</th>
-          </tr>
-        </thead>
-
-        <?php $gi = 0; foreach ($groups as $gid => $g):
-          $gi++;
-          $completed = (int)$g['header']['is_completed'] === 1;
-          $minLbl = ($g['min_amze'] === PHP_INT_MAX) ? '—' : (string)$g['min_amze'];
-          $maxLbl = ($g['max_amze'] === null ? '' : '–' . $g['max_amze']);
-          $nStud  = count($g['students']);
-          $nScored = 0;
-          foreach ($g['students'] as $srow) {
-            if ($srow['final_score'] !== null && $srow['final_score'] !== '') { $nScored++; }
-          }
-        ?>
-        <tbody class="grp" data-gid="<?= (int)$gid ?>">
-
-          <tr class="grp-row" data-gid="<?= (int)$gid ?>">
-            <td class="no"><?= str_pad((string)$gi, 3, '0', STR_PAD_LEFT) ?></td>
-
-            <td>
-              <button class="grp-open" type="button"
-                      data-bs-toggle="collapse" data-bs-target="#gBody_<?= (int)$gid ?>"
-                      aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
-                <i class="bi bi-chevron-right" aria-hidden="true"></i>
-                <span class="person"><?= htmlspecialchars((string)$g['header']['course_name']) ?></span>
-              </button>
-            </td>
-
-            <td class="nowrap code"><?= htmlspecialchars($minLbl . $maxLbl) ?></td>
-
-            <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="start_date"
-                title="DD-MM-YYYY">
-              <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                    data-field="start_date" data-group="<?= (int)$gid ?>" data-student="0"><?= htmlspecialchars(fmt_dMY($g['header']['start_date'])) ?></span>
-            </td>
-
-            <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="end_date"
-                title="DD-MM-YYYY">
-              <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                    data-field="end_date" data-group="<?= (int)$gid ?>" data-student="0"><?= htmlspecialchars(fmt_dMY($g['header']['end_date'])) ?></span>
-            </td>
-
-            <td class="nowrap num-col num"><?= number_format($nStud) ?></td>
-
-            <td class="nowrap num-col num<?= ($nStud > 0 && $nScored < $nStud) ? ' is-partial' : '' ?>">
-              <?= number_format($nScored) ?>
-            </td>
-
-            <td class="nowrap">
-              <label class="switch" title="Ndrysho gjendjen e mbylljes">
-                <input class="form-check-input toggle-completed" type="checkbox"
-                       data-group="<?= (int)$gid ?>" <?= $completed ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                <span class="badge group-badge <?= $completed ? 'text-bg-success' : 'text-bg-secondary' ?>"
-                      data-group="<?= (int)$gid ?>"><?= $completed ? 'Po' : 'Jo' ?></span>
-              </label>
-            </td>
-
-            <td class="col-actions">
-              <div class="row-actions">
-                <button class="btn btn-sm btn-icon" type="button" title="Anëtarët e grupit"
-                        aria-label="Anëtarët e grupit"
-                        data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                  <i class="bi bi-people"></i>
-                </button>
-                <button class="btn btn-sm btn-icon" type="button" title="Ndrysho modulin"
-                        aria-label="Ndrysho modulin"
-                        data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                  <i class="bi bi-book"></i>
-                </button>
-                <button class="btn btn-sm btn-icon btn-seal" type="button" title="Fshi grupin"
-                        aria-label="Fshi grupin"
-                        data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                  <i class="bi bi-trash"></i>
-                </button>
-              </div>
-            </td>
-          </tr>
-
-          <tr class="grp-kids">
-            <td colspan="9" class="grp-kids-cell">
-              <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
-                <div class="grp-inner">
-
-                  <div id="statusAlert_<?= (int)$gid ?>"
-                       class="status-alert alert <?= $completed ? 'alert-success' : 'alert-danger' ?> py-2 px-3 mb-3">
-                    <i class="bi <?= $completed ? 'bi-check-circle' : 'bi-x-octagon' ?> me-1"></i>
-                    <?= $completed
-                        ? 'Grupi është i mbyllur. Të dhënat nuk pritet të ndryshojnë më.'
-                        : 'Grupi është ende i hapur.' ?>
-                  </div>
-
-                  <?php if ($g['students']): ?>
-                    <table class="ledger-table grp-students">
-                      <thead>
-                        <tr>
-                          <th class="no">Nr.</th>
-                          <th class="nowrap">AMZË</th>
-                          <th>Kursanti</th>
-                          <th class="nowrap">Datë provimi</th>
-                          <th class="nowrap num-col">Pikët</th>
-                          <th class="nowrap num-col">Mosha</th>
-                          <th class="nowrap">Arsimi</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <?php foreach ($g['students'] as $si => $r): ?>
-                          <tr>
-                            <td class="no"><?= str_pad((string)($si + 1), 2, '0', STR_PAD_LEFT) ?></td>
-                            <td class="nowrap code"><?= htmlspecialchars((string)$r['nr_amze']) ?></td>
-                            <td>
-                              <span class="person"><?= htmlspecialchars(trim(($r['first_name'] ?? '') . ' ' . (($r['father_name'] ?? '') ? ($r['father_name'] . ' ') : '') . ($r['last_name'] ?? ''))) ?></span>
-                              <span class="code muted-2 d-block"><?= htmlspecialchars((string)($r['personal_number'] ?? '')) ?></span>
-                            </td>
-
-                            <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date"
-                                title="DD-MM-YYYY (≥ data e mbarimit të grupit)">
-                              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($r['exam_date'])) ?></span>
-                            </td>
-
-                            <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score">
-                              <span class="editable"><?= $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'], '0'), '.') : '—' ?></span>
-                            </td>
-
-                            <td class="nowrap num-col num"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                            <td class="nowrap"><?= htmlspecialchars(($r['edu_code'] ? $r['edu_code'] . ' — ' : '') . ($r['edu_label'] ?? '—')) ?></td>
-                          </tr>
-                        <?php endforeach; ?>
-                      </tbody>
-                    </table>
-                  <?php else: ?>
-                    <div class="blank" style="padding:1.5rem 1rem">
-                      <span class="blank-note">Ky grup ende nuk ka kursantë të caktuar.</span>
-                    </div>
-                  <?php endif; ?>
-
-                </div>
-              </div>
-            </td>
-          </tr>
-
-        </tbody>
-        <?php endforeach; ?>
-      </table>
+  <!-- Dialog: moduli i grupit #<?= (int)$gid ?> -->
+  <div class="modal fade" id="editCourseModal_<?= (int)$gid ?>" tabindex="-1" aria-labelledby="ecTitle_<?= (int)$gid ?>" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="groups.php" data-group-form>
+        <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+        <input type="hidden" name="action" value="update_group_course">
+        <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
+        <input type="hidden" name="force" value="0">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow mb-0">Grupi #<?= (int)$gid ?></span>
+            <h2 class="modal-title" id="ecTitle_<?= (int)$gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho modulin</h2>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="ecCourse_<?= (int)$gid ?>">Moduli i grupit</label>
+          <select id="ecCourse_<?= (int)$gid ?>" name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <?php foreach ($courses as $c): ?>
+              <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === (int)$h0['course_id']) ? 'selected' : '' ?>><?= h($c['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <p class="form-text">Përdore vetëm për të korrigjuar një gabim — të gjithë kursantët e grupit kalojnë në modulin e ri.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+          <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj modulin</button>
+        </div>
+      </form>
     </div>
-
-    <p class="muted mt-3" style="font-size:var(--fs-xs)">
-      <?= number_format(count($groups)) ?> grupe · kliko emrin e modulit për të parë kursantët.
-    </p>
-
-  <?php else: ?>
-    <div class="blank">
-      <span class="blank-title">Asnjë grup nuk përputhet</span>
-      <span class="blank-note">Provo të heqësh filtrin e modulit ose të pastrosh kërkimin.</span>
-      <a class="btn btn-sm mt-2" href="groups.php">Pastro filtrat</a>
-    </div>
-  <?php endif; ?>
-
-
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
   </div>
-</main>
 
-<!-- Floating action buttons (stack) -->
-<div class="fab-stack" role="group" aria-label="Veprime shpejta">
-  <!-- Toggle All -->
-  <button id="toggleAllBtn" class="btn btn-soft-secondary fab-btn" type="button" title="Zgjero/Mbyll të gjitha">
-    <i class="bi bi-arrows-angle-expand" id="toggleAllIcon"></i>
-    <span class="fab-text" id="toggleAllText">Zgjero të gjitha</span>
-  </button>
+  <!-- Dialog: fshirja e grupit #<?= (int)$gid ?> -->
+  <div class="modal fade" id="deleteGroupModal_<?= (int)$gid ?>" tabindex="-1" aria-labelledby="dgTitle_<?= (int)$gid ?>" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="groups.php" data-group-form>
+        <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+        <input type="hidden" name="action" value="delete_group">
+        <input type="hidden" name="group_id" value="<?= (int)$gid ?>">
+        <input type="hidden" name="force" value="0">
+        <div class="modal-body pt-4">
+          <span class="confirm-icon is-danger"><i class="bi bi-trash" aria-hidden="true"></i></span>
+          <h2 class="modal-title mb-2" id="dgTitle_<?= (int)$gid ?>">Të fshihet Grupi #<?= (int)$gid ?>?</h2>
+          <p class="mb-2"><b><?= h((string)$h0['course_name']) ?></b> · <?= h(qta_date($h0['start_date'])) ?> – <?= h(qta_date($h0['end_date'])) ?></p>
+          <p class="text-muted mb-0">Kursantët <b>nuk fshihen</b> — ata kthehen te "Kursantët pa grup". Fshihen vetëm datat e provimit dhe pikët e ruajtura në këtë grup. Kjo nuk mund të kthehet mbrapsht.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+          <button class="btn btn-danger" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-trash" aria-hidden="true"></i>Po, fshije grupin</button>
+        </div>
+      </form>
+    </div>
+  </div>
+<?php endforeach; ?>
 
-  <!-- Create Group (only when Edit Mode is ON) -->
-  <?php if ($EDIT_MODE): ?>
-  <button class="fab-btn btn btn-primary"
-          type="button"
-          data-bs-toggle="modal"
-          data-bs-target="#createGroupModal"
-          title="Krijo grup">
-    <i class="bi bi-plus-lg"></i>
-    <span class="fab-text">Grup i ri</span>
-  </button>
-  <?php endif; ?>
-</div>
-
-<!-- ===== Modalet e shkarkimeve ===== -->
 <?php require __DIR__ . '/../shared/partials/qkl_report_modal.php'; ?>
-<?php require __DIR__ . '/partials/modal_download_proces_verbal.php'; ?>
-<?php require __DIR__ . '/partials/modal_download_praktika_profesionale.php'; ?>
-<?php require __DIR__ . '/partials/modal_download_rregullat_sigurimi_teknik.php'; ?>
-<?php require __DIR__ . '/partials/modal_download_lista_emerore.php'; ?>
+<?php require __DIR__ . '/../shared/partials/group_documents_modal.php'; ?>
 
-<!-- MODAL: Krijo grup -->
-<div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form class="modal-content" method="post" action="groups.php">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+<!-- Dialog: krijo grup -->
+<div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupTitle" aria-hidden="true"<?= $openCreate ? ' data-open-on-load="create"' : '' ?>>
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <form class="modal-content" method="post" action="groups.php" data-create-group-form>
+      <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_group">
-
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-plus-circle me-1"></i> Krijo grup të ri</h5>
+        <h2 class="modal-title" id="createGroupTitle"><i class="bi bi-plus-lg" aria-hidden="true"></i>Krijo një grup</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
-
       <div class="modal-body">
         <div class="row g-3">
           <div class="col-md-6">
-            <label class="form-label">Moduli *</label>
-            <select name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <option value="">— Zgjidh —</option>
-              <?php foreach($courses as $c): ?>
-                <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+            <label class="form-label" for="cgCourse">Moduli <span class="req" aria-hidden="true">*</span></label>
+            <select id="cgCourse" name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+              <option value="">— Zgjidh modulin —</option>
+              <?php foreach ($courses as $c): ?>
+                <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
-
-          <div class="col-md-3">
-            <label class="form-label">Datë fillimi *</label>
-            <input type="text" name="start_date" class="form-control dmy" required placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="cgStart">Fillimi <span class="req" aria-hidden="true">*</span></label>
+            <input id="cgStart" type="text" name="start_date" class="form-control dmy" required placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
-
-          <div class="col-md-3">
-            <label class="form-label">Datë mbarimi *</label>
-            <input type="text" name="end_date" class="form-control dmy" required
-                   placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="cgEnd">Mbarimi <span class="req" aria-hidden="true">*</span></label>
+            <input id="cgEnd" type="text" name="end_date" class="form-control dmy" required placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
-
+          <div class="col-12">
+            <label class="form-label" for="cgAmze">Numrat e amzës së kursantëve <span class="optional">(mund t'i shtosh edhe më vonë)</span></label>
+            <textarea id="cgAmze" name="amze_spec" class="form-control input-code" rows="2" placeholder="p.sh. 3400-3403, 3409" aria-describedby="cgAmzeHelp" <?= $EDIT_MODE ? '' : 'disabled' ?>></textarea>
+            <div class="form-text" id="cgAmzeHelp">
+              Numra të ndarë me presje ose intervale me vizë. Nëse janë më shumë se 10, krijohen vetë disa grupe të barabarta — të tregohet si para se të ruhen.
+            </div>
+          </div>
           <div class="col-12">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="is_completed" name="is_completed" value="1" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <label class="form-check-label" for="is_completed">Grupi është i përfunduar</label>
-            </div>
-            <div class="form-text">Mund ta ndryshosh statusin edhe më vonë nga header-i i grupit.</div>
-          </div>
-
-          <div class="col-12">
-            <label class="form-label">AMZË për këtë grup (mund të kalojë 10 – do ndahen automatikisht)</label>
-            <textarea name="amze_spec" class="form-control" rows="2" placeholder="p.sh. 3400-3403, 3409" <?= $EDIT_MODE ? '' : 'disabled' ?>></textarea>
-            <div class="form-text">
-              Mund të shkruash intervale dhe vlera të ndara me presje. Nëse janë më shumë se 10,
-              do krijohen disa grupe të balancuara automatikisht.
-              <br><strong>Rregull:</strong> i njëjti person (sipas ID personale) nuk mund ta ndjekë dy herë të njëjtin modul.
-              <br><strong>Shënim:</strong> në momentin e shtimit në grup, fshihen automatikisht të gjithë planët <em>planned</em> të studentëve.
+              <label class="form-check-label" for="is_completed">Grupi ka mbaruar tashmë (shënoje si të mbyllur)</label>
             </div>
           </div>
         </div>
       </div>
-
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Krijo grup(et)</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-check-lg" aria-hidden="true"></i>Krijo grupin</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- MODAL: Split preview (Bootstrap) -->
-<div class="modal fade" id="splitPreviewModal" tabindex="-1" aria-hidden="true"
-     data-bs-backdrop="static" data-bs-keyboard="false">
+<!-- Dialog: parashikimi i ndarjes në grupe -->
+<div class="modal fade" id="splitPreviewModal" tabindex="-1" aria-labelledby="splitPreviewTitle" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header bg-white">
-        <h5 class="modal-title" id="splitPreviewTitle">
-          <i class="bi bi-exclamation-triangle me-2 text-warning"></i> Konfirmo ndarjen e grupit
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      <div class="modal-header">
+        <h2 class="modal-title" id="splitPreviewTitle"><i class="bi bi-diagram-3" aria-hidden="true"></i>Kursantët do të ndahen në grupe</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Anulo"></button>
       </div>
-
       <div class="modal-body">
-        <div class="alert alert-warning mb-3" id="splitPreviewIntro">
-          Ky veprim do të ndajë automatikisht studentët në disa grupe (maksimumi 10 studentë për grup),
-          të balancuara (diferencë max 1). Renditja ruhet sipas AMZË.
-        </div>
-
-        <div class="d-flex flex-wrap gap-2 mb-3" id="splitPreviewBadges" style="display:none;"></div>
-
+        <p id="splitPreviewIntro">Një grup mban deri në 10 kursantë. Ja si do të ndahen, sipas rendit të numrit të amzës:</p>
+        <div class="d-flex flex-wrap gap-2 mb-3" id="splitPreviewBadges"></div>
         <div class="table-responsive">
-          <table class="table align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Grupi</th>
-                <th class="nowrap">Studentë</th>
-                <th class="nowrap">AMZË (min–max)</th>
-              </tr>
-            </thead>
+          <table class="table table-sm mb-0">
+            <thead><tr><th scope="col">Grupi</th><th scope="col" class="num-col">Kursantë</th><th scope="col">Nr. i amzës</th></tr></thead>
             <tbody id="splitPreviewTbody"></tbody>
           </table>
         </div>
-
-        <div class="form-text mt-2" id="splitPreviewNote"></div>
+        <p class="form-text mt-2" id="splitPreviewNote"></p>
       </div>
-
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" id="splitPreviewCancelBtn" data-bs-dismiss="modal">
-          Anulo
-        </button>
-        <button type="button" class="btn btn-primary btn-pill" id="splitPreviewOkBtn">
-          Po, vazhdo
-        </button>
+        <button type="button" class="btn btn-secondary" id="splitPreviewCancelBtn" data-bs-dismiss="modal">Kthehu mbrapa</button>
+        <button type="button" class="btn btn-primary" id="splitPreviewOkBtn">Po, vazhdo</button>
       </div>
     </div>
   </div>
 </div>
-
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
@@ -1481,82 +1524,47 @@ const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'groups_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Map: groupId -> completed (0/1) për konfirmime */
+/* groupId -> i mbyllur (0/1) */
 const GROUP_COMPLETED = <?= json_encode(array_column($groupInfo, 'is_completed', 'id')) ?>;
 
 function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 
-/* Toast helper */
+/* Njoftimet: sistemi i përbashkët (app.js) */
 function notify(type, text, opts={}){
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
-
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+  return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null;
 }
-
-/* === Flash -> Toast (nga serveri pas POST/redirect) === */
-const FLASH = <?= json_encode($flash_js, JSON_UNESCAPED_UNICODE) ?>;
-if (FLASH && Array.isArray(FLASH.ok_list)) {
-  FLASH.ok_list.forEach(m => { if (m) notify('success', m); });
-}
-if (FLASH && Array.isArray(FLASH.err_list)) {
-  FLASH.err_list.forEach(m => { if (m) notify('danger', m); });
-}
-if (FLASH && FLASH.ok)  notify('success', FLASH.ok);
-if (FLASH && FLASH.err) notify('danger',  FLASH.err);
-
-/* showMsg wrapper */
 function showMsg(type, text){ notify(type, text); }
+function ask(opts){ return window.qtaConfirm ? window.qtaConfirm(opts) : Promise.resolve(window.confirm(opts.message || opts.title)); }
 
-/* DD-MM-YYYY -> YYYY-MM-DD (vetëm ky format lejohet) */
+/* Mesazhet nga serveri pas ruajtjes (pas ringarkimit) */
+const FLASH = <?= json_encode($flash_js, JSON_UNESCAPED_UNICODE) ?>;
+document.addEventListener('DOMContentLoaded', ()=>{
+  (FLASH.ok_list || []).forEach(m => { if (m) notify('success', m); });
+  (FLASH.err_list || []).forEach(m => { if (m) notify('danger', m); });
+  if (FLASH.ok)  notify('success', FLASH.ok);
+  if (FLASH.err) notify('danger',  FLASH.err);
+});
+
+/* dd.mm.vvvv (ose me viza) -> vvvv-mm-dd */
 function normalizeDateForServer(v){
   const s = clean(v);
   if (s === '' || s === '—') return '';
-  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-  if (!m) throw new Error('Formati i datës duhet të jetë DD-MM-YYYY');
-  return `${m[3]}-${m[2]}-${m[1]}`;
+  const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+  if (!m) throw new Error('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.2026.');
+  return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
 }
-
-/* YYYY-MM-DD -> DD-MM-YYYY (për shfaqje) */
 function isoToDmy(iso){
-  if (!iso) return '—';
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return '—';
-  return `${m[2]}-${m[1]}-${m[0]}`;
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : '—';
 }
-
-/* Lexo datën e mbarimit të grupit nga header (DD-MM-YYYY -> ISO) */
 function getGroupEndIso(gid){
   const span = document.querySelector(`.editable[data-field="end_date"][data-group="${gid}"]`);
   if (!span) return '';
   const txt = clean(span.textContent);
   if (!txt || txt==='—') return '';
-  return normalizeDateForServer(txt);
+  try { return normalizeDateForServer(txt); } catch(e) { return ''; }
 }
 
-/* POST JSON helper */
 async function postJSON(payload){
   const res = await fetch(ENDPOINT, {
     method: 'POST',
@@ -1564,634 +1572,333 @@ async function postJSON(payload){
     body: JSON.stringify(payload)
   });
   let json = null;
-  try{ json = await res.json(); }catch(_){ /* ignore */ }
+  try{ json = await res.json(); }catch(_){ /* bosh */ }
   if (!res.ok || !json || json.ok === false){
-    const msg = (json && json.error) ? json.error : 'Veprimi dështoi.';
-    throw new Error(msg);
+    throw new Error((json && json.error) ? json.error : 'Ndryshimi nuk u ruajt.');
   }
   return json;
 }
 
-/* ===== Inline editing ===== */
-function startSaving(el){ el.classList.add('cell-saving'); }
-function stopSaving(el){ el.classList.remove('cell-saving'); }
-function flashOk(el){ el.classList.remove('cell-err'); el.classList.add('cell-ok'); setTimeout(()=>el.classList.remove('cell-ok'), 800); }
-function flashErr(el){ el.classList.remove('cell-ok'); el.classList.add('cell-err'); setTimeout(()=>el.classList.remove('cell-err'), 800); }
+/* Grup i mbyllur: kërko konfirmim para çdo ndryshimi */
+async function confirmCompleted(gid){
+  if (Number(GROUP_COMPLETED[gid] || 0) !== 1) return { ok: true, force: false };
+  const ok = await ask({
+    title: 'Ky grup është i mbyllur',
+    message: 'Dokumentet e këtij grupi mund të jenë lëshuar tashmë. Je i sigurt që do ta ndryshosh?',
+    confirm: 'Po, ndryshoje', danger: false
+  });
+  return { ok, force: ok };
+}
 
-/* Merre kontekstin: group_id, student_id, field nga struktura (td .cell ose span .cell-inline) */
+/* ===== Redaktimi në tabelë ===== */
+function flashCell(el, cls){ el.classList.remove('cell-ok','cell-err'); el.classList.add(cls); setTimeout(()=>el.classList.remove(cls), 900); }
+
 function getCellCtx(editable){
   const cell = editable.closest('.cell');
-  if (cell){
-    return {
-      scope: 'row',
-      group_id: parseInt(cell.dataset.group,10)||0,
-      student_id: parseInt(cell.dataset.student,10)||0,
-      field: String(cell.dataset.field||'')
-    };
-  }
-  // header span (start_date / end_date)
   return {
-    scope: 'header',
-    group_id: parseInt(editable.dataset.group,10)||0,
-    student_id: parseInt(editable.dataset.student,10)||0,
-    field: String(editable.dataset.field||'')
+    group_id: parseInt((cell || editable).dataset.group,10)||0,
+    student_id: parseInt((cell || editable).dataset.student,10)||0,
+    field: String((cell || editable).dataset.field||'')
   };
 }
 
-/* Validime + normalizime sipas fushës */
 function normalizeValueForField(field, rawValue, ctx){
   const s = clean(rawValue);
-  if (s === '' || s === '—') return { value: '' , display:'—' };
-
+  if (s === '' || s === '—') return { value: '', display:'—' };
   if (field === 'final_score'){
     const num = Number(String(s).replace(',', '.'));
     if (!Number.isFinite(num)) throw new Error('Pikët duhet të jenë numër.');
-    if (num < 0 || num > 100) throw new Error('Pikët duhet të jenë midis 0–100.');
-    // shfaq pa zera të panevojshëm
-    return { value: num, display: String(num).replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1') };
+    if (num < 0 || num > 100) throw new Error('Pikët duhet të jenë nga 0 deri në 100.');
+    return { value: num, display: String(num) };
   }
-
   if (field === 'exam_date' || field === 'start_date' || field === 'end_date'){
     const iso = normalizeDateForServer(s);
-    // Rregull opsional: exam_date ≥ end_date (po të jetë e ditur)
     if (field === 'exam_date'){
       const endIso = getGroupEndIso(ctx.group_id);
-      if (endIso && iso < endIso) throw new Error('Data e testimit duhet të jetë ≥ datës së mbarimit të grupit.');
+      if (endIso && iso < endIso) throw new Error('Provimi nuk mund të jetë para mbarimit të grupit (' + isoToDmy(endIso) + ').');
     }
-    return { value: iso, display: s };
+    return { value: iso, display: isoToDmy(iso) };
   }
-
-  // Default: kthe si tekst i thjeshtë
   return { value: s, display: s };
 }
 
-/* Ruaj një qelizë */
+function refreshStudentStatus(row, gid){
+  const cell = row && row.querySelector('[data-status]');
+  if (!cell) return;
+  const score = clean(row.querySelector('td[data-field="final_score"] .editable')?.textContent);
+  const exam = clean(row.querySelector('td[data-field="exam_date"] .editable')?.textContent);
+  const mk = (label, variant, icon) => '<span class="status status-' + variant + '"><i class="bi ' + icon + '" aria-hidden="true"></i>' + label.replace(/</g,'&lt;') + '</span>';
+  if (score && score !== '—' && !isNaN(score.replace(',','.'))) {
+    cell.innerHTML = parseFloat(score.replace(',','.')) >= 50 ? mk('Kaloi · ' + score, 'success', 'bi-check-circle-fill') : mk('Nuk kaloi · ' + score, 'danger', 'bi-x-circle-fill');
+  } else if (exam && exam !== '—') {
+    let iso = ''; try { iso = normalizeDateForServer(exam); } catch(e){}
+    const today = new Date().toISOString().slice(0,10);
+    cell.innerHTML = (iso && iso >= today) ? mk('Provimi më ' + exam, 'info', 'bi-calendar-event') : mk('Pret rezultatin', 'warning', 'bi-clock-fill');
+  }
+}
+
 async function saveEditable(editable){
   if (!EDIT_MODE) return;
   const ctx = getCellCtx(editable);
   const prev = editable.dataset.prev ?? clean(editable.textContent);
   const nowRaw = clean(editable.textContent);
-
-  // në contenteditable përdoruesi mund të fusë newline — pastrojmë
   editable.textContent = nowRaw;
 
+  let norm;
+  try { norm = normalizeValueForField(ctx.field, nowRaw, ctx); }
+  catch(err){ editable.textContent = prev || '—'; flashCell(editable, 'cell-err'); notify('danger', err.message); return; }
+  if (clean(prev) === norm.display) { editable.textContent = prev || '—'; return; }
+
+  const guard = await confirmCompleted(ctx.group_id);
+  if (!guard.ok){ editable.textContent = prev || '—'; return; }
+
+  const cell = editable.closest('.cell') || editable;
   try{
-    const { value, display } = normalizeValueForField(ctx.field, nowRaw, ctx);
-    // nëse nuk ka ndryshim real, mos bëj asgjë
-    if (clean(prev) === display) return;
-
-    startSaving(editable);
-
-    // endpoint i përgjithshëm "update_cell" — backend duhet të dallojë nga field-i
-    await postJSON({
-      csrf: CSRF,
-      action: 'update_cell',
-      group_id: ctx.group_id,
-      student_id: ctx.student_id,
-      field: ctx.field,
-      value: value
+    cell.classList.add('cell-saving');
+    const json = await postJSON({
+      csrf: CSRF, action: 'update_cell',
+      group_id: ctx.group_id, student_id: ctx.student_id,
+      field: ctx.field, value: norm.value, force: guard.force ? 1 : 0
     });
-
-    // UI: përditëso
-    editable.textContent = display || '—';
+    editable.textContent = (json && json.display) ? json.display : (norm.display || '—');
     editable.dataset.prev = editable.textContent;
-
-    stopSaving(editable);
-    flashOk(editable);
-    notify('success','U ruajt.');
+    cell.classList.remove('cell-saving');
+    flashCell(cell, 'cell-ok');
+    refreshStudentStatus(editable.closest('tr[data-student-row]'), ctx.group_id);
+    notify('success','Ndryshimi u ruajt.');
   }catch(err){
-    stopSaving(editable);
-    flashErr(editable);
+    cell.classList.remove('cell-saving');
+    flashCell(cell, 'cell-err');
     editable.textContent = prev || '—';
-    notify('danger', err.message || 'Nuk u ruajt ndryshimi.');
+    notify('danger', err.message || 'Ndryshimi nuk u ruajt.');
   }
 }
 
-/* Binds për të gjitha .editable */
 document.querySelectorAll('.editable').forEach(ed=>{
-  // mos lejo Enter të fusë newline — me Enter bëjmë save
   ed.addEventListener('keydown', (e)=>{
     if (!EDIT_MODE) return;
-    if (e.key === 'Enter'){
-      e.preventDefault();
-      ed.blur();
-    }
-    if (e.key === 'Escape'){
-      e.preventDefault();
-      ed.textContent = ed.dataset.prev ?? ed.textContent;
-      ed.blur();
-    }
+    if (e.key === 'Enter'){ e.preventDefault(); ed.blur(); }
+    if (e.key === 'Escape'){ e.preventDefault(); ed.textContent = ed.dataset.prev ?? ed.textContent; ed.blur(); }
   });
-  ed.addEventListener('focus', ()=>{
-    ed.dataset.prev = clean(ed.textContent);
-  });
+  ed.addEventListener('focus', ()=>{ ed.dataset.prev = clean(ed.textContent); });
   ed.addEventListener('paste', (e)=>{
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData('text/plain') || '';
     document.execCommand('insertText', false, clean(text));
   });
-  ed.addEventListener('blur', ()=>{
-    if (!EDIT_MODE) return;
-    saveEditable(ed);
-  });
+  ed.addEventListener('blur', ()=>{ if (EDIT_MODE) saveEditable(ed); });
 });
 
-/* ===== Toggle “Përfunduar” (switch) ===== */
+/* ===== Mbyllja e grupit ===== */
+function paintGroupState(gid, done){
+  const badge = document.querySelector(`.group-badge[data-group="${gid}"]`);
+  if (badge) badge.textContent = done ? 'Po' : 'Jo';
+  const statusCell = document.querySelector(`[data-group-status="${gid}"]`);
+  if (statusCell && done) statusCell.innerHTML = '<span class="status status-success"><i class="bi bi-lock-fill" aria-hidden="true"></i>I mbyllur</span>';
+  if (statusCell && !done) statusCell.innerHTML = '<span class="status status-neutral"><i class="bi bi-unlock" aria-hidden="true"></i>I hapur</span>';
+  const alertBox = document.getElementById(`statusAlert_${gid}`);
+  if (alertBox){
+    alertBox.innerHTML = done
+      ? '<i class="bi bi-lock" aria-hidden="true"></i><span><b>Grupi është i mbyllur.</b> Ndryshimet kërkojnë konfirmim, sepse dokumentet mund të jenë lëshuar.</span>'
+      : '<i class="bi bi-unlock" aria-hidden="true"></i><span><b>Grupi është i hapur.</b> Kur të mbarojnë provimet, shëno "Mbyllur".</span>';
+  }
+}
+
 document.querySelectorAll('.toggle-completed').forEach(sw=>{
   sw.addEventListener('change', async ()=>{
     if (!EDIT_MODE){ sw.checked = !sw.checked; return; }
     const gid = parseInt(sw.dataset.group,10)||0;
     const want = sw.checked ? 1 : 0;
-
+    const ok = await ask(want
+      ? { title: 'Të mbyllet grupi?', message: 'Mbylle kur provimet dhe pikët janë të plota. Pas mbylljes, çdo ndryshim do të kërkojë konfirmim.', confirm: 'Po, mbylle', danger: false }
+      : { title: 'Të rihapet grupi?', message: 'Ky grup është i mbyllur dhe dokumentet mund të jenë lëshuar. E rihap vetëm për të korrigjuar një gabim.', confirm: 'Po, rihape', danger: true });
+    if (!ok){ sw.checked = !sw.checked; return; }
     try{
-      // konfirmo kur po e ç’përfundon
-      if (GROUP_COMPLETED[gid] == 1 && want === 0){
-        const ok = confirm('Ky grup është i përfunduar. E ç’përfundon?');
-        if (!ok){ sw.checked = true; return; }
-      }
-      // ose kur po e shënon si të përfunduar
-      if (GROUP_COMPLETED[gid] != 1 && want === 1){
-        const ok = confirm('Po e shënon grupin si të përfunduar. Vazhdo?');
-        if (!ok){ sw.checked = false; return; }
-      }
-
       await postJSON({ csrf:CSRF, action:'set_group_completed', group_id:gid, is_completed:want });
-
       GROUP_COMPLETED[gid] = want;
-
-      // UI badge + alert
-      const badge = document.querySelector(`.group-badge[data-group="${gid}"]`);
-      const alertBox = document.getElementById(`statusAlert_${gid}`);
-      if (badge){
-        badge.className = `badge ${want ? 'text-bg-success' : 'text-bg-danger'} group-badge`;
-        badge.textContent = want ? 'I përfunduar' : 'Jo i përfunduar';
-      }
-      if (alertBox){
-        alertBox.className = `status-alert alert ${want ? 'alert-success' : 'alert-danger'} py-2 mb-3 small`;
-        alertBox.innerHTML = want
-          ? `<i class="bi bi-check-circle me-1"></i> Ky grup është shënuar si <strong>i përfunduar</strong>. Çdo ndryshim do të kërkojë konfirmim.`
-          : `<i class="bi bi-x-octagon me-1"></i> Ky grup është <strong>jo i përfunduar</strong>. Vendosni statusin si i përfunduar kur të mbaroni.`;
-      }
-
-      notify('success','Statusi u përditësua.');
+      paintGroupState(gid, !!want);
+      notify('success', want ? 'Grupi u mbyll.' : 'Grupi u rihap.');
     }catch(err){
-      sw.checked = !sw.checked; // rikthe
-      notify('danger', err.message || 'Nuk u përditësua statusi.');
+      sw.checked = !sw.checked;
+      notify('danger', err.message || 'Gjendja e grupit nuk u ndryshua.');
     }
   });
 });
 
-/* ===== Konfirmim për formularët kur grupi është i përfunduar ===== */
-function confirmIfCompleted(formEl, gid){
-  const isCompleted = Number(GROUP_COMPLETED[gid] || 0) === 1;
-  if (!isCompleted) return true;
-  const ok = confirm('Ky grup është i përfunduar. Vazhdo gjithsesi?');
-  if (!ok) return false;
-  const force = formEl.querySelector('input[name="force"]');
-  if (force) force.value = '1';
-  return true;
-}
-window.confirmIfCompleted = confirmIfCompleted;
-
-/* ===== Toggle All (expand/collapse) ===== */
-let allOpen = false;
-const toggleAllBtn  = document.getElementById('toggleAllBtn');
-const toggleAllIcon = document.getElementById('toggleAllIcon');
-const toggleAllText = document.getElementById('toggleAllText');
-
-function setAll(open){
-  document.querySelectorAll('.group-body').forEach(el=>{
-    const c = bootstrap.Collapse.getOrCreateInstance(el, {toggle:false});
-    open ? c.show() : c.hide();
-  });
-  allOpen = !!open;
-  toggleAllIcon.className = allOpen ? 'bi bi-arrows-angle-contract' : 'bi bi-arrows-angle-expand';
-  toggleAllText.textContent = allOpen ? 'Mbyll të gjitha' : 'Zgjero të gjitha';
-}
-if (toggleAllBtn){
-  toggleAllBtn.addEventListener('click', ()=> setAll(!allOpen));
-}
-
-/* ===== Eksportet (format buttons) + toast ===== */
-document.querySelectorAll('#qklReportModal [data-dl]').forEach(btn=>{
+/* ===== Hap/mbyll të gjitha grupet ===== */
+(function(){
+  let allOpen = false;
+  const btn = document.getElementById('toggleAllBtn');
+  if (!btn) return;
   btn.addEventListener('click', ()=>{
-    const format = btn.getAttribute('data-dl');
-    document.getElementById('qklReportFormat').value = format;
-    notify('success', 'Shkarkimi po përgatitet (Raporti për QKL · ' + format.toUpperCase() + ').');
-    document.getElementById('qklReportExport').submit();
+    allOpen = !allOpen;
+    document.querySelectorAll('.group-body').forEach(el=>{
+      const c = bootstrap.Collapse.getOrCreateInstance(el, {toggle:false});
+      allOpen ? c.show() : c.hide();
+    });
+    btn.setAttribute('aria-pressed', allOpen ? 'true' : 'false');
+    document.getElementById('toggleAllIcon').className = allOpen ? 'bi bi-arrows-collapse' : 'bi bi-arrows-expand';
+    document.getElementById('toggleAllText').textContent = allOpen ? 'Mbyll të gjitha' : 'Hap të gjitha';
   });
+})();
+
+/* Rrotullimi i shigjetës sipas gjendjes së grupit */
+document.querySelectorAll('.group-body').forEach(el=>{
+  const opener = document.querySelector(`[data-bs-target="#${el.id}"]`);
+  el.addEventListener('show.bs.collapse', ()=> opener && opener.setAttribute('aria-expanded','true'));
+  el.addEventListener('hide.bs.collapse', ()=> opener && opener.setAttribute('aria-expanded','false'));
 });
 
-/* Compact spacing */
-document.addEventListener('DOMContentLoaded', ()=>{
-  document.body.classList.add('compact');
+/* ===== Maska e datave në formularin e krijimit ===== */
+function maskToDDMMYYYY(input){
+  const digits = String(input||'').replace(/\D/g,'').slice(0,8);
+  let out = digits.slice(0,2);
+  if (digits.length > 2) out += '.' + digits.slice(2,4);
+  if (digits.length > 4) out += '.' + digits.slice(4,8);
+  return out;
+}
+document.querySelectorAll('input.dmy').forEach(inp=>{
+  inp.addEventListener('input', ()=>{ inp.value = maskToDDMMYYYY(inp.value); });
+});
 
-  function parseAmzeRangesClient(s){
-    const out = new Set();
-    (s || '').split(',').forEach(raw => {
-      const tok = raw.trim();
-      if (!tok) return;
-
-      // interval p.sh. 1000-1012
-      const rangeMatch = tok.match(/^(\d+)\s*-\s*(\d+)$/);
-      if (rangeMatch) {
-        let a = parseInt(rangeMatch[1],10);
-        let b = parseInt(rangeMatch[2],10);
-        if (Number.isNaN(a) || Number.isNaN(b)) return;
-        if (a > b){ const t=a; a=b; b=t; }
-        for (let i=a; i<=b; i++) out.add(i);
-        return;
-      }
-
-      // numër i vetëm p.sh. 3409
-      const singleMatch = tok.match(/^\d+$/);
-      if (singleMatch) {
-        out.add(parseInt(singleMatch[0],10));
-      }
-    });
-    return Array.from(out).sort((a,b)=>a-b);
-  }
-
-  function attachCreateGroupWarning(){
-    const modal = document.getElementById('createGroupModal');
-    if (!modal) return;
-    const form = modal.querySelector('form');
-    if (!form) return;
-
-    form.addEventListener('submit', function(e){
-      if (!EDIT_MODE) return;
-
-      const textarea = form.querySelector('textarea[name="amze_spec"]');
-      if (!textarea) return;
-
-      const nums = parseAmzeRangesClient(textarea.value);
-      if (nums.length <= 10) return;
-
-      const total        = nums.length;
-      const groupsNeeded = Math.ceil(total / 10);
-      if (groupsNeeded <= 1) return;
-
-      const base = Math.floor(total / groupsNeeded);
-      const rem  = total % groupsNeeded;
-
-      let cursor = 0;
-      const parts = [];
-
-      for (let g=0; g<groupsNeeded; g++){
-        const size = base + (g < rem ? 1 : 0);
-        if (size <= 0) continue;
-        const chunk = nums.slice(cursor, cursor + size);
-        cursor += size;
-        if (!chunk.length) continue;
-
-        const min = chunk[0];
-        const max = chunk[chunk.length-1];
-        parts.push({ index:g+1, count:chunk.length, min, max });
-      }
-
-      if (!parts.length) return;
-
-      let msg = 'Kujdes: Kjo komandë do të krijojë ' + parts.length + ' grupe:\n\n';
-      parts.forEach(p => {
-        msg += 'Grupi ' + p.index + ' — ' + p.count + ' studentë, AMZË ' +
-              p.min + (p.max !== p.min ? '–' + p.max : '') + '\n';
-      });
-      msg += '\nVazhdo?';
-
-      if (!confirm(msg)) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-    });
-  }
-
-  attachCreateGroupWarning();
-
-  function attachCreateGroupWarning(){
-    const modal = document.getElementById('createGroupModal');
-    if (!modal) return;
-    const form = modal.querySelector('form');
-    if (!form) return;
-
-    form.addEventListener('submit', function(e){
-      // nëse Edit Mode është OFF, nuk bën sens të kontrollojmë
-      if (!EDIT_MODE) return;
-
-      const textarea = form.querySelector('textarea[name="amze_spec"]');
-      if (!textarea) return;
-
-      const nums = parseAmzeRangesClient(textarea.value);
-      if (nums.length <= 10) return; // 1 grup, asnjë paralajmërim i veçantë
-
-      const total        = nums.length;
-      const groupsNeeded = Math.ceil(total / 10);
-      if (groupsNeeded <= 1) return;
-
-      const base = Math.floor(total / groupsNeeded);
-      const rem  = total % groupsNeeded;
-
-      let cursor = 0;
-      const parts = [];
-
-      for (let g=0; g<groupsNeeded; g++){
-        const size = base + (g < rem ? 1 : 0);
-        if (size <= 0) continue;
-        const chunk = nums.slice(cursor, cursor + size);
-        cursor += size;
-        if (!chunk.length) continue;
-
-        const min = chunk[0];
-        const max = chunk[chunk.length-1];
-        parts.push({
-          index: g+1,
-          count: chunk.length,
-          min,
-          max
-        });
-      }
-
-      if (!parts.length) return;
-
-      let msg = 'Kujdes: Kjo komandë do të krijojë ' + parts.length + ' grupe:\n\n';
-      parts.forEach(p => {
-        msg += 'Grupi ' + p.index + ' — ' + p.count + ' studentë, AMZË ' +
-              p.min + (p.max !== p.min ? '–' + p.max : '') + '\n';
-      });
-      msg += '\nVazhdo?';
-
-      if (!confirm(msg)) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-    });
-  }
-
-  attachCreateGroupWarning();
-
-    // ===== Split preview MODAL (për create_group & edit_members) =====
-
-  function parseAmzeRangesClient(s){
-    const out = new Set();
-    (s || '').split(',').forEach(raw => {
-      const tok = raw.trim();
-      if (!tok) return;
-
-      const rangeMatch = tok.match(/^(\d+)\s*-\s*(\d+)$/);
-      if (rangeMatch) {
-        let a = parseInt(rangeMatch[1],10);
-        let b = parseInt(rangeMatch[2],10);
-        if (Number.isNaN(a) || Number.isNaN(b)) return;
-        if (a > b){ const t=a; a=b; b=t; }
-        for (let i=a; i<=b; i++) out.add(i);
-        return;
-      }
-
-      const singleMatch = tok.match(/^\d+$/);
-      if (singleMatch) out.add(parseInt(singleMatch[0],10));
-    });
-    return Array.from(out).sort((a,b)=>a-b);
-  }
-
-  function buildSplitParts(nums){
-    const total = nums.length;
-    const groupsNeeded = Math.ceil(total / 10);
-    const base = Math.floor(total / groupsNeeded);
-    const rem  = total % groupsNeeded;
-
-    let cursor = 0;
-    const parts = [];
-    for (let g=0; g<groupsNeeded; g++){
-      const size = base + (g < rem ? 1 : 0);
-      if (size <= 0) continue;
-      const chunk = nums.slice(cursor, cursor + size);
-      cursor += size;
-      if (!chunk.length) continue;
-
-      parts.push({
-        idx: g,
-        count: chunk.length,
-        min: chunk[0],
-        max: chunk[chunk.length-1]
-      });
-    }
-    return parts;
-  }
-
-  function diffCounts(oldNums, newNums){
-    const oldSet = new Set(oldNums);
-    const newSet = new Set(newNums);
-    let added = 0, removed = 0;
-
-    newSet.forEach(n => { if (!oldSet.has(n)) added++; });
-    oldSet.forEach(n => { if (!newSet.has(n)) removed++; });
-
-    return { added, removed };
-  }
-
-  const splitModalEl = document.getElementById('splitPreviewModal');
-  const splitModal   = splitModalEl ? bootstrap.Modal.getOrCreateInstance(splitModalEl) : null;
-
-  const $title  = document.getElementById('splitPreviewTitle');
-  const $intro  = document.getElementById('splitPreviewIntro');
-  const $badges = document.getElementById('splitPreviewBadges');
-  const $tbody  = document.getElementById('splitPreviewTbody');
-  const $note   = document.getElementById('splitPreviewNote');
-
-  const btnOk     = document.getElementById('splitPreviewOkBtn');
-  const btnCancel = document.getElementById('splitPreviewCancelBtn');
-
-  let pending = null; // { form, resumeModalEl, resumeModalInstance, context }
-
-  function renderBadges(items){
-    if (!$badges) return;
-    if (!items || !items.length){
-      $badges.style.display = 'none';
-      $badges.innerHTML = '';
+/* ===== Parashikimi i ndarjes dhe konfirmimet e formularëve ===== */
+function parseAmzeRangesClient(s){
+  const out = new Set();
+  (s || '').split(',').forEach(raw => {
+    const tok = raw.trim();
+    if (!tok) return;
+    const r = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (r) {
+      let a = parseInt(r[1],10), b = parseInt(r[2],10);
+      if (a > b){ const t=a; a=b; b=t; }
+      for (let i=a; i<=b; i++) out.add(i);
       return;
     }
-    $badges.style.display = '';
-    $badges.innerHTML = items.map(it => {
-      const cls = it.type === 'danger' ? 'text-bg-danger'
-               : it.type === 'success' ? 'text-bg-success'
-               : it.type === 'primary' ? 'text-bg-primary'
-               : 'text-bg-secondary';
-      return `<span class="badge ${cls}">${it.text}</span>`;
-    }).join(' ');
-  }
-
-  function renderPartsTable(parts, labelFn){
-    $tbody.innerHTML = parts.map(p => {
-      const label = labelFn ? labelFn(p) : `Grupi ${p.idx+1}`;
-      const range = `${p.min}${(p.max !== p.min) ? '–' + p.max : ''}`;
-      return `
-        <tr>
-          <td class="fw-semibold">${label}</td>
-          <td class="nowrap">${p.count}</td>
-          <td class="nowrap">${range}</td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  function showSplitPreviewModal(options){
-    if (!splitModal) return false;
-
-    // options: { title, introHtml, badges[], parts, note, form, resumeModalEl }
-    $title.innerHTML = options.title || $title.innerHTML;
-    $intro.innerHTML = options.introHtml || $intro.innerHTML;
-    $note.textContent = options.note || '';
-
-    renderBadges(options.badges || []);
-    renderPartsTable(options.parts || [], options.labelFn);
-
-    pending = {
-      form: options.form,
-      resumeModalEl: options.resumeModalEl || null,
-      resumeModalInstance: options.resumeModalEl ? bootstrap.Modal.getOrCreateInstance(options.resumeModalEl) : null
-    };
-
-    // Fshih modali i formës (për të shmangur stacking issues)
-    if (pending.resumeModalInstance){
-      pending.resumeModalInstance.hide();
-    }
-
-    splitModal.show();
-    return true;
-  }
-
-  // Cancel: hap prap modali i formës (nëse ishte)
-  splitModalEl?.addEventListener('hidden.bs.modal', () => {
-    if (pending && pending.resumeModalInstance && pending._proceeded !== true){
-      pending.resumeModalInstance.show();
-    }
-    pending = null;
+    if (/^\d+$/.test(tok)) out.add(parseInt(tok,10));
   });
+  return Array.from(out).sort((a,b)=>a-b);
+}
+function buildSplitParts(nums){
+  const total = nums.length;
+  const groupsNeeded = Math.ceil(total / 10);
+  const base = Math.floor(total / groupsNeeded);
+  const rem  = total % groupsNeeded;
+  let cursor = 0;
+  const parts = [];
+  for (let g=0; g<groupsNeeded; g++){
+    const size = base + (g < rem ? 1 : 0);
+    const chunk = nums.slice(cursor, cursor + size);
+    cursor += size;
+    if (chunk.length) parts.push({ idx: g, count: chunk.length, min: chunk[0], max: chunk[chunk.length-1] });
+  }
+  return parts;
+}
 
-  btnOk?.addEventListener('click', () => {
-    if (!pending || !pending.form) return;
+const splitModalEl = document.getElementById('splitPreviewModal');
+let splitPending = null;
 
-    pending._proceeded = true;
-    splitModal.hide();
-
-    // lejo submit pa e rishfaqur modal-in
-    pending.form.dataset.splitConfirmed = '1';
-
-    // submit pa “browser confirm”; server-side do bëjë ndarjen siç e ke tani
-    if (typeof pending.form.requestSubmit === 'function') pending.form.requestSubmit();
-    else pending.form.submit();
+function showSplitPreview(opts){
+  const tbody = document.getElementById('splitPreviewTbody');
+  document.getElementById('splitPreviewIntro').textContent = opts.intro;
+  document.getElementById('splitPreviewNote').textContent = opts.note || '';
+  const badges = document.getElementById('splitPreviewBadges');
+  badges.innerHTML = '';
+  (opts.badges || []).forEach(b => {
+    const s = document.createElement('span');
+    s.className = 'status status-' + (b.variant || 'neutral');
+    s.textContent = b.text;
+    badges.appendChild(s);
   });
+  tbody.innerHTML = '';
+  opts.parts.forEach(p => {
+    const tr = document.createElement('tr');
+    [opts.label(p), String(p.count), p.min + (p.max !== p.min ? '–' + p.max : '')].forEach((txt, i) => {
+      const td = document.createElement('td');
+      if (i === 1) td.className = 'num-col';
+      if (i === 2) td.className = 'code';
+      td.textContent = txt;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  splitPending = { form: opts.form, host: opts.host, proceeded: false };
+  if (opts.host) bootstrap.Modal.getOrCreateInstance(opts.host).hide();
+  bootstrap.Modal.getOrCreateInstance(splitModalEl).show();
+}
 
-  // ====== (A) CREATE GROUP: para ndarjes ======
-  (function attachCreateGroupSplitModal(){
-    const createModal = document.getElementById('createGroupModal');
-    if (!createModal) return;
+splitModalEl?.addEventListener('hidden.bs.modal', ()=>{
+  if (splitPending && !splitPending.proceeded && splitPending.host) {
+    bootstrap.Modal.getOrCreateInstance(splitPending.host).show();
+  }
+  splitPending = null;
+});
+document.getElementById('splitPreviewOkBtn')?.addEventListener('click', ()=>{
+  if (!splitPending) return;
+  const form = splitPending.form;
+  splitPending.proceeded = true;
+  bootstrap.Modal.getOrCreateInstance(splitModalEl).hide();
+  submitNow(form);
+});
 
-    const form = createModal.querySelector('form');
-    if (!form) return;
+function submitNow(form){
+  form.dataset.ready = '1';
+  const btn = form.querySelector('button[type="submit"]');
+  if (btn) btn.classList.add('is-loading');
+  if (typeof form.requestSubmit === 'function') form.requestSubmit(); else form.submit();
+}
 
-    form.addEventListener('submit', function(e){
-      if (!EDIT_MODE) return;
-      if (form.dataset.splitConfirmed === '1'){ form.dataset.splitConfirmed = '0'; return; }
+/* Krijimi i grupit */
+document.querySelector('[data-create-group-form]')?.addEventListener('submit', (e)=>{
+  const form = e.currentTarget;
+  if (!EDIT_MODE || form.dataset.ready === '1') { form.dataset.ready = '0'; return; }
+  const nums = parseAmzeRangesClient(form.querySelector('textarea[name="amze_spec"]')?.value);
+  if (nums.length <= 10) return;
+  e.preventDefault();
+  const parts = buildSplitParts(nums);
+  showSplitPreview({
+    form, host: document.getElementById('createGroupModal'), parts,
+    intro: `Ke shkruar ${nums.length} numra amze. Një grup mban deri në 10 kursantë, prandaj do të krijohen ${parts.length} grupe:`,
+    badges: [{ text: nums.length + ' kursantë', variant: 'neutral' }, { text: parts.length + ' grupe', variant: 'info' }],
+    label: p => 'Grupi i ri ' + (p.idx + 1),
+    note: 'Nëse kthehesh mbrapa, asnjë grup nuk krijohet.'
+  });
+});
 
-      const ta = form.querySelector('textarea[name="amze_spec"]');
-      if (!ta) return;
+/* Formularët e një grupi ekzistues (kursantët, moduli, fshirja) */
+document.querySelectorAll('form[data-group-form]').forEach(form => {
+  form.addEventListener('submit', async (e)=>{
+    if (!EDIT_MODE) return;
+    if (form.dataset.ready === '1') { form.dataset.ready = '0'; return; }
+    e.preventDefault();
+    const gid = parseInt(form.querySelector('input[name="group_id"]')?.value || '0', 10);
+    const forceInput = form.querySelector('input[name="force"]');
+    if (forceInput) forceInput.value = '0';
+    const guard = await confirmCompleted(gid);
+    if (!guard.ok) return;
+    if (guard.force && forceInput) forceInput.value = '1';
 
+    const ta = form.querySelector('textarea[name="amze_spec_members"]');
+    if (ta) {
       const nums = parseAmzeRangesClient(ta.value);
-      if (nums.length <= 10) return; // s’ka ndarje
-
-      const parts = buildSplitParts(nums);
-
-      // NEW: Nëse do krijohen më shumë se 2 grupe, mos shfaq asnjë modal/alert — lëre të vazhdojë submit normal
-      if (parts.length > 2) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      showSplitPreviewModal({
-        form,
-        resumeModalEl: createModal,
-        title: `<i class="bi bi-exclamation-triangle me-2 text-warning"></i> Konfirmo krijimin dhe ndarjen e grupeve`,
-        introHtml: `
-          Do të krijohen <strong>${parts.length}</strong> grupe (maks. 10 studentë për grup),
-          sipas rendit të AMZË. A dëshiron të vazhdosh?
-        `,
-        badges: [
-          { type:'primary', text:`Totali AMZË: ${nums.length}` },
-          { type:'secondary', text:`Grupe: ${parts.length}` }
-        ],
-        parts,
-        labelFn: (p)=> `Grupi ${p.idx+1} (krijohet)`,
-        note: 'Nëse anulon, asnjë grup nuk krijohet.'
-      });
-    });
-  })();
-
-
-  // ====== (B) EDIT MEMBERS: para ndarjes ======
-  (function attachEditMembersSplitModal(){
-    document.querySelectorAll('form').forEach(form => {
-      const act = form.querySelector('input[name="action"]')?.value || '';
-      if (act !== 'edit_members') return;
-
-      // Hiq “onsubmit=confirmIfCompleted(...)” që të mos dalë confirm i shfletuesit
-      form.removeAttribute('onsubmit');
-      form.onsubmit = null;
-
-      form.addEventListener('submit', function(e){
-        if (!EDIT_MODE) return;
-        if (form.dataset.splitConfirmed === '1'){ form.dataset.splitConfirmed = '0'; return; }
-
-        // Konfirmimi për “completed” (siç e ke logjikën)
-        const gid = parseInt(form.querySelector('input[name="group_id"]')?.value || '0', 10);
-        if (gid > 0) {
-          const okCompleted = confirmIfCompleted(form, gid); // përdor logjikën ekzistuese të force=1
-          if (!okCompleted){
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-        }
-
-        const ta = form.querySelector('textarea[name="amze_spec_members"]');
-        if (!ta) return;
-
-        const nums = parseAmzeRangesClient(ta.value);
-        if (nums.length <= 10) return; // s’ka ndarje
-
-        // Diferenca (shtime/hiqje) nga original
-        const original = parseAmzeRangesClient(ta.dataset.originalAmze || '');
-        const { added, removed } = diffCounts(original, nums);
-
+      if (nums.length > 10) {
+        const original = new Set(parseAmzeRangesClient(ta.dataset.originalAmze || ''));
+        const added = nums.filter(n => !original.has(n)).length;
+        const removed = Array.from(original).filter(n => !nums.includes(n)).length;
         const parts = buildSplitParts(nums);
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        const hostModalEl = form.closest('.modal'); // editMembersModal_XX
-
-        showSplitPreviewModal({
-          form,
-          resumeModalEl: hostModalEl,
-          title: `<i class="bi bi-exclamation-triangle me-2 text-warning"></i> Ky veprim do ta ndajë Grupin #${gid}`,
-          introHtml: `
-            Po modifikon anëtarët e <strong>Grupit #${gid}</strong>. Pas ruajtjes, ky grup do të ndahet automatikisht në
-            <strong>${parts.length}</strong> grupe (maks. 10 studentë për grup). A je i sigurt?
-          `,
-          badges: [
-            { type:'primary', text:`Totali AMZË: ${nums.length}` },
-            { type:'secondary', text:`Grupe: ${parts.length}` },
-            ...(added ? [{ type:'success', text:`Shtohen: ${added}` }] : []),
-            ...(removed ? [{ type:'danger', text:`Hiqen: ${removed}` }] : [])
-          ],
-          parts,
-          labelFn: (p)=> (p.idx === 0 ? `Grupi #${gid} (aktual)` : `Grup i ri (krijohet)`),
-          note: 'Nëse anulon, ndryshimet nuk ruhen dhe grupi nuk ndahet.'
+        const badges = [{ text: nums.length + ' kursantë', variant: 'neutral' }, { text: parts.length + ' grupe', variant: 'info' }];
+        if (added) badges.push({ text: 'Shtohen ' + added, variant: 'success' });
+        if (removed) badges.push({ text: 'Hiqen ' + removed, variant: 'danger' });
+        showSplitPreview({
+          form, host: form.closest('.modal'), parts, badges,
+          intro: `Grupi #${gid} do të ketë ${nums.length} kursantë. Një grup mban deri në 10, prandaj do të ndahet në ${parts.length} grupe:`,
+          label: p => p.idx === 0 ? `Grupi #${gid} (ky grup)` : 'Grup i ri',
+          note: 'Nëse kthehesh mbrapa, asgjë nuk ndryshon.'
         });
-      });
-    });
-  })();
+        return;
+      }
+    }
+    submitNow(form);
+  });
 });
 </script>
 </body>

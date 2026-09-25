@@ -1,35 +1,37 @@
 <?php
-/** @var string $CSRF */
+/**
+ * qkl_report_modal.php — Raporti për QKL sipas një intervali numrash amze.
+ * Dërgohet me POST (tokeni CSRF nuk del në URL).
+ * @var string $CSRF
+ */
 ?>
-<!-- MODAL: Raporti per QKL -->
-<div class="modal fade" id="qklReportModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" id="qklReportExport" method="get" action="groups_export.php">
+<div class="modal fade" id="qklReportModal" tabindex="-1" aria-labelledby="qklReportTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="qklReportExport" method="post" action="groups_export.php"
+          data-download-toast="Raporti për QKL po përgatitet.">
       <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF, ENT_QUOTES, 'UTF-8') ?>">
       <input type="hidden" name="type" value="qkl">
-      <input type="hidden" name="f" value="xlsx" id="qklReportFormat">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-1"></i> Raporti për QKL</h5>
+        <h2 class="modal-title" id="qklReportTitle"><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>Raporti për QKL</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
+        <p class="text-muted">Raporti përfshin regjistrimet me numër amze nga i pari deri tek i fundit që shkruan këtu.</p>
         <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label" for="qklAmzeStart">AMZË fillimi</label>
-            <input type="number" min="1" step="1" name="amze_start" id="qklAmzeStart" class="form-control" placeholder="p.sh. 3400" required>
+          <div class="col-6">
+            <label class="form-label" for="qklAmzeStart">Nga nr. i amzës</label>
+            <input type="number" min="1" step="1" name="amze_start" id="qklAmzeStart" class="form-control input-code" placeholder="p.sh. 3400" required>
           </div>
-          <div class="col-md-6">
-            <label class="form-label" for="qklAmzeEnd">AMZË mbarimi</label>
-            <input type="number" min="1" step="1" name="amze_end" id="qklAmzeEnd" class="form-control" placeholder="p.sh. 3499" required>
+          <div class="col-6">
+            <label class="form-label" for="qklAmzeEnd">Deri te nr. i amzës</label>
+            <input type="number" min="1" step="1" name="amze_end" id="qklAmzeEnd" class="form-control input-code" placeholder="p.sh. 3499" required>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <div class="btn-group me-auto">
-          <button type="button" class="btn btn-soft-success btn-pill" data-dl="xlsx"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-          <button type="button" class="btn btn-soft-danger btn-pill" data-dl="pdf"><i class="bi bi-file-earmark-pdf me-1"></i> PDF</button>
-        </div>
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
+        <button type="button" class="btn btn-secondary me-auto" data-bs-dismiss="modal">Anulo</button>
+        <button type="submit" class="btn btn-secondary" name="f" value="pdf"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>Shkarko PDF</button>
+        <button type="submit" class="btn btn-primary" name="f" value="xlsx"><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>Shkarko Excel</button>
       </div>
     </form>
   </div>

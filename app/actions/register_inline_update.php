@@ -73,11 +73,11 @@ function to_iso_date(?string $v): ?string {
     $yy=$m[1]; $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $dd=str_pad($m[3],2,'0',STR_PAD_LEFT);
     return "{$yy}-{$mm}-{$dd}";
   }
-  if (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $v, $m)) {
+  if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/', $v, $m)) {
     $dd=str_pad($m[1],2,'0',STR_PAD_LEFT); $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $yy=$m[3];
     return "{$yy}-{$mm}-{$dd}";
   }
-  throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
+  throw new RuntimeException('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.2026.');
 }
 
 /* Gjej grupin target (më i fundit nëse s’është dhënë) */

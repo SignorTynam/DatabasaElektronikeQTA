@@ -910,7 +910,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
 </main>
 
 <!-- Dialog: Shto kursant -->
-<div class="modal fade" id="addStudentModal" tabindex="-1" aria-labelledby="addStudentTitle" aria-hidden="true">
+<div class="modal fade" id="addStudentModal" tabindex="-1" aria-labelledby="addStudentTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <form class="modal-content" method="post" data-loading>
       <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
@@ -1115,14 +1115,6 @@ const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 function notify(type, text, opts={}) {
   return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null;
 }
-
-/* Hap dialogun "Shto kursant" kur vjen nga "Regjistro kursant" */
-<?php if ($openAdd): ?>
-document.addEventListener('DOMContentLoaded', ()=>{
-  const m = document.getElementById('addStudentModal');
-  if (m && window.bootstrap) new bootstrap.Modal(m).show();
-});
-<?php endif; ?>
 
 /* Helpers */
 function cleanText(s){ const v=(s||'').replace(/\s+/g,' ').trim(); return (v==='—'?'':v); }

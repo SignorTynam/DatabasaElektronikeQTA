@@ -577,6 +577,61 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
 .person-name { font-weight: var(--fw-semibold); }
 .cell-sub { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
 
+/* Rreshta që hapen: një rresht përmbledhës + një rresht me hollësitë.
+   <tbody><tr>…<button class="row-toggle" data-bs-toggle="collapse">…</tr>
+          <tr class="row-details"><td colspan="…"><div class="collapse"><div class="row-details-inner">… */
+.row-toggle {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-height: var(--touch-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row-toggle > .bi {
+  flex: none;
+  margin-top: .2rem;
+  color: var(--text-muted);
+  transition: transform var(--dur-2) var(--ease);
+}
+.row-toggle[aria-expanded="true"] > .bi { transform: rotate(90deg); color: var(--accent-text); }
+.row-toggle:hover .person-name { color: var(--link-hover); text-decoration: underline; text-underline-offset: .15em; }
+.row-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-xs); }
+.table > tbody > tr.row-details > td { padding: 0; border-bottom: 0; }
+.table > tbody > tr.row-details:hover > * { --bs-table-bg-state: transparent; }
+.row-details-inner {
+  padding: var(--sp-4) var(--sp-4) var(--sp-5) calc(var(--sp-4) + 1.5rem);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.row-details-inner > .table-responsive { background: var(--surface); }
+
+/* Dokumentet që shkarkohen nga një rresht (p.sh. procesverbali i grupit) */
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+.doc-actions-label {
+  margin-right: var(--sp-1);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+@media (max-width: 575.98px) {
+  .row-details-inner { padding-left: var(--sp-4); }
+  .doc-actions > .btn { flex: 1 1 calc(50% - var(--sp-2)); justify-content: center; }
+  .doc-actions-label { flex-basis: 100%; }
+}
+
 /* ====================================================== 5. Redaktimi në vend */
 td.cell .editable {
   display: inline-block;

@@ -20,7 +20,7 @@ $lockCanEdit = $CAN_EDIT ?? true;
 
 /* Ruaj çdo parametër ekzistues të kërkesës; ndrysho vetëm 'edit'. */
 $lockQs = $_GET;
-unset($lockQs['add']);
+unset($lockQs['add'], $lockQs['create']);
 $lockQs['edit'] = $EDIT_MODE ? '0' : '1';
 $lockPage = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
 $lockUrl  = $lockPage . ($lockQs ? ('?' . http_build_query($lockQs)) : '');

@@ -64,13 +64,15 @@ $me = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($me['role_name'] ?? ''));
 if (!$me || !in_array($role, ['administrator','editor'], true)) { qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.'); header('Location: selectProfile.php'); exit; }
 
+/* POST (i preferuar: tokeni nuk del në URL) ose GET për lidhjet e vjetra */
+$request     = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $csrfSession = $_SESSION['csrf_token'] ?? '';
-$csrfQuery   = $_GET['csrf'] ?? '';
-if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) { qta_fail(403, 'CSRF gabim ose mungon.'); }
+$csrfQuery   = (string)($request['csrf'] ?? '');
+if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) { qta_fail(403, 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.'); }
 
 /* ===== Parametra ===== */
-$groupId = (int)($_GET['group_id'] ?? 0);
-$fmt     = strtolower(trim((string)($_GET['f'] ?? 'pdf'))); // pdf|docx|xlsx
+$groupId = (int)($request['group_id'] ?? 0);
+$fmt     = strtolower(trim((string)($request['f'] ?? 'pdf'))); // pdf|docx|xlsx
 
 if ($groupId <= 0) { qta_fail(400, 'group_id i pavlefshem.'); }
 if (!in_array($fmt, ['xlsx','pdf','docx'], true)) { qta_fail(400, 'Format i pavlefshem.'); }
