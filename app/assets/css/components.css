@@ -1417,6 +1417,36 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   color: var(--text-inverse);
 }
 
+/* Zgjedhje e vetme mes pak mundësive (p.sh. pamja: e çelët / sipas pajisjes / e errët) */
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: .2rem;
+  padding: .2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+}
+.segmented > button {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: var(--touch-min);
+  padding: 0 1rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.segmented > button:hover { color: var(--text); }
+.segmented > button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.segmented > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
 /* ============================================== 23. Kyçi i ndryshimeve */
 /* Mbron të dhënat nga ndryshimet aksidentale; gjendja thuhet me fjalë. */
 .edit-lock {
