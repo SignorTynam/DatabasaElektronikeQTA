@@ -114,7 +114,7 @@ $agendaKinds = [
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
-      <a class="btn btn-primary" href="students.php?add=1">
+      <a class="btn btn-primary" href="students.php?edit=1&amp;add=1">
         <i class="bi bi-person-plus" aria-hidden="true"></i>Regjistro kursant
       </a>
     </div>
@@ -167,7 +167,7 @@ $agendaKinds = [
           <h2 class="section-title" id="quickTitle">Nis një punë</h2>
         </div>
         <div class="quick-grid">
-          <a class="quick is-primary" href="students.php?add=1">
+          <a class="quick is-primary" href="students.php?edit=1&amp;add=1">
             <span class="quick-icon"><i class="bi bi-person-plus" aria-hidden="true"></i></span>
             <span><span class="quick-title">Regjistro kursant</span><span class="quick-text">Shto një person të ri në regjistër.</span></span>
           </a>
@@ -218,7 +218,7 @@ $agendaKinds = [
             </table>
           </div>
         <?php else: ?>
-          <?= qta_empty('Regjistri është bosh', 'Kursantët e parë që regjistron do të shfaqen këtu.', 'bi-journal', '<a class="btn btn-primary" href="students.php?add=1">Regjistro kursant</a>') ?>
+          <?= qta_empty('Regjistri është bosh', 'Kursantët e parë që regjistron do të shfaqen këtu.', 'bi-journal', '<a class="btn btn-primary" href="students.php?edit=1&amp;add=1">Regjistro kursant</a>') ?>
         <?php endif; ?>
       </section>
     </div>
