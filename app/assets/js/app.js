@@ -385,7 +385,21 @@
       area.setAttribute('data-toast-area', '');
       document.body.appendChild(area);
     }
+    /* I njëjti mesazh që përsëritet (p.sh. disa ruajtje radhazi) nuk grumbullohet:
+       njoftimi ekzistues rinis kohën dhe shfaq numrin e herëve. */
+    var same = Array.prototype.find.call(area.querySelectorAll('.toast.show[data-toast-key]'), function (t) {
+      return t.getAttribute('data-toast-key') === variant + '|' + message;
+    });
+    if (same && window.bootstrap) {
+      var times = (parseInt(same.getAttribute('data-toast-times') || '1', 10) || 1) + 1;
+      same.setAttribute('data-toast-times', String(times));
+      same.querySelector('.toast-body').textContent = message + ' (' + times + ')';
+      var inst = window.bootstrap.Toast.getOrCreateInstance(same);
+      inst.show();
+      return same;
+    }
     var el = document.createElement('div');
+    el.setAttribute('data-toast-key', variant + '|' + message);
     el.className = 'toast toast-' + variant;
     el.setAttribute('role', variant === 'danger' ? 'alert' : 'status');
     el.setAttribute('aria-live', variant === 'danger' ? 'assertive' : 'polite');
@@ -496,8 +510,24 @@
     if (copyBtn) {
       var text = copyBtn.getAttribute('data-copy') || '';
       var done = function () { window.qtaToast(copyBtn.getAttribute('data-copy-message') || 'U kopjua.', 'success'); };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () { window.qtaToast('Shfletuesi nuk lejoi kopjimin.', 'warning'); });
+      /* Pa HTTPS shfletuesi nuk e jep clipboard-in; atëherë kopjojmë me mënyrën e vjetër. */
+      var fallback = function () {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        ta.remove();
+        if (ok) done(); else window.qtaToast('Shfletuesi nuk lejoi kopjimin. Përzgjidhe tekstin dhe shtyp Ctrl+C.', 'warning');
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
       }
       return;
     }
@@ -523,23 +553,45 @@
 
   /* Kodet QR: <div data-qr="URL" data-qr-size="200">. Libraria (qrcodejs)
      ngarkohet vetëm nga faqet që e kanë nevojë, prandaj presim DOMContentLoaded. */
-  document.addEventListener('DOMContentLoaded', function () {
-    if (!window.QRCode) return;
-    document.querySelectorAll('[data-qr]').forEach(function (el) {
-      var size = parseInt(el.getAttribute('data-qr-size') || '200', 10);
-      el.innerHTML = '';
-      new window.QRCode(el, {
-        text: el.getAttribute('data-qr'),
-        width: size,
-        height: size,
-        colorDark: '#1f1e1b',
-        colorLight: '#ffffff',
-        correctLevel: window.QRCode.CorrectLevel.M
-      });
-      el.removeAttribute('title');
-      var img = el.querySelector('img');
-      if (img) img.setAttribute('alt', el.getAttribute('data-qr-alt') || 'Kodi QR i verifikimit');
+  function renderQr(el) {
+    if (!window.QRCode || !el) return false;
+    var text = el.getAttribute('data-qr');
+    el.innerHTML = '';
+    if (!text) return false;
+    var size = parseInt(el.getAttribute('data-qr-size') || '200', 10);
+    new window.QRCode(el, {
+      text: text,
+      width: size,
+      height: size,
+      colorDark: '#1f1e1b',
+      colorLight: '#ffffff',
+      correctLevel: window.QRCode.CorrectLevel.M
     });
+    el.removeAttribute('title');
+    var img = el.querySelector('img');
+    if (img) img.setAttribute('alt', el.getAttribute('data-qr-alt') || 'Kodi QR i verifikimit');
+    return true;
+  }
+  /* Faqet që ndryshojnë kodin (p.sh. "Krijo kodin QR") e rivizatojnë me këtë. */
+  window.qtaRenderQr = renderQr;
+
+  /* Kodi QR si PNG për printim, me kufi të bardhë (skanerat e kërkojnë). */
+  window.qtaQrPng = function (el, margin) {
+    var source = el && el.querySelector('canvas');
+    if (!source) return '';
+    margin = typeof margin === 'number' ? margin : 24;
+    var out = document.createElement('canvas');
+    out.width = source.width + margin * 2;
+    out.height = source.height + margin * 2;
+    var ctx = out.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(source, margin, margin);
+    return out.toDataURL('image/png');
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-qr]').forEach(renderQr);
   });
 
   /* Dialog që hapet vetë kur faqja vjen nga një lidhje, p.sh. "Krijo grup" →

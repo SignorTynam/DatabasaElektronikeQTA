@@ -20,7 +20,7 @@ try {
   ========================== */
   if (empty($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Seanca ka mbaruar. Hyr sërish në llogari.']); exit;
   }
 
   $st = $pdo->prepare("
@@ -30,7 +30,7 @@ try {
   ");
   $st->execute([':id'=>$_SESSION['user_id']]);
   $ME = $st->fetch(PDO::FETCH_ASSOC);
-  if (!$ME) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'Akses i ndaluar.']); exit; }
+  if (!$ME) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'Nuk ke leje për këtë veprim.']); exit; }
 
   $ROLE      = strtolower((string)$ME['role_name']);
   $CAN_EDIT  = in_array($ROLE, ['administrator','editor'], true);
@@ -55,11 +55,11 @@ try {
   $csrf = (string)($data['csrf'] ?? '');
   if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'CSRF token i pavlefshëm.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
   }
 
   $action = (string)($data['action'] ?? '');
-  if ($action==='') { http_response_code(400); echo json_encode(['ok'=>false,'error'=>'Mungon action.']); exit; }
+  if ($action==='') { http_response_code(400); echo json_encode(['ok'=>false,'error'=>'Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.']); exit; }
 
   /* ===============
      Helpers
@@ -76,15 +76,15 @@ try {
       return "{$yy}-{$mm}-{$dd}";
     }
     // DD-MM-YYYY
-    if (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/',$v,$m)) {
+    if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/',$v,$m)) {
       $dd=str_pad($m[1],2,'0',STR_PAD_LEFT); $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $yy=$m[3];
       return "{$yy}-{$mm}-{$dd}";
     }
-    throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
+    throw new RuntimeException('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.1990.');
   };
 
   $fmt_display = fn(?string $iso): string =>
-    ($iso && preg_match('/^\d{4}-\d{2}-\d{2}$/',$iso)) ? date('d-m-Y', strtotime($iso)) : ($iso ?: '—');
+    ($iso && preg_match('/^\d{4}-\d{2}-\d{2}$/',$iso)) ? date('d.m.Y', strtotime($iso)) : ($iso ?: '—');
 
   $require_edit = function() use ($CAN_EDIT, $EDIT_MODE) {
     if (!$CAN_EDIT || !$EDIT_MODE) {
@@ -98,7 +98,7 @@ try {
   $ensure_person_exists = function(PDO $pdo, int $pid): void {
     $s=$pdo->prepare("SELECT id FROM persons WHERE id=:id LIMIT 1");
     $s->execute([':id'=>$pid]);
-    if (!$s->fetchColumn()) throw new RuntimeException('Personi nuk u gjet.');
+    if (!$s->fetchColumn()) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
   };
 
   $ensure_agency_can_see_person = function(PDO $pdo, int $agencyId, int $pid): void {
@@ -112,7 +112,7 @@ try {
     $st->execute([':pid'=>$pid, ':aid'=>$agencyId]);
     if (!$st->fetchColumn()) {
       http_response_code(403);
-      echo json_encode(['ok'=>false,'error'=>'S’keni akses për këtë person.']); exit;
+      echo json_encode(['ok'=>false,'error'=>'Ky person nuk është te punonjësit e agjencisë suaj.']); exit;
     }
   };
 
@@ -128,11 +128,11 @@ try {
       $x=$pdo->prepare("SELECT person_id, nr_amze FROM students WHERE id=:sid");
       $x->execute([':sid'=>$sid]);
       $row=$x->fetch(PDO::FETCH_ASSOC);
-      if (!$row) throw new RuntimeException('Studenti nuk u gjet.');
+      if (!$row) throw new RuntimeException('Ky regjistrim nuk u gjet. Rifresko faqen.');
       $pid = (int)$row['person_id'];
       $amze = (string)($row['nr_amze'] ?? '');
     }
-    if ($pid<=0) throw new RuntimeException('Person i pavlefshëm.');
+    if ($pid<=0) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
 
     // Nëse është agjenci, kontrollo qasjen
     if ($ROLE === 'agjencia') {
@@ -142,7 +142,7 @@ try {
     $q=$pdo->prepare("SELECT token, created_at FROM person_qr_tokens WHERE person_id=:p LIMIT 1");
     $q->execute([':p'=>$pid]);
     $r = $q->fetch(PDO::FETCH_ASSOC);
-    if (!$r) throw new RuntimeException('Ky person s’ka ende QR.');
+    if (!$r) throw new RuntimeException('Ky person nuk ka ende kod QR.');
     $token = (string)$r['token'];
 
     $payload = $person_qr_payload($pid, $token) . ($amze ? ('|AMZE:'.$amze) : '');
@@ -168,7 +168,7 @@ try {
       $s->execute([':sid'=>$sid]);
       $pid = (int)($s->fetchColumn() ?: 0);
     }
-    if ($pid<=0) throw new RuntimeException('ID personi e pavlefshme.');
+    if ($pid<=0) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
 
     $ensure_person_exists($pdo, $pid);
 
@@ -197,7 +197,7 @@ try {
     $field = (string)($data['field'] ?? '');
     $value = $clean($data['value'] ?? '');
 
-    if ($pid<=0) throw new RuntimeException('Person i pavlefshëm.');
+    if ($pid<=0) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
     $ensure_person_exists($pdo, $pid);
 
     switch ($field) {
@@ -215,7 +215,7 @@ try {
         if ($value!=='') {
           $du=$pdo->prepare("SELECT id FROM persons WHERE personal_number=:pn AND id<>:id LIMIT 1");
           $du->execute([':pn'=>$value, ':id'=>$pid]);
-          if ($du->fetchColumn()) throw new RuntimeException('Ky ID personal përdoret nga një person tjetër.');
+          if ($du->fetchColumn()) throw new RuntimeException('Ky numër personal i përket një personi tjetër. Kontrolloje edhe një herë.');
         }
         $st=$pdo->prepare("UPDATE persons SET personal_number=:v WHERE id=:id");
         $st->execute([':v'=>($value!==''?$value:null), ':id'=>$pid]);
@@ -232,18 +232,18 @@ try {
       case 'gender_id': {
         // mos lejo bosh, DB shpesh e ka NOT NULL
         $gid = (int)$value;
-        if ($gid<=0) throw new RuntimeException('Zgjidhni një gjini.');
+        if ($gid<=0) throw new RuntimeException('Zgjidh gjininë.');
         $g=$pdo->prepare("SELECT id,label FROM genders WHERE id=:id");
         $g->execute([':id'=>$gid]);
         $gr=$g->fetch(PDO::FETCH_ASSOC);
-        if (!$gr) throw new RuntimeException('Gjini e panjohur.');
+        if (!$gr) throw new RuntimeException('Kjo gjini nuk njihet. Rifresko faqen.');
         $st=$pdo->prepare("UPDATE persons SET gender_id=:g WHERE id=:id");
         $st->execute([':g'=>$gid, ':id'=>$pid]);
         echo json_encode(['ok'=>true,'display'=>(string)$gr['label']]); exit;
       }
 
       default:
-        throw new RuntimeException('Fushë e palejuar për personin.');
+        throw new RuntimeException('Kjo fushë nuk mund të ndryshohet këtu.');
     }
   }
 
@@ -255,18 +255,18 @@ try {
     $field = (string)($data['field'] ?? '');
     $value = $clean($data['value'] ?? '');
 
-    if ($sid<=0) throw new RuntimeException('ID studenti e pavlefshme.');
+    if ($sid<=0) throw new RuntimeException('Ky regjistrim nuk u gjet. Rifresko faqen.');
 
     $chk=$pdo->prepare("SELECT id FROM students WHERE id=:id LIMIT 1");
     $chk->execute([':id'=>$sid]);
-    if (!$chk->fetchColumn()) throw new RuntimeException('Studenti nuk u gjet.');
+    if (!$chk->fetchColumn()) throw new RuntimeException('Ky regjistrim nuk u gjet. Rifresko faqen.');
 
     switch ($field) {
       case 'nr_amze': {
-        if ($value==='') throw new RuntimeException('AMZË nuk mund të jetë bosh.');
+        if ($value==='') throw new RuntimeException('Shkruaj numrin e amzës.');
         $du=$pdo->prepare("SELECT id FROM students WHERE nr_amze=:v AND id<>:id LIMIT 1");
         $du->execute([':v'=>$value, ':id'=>$sid]);
-        if ($du->fetchColumn()) throw new RuntimeException('Kjo AMZË është në përdorim.');
+        if ($du->fetchColumn()) throw new RuntimeException('Ky numër amze i përket një regjistrimi tjetër.');
         $st=$pdo->prepare("UPDATE students SET nr_amze=:v WHERE id=:id");
         $st->execute([':v'=>$value, ':id'=>$sid]);
         echo json_encode(['ok'=>true,'display'=>$value]); exit;
@@ -282,7 +282,7 @@ try {
         $lev=$pdo->prepare("SELECT id,code,label FROM education_levels WHERE id=:id");
         $lev->execute([':id'=>$eid]);
         $L=$lev->fetch(PDO::FETCH_ASSOC);
-        if (!$L) throw new RuntimeException('Niveli i edukimit nuk u gjet.');
+        if (!$L) throw new RuntimeException('Ky nivel arsimi nuk njihet. Rifresko faqen.');
         $st=$pdo->prepare("UPDATE students SET education_level_id=:e WHERE id=:id");
         $st->execute([':e'=>$eid, ':id'=>$sid]);
         $disp = ($L['code']?($L['code'].' — '):'').($L['label'] ?? '');
@@ -290,7 +290,7 @@ try {
       }
 
       default:
-        throw new RuntimeException('Fushë e palejuar për studentin.');
+        throw new RuntimeException('Kjo fushë nuk mund të ndryshohet këtu.');
     }
   }
 
@@ -300,15 +300,15 @@ try {
   if ($action === 'add_amze_for_person') {
     $pid = (int)($data['person_id'] ?? 0);
     $nr  = $clean($data['nr_amze'] ?? '');
-    if ($pid<=0) throw new RuntimeException('Person i pavlefshëm.');
-    if ($nr==='') throw new RuntimeException('AMZË nuk mund të jetë bosh.');
+    if ($pid<=0) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
+    if ($nr==='') throw new RuntimeException('Shkruaj numrin e amzës.');
 
     $ensure_person_exists($pdo, $pid);
 
     // Unik AMZË
     $du=$pdo->prepare("SELECT id FROM students WHERE nr_amze=:nr LIMIT 1");
     $du->execute([':nr'=>$nr]);
-    if ($du->fetchColumn()) throw new RuntimeException('Kjo AMZË ekziston tashmë.');
+    if ($du->fetchColumn()) throw new RuntimeException('Ky numër amze ekziston tashmë.');
 
     // Gjej ose krijo user për këtë person me rolin "student"
     $getStudentRole = (int)$pdo->query("SELECT id FROM roles WHERE name='student' LIMIT 1")->fetchColumn();
@@ -342,19 +342,19 @@ try {
   ========================================================== */
   if ($action === 'delete_amze') {
     $sid = (int)($data['student_id'] ?? 0);
-    if ($sid<=0) throw new RuntimeException('ID studenti e pavlefshme.');
+    if ($sid<=0) throw new RuntimeException('Ky regjistrim nuk u gjet. Rifresko faqen.');
 
     $ex=$pdo->prepare("SELECT id FROM students WHERE id=:id");
     $ex->execute([':id'=>$sid]);
-    if (!$ex->fetchColumn()) throw new RuntimeException('Studenti nuk u gjet.');
+    if (!$ex->fetchColumn()) throw new RuntimeException('Ky regjistrim nuk u gjet. Rifresko faqen.');
 
     $c1=$pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE student_id=:sid");
     $c1->execute([':sid'=>$sid]);
-    if ((int)$c1->fetchColumn()>0) throw new RuntimeException('S’mund të fshihet: studenti ka pjesëmarrje në grupe.');
+    if ((int)$c1->fetchColumn()>0) throw new RuntimeException('Nuk mund të fshihet: ky regjistrim është në një grup.');
 
     $c2=$pdo->prepare("SELECT COUNT(*) FROM student_course_plans WHERE student_id=:sid");
     $c2->execute([':sid'=>$sid]);
-    if ((int)$c2->fetchColumn()>0) throw new RuntimeException('S’mund të fshihet: studenti ka plane.');
+    if ((int)$c2->fetchColumn()>0) throw new RuntimeException('Nuk mund të fshihet: ky regjistrim ka një modul të zgjedhur.');
 
     $del=$pdo->prepare("DELETE FROM students WHERE id=:id");
     $del->execute([':id'=>$sid]);
@@ -446,9 +446,9 @@ try {
   /* =========================================================
      Nëse s’u kap asnjë action
   ========================================================== */
-  echo json_encode(['ok'=>false,'error'=>'Veprim i panjohur.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.']); exit;
 
 } catch (Throwable $e) {
   http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>$e->getMessage() ?: 'Gabim i panjohur.']);
+  echo json_encode(['ok'=>false,'error'=>$e->getMessage() ?: 'Diçka nuk shkoi. Provo sërish.']);
 }

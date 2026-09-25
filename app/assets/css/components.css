@@ -1264,9 +1264,43 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
 }
 .kv dt { color: var(--text-muted); font-weight: var(--fw-semibold); }
 .kv dd { min-width: 0; margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.kv dt { align-self: center; }
+.kv dd { align-self: center; }
+/* Dy çifte për rresht në ekrane të gjera (p.sh. të dhënat personale) */
+@media (min-width: 768px) {
+  .kv.kv-2 { grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); gap: var(--sp-3) var(--sp-5); }
+}
 @media (max-width: 479.98px) {
   .kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .kv dt { margin-top: var(--sp-2); }
+}
+
+/* Vlera që ndryshohen në vend jashtë tabelave (kartela, profili) */
+.kv .editable[contenteditable="true"],
+.panel .editable[contenteditable="true"] {
+  display: inline-block;
+  min-width: 8ch;
+  max-width: 100%;
+  padding: .125rem .35rem;
+  margin: -.125rem -.35rem;
+  border-radius: var(--r-xs);
+}
+.editable[contenteditable="true"]:empty::before {
+  content: "Shto…";
+  color: var(--text-subtle);
+}
+.editable.is-saved { background-color: var(--success-soft) !important; }
+.editable.is-failed { background-color: var(--danger-soft) !important; }
+.form-control.is-saved,
+.form-select.is-saved { border-color: var(--success-border); box-shadow: 0 0 0 3px var(--success-soft); }
+.form-control.is-failed,
+.form-select.is-failed { border-color: var(--danger-border); box-shadow: 0 0 0 3px var(--danger-soft); }
+
+/* Kreu i një personi: inicialet + emri */
+.person-head { display: flex; align-items: center; gap: var(--sp-4); }
+.avatar.avatar-xl { width: 3.5rem; height: 3.5rem; font-size: var(--fs-lg); }
+@media (max-width: 479.98px) {
+  .avatar.avatar-xl { width: 2.75rem; height: 2.75rem; font-size: var(--fs-base); }
 }
 
 /* ========================================================= 22. Filtrat */
@@ -1297,7 +1331,12 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   gap: var(--sp-2);
   margin-left: auto;
 }
+/* Variant i ngjeshur: një fushë kërkimi në një rresht (p.sh. "Kërko një person tjetër") */
+.filters.filters-compact { flex-wrap: nowrap; padding: var(--sp-3); align-items: center; }
+.filters.filters-compact .filter-field.is-grow { flex: 1 1 auto; }
+.filters.filters-compact .filter-actions { flex: none; margin-left: 0; }
 @media (max-width: 575.98px) {
+  .filters.filters-compact .filter-actions { width: auto; }
   .filters .filter-actions { width: 100%; }
   .filters .filter-actions > .btn { flex: 1 1 0; }
 }

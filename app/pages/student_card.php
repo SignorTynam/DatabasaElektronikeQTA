@@ -47,17 +47,7 @@ function flash(string $k, ?string $m=null){
   if ($m===null){ if(!empty($_SESSION['flash'][$k])){ $x=$_SESSION['flash'][$k]; unset($_SESSION['flash'][$k]); return $x; } return null; }
   $_SESSION['flash'][$k]=$m;
 }
-function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-
-/* -------------------------------------------------
-   Helper për shfaqjen e datave (DD-MM-YYYY)
--------------------------------------------------- */
-function fmt_dMY(?string $iso): string {
-  if (!$iso) return '—';
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return h($iso);
-  $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
-}
+require_once __DIR__ . '/../shared/themeli.php';
 
 /* -------------------------------------------------
    Lexo agency_id (nëse jemi agjenci) për filtrime
@@ -111,7 +101,7 @@ if ($pid > 0) {
   ");
   $person->execute([':pid'=>$pid]);
   $person = $person->fetch(PDO::FETCH_ASSOC);
-  if (!$person) { flash('err','Personi nuk u gjet.'); $pid = 0; }
+  if (!$person) { flash('err','Ky person nuk u gjet. Mund të jetë fshirë — kërkoje sërish.'); $pid = 0; }
 
   if ($person) {
     // Të gjitha students (regjistrimet) të këtij personi – përdoren për statistika, nuk shfaqim listë AMZË-sh
@@ -136,7 +126,7 @@ if ($pid > 0) {
       foreach ($studentsOfPerson as $row) {
         if ((int)($row['agency_id'] ?? 0) === $MY_AGENCY_ID) { $haveAny = true; break; }
       }
-      if (!$haveAny) { $person = null; $studentsOfPerson = []; flash('err','S’keni akses për këtë person.'); }
+      if (!$haveAny) { $person = null; $studentsOfPerson = []; flash('err','Ky person nuk është te punonjësit e agjencisë suaj.'); }
     }
 
     if ($person) {
@@ -307,608 +297,525 @@ $sql = "
 }
 
 /* Navbar */
-$NAV_ACTIVE = 'students';
+$IS_AGENCY  = ($ROLE === 'agjencia');
+$NAV_ACTIVE = $IS_AGENCY ? 'agency_students' : 'student_card';
+$HELP_TOPIC = 'student_card';
 if     ($ROLE === 'administrator') require __DIR__ . '/inc/navbar.php';
 elseif ($ROLE === 'editor')       require __DIR__ . '/inc/navbar4.php';
 elseif ($ROLE === 'agjencia')     require __DIR__ . '/inc/navbar2.php';
 
-/* Toggle URL */
-$toggleUrl = 'student_card.php?' . http_build_query(array_filter([
-  'q'   => ($q!=='' ? $q : null),
-  'pid' => ($pid>0 ? $pid : null),
-  'edit'=> ($EDIT_MODE ? 'off' : 'on'),
-]));
+$fullName = $person ? qta_full_name($person['first_name'] ?? '', $person['father_name'] ?? '', $person['last_name'] ?? '') : '';
+$verifyBase = qta_absolute_url('verify.php');
+$verifyURL  = ($person && !empty($personQR['token'])) ? ($verifyBase . '?pid=' . (int)$pid . '&t=' . rawurlencode((string)$personQR['token'])) : '';
 
-$pageTitle = 'Profili i personit – QTA';
-$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+$pageTitle   = $person ? ('Kartela · ' . ($fullName !== '' ? $fullName : 'Person #' . (int)$pid)) : 'Kartela e kursantit';
+$pageScripts = $person ? ['https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'] : [];
 require __DIR__ . '/../shared/app_head.php';
+
+$listHref  = $IS_AGENCY ? 'register_agjencia.php' : 'students.php';
+$listLabel = $IS_AGENCY ? 'Punonjësit tanë' : 'Kursantët';
+$canInline = ($EDIT_MODE && $CAN_EDIT);
+$flashOk   = flash('ok');
+$flashErr  = flash('err');
 ?>
 
+<main class="app-main" id="main" tabindex="-1">
 
-<!-- Toast container -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3"></div>
-
-<main class="app-main">
-  <?php if ($CAN_EDIT) require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-  <?php if ($m = flash('ok')): ?>
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-      <i class="bi bi-check-circle me-1"></i><?= h($m) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
+  <?php if ($flashOk): ?>
+    <div class="alert alert-success" role="status"><i class="bi bi-check-circle" aria-hidden="true"></i><div><?= h($flashOk) ?></div></div>
   <?php endif; ?>
-  <?php if ($m = flash('err')): ?>
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-      <i class="bi bi-exclamation-triangle me-1"></i><?= h($m) ?>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
+  <?php if ($flashErr): ?>
+    <div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><div><?= h($flashErr) ?></div></div>
   <?php endif; ?>
 
-  <!-- HERO + SEARCH -->
-  <div class="title-block">
-      <div class="title-block-main">
-        <div class="title-block-eyebrow">Regjistri</div>
-        <h1>Kartela e kursantit</h1>
-        <p class="title-block-note">Kërko sipas emrit, numrit të amzës ose numrit personal.</p>
-      </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+<?php if (!$person): ?>
+  <!-- ================================================ Kërkimi i personit -->
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Kartela e kursantit</h1>
+      <p class="page-lead">Gjej një person dhe shiko gjithçka për të në një vend: të dhënat, modulet, provimet dhe kodin QR.</p>
     </div>
+    <div class="page-actions">
+      <?= qta_help_button() ?>
+    </div>
+  </header>
 
-    <div class="leaf leaf-pad mb-4">
-    <form class="row g-2 align-items-end" method="get" action="student_card.php">
-      <div class="col-md-9">
-        <label class="form-label fs-5 mb-2">Kërko person / student</label>
-        <div class="input-group input-group-lg">
-          <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-          <input type="text" name="q" class="form-control border-0" placeholder="Emër, AMZË, ID personale, ID studenti ose email"
-                 value="<?= h($q) ?>">
-        </div>
-        <div class="form-text">Rezultatet kthehen sipas personit (të dhënat e kombinuara të regjistrimeve).</div>
+  <form class="panel mb-4" method="get" action="student_card.php" role="search" aria-label="Kërko një person">
+    <label class="form-label" for="cardQ">Kë po kërkon?</label>
+    <div class="d-flex flex-wrap gap-2">
+      <div class="search-field is-lg flex-grow-1">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control form-control-lg" id="cardQ" type="search" name="q" value="<?= h($q) ?>"
+               placeholder="Emri, numri personal ose nr. i amzës" autocomplete="off" <?= $q === '' ? 'autofocus' : '' ?>>
       </div>
-      <div class="col-md-3 text-end">
-        <button class="btn btn-outline-secondary btn-lg me-2" type="button" onclick="window.location='student_card.php'">
-          <i class="bi bi-x-circle me-1"></i>Pastro
-        </button>
-        <button class="btn btn-primary btn-lg" type="submit"><i class="bi bi-funnel me-1"></i>Kërko</button>
-      </div>
-    </form>
-  </div>
+      <button class="btn btn-primary btn-lg" type="submit">Kërko</button>
+    </div>
+    <p class="form-text mb-0">Mund të shkruash vetëm një pjesë të emrit, p.sh. "Kola", ose numrin e amzës, p.sh. "1003".</p>
+  </form>
 
-  <?php if ($pid<=0 && $q!==''): ?>
-    <!-- Rezultatet -->
-    <div class="card mb-4">
-      <div class="card-header bg-white d-flex align-items-center justify-content-between">
-        <h5 class="mb-0 section-title"><i class="bi bi-people"></i>Rezultatet e kërkimit</h5>
-        <span class="text-muted small"><?= count($results) ?> person(a)</span>
+  <?php if ($q !== ''): ?>
+    <section class="section" aria-labelledby="resTitle">
+      <div class="section-head">
+        <h2 class="section-title" id="resTitle">Rezultatet për "<?= h($q) ?>" <span class="count"><?= count($results) ?></span></h2>
+        <a class="section-link" href="student_card.php">Pastro kërkimin</a>
       </div>
-      <div class="card-body">
-        <?php if ($results): ?>
-          <div class="table-responsive mini-table">
-            <table class="table align-middle">
-                <thead class="table-light"><tr>
-                  <th>Personi</th>
-                  <th class="nowrap">ID personale</th>
-                  <th class="nowrap">AMZË</th>
-                  <th class="text-end">Hap</th>
-                </tr></thead>
-              <tbody>
+      <?php if ($results): ?>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Personi</th>
+                <th scope="col" class="nowrap">Nr. i amzës</th>
+                <th scope="col" class="nowrap num-col">Regjistrime</th>
+                <th scope="col" class="col-actions"><span class="visually-hidden">Veprime</span></th>
+              </tr>
+            </thead>
+            <tbody>
               <?php foreach ($results as $r):
-                $full = trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??'')); ?>
+                $rName = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? ''); ?>
                 <tr>
                   <td>
-                    <div class="d-flex align-items-center">
-                      <div class="avatar me-3"><?= strtoupper(substr($r['first_name']??'?',0,1).substr($r['last_name']??'?',0,1)) ?></div>
-                      <div>
-                        <div class="fw-semibold"><?= h($full ?: '—') ?></div>
-                        <div class="text-muted small">Person ID: #<?= (int)$r['person_id'] ?></div>
-                      </div>
+                    <div class="d-flex align-items-center gap-3">
+                      <span class="avatar" aria-hidden="true"><?= h(qta_initials($rName)) ?></span>
+                      <span>
+                        <a class="person-name" href="student_card.php?pid=<?= (int)$r['person_id'] ?>"><?= h($rName !== '' ? $rName : 'Pa emër ende') ?></a>
+                        <?php if (!empty($r['personal_number'])): ?><span class="cell-sub code"><?= h((string)$r['personal_number']) ?></span><?php endif; ?>
+                      </span>
                     </div>
                   </td>
-                  <td class="nowrap"><?= h($r['personal_number'] ?? '—') ?></td>
-                  <td class="nowrap">
-                    <?= h($r['amze_list'] ?? '—') ?>
-                  </td>
-                  <td class="text-end">
-                    <a class="btn btn-sm btn-primary" href="student_card.php?pid=<?= (int)$r['person_id'] ?>">
-                      <i class="bi bi-box-arrow-in-right me-1"></i>Hap
-                    </a>
+                  <td class="nowrap"><span class="id-code"><?= h((string)($r['amze_list'] ?: '—')) ?></span></td>
+                  <td class="nowrap num-col"><?= (int)$r['registrations'] ?></td>
+                  <td class="col-actions">
+                    <a class="btn btn-secondary btn-sm" href="student_card.php?pid=<?= (int)$r['person_id'] ?>">Hap kartelën<i class="bi bi-arrow-right" aria-hidden="true"></i></a>
                   </td>
                 </tr>
               <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <?php if (count($results) >= 40): ?>
+          <p class="text-muted small mt-2 mb-0">Po shfaqen 40 të parët. Shkruaj më shumë nga emri për ta ngushtuar kërkimin.</p>
+        <?php endif; ?>
+      <?php else: ?>
+        <?= qta_empty('Nuk gjeta asnjë person', 'Kontrollo shkronjat ose provo me numrin e amzës ose numrin personal.', 'bi-person-x', '<a class="btn btn-secondary" href="' . h($listHref) . '">Shiko ' . h(mb_strtolower($listLabel)) . '</a>') ?>
+      <?php endif; ?>
+    </section>
+  <?php else: ?>
+    <?= qta_empty('Kërko një person për të hapur kartelën', 'Kartela bashkon të gjitha regjistrimet e një personi, edhe kur ka disa numra amze.', 'bi-person-vcard', '<a class="btn btn-secondary" href="' . h($listHref) . '">Ose shfleto ' . h(mb_strtolower($listLabel)) . '</a>') ?>
+  <?php endif; ?>
+
+<?php else: ?>
+  <?php
+    $amzeList = array_values(array_unique(array_filter(array_map(static fn($r) => (string)$r['nr_amze'], $studentsOfPerson))));
+    $passed = 0; $scored = 0;
+    foreach ($groups as $gr) {
+      if ($gr['final_score'] !== null && $gr['final_score'] !== '') { $scored++; if ((float)$gr['final_score'] >= 50) $passed++; }
+    }
+    $genderLabel = (string)($person['gender_label'] ?? '');
+    $agencyNames = array_values(array_unique(array_filter(array_map(static fn($r) => (string)($r['agency_name'] ?? ''), $studentsOfPerson))));
+  ?>
+  <!-- ================================================ Kartela e personit -->
+  <header class="page-head">
+    <div class="page-head-main">
+      <nav aria-label="Vendndodhja">
+        <ol class="crumbs">
+          <li><a href="<?= h($listHref) ?>"><?= h($listLabel) ?></a></li>
+          <li aria-current="page">Kartela</li>
+        </ol>
+      </nav>
+      <div class="person-head">
+        <span class="avatar avatar-xl" aria-hidden="true" data-person-initials><?= h(qta_initials($fullName)) ?></span>
+        <div class="min-w-0">
+          <h1 class="page-title" data-person-name><?= h($fullName !== '' ? $fullName : 'Pa emër ende') ?></h1>
+          <p class="page-lead mb-0">
+            <?php if ($amzeList): ?>Nr. i amzës: <span class="id-code"><?= h(implode(', ', $amzeList)) ?></span><?php endif; ?>
+            <?php if ($agencyNames): ?><span class="text-subtle" aria-hidden="true"> · </span>Punonjës i <?= h(implode(', ', $agencyNames)) ?><?php endif; ?>
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="page-actions">
+      <?php if ($CAN_EDIT) require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+    </div>
+  </header>
+
+  <form class="filters filters-compact" method="get" action="student_card.php" role="search" aria-label="Kërko një person tjetër">
+    <div class="filter-field is-grow">
+      <label class="visually-hidden" for="cardQ2">Kërko një person tjetër</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="cardQ2" type="search" name="q" placeholder="Kërko një person tjetër — emër, numër personal ose amzë" autocomplete="off">
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-secondary" type="submit">Kërko</button>
+    </div>
+  </form>
+
+  <?php if ($CAN_EDIT) require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
+
+  <div class="row g-4">
+    <div class="col-12 col-xl-8">
+
+      <div class="stats mb-4" aria-label="Përmbledhje">
+        <div class="stat">
+          <span class="stat-label">Module</span>
+          <span class="stat-value"><?= (int)($stats['courses'] ?? 0) + count($planned) ?></span>
+          <span class="stat-note"><?= count($planned) ? h(qta_plural(count($planned), 'pret grup', 'presin grup')) : 'të gjitha me grup' ?></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Të kaluara</span>
+          <span class="stat-value"><?= $passed ?><span class="text-subtle fs-6"> / <?= $scored ?></span></span>
+          <span class="stat-note"><?= $scored ? 'nga provimet me pikë' : 'ende pa pikë' ?></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Mesatarja</span>
+          <span class="stat-value"><?= ($stats['avg_score'] ?? null) !== null ? h(rtrim(rtrim(number_format((float)$stats['avg_score'], 1, ',', ''), '0'), ',')) : '—' ?></span>
+          <span class="stat-note">pikë (kalon me 50)</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Orë mësimi</span>
+          <span class="stat-value"><?= number_format((int)($stats['hours'] ?? 0), 0, ',', '.') ?></span>
+          <span class="stat-note">në modulet me grup</span>
+        </div>
+      </div>
+
+      <!-- Modulet -->
+      <section class="section" aria-labelledby="modTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="modTitle">Modulet dhe provimet</h2>
+        </div>
+        <?php if ($groups || $planned): ?>
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-wide">Moduli</th>
+                  <th scope="col" class="nowrap">Nr. i amzës</th>
+                  <th scope="col" class="nowrap">Datat e grupit</th>
+                  <th scope="col" class="nowrap">Provimi</th>
+                  <th scope="col">Gjendja</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($groups as $gr): ?>
+                  <tr>
+                    <td class="col-wide">
+                      <span class="person-name"><?= h((string)$gr['name']) ?></span>
+                      <span class="cell-sub">
+                        <?php if (!$IS_AGENCY): ?>
+                          <a href="groups.php?q=<?= rawurlencode((string)$gr['nr_amze']) ?>">Grupi #<?= (int)$gr['group_id'] ?></a>
+                        <?php else: ?>Grupi #<?= (int)$gr['group_id'] ?><?php endif; ?>
+                        <?php if (!empty($gr['code'])): ?> · <span class="code"><?= h((string)$gr['code']) ?></span><?php endif; ?>
+                      </span>
+                    </td>
+                    <td class="nowrap"><span class="id-code"><?= h((string)$gr['nr_amze']) ?></span></td>
+                    <td class="nowrap"><?= h(qta_date($gr['start_date'])) ?> – <?= h(qta_date($gr['end_date'])) ?></td>
+                    <td class="nowrap"><?= h(qta_date($gr['exam_date'] ?? null)) ?></td>
+                    <td><?= qta_enrollment_status($gr) ?></td>
+                  </tr>
+                <?php endforeach; ?>
+                <?php foreach ($planned as $pl): ?>
+                  <tr>
+                    <td class="col-wide">
+                      <span class="person-name"><?= h((string)$pl['name']) ?></span>
+                      <span class="cell-sub">Moduli është zgjedhur<?php if (!empty($pl['code'])): ?> · <span class="code"><?= h((string)$pl['code']) ?></span><?php endif; ?></span>
+                    </td>
+                    <td class="nowrap"><span class="id-code"><?= h((string)$pl['nr_amze']) ?></span></td>
+                    <td class="nowrap text-muted">—</td>
+                    <td class="nowrap text-muted">—</td>
+                    <td>
+                      <?= qta_status('Pret grup', 'warning', 'bi-hourglass-split') ?>
+                      <?php if ($CAN_EDIT): ?>
+                        <a class="small ms-1" href="students_without_groups.php?q=<?= rawurlencode((string)$pl['nr_amze']) ?>">Cakto në grup</a>
+                      <?php endif; ?>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
               </tbody>
             </table>
           </div>
         <?php else: ?>
-          <div class="text-muted">Asgjë nuk u gjet me këtë kriter.</div>
+          <?= qta_empty('Ende pa module', 'Ky person nuk ka asnjë modul të zgjedhur dhe nuk është në asnjë grup.', 'bi-journal', $CAN_EDIT ? '<a class="btn btn-secondary" href="students_without_groups.php">Te kursantët pa grup</a>' : '', 'is-compact') ?>
         <?php endif; ?>
-      </div>
+      </section>
+
+      <!-- Të dhënat personale -->
+      <section class="section" aria-labelledby="pdTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="pdTitle">Të dhënat personale</h2>
+          <span class="section-meta"><?= $canInline ? 'Kliko një vlerë për ta ndryshuar. Ruhet kur del nga fusha.' : '' ?></span>
+        </div>
+        <div class="panel">
+          <dl class="kv kv-2">
+            <?php foreach ([
+              'first_name'  => 'Emri',
+              'father_name' => 'Atësia',
+              'last_name'   => 'Mbiemri',
+            ] as $field => $label): ?>
+              <dt><?= h($label) ?></dt>
+              <dd>
+                <?php if ($canInline): ?>
+                  <span class="editable" contenteditable="true" role="textbox" aria-label="<?= h($label) ?>"
+                        data-type="person" data-id="<?= (int)$pid ?>" data-field="<?= h($field) ?>"><?= h((string)($person[$field] ?? '')) ?></span>
+                <?php else: ?>
+                  <?= h((string)(($person[$field] ?? '') ?: '—')) ?>
+                <?php endif; ?>
+              </dd>
+            <?php endforeach; ?>
+
+            <dt>Numri personal</dt>
+            <dd class="code">
+              <?php if ($canInline): ?>
+                <span class="editable" contenteditable="true" role="textbox" aria-label="Numri personal"
+                      data-type="person" data-id="<?= (int)$pid ?>" data-field="personal_number"><?= h((string)($person['personal_number'] ?? '')) ?></span>
+              <?php else: ?>
+                <?= h((string)(($person['personal_number'] ?? '') ?: '—')) ?>
+              <?php endif; ?>
+            </dd>
+
+            <dt><label for="pdBirth" class="m-0">Datëlindja</label></dt>
+            <dd>
+              <?php if ($canInline): ?>
+                <input id="pdBirth" type="text" class="form-control form-control-sm dmy-input w-auto" inputmode="numeric" autocomplete="off"
+                       placeholder="dd.mm.vvvv" data-type="person" data-id="<?= (int)$pid ?>" data-field="birth_date"
+                       value="<?= h(qta_date($person['birth_date'] ?? null, '')) ?>">
+              <?php else: ?>
+                <?= h(qta_date($person['birth_date'] ?? null)) ?>
+              <?php endif; ?>
+            </dd>
+
+            <dt>Vendlindja</dt>
+            <dd>
+              <?php if ($canInline): ?>
+                <span class="editable" contenteditable="true" role="textbox" aria-label="Vendlindja"
+                      data-type="person" data-id="<?= (int)$pid ?>" data-field="birth_place"><?= h((string)($person['birth_place'] ?? '')) ?></span>
+              <?php else: ?>
+                <?= h((string)(($person['birth_place'] ?? '') ?: '—')) ?>
+              <?php endif; ?>
+            </dd>
+
+            <dt><label for="pdGender" class="m-0">Gjinia</label></dt>
+            <dd>
+              <?php if ($canInline): ?>
+                <select id="pdGender" class="form-select form-select-sm w-auto inline-select" data-type="person" data-id="<?= (int)$pid ?>" data-field="gender_id">
+                  <?php foreach ($genders as $gd): ?>
+                    <option value="<?= (int)$gd['id'] ?>" <?= ((int)($person['gender_id'] ?? 0) === (int)$gd['id']) ? 'selected' : '' ?>><?= h((string)$gd['label']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              <?php else: ?>
+                <?= h($genderLabel !== '' ? $genderLabel : '—') ?>
+              <?php endif; ?>
+            </dd>
+
+            <dt>Telefoni</dt>
+            <dd>
+              <?php if ($canInline): ?>
+                <span class="editable" contenteditable="true" role="textbox" aria-label="Telefoni" inputmode="tel"
+                      data-type="person" data-id="<?= (int)$pid ?>" data-field="phone"><?= h((string)($person['phone'] ?? '')) ?></span>
+              <?php elseif (!empty($person['phone'])): ?>
+                <a href="tel:<?= h(preg_replace('/[^\d+]/', '', (string)$person['phone'])) ?>"><?= h((string)$person['phone']) ?></a>
+              <?php else: ?>
+                —
+              <?php endif; ?>
+            </dd>
+          </dl>
+        </div>
+      </section>
     </div>
-  <?php endif; ?>
 
-  <?php if ($person): ?>
-    <?php
-      $full = trim(($person['first_name']??'').' '.(($person['father_name']??'')?($person['father_name'].' '):'').($person['last_name']??''));
-      $canInline = ($EDIT_MODE && $CAN_EDIT);
-      $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') ? 'https://' : 'http://';
-      $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-      $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '/student_card.php';
-      $base = rtrim(dirname($requestPath), '/\\');
-      $verifyURL = $personQR['token'] ? ($scheme.$host.$base.'/verify.php?pid='.$pid.'&t='.$personQR['token']) : null;
+    <aside class="col-12 col-xl-4" aria-label="Kodi QR dhe provimet">
+      <!-- Kodi QR -->
+      <section class="panel mb-4" aria-labelledby="qrTitle">
+        <h2 class="section-title mb-1" id="qrTitle">Kodi QR i verifikimit</h2>
+        <p class="text-muted small">Kushdo që e skanon me kamerën e telefonit sheh modulet që ky person ka kaluar.</p>
 
-      // Lista e të gjitha AMZË-ve të personit (pa dublikatë)
-      $amzeListForPerson = [];
-      if (!empty($studentsOfPerson)) {
-        $amzeListForPerson = array_values(array_unique(array_filter(array_column($studentsOfPerson, 'nr_amze'))));
-      }
-    ?>
-
-    <!-- Header i personit -->
-    <section class="card p-3 p-md-4 mb-4">
-      <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
-        <div class="d-flex align-items-center gap-3">
-          <div class="avatar"><?= strtoupper(substr($person['first_name']??'?',0,1).substr($person['last_name']??'?',0,1)) ?></div>
-          <div>
-            <div class="h3 mb-1">
-              <span class="editable"
-                    contenteditable="<?= $canInline ? 'true' : 'false' ?>"
-                    data-type="person" data-id="<?= (int)$pid ?>" data-field="first_name"
-                    title="Emri"><?= h($person['first_name'] ?? '—') ?></span>
-              <span class="editable"
-                    contenteditable="<?= $canInline ? 'true' : 'false' ?>"
-                    data-type="person" data-id="<?= (int)$pid ?>" data-field="father_name"
-                    title="Atësia"><?= h($person['father_name'] ?? '') ?></span>
-              <span class="editable"
-                    contenteditable="<?= $canInline ? 'true' : 'false' ?>"
-                    data-type="person" data-id="<?= (int)$pid ?>" data-field="last_name"
-                    title="Mbiemri"><?= h($person['last_name'] ?? '—') ?></span>
-            </div>
-            <div class="text-muted small">Person ID: <strong>#<?= (int)$pid ?></strong></div>
-
-            <?php if (!empty($amzeListForPerson)): ?>
-              <div class="text-muted small mt-1">
-                AMZË:
-                <?php foreach ($amzeListForPerson as $amze): ?>
-                  <span class="badge bg-light text-secondary border me-1"><?= h($amze) ?></span>
-                <?php endforeach; ?>
-              </div>
-            <?php endif; ?>
+        <div data-qr-panel <?= $verifyURL ? '' : 'hidden' ?>>
+          <div class="text-center">
+            <div class="qr-frame" id="personQr" data-qr="<?= h($verifyURL) ?>" data-qr-size="176"
+                 data-qr-alt="Kodi QR i verifikimit për <?= h($fullName) ?>"></div>
+          </div>
+          <div class="d-grid gap-2 mt-3">
+            <a class="btn btn-secondary" id="qrOpen" href="<?= h($verifyURL ?: '#') ?>" target="_blank" rel="noopener">
+              <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>Hap faqen e verifikimit
+            </a>
+            <button class="btn btn-secondary" type="button" id="qrDownload">
+              <i class="bi bi-download" aria-hidden="true"></i>Shkarko kodin QR (PNG)
+            </button>
+            <button class="btn btn-ghost" type="button" id="qrCopy" data-copy="<?= h($verifyURL) ?>" data-copy-message="Lidhja e verifikimit u kopjua.">
+              <i class="bi bi-link-45deg" aria-hidden="true"></i>Kopjo lidhjen
+            </button>
           </div>
         </div>
 
-        <!-- QR per-person -->
-        <div class="d-flex align-items-center gap-2">
-          <?php if (!empty($personQR['token'])): ?>
-            <span class="badge text-bg-success"><i class="bi bi-qr-code me-1"></i>QR ekziston</span>
-            <?php if ($verifyURL): ?>
-              <a class="btn btn-outline-primary btn-sm" target="_blank" href="<?= h($verifyURL) ?>">
-                <i class="bi bi-box-arrow-up-right me-1"></i>Verifiko
-              </a>
-            <?php endif; ?>
-            <button class="btn btn-soft btn-sm" id="btnDlQrPerson">
-              <i class="bi bi-download me-1"></i>Shkarko PNG
+        <div data-qr-missing <?= $verifyURL ? 'hidden' : '' ?>>
+          <div class="notice is-sunken mb-3">
+            <i class="bi bi-qr-code" aria-hidden="true"></i>
+            <span>Ky person nuk ka ende kod QR.</span>
+          </div>
+          <?php if ($canInline): ?>
+            <button class="btn btn-primary w-100" type="button" id="qrGenerate">
+              <i class="bi bi-qr-code" aria-hidden="true"></i>Krijo kodin QR
             </button>
+          <?php elseif ($CAN_EDIT): ?>
+            <p class="text-muted small mb-0">Për ta krijuar, shtyp "Lejo ndryshimet" lart.</p>
           <?php else: ?>
-            <?php if ($CAN_EDIT): ?>
-              <button class="btn btn-primary btn-sm" id="btnGenQrPerson">
-                <i class="bi bi-magic me-1"></i>Gjenero QR
-              </button>
-            <?php else: ?>
-              <span class="badge text-bg-secondary">QR —</span>
-            <?php endif; ?>
+            <p class="text-muted small mb-0">Kodin e krijon QTA. Na kontaktoni nëse ju duhet.</p>
           <?php endif; ?>
         </div>
-      </div>
+      </section>
 
-      <hr class="my-3">
-
-      <!-- Info të shpejta -->
-      <div class="row g-3">
-        <div class="col-12 col-md-4">
-          <div class="soft p-3 rounded-3 h-100">
-            <div class="text-muted small mb-1">ID personale</div>
-            <div class="fw-semibold editable"
-                 contenteditable="<?= $canInline ? 'true':'false' ?>"
-                 data-type="person" data-id="<?= (int)$pid ?>" data-field="personal_number"
-                 title="ID personale"><?= h($person['personal_number'] ?? '—') ?></div>
-          </div>
+      <!-- Provimet e ardhshme -->
+      <section class="section" aria-labelledby="upTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="upTitle">Provimet e ardhshme</h2>
         </div>
-        <div class="col-6 col-md-4">
-          <div class="soft p-3 rounded-3 h-100">
-            <div class="text-muted small mb-1">Datëlindja</div>
-            <input type="text"
-                   class="form-control form-control-sm dmy-input"
-                   data-type="person" data-id="<?= (int)$pid ?>" data-field="birth_date"
-                   placeholder="DD-MM-YYYY" pattern="^\d{2}-\d{2}-\d{4}$"
-                   value="<?= h(fmt_dMY($person['birth_date'] ?? null)) ?>"
-                   <?= $canInline ? '' : 'disabled' ?>>
-          </div>
-        </div>
-        <div class="col-6 col-md-4">
-          <div class="soft p-3 rounded-3 h-100">
-            <div class="text-muted small mb-1">Gjinia</div>
-            <select class="form-select form-select-sm inline-select"
-                    data-type="person" data-id="<?= (int)$pid ?>" data-field="gender_id"
-                    <?= $canInline ? '' : 'disabled' ?>>
-              <option value="">— Zgjidh —</option>
-              <?php foreach ($genders as $g): ?>
-                <option value="<?= (int)$g['id'] ?>" <?= ((int)($person['gender_id'] ?? 0)===(int)$g['id'])?'selected':'' ?>>
-                  <?= h($g['label']) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <div class="soft p-3 rounded-3 h-100">
-            <div class="text-muted small mb-1">Vendlindja</div>
-            <div class="fw-semibold editable"
-                 contenteditable="<?= $canInline ? 'true':'false' ?>"
-                 data-type="person" data-id="<?= (int)$pid ?>" data-field="birth_place"
-                 title="Vendlindja"><?= h($person['birth_place'] ?? '—') ?></div>
-          </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <div class="soft p-3 rounded-3 h-100">
-            <div class="text-muted small mb-1">Telefoni</div>
-            <div class="fw-semibold editable"
-                 contenteditable="<?= $canInline ? 'true':'false' ?>"
-                 data-type="person" data-id="<?= (int)$pid ?>" data-field="phone"
-                 title="Telefon"><?= h($person['phone'] ?? '—') ?></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- QR i personit – preview -->
-      <hr class="my-3">
-      <div class="row g-3">
-        <div class="col-12 col-md-4">
-          <div class="soft p-3 rounded-3 h-100 text-center">
-            <div class="text-muted small mb-2">QR i personit</div>
-            <div id="qrBox" class="d-flex justify-content-center"></div>
-            <div class="mt-2">
-              <button class="btn btn-sm btn-soft me-1" id="btnPreviewQr"><i class="bi bi-eye me-1"></i>Shfaq</button>
-              <button class="btn btn-sm btn-outline-primary" id="btnDlQrPerson2"><i class="bi bi-download me-1"></i>Shkarko</button>
-            </div>
-            <div class="small text-muted mt-2">
-              Payload: <code id="qrPayloadText">—</code>
-              <button class="btn btn-link btn-sm p-0 ms-1" id="btnCopyPayload" title="Kopjo"><i class="bi bi-clipboard"></i></button>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-md-8">
-          <div class="soft p-3 rounded-3 h-100">
-            <div class="d-flex align-items-center justify-content-between">
-              <div class="text-muted small">Përmbledhje</div>
-              <?php if (($stats['pass_rate']??null)!==null): ?>
-                <span class="pill">Kalueshmëri: <?= (float)$stats['pass_rate'] ?>%</span>
-              <?php endif; ?>
-            </div>
-            <div class="row g-3 mt-1">
-              <div class="col-6 col-lg-3">
-                <div class="stat">
-                  <i class="bi bi-journal-text text-primary"></i>
-                  <div><div class="label">Modulet</div><div class="value"><?= number_format($stats['courses'] ?? 0) ?></div></div>
-                </div>
-              </div>
-              <div class="col-6 col-lg-3">
-                <div class="stat">
-                  <i class="bi bi-collection text-success"></i>
-                  <div><div class="label">Grupe</div><div class="value"><?= number_format($stats['groups'] ?? 0) ?></div></div>
-                </div>
-              </div>
-              <div class="col-6 col-lg-3">
-                <div class="stat">
-                  <i class="bi bi-bar-chart-line text-danger"></i>
-                  <div><div class="label">Mes. Pikë</div><div class="value"><?= $stats['avg_score']!==null ? $stats['avg_score'] : '—' ?></div></div>
-                </div>
-              </div>
-              <div class="col-6 col-lg-3">
-                <div class="stat">
-                  <i class="bi bi-clock-history text-primary"></i>
-                  <div><div class="label">Orë studimi</div><div class="value"><?= number_format($stats['hours'] ?? 0) ?></div></div>
-                </div>
-              </div>
-            </div>
-            <?php if (($stats['best']??null)!==null || ($stats['last']??null)!==null): ?>
-              <div class="text-muted small mt-2">
-                <span class="me-3">Më e mira: <strong><?= h((string)$stats['best']) ?></strong></span>
-                <span>E fundit: <strong><?= h((string)$stats['last']) ?></strong></span>
-              </div>
-            <?php endif; ?>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Grafik + Provime -->
-    <section class="row g-3 mb-4">
-      <div class="col-12 col-lg-7">
-        <div class="card h-100">
-          <div class="card-header bg-white section-title"><i class="bi bi-graph-up-arrow"></i><span>Ecuria e pikëve</span></div>
-          <div class="card-body">
-              <?php
-              $sMax = 0;
-              foreach ($series as $pt) { if ($pt['s'] !== null) { $sMax = max($sMax, (float)$pt['s']); } }
-              $sPts = array_values(array_filter($series, fn($r) => $r['s'] !== null));
-              ?>
-              <?php if ($sPts): ?>
-                <div class="bars" style="height:150px">
-                  <?php foreach ($sPts as $pt):
-                    $v = (float)$pt['s'];
-                    $pct = $sMax > 0 ? max(3, round($v / $sMax * 100)) : 3; ?>
-                    <div class="bar<?= $v == $sMax ? ' is-peak' : '' ?>" title="<?= h((string)$pt['d']) ?>: <?= h((string)$v) ?> pikë">
-                      <span class="bar-value"><?= h((string)round($v)) ?></span>
-                      <span class="bar-fill" style="height:<?= $pct ?>%"></span>
-                    </div>
-                  <?php endforeach; ?>
-                </div>
-                <div class="bars-axis">
-                  <?php foreach ($sPts as $pt): ?>
-                    <span><?= h(date('d.m', strtotime((string)$pt['d']))) ?></span>
-                  <?php endforeach; ?>
-                </div>
-              <?php else: ?>
-                <div class="blank" style="padding:2rem 1rem">
-                  <span class="blank-note">Ende asnjë provim i vlerësuar.</span>
-                </div>
-              <?php endif; ?>
-            </div>
-        </div>
-      </div>
-      <div class="col-12 col-lg-5">
-        <div class="card h-100">
-          <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h6 class="mb-0 section-title"><i class="bi bi-calendar2-event"></i>Provimet e afërta</h6>
-            <span class="text-muted small">30 ditët në vijim</span>
-          </div>
-          <div class="card-body">
-            <?php if ($upcoming): ?>
-              <ul class="list-group list-group-flush">
-                <?php foreach ($upcoming as $e): ?>
-                  <li class="list-group-item d-flex justify-content-between align-items-start">
-                    <div>
-                      <div class="fw-semibold"><?= h(($e['code'] ?? '').' · '.($e['name'] ?? '')) ?></div>
-                      <div class="small text-muted">Data: <?= h(fmt_dMY($e['exam_date'] ?? null)) ?></div>
-                    </div>
-                    <span class="badge rounded-pill text-bg-primary">Test</span>
-                  </li>
-                <?php endforeach; ?>
-              </ul>
-            <?php else: ?>
-              <div class="text-muted">Asnjë provim i afërt.</div>
-            <?php endif; ?>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Aktiviteti mësimor (pa kolonë AMZË, pa veprime) -->
-    <section class="card mb-4">
-      <div class="card-header bg-white section-title">
-        <i class="bi bi-collection"></i><span>Modulet & grupet</span>
-      </div>
-      <div class="card-body">
-        <?php if (empty($groups) && !empty($planned)): ?>
-          <div class="alert alert-info py-2 mb-3">
-            Ky person ende <strong>nuk ka marrë pjesë në asnjë grup</strong>, por ka module të planifikuara më poshtë.
-          </div>
+        <?php if ($upcoming): ?>
+          <ul class="agenda">
+            <?php foreach ($upcoming as $e):
+              $ts = strtotime((string)$e['exam_date']); ?>
+              <li class="agenda-item">
+                <span class="agenda-date"><b><?= date('d', $ts) ?></b><span><?= h(qta_month_short((int)date('n', $ts))) ?></span></span>
+                <span class="agenda-main">
+                  <span class="agenda-title"><?= h((string)$e['name']) ?></span>
+                  <span class="agenda-meta"><?= h(ucfirst(qta_weekday((int)date('N', $ts)))) ?>, <?= h(qta_date((string)$e['exam_date'])) ?></span>
+                </span>
+                <?= qta_status(ucfirst(qta_when_label((string)$e['exam_date'])), 'info') ?>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        <?php else: ?>
+          <?= qta_empty('Asnjë provim i caktuar', 'Datat e provimit vendosen te "Grupet" ose "Regjistri i plotë".', 'bi-calendar', '', 'is-compact') ?>
         <?php endif; ?>
-
-        <div class="table-responsive mini-table">
-          <table class="table align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>#Grupi</th>
-                  <th class="nowrap">AMZË</th>
-                  <th>Moduli</th>
-                  <th class="nowrap">Datat</th>
-                  <th class="nowrap">Testi</th>
-                  <th class="nowrap">Pikët</th>
-                </tr>
-              </thead>
-            <tbody>
-            <?php $hasRows=false; ?>
-
-            <?php if (!empty($planned)): $hasRows=true; foreach($planned as $pl): ?>
-              <tr>
-                <td class="text-muted">—</td>
-                <td class="nowrap"><?= h($pl['nr_amze'] ?? '—') ?></td>
-                <td>
-                  <?= h(($pl['code'] ?? '').' · '.($pl['name'] ?? '')) ?>
-                  <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Planuar</span>
-                </td>
-                <td class="nowrap">—</td>
-                <td class="nowrap">—</td>
-                <td class="nowrap">—</td>
-              </tr>
-            <?php endforeach; endif; ?>
-
-            <?php if (!empty($groups)): $hasRows=true; foreach($groups as $g): ?>
-              <tr>
-                <td>#<?= (int)$g['group_id'] ?></td>
-                <td class="nowrap"><?= h($g['nr_amze'] ?? '—') ?></td>
-                <td><?= h(($g['code'] ?? '').' · '.($g['name'] ?? '')) ?></td>
-                <td class="nowrap"><?= h(fmt_dMY($g['start_date'])) ?> – <?= h(fmt_dMY($g['end_date'])) ?></td>
-                <td class="nowrap"><?= h(fmt_dMY($g['exam_date'] ?? null)) ?></td>
-                <td class="nowrap"><?= $g['final_score']!==null ? h((string)$g['final_score']) : '—' ?></td>
-              </tr>
-            <?php endforeach; endif; ?>
-
-            <?php if (!$hasRows): ?>
-              <tr><td colspan="6" class="text-center text-muted">Nuk ka ende të dhëna për module/grupe.</td></tr>
-            <?php endif; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  <?php endif; ?>
-
-  <div class="text-center text-muted small my-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
+      </section>
+    </aside>
   </div>
+<?php endif; ?>
 </main>
 
-<!-- Floating action buttons -->
-<div class="fab-stack" role="group" aria-label="Veprime shpejta">
-  <?php if ($CAN_EDIT): ?>
-<?php endif; ?>
-</div>
-
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
+<?php if ($person): ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const INLINE = 'student_card_inline.php';
 const CAN_EDIT = <?= $CAN_EDIT ? 'true' : 'false' ?>;
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 const PERSON_ID = <?= (int)$pid ?>;
+const VERIFY_BASE = <?= json_encode($verifyBase) ?>;
 
-// Token & payload i personit (nga PHP)
-let PERSON_QR_TOKEN = <?= json_encode($personQR['token'] ?? '') ?>;
-let PERSON_QR_PAYLOAD = PERSON_QR_TOKEN ? ('QTA|PID:' + PERSON_ID + '|TOKEN:' + PERSON_QR_TOKEN) : '';
+function clean(s){ const v = (s||'').replace(/\s+/g,' ').trim(); return v === '—' ? '' : v; }
+function notify(type, text, opts={}){ return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null; }
 
-function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-
-async function postJSON(url, payload){
-  const r = await fetch(url, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
+async function postJSON(payload){
+  const r = await fetch(INLINE, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Accept':'application/json'},
+    body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
   });
   const data = await r.json().catch(()=> ({}));
-  if (!r.ok || data.ok===false) throw new Error(data.error || ('HTTP '+r.status));
+  if (!r.ok || data.ok === false) throw new Error(data.error || 'Ndryshimi nuk u ruajt. Provo sërish.');
   return data;
 }
 
-/* Toast helper */
-function notify(type, text, opts={}){
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+function flash(el, ok){
+  el.classList.remove('is-saved','is-failed');
+  el.classList.add(ok ? 'is-saved' : 'is-failed');
+  setTimeout(()=> el.classList.remove('is-saved','is-failed'), 1200);
 }
 
-/* QR helpers */
-function renderQrInto(el, text, size=220){
-  el.innerHTML = '';
-  if (!text){ el.innerHTML = '<div class="text-muted small">S’ka QR ende.</div>'; return; }
-  new QRCode(el, { text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M });
+/* Emri në krye rifreskohet kur ndryshon emri ose mbiemri */
+function refreshHeading(){
+  const val = f => clean(document.querySelector(`.editable[data-field="${f}"]`)?.textContent);
+  const full = [val('first_name'), val('father_name'), val('last_name')].filter(Boolean).join(' ');
+  const h1 = document.querySelector('[data-person-name]');
+  if (h1 && full) h1.textContent = full;
+  const ini = document.querySelector('[data-person-initials]');
+  if (ini && full) { const p = full.split(' ').filter(Boolean); ini.textContent = ((p[0]||'')[0] + (p.length > 1 ? p[p.length-1][0] : '')).toUpperCase(); }
 }
 
-function renderQrToDataURL(text, size=240){
-  return new Promise((resolve, reject)=>{
-    try{
-      const holder = document.createElement('div');
-      holder.style.position='absolute';
-      holder.style.left='-10000px';
-      holder.style.top='-10000px';
-      document.body.appendChild(holder);
-
-      new QRCode(holder, { text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M });
-
-      setTimeout(()=>{
-        const img = holder.querySelector('img');
-        const canvas = holder.querySelector('canvas');
-        let url = '';
-        if (img && img.complete) url = img.src;
-        else if (canvas) url = canvas.toDataURL('image/png');
-        document.body.removeChild(holder);
-        if (url) resolve(url); else reject(new Error('S’u renderua QR.'));
-      }, 0);
-    }catch(e){ reject(e); }
-  });
-}
-
-function refreshQrUI(){
-  const box = document.getElementById('qrBox');
-  const payloadEl = document.getElementById('qrPayloadText');
-  renderQrInto(box, PERSON_QR_PAYLOAD);
-  if (payloadEl) payloadEl.textContent = PERSON_QR_PAYLOAD || '—';
-}
-
-/* Inline edit: blur or Enter (span.editable) */
+/* Tekst i ndryshueshëm: ruhet kur del nga fusha ose shtyp Enter; Esc e kthen */
 document.querySelectorAll('.editable[contenteditable="true"]').forEach(el=>{
-  el.addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); el.blur(); } });
+  el.addEventListener('focus', ()=>{ el.dataset.prev = clean(el.textContent); });
+  el.addEventListener('keydown', e=>{
+    if (e.key === 'Enter'){ e.preventDefault(); el.blur(); }
+    if (e.key === 'Escape'){ e.preventDefault(); el.textContent = el.dataset.prev || ''; el.blur(); }
+  });
+  el.addEventListener('paste', e=>{
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain') || '';
+    document.execCommand('insertText', false, text.replace(/\s+/g,' ').trim());
+  });
   el.addEventListener('blur', async ()=>{
     if (!CAN_EDIT || !EDIT_MODE) return;
-    const type  = el.dataset.type;
-    const id    = parseInt(el.dataset.id||'0',10);
-    const field = el.dataset.field;
-    const value = clean(el.innerText);
-    if (!type || !id || !field) return;
-    el.classList.remove('cell-ok','cell-err');
+    const value = clean(el.textContent);
+    el.textContent = value;
+    if (value === (el.dataset.prev || '')) return;
     try{
-      if (type==='person'){
-        const res = await postJSON(INLINE, {csrf:CSRF, action:'set_person_field', person_id:id, field, value});
-        el.innerText = res.display ?? value;
-      }
-      el.classList.add('cell-ok');
-      notify('success','U ruajt.');
-    } catch(e){
-      el.classList.add('cell-err');
+      const res = await postJSON({action:'set_person_field', person_id: PERSON_ID, field: el.dataset.field, value});
+      el.textContent = clean(res.display ?? value);
+      el.dataset.prev = clean(el.textContent);
+      flash(el, true);
+      refreshHeading();
+      notify('success', 'Ndryshimi u ruajt.');
+    }catch(e){
+      el.textContent = el.dataset.prev || '';
+      flash(el, false);
       notify('danger', e.message);
     }
   });
 });
 
-/* Selects (gender_id) */
-document.querySelectorAll('.inline-select').forEach(sel=>{
+/* Gjinia */
+document.querySelectorAll('select.inline-select[data-field]').forEach(sel=>{
+  sel.dataset.prev = sel.value;
   sel.addEventListener('change', async ()=>{
     if (!CAN_EDIT || !EDIT_MODE) return;
-    const type  = sel.dataset.type;   // person
-    const id    = parseInt(sel.dataset.id||'0',10);
-    const field = sel.dataset.field;  // gender_id
-    const value = sel.value;
     try{
-      await postJSON(INLINE, {csrf:CSRF, action:'set_person_field', person_id:id, field, value});
-      sel.classList.remove('is-invalid'); sel.classList.add('is-valid');
-      setTimeout(()=> sel.classList.remove('is-valid'), 900);
-      notify('success','U ruajt.');
+      await postJSON({action:'set_person_field', person_id: PERSON_ID, field: sel.dataset.field, value: sel.value});
+      sel.dataset.prev = sel.value;
+      flash(sel, true);
+      notify('success', 'Ndryshimi u ruajt.');
     }catch(e){
-      sel.classList.add('is-invalid');
+      sel.value = sel.dataset.prev;
+      flash(sel, false);
       notify('danger', e.message);
     }
   });
 });
 
-/* Datëlindja input (DD-MM-YYYY) */
-function isDmy(s){ return /^\d{2}-\d{2}-\d{4}$/.test((s||'').trim()); }
+/* Datëlindja: dd.mm.vvvv (pranohen edhe viza ose pjerrëta) */
 document.querySelectorAll('.dmy-input').forEach(inp=>{
-  inp.addEventListener('keydown', (e)=>{ if (e.key==='Enter'){ e.preventDefault(); inp.blur(); } });
+  inp.dataset.prev = inp.value.trim();
+  inp.addEventListener('input', ()=>{
+    const d = inp.value.replace(/\D/g,'').slice(0,8);
+    if (/^\d*$/.test(inp.value.replace(/[.\-\/]/g,''))) {
+      let out = d.slice(0,2);
+      if (d.length > 2) out += '.' + d.slice(2,4);
+      if (d.length > 4) out += '.' + d.slice(4,8);
+      inp.value = out;
+    }
+  });
+  inp.addEventListener('keydown', e=>{
+    if (e.key === 'Enter'){ e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape'){ e.preventDefault(); inp.value = inp.dataset.prev; inp.blur(); }
+  });
   inp.addEventListener('blur', async ()=>{
     if (!CAN_EDIT || !EDIT_MODE) return;
-    const type  = inp.dataset.type;       // person
-    const id    = parseInt(inp.dataset.id||'0',10);
-    const field = inp.dataset.field;      // birth_date
     const value = inp.value.trim();
-    if (value!=='' && !isDmy(value)){
-      inp.classList.add('is-invalid'); notify('danger','Formati i datës duhet të jetë DD-MM-YYYY.'); return;
+    if (value === inp.dataset.prev) return;
+    if (value !== '' && !/^\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{4}$/.test(value)){
+      inp.classList.add('is-invalid');
+      notify('danger', 'Shkruaje datëlindjen si dd.mm.vvvv, p.sh. 05.03.1990.');
+      return;
     }
     try{
-      await postJSON(INLINE, {csrf:CSRF, action:'set_person_field', person_id:id, field, value});
-      inp.classList.remove('is-invalid'); inp.classList.add('is-valid');
-      setTimeout(()=> inp.classList.remove('is-valid'), 900);
-      notify('success','U ruajt.');
+      const res = await postJSON({action:'set_person_field', person_id: PERSON_ID, field:'birth_date', value});
+      inp.value = (res.display && res.display !== '—') ? res.display : '';
+      inp.dataset.prev = inp.value;
+      inp.classList.remove('is-invalid');
+      flash(inp, true);
+      notify('success', 'Ndryshimi u ruajt.');
     }catch(e){
       inp.classList.add('is-invalid');
       notify('danger', e.message);
@@ -916,59 +823,42 @@ document.querySelectorAll('.dmy-input').forEach(inp=>{
   });
 });
 
-/* Gjenero QR për PERSON */
-const btnGenQrPerson = document.getElementById('btnGenQrPerson');
-if (btnGenQrPerson){
-  btnGenQrPerson.addEventListener('click', async ()=>{
-    try{
-      const res = await postJSON(INLINE, {csrf:CSRF, action:'generate_qr_person', person_id:PERSON_ID});
-      PERSON_QR_TOKEN   = res.token;
-      PERSON_QR_PAYLOAD = 'QTA|PID:' + PERSON_ID + '|TOKEN:' + PERSON_QR_TOKEN;
-      refreshQrUI();
-      notify('success','Kodi QR u gjenerua.');
-    } catch(err){ notify('danger', err.message); }
-  });
+/* ===== Kodi QR ===== */
+function showQr(url){
+  const panel = document.querySelector('[data-qr-panel]');
+  const missing = document.querySelector('[data-qr-missing]');
+  const box = document.getElementById('personQr');
+  box.setAttribute('data-qr', url);
+  window.qtaRenderQr && window.qtaRenderQr(box);
+  document.getElementById('qrOpen').href = url;
+  document.getElementById('qrCopy').setAttribute('data-copy', url);
+  panel.hidden = false;
+  missing.hidden = true;
 }
 
-/* Shkarko QR i personit */
-const btnDlQrPerson = document.getElementById('btnDlQrPerson');
-if (btnDlQrPerson){
-  btnDlQrPerson.addEventListener('click', async ()=>{
-    try{
-      if (!PERSON_QR_PAYLOAD){
-        const res = await postJSON(INLINE, {csrf:CSRF, action:'qr_payload', person_id:PERSON_ID});
-        PERSON_QR_TOKEN   = res.token || PERSON_QR_TOKEN;
-        PERSON_QR_PAYLOAD = res.payload;
-        refreshQrUI();
-      }
-      const dataURL = await renderQrToDataURL(PERSON_QR_PAYLOAD, 240);
-      const a = document.createElement('a');
-      a.href = dataURL; a.download = 'person_qr_'+PERSON_ID+'.png'; a.click();
-    } catch(err){ notify('danger', err.message); }
-  });
-}
-
-/* Shkarko (buton në box) */
-document.getElementById('btnDlQrPerson2')?.addEventListener('click', ()=>{
-  document.getElementById('btnDlQrPerson')?.click();
-});
-
-/* Shfaq (re-render) QR në box */
-document.getElementById('btnPreviewQr')?.addEventListener('click', ()=>{
-  refreshQrUI();
-});
-
-/* Copy payload */
-document.getElementById('btnCopyPayload')?.addEventListener('click', async ()=>{
+document.getElementById('qrGenerate')?.addEventListener('click', async (ev)=>{
+  const btn = ev.currentTarget;
+  btn.disabled = true; btn.classList.add('is-loading');
   try{
-    await navigator.clipboard.writeText(PERSON_QR_PAYLOAD || '');
-    notify('success','Payload u kopjua.');
-  }catch{ notify('danger','S’u kopjua.'); }
+    const res = await postJSON({action:'generate_qr_person', person_id: PERSON_ID});
+    showQr(VERIFY_BASE + '?pid=' + PERSON_ID + '&t=' + encodeURIComponent(res.token));
+    notify('success', 'Kodi QR u krijua.');
+  }catch(e){
+    notify('danger', e.message);
+  }finally{
+    btn.disabled = false; btn.classList.remove('is-loading');
+  }
 });
 
-/* Render inicial i QR */
-if (PERSON_QR_PAYLOAD) refreshQrUI();
-
+document.getElementById('qrDownload')?.addEventListener('click', ()=>{
+  const png = window.qtaQrPng ? window.qtaQrPng(document.getElementById('personQr')) : '';
+  if (!png){ notify('danger', 'Kodi QR nuk u përgatit dot. Rifresko faqen dhe provo sërish.'); return; }
+  const a = document.createElement('a');
+  a.href = png;
+  a.download = 'kodi-qr-' + (document.querySelector('[data-person-name]')?.textContent.trim().replace(/\s+/g,'-').toLowerCase() || PERSON_ID) + '.png';
+  document.body.appendChild(a); a.click(); a.remove();
+});
 </script>
+<?php endif; ?>
 </body>
 </html>
