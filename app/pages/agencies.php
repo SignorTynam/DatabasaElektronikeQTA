@@ -63,7 +63,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     http_response_code(400); exit('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
   }
   if(!$EDIT_MODE){
-    flash('err','Aktivizo <strong>Mënyrën e redaktimit</strong> për të kryer veprime.');
+    flash('err','Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.');
     header('Location: agencies.php'); exit;
   }
 
@@ -71,14 +71,16 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   try{
     if($action==='create_agency'){
       $company_name=trim($_POST['company_name']??'');
-      $nip_t=trim($_POST['nip_t']??'');
+      $nip_t=preg_replace('/[^A-Z0-9]/', '', strtoupper(trim((string)($_POST['nip_t']??''))));
       $phone=trim($_POST['phone']??'');
       $address=trim($_POST['address']??'');
       $p1=$_POST['password']??''; $p2=$_POST['password2']??'';
-      if($company_name===''||$nip_t===''||$p1===''||$p2==='') throw new RuntimeException('Plotëso: Emër, NIPT, Fjalëkalim.');
-      if($p1!==$p2) throw new RuntimeException('Fjalëkalimet nuk përputhen.');
+      if($company_name===''||$nip_t===''||$p1===''||$p2==='') throw new RuntimeException('Plotëso emrin, NIPT-in dhe fjalëkalimin.');
+      if(!preg_match('/^[A-Z]\d{8}[A-Z0-9]$/', $nip_t)) throw new RuntimeException('NIPT-i ka 10 shenja: një shkronjë, 8 shifra dhe një shkronjë në fund, p.sh. L42202012A.');
+      if(mb_strlen($p1) < 8) throw new RuntimeException('Fjalëkalimi duhet të ketë të paktën 8 shenja.');
+      if($p1!==$p2) throw new RuntimeException('Dy fjalëkalimet nuk janë njësoj. Shkruaji sërish.');
       $ex=$pdo->prepare("SELECT COUNT(*) FROM agencies WHERE nip_t=:n"); $ex->execute([':n'=>$nip_t]);
-      if((int)$ex->fetchColumn()>0) throw new RuntimeException('Ky NIPT ekziston.');
+      if((int)$ex->fetchColumn()>0) throw new RuntimeException('Ky NIPT i përket një agjencie tjetër.');
 
       $pdo->beginTransaction();
       $insU=$pdo->prepare("INSERT INTO users(role_id,full_name,email) VALUES(:r,:n,NULL)");
@@ -93,24 +95,24 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
           ->execute([':u'=>$uid,':nip'=>$nip_t,':cn'=>$company_name,':ad'=>$address,':ph'=>$phone]);
 
       $pdo->commit();
-      flash('ok','Agjencia u shtua.');
+      flash('ok','Agjencia "'.$company_name.'" u shtua. Ajo hyn me NIPT-in '.$nip_t.' dhe fjalëkalimin që vendose.');
     }
     elseif($action==='delete_agency'){
       $agency_id = (int)($_POST['agency_id'] ?? 0);
-      if($agency_id<=0) throw new RuntimeException('ID agjencie i pavlefshëm.');
+      if($agency_id<=0) throw new RuntimeException('Agjencia nuk u gjet. Rifresko faqen.');
 
       // gjej user_id e agjencisë
       $st = $pdo->prepare("SELECT user_id FROM agencies WHERE id=:id LIMIT 1");
       $st->execute([':id'=>$agency_id]);
       $uid = (int)$st->fetchColumn();
-      if(!$uid) throw new RuntimeException('Agjencia nuk u gjet.');
+      if(!$uid) throw new RuntimeException('Agjencia nuk u gjet. Rifresko faqen.');
 
       /* FSHIRJE E SIGURT (FK ON DELETE CASCADE te users/agencies/credentials/agency_students) */
       $pdo->beginTransaction();
       $pdo->prepare("DELETE FROM users WHERE id=:uid")->execute([':uid'=>$uid]);
       $pdo->commit();
 
-      flash('ok','Agjencia u fshi me sukses.');
+      flash('ok','Agjencia u fshi. Punonjësit e saj mbeten në regjistër.');
     }
   }catch(Throwable $e){
     if($pdo->inTransaction()) $pdo->rollBack();
@@ -152,310 +154,245 @@ $st->bindValue(':lim',$limit,PDO::PARAM_INT);
 $st->bindValue(':off',$offset,PDO::PARAM_INT);
 $st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
 
-$pageTitle = 'Agjencitë – QTA ' . ($isAdmin ? 'Admin' : 'Editor');
-$bodyClass = $EDIT_MODE ? '' : 'editing-off';
+$NAV_ACTIVE = 'users_agencies';
+$HELP_TOPIC = 'agencies';
+require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
+
+$openAdd = $EDIT_MODE && isset($_GET['add']);
+$addHref = 'agencies.php?' . http_build_query(['edit' => '1', 'add' => '1']);
+$flashOk  = flash('ok');
+$flashErr = flash('err');
+
+$pageTitle = 'Agjencitë';
 require __DIR__ . '/../shared/app_head.php';
 ?>
 
-<?php
-  $NAV_ACTIVE='agencies';
-  require __DIR__ . ($isAdmin ? '/inc/navbar.php' : '/inc/navbar4.php');
-?>
+<main class="app-main" id="main" tabindex="-1">
 
-<main class="app-main">
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <div class="title-block-main">
-          <div class="title-block-eyebrow">Regjistri</div>
-          <h1>Agjencitë & lidhja me studentët</h1>
-        </div>
-        <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-
-    <!-- Toolbar: Edit Mode toggle -->
-    <div class="d-flex align-items-center">
-      <?php
-        $qs = $_GET;
-        $qs['edit'] = $EDIT_MODE ? '0' : '1';
-        $toggleUrl = 'agencies.php' . ($qs ? ('?' . http_build_query($qs)) : '');
-      ?>
-</div>
-  </div>
-
-  <?php if (!$EDIT_MODE): ?>
-    <div class="alert alert-secondary py-2">
-      <i class="bi bi-info-circle me-1"></i>
-      Aktivizo <strong>Mënyrën e redaktimit</strong> për të ndryshuar qelizat, për të shtuar / fshirë agjenci ose për të menaxhuar studentët.
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Agjencitë</h1>
+      <p class="page-lead">Kompanitë që dërgojnë punonjës në trajnim. Çdo agjenci hyn në portal me NIPT dhe fjalëkalim, dhe sheh vetëm punonjësit e vet.</p>
     </div>
-  <?php endif; ?>
-
-  <!-- Kërkim -->
-  <div class="card mb-3">
-    <div class="card-body">
-      <form class="row g-2 align-items-end" method="get" action="agencies.php">
-        <div class="col-md-9">
-          <label class="form-label">Kërko</label>
-          <div class="input-group">
-            <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-            <input type="text" name="q" class="form-control border-0" placeholder="Emër, NIPT, telefon, adresë..." value="<?= htmlspecialchars($q) ?>">
-          </div>
-        </div>
-        <div class="col-md-3 text-end">
-          <button class="btn btn-soft-secondary btn-pill me-1" type="button" onclick="window.location='agencies.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
-          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-        </div>
-      </form>
+    <div class="page-actions">
+      <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+      <?php if ($EDIT_MODE): ?>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#addAgencyModal">
+          <i class="bi bi-building-add" aria-hidden="true"></i>Shto agjenci
+        </button>
+      <?php else: ?>
+        <a class="btn btn-primary" href="<?= h($addHref) ?>"><i class="bi bi-building-add" aria-hidden="true"></i>Shto agjenci</a>
+      <?php endif; ?>
     </div>
-  </div>
+  </header>
 
-  <!-- Tabela -->
-  <div class="card">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-building me-2"></i>Lista e agjencive</h5>
-      <span class="text-muted small"><?= number_format($total) ?> rezultat(e)</span>
+  <form class="filters filters-compact" method="get" action="agencies.php" role="search" aria-label="Kërko agjenci">
+    <div class="filter-field is-grow">
+      <label class="visually-hidden" for="aQ">Kërko një agjenci</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="aQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, NIPT, telefoni ose adresa">
+      </div>
     </div>
-    <div class="card-body">
-      <?php
-        $tfTarget = '';
-        $tfPlaceholder = 'Ngushto listën — kompani ose NIPT';
-        $tfChips = [];
-        require __DIR__ . '/../shared/partials/table_filter.php';
-      ?>
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0" data-sortable>
-          <thead class="table-light">
+    <div class="filter-actions">
+      <?php if ($q !== ''): ?><a class="btn btn-ghost" href="agencies.php">Pastro</a><?php endif; ?>
+      <button class="btn btn-secondary" type="submit">Kërko</button>
+    </div>
+  </form>
+
+  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
+
+  <section class="section" aria-labelledby="agTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="agTitle">
+        <?= $q !== '' ? 'Agjencitë që përputhen' : 'Të gjitha agjencitë' ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
+      </h2>
+      <?php if ($EDIT_MODE && $agencies): ?>
+        <span class="section-meta">Kliko një vlerë për ta ndryshuar.</span>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($agencies): ?>
+      <div class="table-responsive">
+        <table class="table" id="agenciesTable" data-sortable>
+          <thead>
             <tr>
-              <th style="width:80px" data-sort="text">ID</th>
-              <th data-sort="text">Emri i agjencisë</th>
-              <th data-sort="text">NIPT</th>
-              <th data-sort="text">Telefon</th>
-              <th data-sort="text">Adresë</th>
-              <th class="text-center" data-sort="text">Studentë</th>
-              <th data-sort="text">Regjistruar</th>
-              <th class="text-end" data-sort="none">Veprime</th>
+              <th scope="col" class="col-wide" data-sort="text">Agjencia</th>
+              <th scope="col" class="nowrap" data-sort="text">NIPT</th>
+              <th scope="col" class="nowrap" data-sort="text">Telefoni</th>
+              <th scope="col" class="col-medium" data-sort="text">Adresa</th>
+              <th scope="col" class="nowrap" data-sort="num">Punonjës</th>
+              <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
             </tr>
           </thead>
           <tbody>
-          <?php if ($agencies): foreach ($agencies as $a): $aid=(int)$a['agency_id']; ?>
-            <tr>
-              <td class="text-muted">#<?= $aid ?></td>
-
-              <td class="cell" data-id="<?= $aid ?>" data-field="company_name">
-                <span class="editable"
-                      contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                      tabindex="<?= $EDIT_MODE ? 0 : -1 ?>"><?= htmlspecialchars($a['company_name'] ?: '—') ?></span>
-              </td>
-
-              <td class="cell" data-id="<?= $aid ?>" data-field="nip_t">
-                <span class="editable"
-                      contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                      tabindex="<?= $EDIT_MODE ? 0 : -1 ?>"><?= htmlspecialchars($a['nip_t']) ?></span>
-              </td>
-
-              <td class="cell nowrap" data-id="<?= $aid ?>" data-field="phone">
-                <span class="editable"
-                      contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                      tabindex="<?= $EDIT_MODE ? 0 : -1 ?>"><?= htmlspecialchars($a['phone'] ?: '—') ?></span>
-              </td>
-
-              <td class="cell" data-id="<?= $aid ?>" data-field="address" title="Kliko për të modifikuar">
-                <span class="editable"
-                      contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
-                      tabindex="<?= $EDIT_MODE ? 0 : -1 ?>"><?= htmlspecialchars($a['address'] ?: '—') ?></span>
-              </td>
-
-              <td class="text-center">
-                <span class="badge rounded-pill badge-soft me-1"><i class="bi bi-people-fill me-1"></i><?= (int)$a['students_count'] ?></span>
-              </td>
-
-              <td class="text-muted"><?= htmlspecialchars($a['created_at']) ?></td>
-              <td class="text-end">
-                <!-- Menaxho -->
-                <button class="btn btn-sm btn-outline-primary me-2"
-                        data-bs-toggle="modal" data-bs-target="#manageStudentsModal"
-                        data-agency="<?= $aid ?>"
-                        data-agency-name="<?= htmlspecialchars($a['company_name'] ?: ('#'.$aid)) ?>"
-                        <?= $EDIT_MODE ? '' : 'disabled' ?>
-                        title="<?= $EDIT_MODE ? 'Menaxho studentët e kësaj agjencie' : 'Aktivizo Edit Mode për të menaxhuar' ?>">
-                  <i class="bi bi-people"></i> Menaxho
-                </button>
-
-                <!-- Fshi Agjencinë -->
-                <form method="post" class="d-inline js-confirm-delete"
-                      action="agencies.php"
-                      onsubmit="return <?= $EDIT_MODE ? 'true' : 'false' ?>;">
-                  <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
-                  <input type="hidden" name="action" value="delete_agency">
-                  <input type="hidden" name="agency_id" value="<?= $aid ?>">
-                  <button class="btn btn-sm btn-outline-danger" <?= $EDIT_MODE ? '' : 'disabled' ?>
-                          title="<?= $EDIT_MODE ? 'Fshi këtë agjenci' : 'Aktivizo Edit Mode për të fshirë' ?>">
-                    <i class="bi bi-trash"></i> Fshi
+            <?php foreach ($agencies as $a):
+              $aid = (int)$a['agency_id'];
+              $name = (string)($a['company_name'] ?: ('Agjencia #' . $aid));
+              $count = (int)$a['students_count']; ?>
+              <tr>
+                <td class="cell col-wide" data-id="<?= $aid ?>" data-field="company_name">
+                  <span class="editable person-name" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="Emri i agjencisë"' : '' ?>><?= h((string)$a['company_name']) ?></span>
+                  <span class="cell-sub">Në portal që nga <?= h(qta_date(substr((string)$a['created_at'], 0, 10))) ?></span>
+                </td>
+                <td class="cell nowrap" data-id="<?= $aid ?>" data-field="nip_t">
+                  <span class="editable id-code" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="NIPT"' : '' ?>><?= h((string)$a['nip_t']) ?></span>
+                </td>
+                <td class="cell nowrap" data-id="<?= $aid ?>" data-field="phone">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="Telefoni"' : '' ?>><?= h((string)($a['phone'] ?: '')) ?></span>
+                </td>
+                <td class="cell col-medium" data-id="<?= $aid ?>" data-field="address">
+                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="Adresa"' : '' ?>><?= h((string)($a['address'] ?: '')) ?></span>
+                </td>
+                <td class="nowrap" data-sort-value="<?= $count ?>">
+                  <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#manageStudentsModal"
+                          data-agency="<?= $aid ?>" data-agency-name="<?= h($name) ?>">
+                    <i class="bi bi-people" aria-hidden="true"></i><span data-agency-count="<?= $aid ?>"><?= h(qta_plural($count, 'punonjës', 'punonjës')) ?></span>
                   </button>
-                </form>
-              </td>
-
-            </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="8" class="text-center text-muted">Nuk u gjet asnjë agjenci.</td></tr>
-          <?php endif; ?>
+                </td>
+                <td class="col-actions">
+                  <?php if ($EDIT_MODE): ?>
+                    <form method="post" action="agencies.php" class="d-inline"
+                          data-confirm="<?= h('Agjencia "' . $name . '" dhe llogaria e saj fshihen. ' . ($count ? qta_plural($count, 'punonjës', 'punonjës') . ' mbeten në regjistër, por nuk lidhen më me këtë agjenci. ' : '') . 'Kjo nuk mund të kthehet mbrapsht.') ?>"
+                          data-confirm-title="Të fshihet agjencia?" data-confirm-ok="Po, fshije agjencinë">
+                      <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+                      <input type="hidden" name="action" value="delete_agency">
+                      <input type="hidden" name="agency_id" value="<?= $aid ?>">
+                      <button class="btn btn-ghost btn-sm btn-icon" type="submit" aria-label="Fshi agjencinë <?= h($name) ?>" title="Fshi agjencinë">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  <?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <?php if ($totalPages > 1): ?>
-    <div class="card-footer bg-white">
-      <nav aria-label="Page navigation">
-        <ul class="pagination mb-0 justify-content-end">
-          <?php
-            $base='agencies.php?'.http_build_query(array_filter([
-              'q'=>$q!==''?$q:null,
-              'edit'=>$EDIT_MODE?'1':'0'
-            ]));
-            $prev=max(1,$page-1); $next=min($totalPages,$page+1);
-          ?>
-          <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=1">«</a></li>
-          <li class="page-item <?= $page<=1?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $prev ?>">‹</a></li>
-          <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-          <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $next ?>">›</a></li>
-          <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>"><a class="page-link" href="<?= $base.(str_contains($base,'?')?'&':'?') ?>page=<?= $totalPages ?>">»</a></li>
-        </ul>
-      </nav>
-    </div>
+      <?php if ($totalPages > 1):
+        $pBase = 'agencies.php?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
+        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
+        <nav class="pager mt-3" aria-label="Faqet e listës">
+          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
+          <span class="text-muted small">Faqja <?= $page ?> nga <?= $totalPages ?></span>
+          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+        </nav>
+      <?php endif; ?>
+
+    <?php else: ?>
+      <?= $q !== ''
+        ? qta_empty('Asnjë agjenci nuk përputhet', 'Provo me NIPT-in ose një pjesë të emrit.', 'bi-search', '<a class="btn btn-secondary" href="agencies.php">Pastro kërkimin</a>')
+        : qta_empty('Ende pa agjenci', 'Shto agjencinë e parë që dërgon punonjës në trajnim.', 'bi-building', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto agjenci</a>') ?>
     <?php endif; ?>
-  </div>
-
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+  </section>
 </main>
 
-<!-- Floating Action Button (FAB) – poshtë djathtas -->
-<?php if ($EDIT_MODE): ?>
-<button class="btn btn-primary btn-fab" type="button"
-        data-bs-toggle="modal" data-bs-target="#addAgencyModal"
-        aria-label="Shto agjenci" title="Shto agjenci">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php else: ?>
-<button class="btn btn-soft-secondary btn-fab" type="button" disabled
-        title="Aktivizo Edit Mode për të shtuar agjenci">
-  <i class="bi bi-plus-lg"></i>
-</button>
-<?php endif; ?>
-
-<!-- Toasts: poshtë MAJTAS -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
-
-<!-- Modal: Shto Agjenci -->
-<div class="modal fade" id="addAgencyModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form class="modal-content" method="post" action="agencies.php">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+<!-- Dialog: shto agjenci -->
+<div class="modal fade" id="addAgencyModal" tabindex="-1" aria-labelledby="addAgencyTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <form class="modal-content" method="post" action="agencies.php" data-loading>
+      <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_agency">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-building-add me-1"></i> Shto agjenci</h5>
+        <h2 class="modal-title" id="addAgencyTitle"><i class="bi bi-building-add" aria-hidden="true"></i>Shto një agjenci</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
         <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">Emri i agjencisë</label>
-            <input type="text" name="company_name" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
+          <div class="col-md-7">
+            <label class="form-label" for="aaName">Emri i kompanisë <span class="req" aria-hidden="true">*</span></label>
+            <input id="aaName" type="text" name="company_name" class="form-control" maxlength="150" placeholder="p.sh. Beton Invest Sh.p.k." required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label" for="aaNipt">NIPT <span class="req" aria-hidden="true">*</span></label>
+            <input id="aaNipt" type="text" name="nip_t" class="form-control input-code" maxlength="14" autocomplete="off" autocapitalize="characters"
+                   placeholder="p.sh. L42202012A" pattern="\s*[A-Za-z]\s*\d{8}\s*[A-Za-z0-9]\s*" aria-describedby="aaNiptHelp" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <div class="form-text" id="aaNiptHelp">10 shenja. Agjencia e përdor për të hyrë në portal.</div>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label" for="aaPhone">Telefoni</label>
+            <input id="aaPhone" type="tel" name="phone" class="form-control" maxlength="40" placeholder="p.sh. +355 67 123 4567" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          </div>
+          <div class="col-md-7">
+            <label class="form-label" for="aaAddress">Adresa</label>
+            <input id="aaAddress" type="text" name="address" class="form-control" maxlength="500" placeholder="p.sh. Rr. e Durrësit, Tiranë" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
           <div class="col-md-6">
-            <label class="form-label">NIPT</label>
-            <input type="text" name="nip_t" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
-            <div class="form-text">Duhet të jetë unik.</div>
+            <label class="form-label" for="aaPass">Fjalëkalimi i agjencisë <span class="req" aria-hidden="true">*</span></label>
+            <div class="password-field">
+              <input id="aaPass" type="password" name="password" class="form-control" minlength="8" autocomplete="new-password" aria-describedby="aaPassHelp" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+              <button class="btn btn-ghost btn-icon password-toggle" type="button" data-password-toggle="#aaPass" aria-label="Shfaq fjalëkalimin" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+            </div>
+            <div class="form-text" id="aaPassHelp">Të paktën 8 shenja. Agjencia mund ta ndryshojë vetë te "Profili im".</div>
           </div>
           <div class="col-md-6">
-            <label class="form-label">Fjalëkalimi</label>
-            <input type="password" name="password" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
+            <label class="form-label" for="aaPass2">Shkruaje sërish <span class="req" aria-hidden="true">*</span></label>
+            <div class="password-field">
+              <input id="aaPass2" type="password" name="password2" class="form-control" minlength="8" autocomplete="new-password" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
+              <button class="btn btn-ghost btn-icon password-toggle" type="button" data-password-toggle="#aaPass2" aria-label="Shfaq fjalëkalimin" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+            </div>
+            <div class="invalid-feedback">Dy fjalëkalimet nuk janë njësoj.</div>
           </div>
-          <div class="col-md-6">
-            <label class="form-label">Përsërit fjalëkalimin</label>
-            <input type="password" name="password2" class="form-control" <?= $EDIT_MODE ? 'required' : 'disabled' ?>>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Telefon</label>
-            <input type="text" name="phone" class="form-control" placeholder="+355 67 ..." <?= $EDIT_MODE ? '' : 'disabled' ?>>
-          </div>
-          <div class="col-12">
-            <label class="form-label">Adresë</label>
-            <textarea name="address" class="form-control" rows="3" placeholder="Rr. ... , Qyteti" <?= $EDIT_MODE ? '' : 'disabled' ?>></textarea>
-          </div>
-        </div>
-        <div class="form-text mt-2">
-          Krijon rreshta në <code>users</code>, <code>credentials</code> dhe <code>agencies</code>. Agjencitë hyjnë me <strong>NIPT + fjalëkalim</strong>.
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Shto agjenci</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-check-lg" aria-hidden="true"></i>Shto agjencinë</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Modal: Menaxho studentët e agjencisë -->
-<div class="modal fade" id="manageStudentsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl">
+<!-- Dialog: punonjësit e agjencisë -->
+<div class="modal fade" id="manageStudentsModal" tabindex="-1" aria-labelledby="msTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-people me-1"></i> Studentët e agjencisë: <span id="msAgencyName">—</span></h5>
+        <div>
+          <span class="eyebrow mb-0" id="msAgencyName">Agjencia</span>
+          <h2 class="modal-title" id="msTitle"><i class="bi bi-people" aria-hidden="true"></i>Punonjësit e agjencisë</h2>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="msAgencyId" value="">
-        <div class="row g-3 align-items-end mb-3">
-          <div class="col-md-8">
-            <label class="form-label">Shto nga AMZË (intervale ose vlera të ndara me presje)</label>
-            <input type="text" class="form-control" id="msAmzeInput" placeholder="p.sh. 3400-3403, 3409" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-            <div class="form-text">Shembull: <code>1201-1205, 1210</code>. Nëse disa AMZË nuk ekzistojnë si studentë, do të shfaqet gabim.</div>
-          </div>
-          <div class="col-md-4">
-            <button class="btn btn-primary w-100" id="msAddBtn" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-plus-circle me-1"></i>Shto në këtë agjenci</button>
-          </div>
-        </div>
-
-        <div class="table-responsive mini-table">
-          <table class="table align-middle mb-0" id="msTable">
-            <thead class="table-light">
+        <?php if ($EDIT_MODE): ?>
+          <form class="panel panel-sunken mb-3" id="msAddForm">
+            <label class="form-label" for="msAmzeInput">Shto punonjës me numrin e amzës</label>
+            <div class="d-flex flex-wrap gap-2">
+              <input type="text" class="form-control input-code flex-grow-1 w-auto" id="msAmzeInput" placeholder="p.sh. 3400-3403, 3409" aria-describedby="msAmzeHelp">
+              <button class="btn btn-primary" type="submit" id="msAddBtn"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto</button>
+            </div>
+            <div class="form-text" id="msAmzeHelp">Numra të ndarë me presje ose intervale me vizë. Kursantët duhet të jenë tashmë në regjistër.</div>
+          </form>
+        <?php else: ?>
+          <p class="text-muted small">Për të shtuar ose hequr punonjës, shtyp "Lejo ndryshimet" në faqe.</p>
+        <?php endif; ?>
+        <div class="table-responsive">
+          <table class="table table-sm" id="msTable">
+            <thead>
               <tr>
-                <th class="nowrap">AMZË</th>
-                <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                <th class="text-end">Veprime</th>
+                <th scope="col" class="nowrap">Nr. i amzës</th>
+                <th scope="col">Punonjësi</th>
+                <th scope="col" class="col-actions"><span class="visually-hidden">Veprime</span></th>
               </tr>
             </thead>
-            <tbody>
-              <tr><td colspan="3" class="text-center text-muted">Ngarkim...</td></tr>
+            <tbody aria-live="polite">
+              <tr><td colspan="3" class="table-empty">Po ngarkohet…</td></tr>
             </tbody>
           </table>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Mbyll</button>
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Mbyll</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Modal: Konfirmim veprimi (universal) -->
-<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Konfirmim</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body" id="confirmText">A jeni i sigurt?</div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button type="button" class="btn btn-danger btn-pill" id="confirmYesBtn">Po, vazhdo</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- JS -->
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
@@ -463,195 +400,154 @@ const INLINE_ENDPOINT = 'agencies_inline_update.php';
 const LINK_ENDPOINT   = 'agencies_students_update.php';
 const EDIT_ENABLED    = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Toast helper */
-function notify(type, text, opts={}){
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
+function notify(type, text, opts={}){ return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null; }
+function cleanText(s){ const v = (s||'').replace(/\s+/g,' ').trim(); return v === '—' ? '' : v; }
+function esc(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+async function postJSON(url, payload){
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Accept':'application/json'},
+    body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
+  });
+  const json = await res.json().catch(()=> null);
+  if (!json || !json.ok) throw new Error((json && json.error) || 'Veprimi nuk u krye. Provo sërish.');
+  return json;
 }
 
-/* showMsg alias */
-function showMsg(containerOrType, typeOrText, maybeText){
-  if (maybeText === undefined) notify(containerOrType, typeOrText);
-  else notify(typeOrText, maybeText);
-}
-
-function cleanText(s){ const v=(s||'').replace(/\s+/g,' ').trim(); return v==='—'?'':v; }
-
-/* Inline update për fushat e agjencisë — vetëm kur Edit Mode është ON */
+/* ===== Redaktimi në tabelë ===== */
 if (EDIT_ENABLED) {
   document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el=>{
-    let oldVal=el.textContent;
-    el.addEventListener('focus', ()=>{ oldVal=el.textContent; });
-    el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }});
+    el.dataset.prev = cleanText(el.textContent);
+    el.addEventListener('focus', ()=>{ el.dataset.prev = cleanText(el.textContent); });
+    el.addEventListener('keydown', ev=>{
+      if (ev.key === 'Enter'){ ev.preventDefault(); el.blur(); }
+      if (ev.key === 'Escape'){ ev.preventDefault(); el.textContent = el.dataset.prev || ''; el.blur(); }
+    });
+    el.addEventListener('paste', ev=>{
+      ev.preventDefault();
+      const text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
+      document.execCommand('insertText', false, cleanText(text));
+    });
     el.addEventListener('blur', async ()=>{
-      const cell=el.closest('td.cell');
-      const field=cell.dataset.field;
-      const id=parseInt(cell.dataset.id,10);
-      const val=cleanText(el.textContent);
-      if(val===cleanText(oldVal)) return;
+      const cell = el.closest('td.cell');
+      const val = cleanText(el.textContent);
+      el.textContent = val;
+      if (val === (el.dataset.prev || '')) return;
+      cell.classList.add('cell-saving');
       try{
-        cell.classList.add('cell-saving');
-        const res=await fetch(INLINE_ENDPOINT,{ method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
-          body: JSON.stringify({csrf:CSRF, agency_id:id, field, value:val})});
-        const json=await res.json();
+        const json = await postJSON(INLINE_ENDPOINT, {agency_id: parseInt(cell.dataset.id,10), field: cell.dataset.field, value: val});
+        el.textContent = cleanText(json.display ?? val);
+        el.dataset.prev = el.textContent;
         cell.classList.remove('cell-saving');
-        if(!json.ok) throw new Error(json.error||'Gabim.');
-        el.textContent = json.display ?? (val||'—');
-        cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'),800);
-        notify('success','U ruajt me sukses.');
+        cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
+        notify('success', 'Ndryshimi u ruajt.');
       }catch(e){
-        el.textContent=oldVal;
+        el.textContent = el.dataset.prev || '';
         cell.classList.remove('cell-saving');
-        cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'),1200);
-        notify('danger', e.message || 'Ndodhi një gabim.');
+        cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
+        notify('danger', e.message);
       }
     });
   });
 }
 
-/* Modal Menaxho studentët */
-const msModal=document.getElementById('manageStudentsModal');
+/* ===== Shto agjenci: kontrollo që fjalëkalimet përputhen ===== */
+(function(){
+  const p1 = document.getElementById('aaPass'), p2 = document.getElementById('aaPass2');
+  if (!p1 || !p2) return;
+  const check = () => {
+    const bad = p2.value !== '' && p1.value !== p2.value;
+    p2.classList.toggle('is-invalid', bad);
+    p2.setCustomValidity(bad ? 'Dy fjalëkalimet nuk janë njësoj.' : '');
+  };
+  p1.addEventListener('input', check); p2.addEventListener('input', check);
+})();
+
+/* ===== Punonjësit e agjencisë ===== */
+const msModal = document.getElementById('manageStudentsModal');
+let msAgency = 0;
+
+function plural(n){ return n === 1 ? '1 punonjës' : n + ' punonjës'; }
+
+async function loadAgencyStudents(){
+  const tbody = document.querySelector('#msTable tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="table-empty">Po ngarkohet…</td></tr>';
+  try{
+    const json = await postJSON(LINK_ENDPOINT, {action:'list_assigned', agency_id: msAgency});
+    const list = json.students || [];
+    const countEl = document.querySelector(`[data-agency-count="${msAgency}"]`);
+    if (countEl) countEl.textContent = plural(list.length);
+    if (!list.length){
+      tbody.innerHTML = '<tr><td colspan="3" class="table-empty">Kjo agjenci nuk ka ende punonjës në regjistër.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(s => {
+      const full = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ') || 'Pa emër ende';
+      return `<tr>
+        <td class="nowrap"><span class="id-code">${esc(s.nr_amze || '')}</span></td>
+        <td><a class="person-name" href="student_card.php?sid=${parseInt(s.id,10)}">${esc(full)}</a>
+            ${s.personal_number ? `<span class="cell-sub code">${esc(s.personal_number)}</span>` : ''}</td>
+        <td class="col-actions">${EDIT_ENABLED ? `<button class="btn btn-ghost btn-sm" type="button" data-unlink="${parseInt(s.id,10)}" data-name="${esc(full)}"><i class="bi bi-x-lg" aria-hidden="true"></i>Hiq</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+  }catch(e){
+    tbody.innerHTML = `<tr><td colspan="3" class="table-empty text-danger">${esc(e.message)}</td></tr>`;
+  }
+}
+
 msModal?.addEventListener('show.bs.modal', (ev)=>{
   const btn = ev.relatedTarget;
-  if (!EDIT_ENABLED || !btn || btn.hasAttribute('disabled')) { ev.preventDefault(); return; }
-  const agencyId = btn.getAttribute('data-agency');
-  const agencyName = btn.getAttribute('data-agency-name');
-  document.getElementById('msAgencyId').value = agencyId;
-  document.getElementById('msAgencyName').textContent = agencyName || ('#'+agencyId);
-  document.getElementById('msAmzeInput').value='';
-  loadAgencyStudents(agencyId);
+  if (!btn) { ev.preventDefault(); return; }
+  msAgency = parseInt(btn.getAttribute('data-agency'), 10);
+  document.getElementById('msAgencyId').value = msAgency;
+  document.getElementById('msAgencyName').textContent = btn.getAttribute('data-agency-name') || 'Agjencia';
+  const input = document.getElementById('msAmzeInput');
+  if (input) input.value = '';
+  loadAgencyStudents();
 });
 
-async function loadAgencyStudents(agencyId){
-  const tbody = document.querySelector('#msTable tbody');
-  tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Ngarkim...</td></tr>`;
-  const res = await fetch(LINK_ENDPOINT, {
-    method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
-    body: JSON.stringify({csrf:CSRF, action:'list_assigned', agency_id:parseInt(agencyId,10)})
-  });
-  const json = await res.json();
-  if(!json.ok){
-    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">${json.error||'Gabim'}</td></tr>`;
-    return;
-  }
-  if(!json.students || json.students.length===0){
-    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Nuk ka studentë në këtë agjenci.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML='';
-  json.students.forEach(s=>{
-    const full = [s.first_name||'', s.father_name? (s.father_name+' ') : '', s.last_name||''].join('').trim();
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="nowrap">${escapeHtml(s.nr_amze||'')}</td>
-      <td>
-        <div class="fw-semibold">${escapeHtml(full||'—')}</div>
-        <div class="text-muted small">${escapeHtml(s.personal_number||'')}</div>
-      </td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-outline-danger" data-unlink="${s.id}" ${EDIT_ENABLED ? '' : 'disabled'}>
-          <i class="bi bi-x-circle me-1"></i>Hiq
-        </button>
-      </td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-/* Shto nga AMZË */
-document.getElementById('msAddBtn')?.addEventListener('click', async ()=>{
-  if (!EDIT_ENABLED) { return; }
-  const agencyId = parseInt(document.getElementById('msAgencyId').value,10);
-  const spec = document.getElementById('msAmzeInput').value.trim();
-  if(!spec){ notify('warning','Shkruaj AMZË.'); return; }
+document.getElementById('msAddForm')?.addEventListener('submit', async (ev)=>{
+  ev.preventDefault();
+  const input = document.getElementById('msAmzeInput');
+  const spec = input.value.trim();
+  if (!spec){ notify('warning', 'Shkruaj numrat e amzës, p.sh. 3400-3403, 3409.'); input.focus(); return; }
+  const btn = document.getElementById('msAddBtn');
+  btn.disabled = true; btn.classList.add('is-loading');
   try{
-    const res = await fetch(LINK_ENDPOINT, {
-      method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body: JSON.stringify({csrf:CSRF, action:'assign_by_amze', agency_id:agencyId, amze_spec:spec})
-    });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error||'Gabim.');
-    notify('success', `U shtuan ${json.added} student(ë).`);
-    loadAgencyStudents(agencyId);
-  }catch(e){ notify('danger', e.message || 'Gabim gjatë shtimit.'); }
+    const json = await postJSON(LINK_ENDPOINT, {action:'assign_by_amze', agency_id: msAgency, amze_spec: spec});
+    notify('success', json.added ? (json.added === 1 ? '1 punonjës u shtua.' : json.added + ' punonjës u shtuan.') : (json.info || 'Asgjë e re për të shtuar.'));
+    input.value = '';
+    loadAgencyStudents();
+  }catch(e){ notify('danger', e.message, {autohide:false}); }
+  finally { btn.disabled = false; btn.classList.remove('is-loading'); }
 });
 
-/* Konfirmim universal me modal */
-let __confirmCb = null;
-function openConfirm(message, onYes){
-  document.getElementById('confirmText').textContent = message || 'A jeni i sigurt?';
-  __confirmCb = typeof onYes==='function' ? onYes : null;
-  const m = new bootstrap.Modal('#confirmModal');
-  m.show();
-  const yesBtn = document.getElementById('confirmYesBtn');
-  yesBtn.onclick = ()=>{ if(__confirmCb) __confirmCb(); m.hide(); __confirmCb=null; };
-}
-
-/* Hiq student nga agjencia (delegim) me modal confirm */
 document.querySelector('#msTable tbody')?.addEventListener('click', async (ev)=>{
   const btn = ev.target.closest('button[data-unlink]');
-  if(!btn) return;
-  if (!EDIT_ENABLED || btn.hasAttribute('disabled')) { return; }
-  const sid = parseInt(btn.getAttribute('data-unlink'),10);
-  const agencyId = parseInt(document.getElementById('msAgencyId').value,10);
-  openConfirm('Të hiqet ky student nga agjencia?', async ()=>{
-    try{
-      const res = await fetch(LINK_ENDPOINT, {
-        method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify({csrf:CSRF, action:'unlink', agency_id:agencyId, student_id:sid})
-      });
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.error||'Gabim.');
-      notify('success','U hoq me sukses.');
-      loadAgencyStudents(agencyId);
-    }catch(e){ notify('danger', e.message || 'Gabim gjatë heqjes.'); }
+  if (!btn || !EDIT_ENABLED) return;
+  const ok = await window.qtaConfirm({
+    title: 'Të hiqet nga agjencia?',
+    message: `${btn.dataset.name || 'Ky punonjës'} mbetet në regjistër, por agjencia nuk do ta shohë më.`,
+    confirm: 'Po, hiqe', danger: true
   });
+  if (!ok) return;
+  try{
+    await postJSON(LINK_ENDPOINT, {action:'unlink', agency_id: msAgency, student_id: parseInt(btn.dataset.unlink,10)});
+    notify('success', 'U hoq nga agjencia.');
+    loadAgencyStudents();
+  }catch(e){ notify('danger', e.message); }
 });
 
-/* Konfirmim për fshirjen e agjencisë (forms) */
-document.querySelectorAll('form.js-confirm-delete').forEach(form=>{
-  form.addEventListener('submit', (e)=>{
-    if (!EDIT_ENABLED) { e.preventDefault(); return; }
-    e.preventDefault();
-    const msg = form.getAttribute('data-confirm') || 'A jeni i sigurt?';
-    openConfirm(msg, ()=> form.submit());
-  });
+/* Mesazhet pas ringarkimit */
+document.addEventListener('DOMContentLoaded', ()=>{
+<?php if ($flashOk): ?>
+  notify('success', <?= json_encode($flashOk, JSON_UNESCAPED_UNICODE) ?>, {delay: 7000});
+<?php endif; ?>
+<?php if ($flashErr): ?>
+  notify('danger', <?= json_encode($flashErr, JSON_UNESCAPED_UNICODE) ?>, {autohide: false});
+<?php endif; ?>
 });
-
-/* Helpers */
-function escapeHtml(s){ const d=document.createElement('div'); d.innerText=s||''; return d.innerHTML; }
-
-/* Flash -> Toast sapo ngarkohet faqja */
-<?php if ($m = flash('ok')): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($m) ?>));
-<?php endif; ?>
-<?php if ($m = flash('err')): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($m) ?>));
-<?php endif; ?>
 </script>
 </body>
 </html>

@@ -11,7 +11,7 @@ qta_audit_attach($pdo);
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
   http_response_code(401);
-  echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Seanca ka mbaruar. Hyr sërish në llogari.']); exit;
 }
 $me = $pdo->prepare("
   SELECT u.id, r.name AS role_name
@@ -24,7 +24,7 @@ $u = $me->fetch();
 $role = strtolower((string)($u['role_name'] ?? ''));
 if (!$u || !in_array($role, ['administrator','editor'], true)) {
   http_response_code(403);
-  echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator ose editor.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Vetëm stafi i QTA mund t\'i ndryshojë punonjësit e agjencive.']); exit;
 }
 
 /* CSRF + leximi i input */
@@ -38,6 +38,12 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csr
 }
 
 $action    = $in['action'] ?? '';
+
+/* Shtimi dhe heqja kërkojnë ndryshimet të hapura; lista lexohet gjithmonë. */
+if ($action !== 'list_assigned' && empty($_SESSION['edit_mode'])) {
+  http_response_code(403);
+  echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
+}
 $agency_id = isset($in['agency_id']) ? (int)$in['agency_id'] : 0;
 
 function parseAmzeRanges(string $s): array {
@@ -64,7 +70,7 @@ try {
      (bashko me persons p)
   ==========================*/
   if ($action==='list_assigned') {
-    if ($agency_id<=0) throw new RuntimeException('Agjencia e pavlefshme.');
+    if ($agency_id<=0) throw new RuntimeException('Agjencia nuk u gjet. Rifresko faqen.');
     $q = $pdo->prepare("
       SELECT
         s.id,
@@ -88,11 +94,11 @@ try {
      SHTO LIDHJE NGA AMZË
   ==========================*/
   if ($action==='assign_by_amze') {
-    if ($agency_id<=0) throw new RuntimeException('Agjencia e pavlefshme.');
+    if ($agency_id<=0) throw new RuntimeException('Agjencia nuk u gjet. Rifresko faqen.');
     $spec = trim((string)($in['amze_spec'] ?? ''));
-    if ($spec==='') throw new RuntimeException('Shkruaj AMZË (p.sh. 3400-3403, 3409).');
+    if ($spec==='') throw new RuntimeException('Shkruaj numrat e amzës, p.sh. 3400-3403, 3409.');
     $nums = parseAmzeRanges($spec);
-    if (!$nums) throw new RuntimeException('Formati i AMZË-ve është i pavlefshëm.');
+    if (!$nums) throw new RuntimeException('Nuk i kuptova numrat. Shkruaji si 3400-3403, 3409.');
 
     // gjej studentët ekzistues me këto AMZË (map: amz(int) => student_id)
     $place = implode(',', array_fill(0, count($nums), '?'));
@@ -113,7 +119,7 @@ try {
     $missing = array_values(array_diff($nums, $foundAmz));
     if ($missing) {
       $missStr = implode(', ', $missing);
-      throw new RuntimeException("Këto AMZË nuk u gjetën: $missStr");
+      throw new RuntimeException("Këta numra amze nuk janë në regjistër: $missStr");
     }
 
     // kontrollo lidhje ekzistuese për këta studentë
@@ -145,7 +151,7 @@ try {
 
     if ($alreadyOther) {
       $badStr = implode(', ', $alreadyOther);
-      throw new RuntimeException("Disa AMZË janë të lidhura me një agjenci tjetër: $badStr");
+      throw new RuntimeException("Këta kursantë janë punonjës të një agjencie tjetër: $badStr");
     }
 
     // filtro ata që s’janë ende në këtë agjenci
@@ -157,7 +163,7 @@ try {
     }
 
     if (!$toInsertSids) {
-      echo json_encode(['ok'=>true,'added'=>0,'info'=>'Të gjitha AMZË-t ishin tashmë të lidhura me këtë agjenci.']); exit;
+      echo json_encode(['ok'=>true,'added'=>0,'info'=>'Të gjithë ishin tashmë punonjës të kësaj agjencie.']); exit;
     }
 
     // lidhje në DB
@@ -176,13 +182,13 @@ try {
   ==========================*/
   if ($action==='unlink') {
     $student_id = (int)($in['student_id'] ?? 0);
-    if ($agency_id<=0 || $student_id<=0) throw new RuntimeException('Parametra të pavlefshëm.');
+    if ($agency_id<=0 || $student_id<=0) throw new RuntimeException('Diçka mungon. Rifresko faqen dhe provo sërish.');
     $del = $pdo->prepare("DELETE FROM agency_students WHERE agency_id=:a AND student_id=:s");
     $del->execute([':a'=>$agency_id, ':s'=>$student_id]);
     echo json_encode(['ok'=>true]); exit;
   }
 
-  echo json_encode(['ok'=>false,'error'=>'Veprim i panjohur.']);
+  echo json_encode(['ok'=>false,'error'=>'Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.']);
 } catch (Throwable $e) {
   http_response_code(400);
   echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);

@@ -13,15 +13,15 @@ function jerr(string $msg, int $code = 400): void {
 
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        jerr('Metodë e palejuar.', 405);
+        jerr('Kjo kërkesë nuk pranohet.', 405);
     }
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
-    if (!is_array($data)) jerr('Kërkesë e pavlefshme.');
+    if (!is_array($data)) jerr('Kërkesa nuk u kuptua. Rifresko faqen dhe provo sërish.');
 
     // Guard: admin OSE editor i loguar
-    if (empty($_SESSION['user_id'])) jerr('Seanca ka skaduar. Hyni sërish.', 401);
+    if (empty($_SESSION['user_id'])) jerr('Seanca ka mbaruar. Hyr sërish në llogari.', 401);
 
     $pdo = getPDO();
     require_once __DIR__ . '/inc/audit_bootstrap.php';
@@ -40,13 +40,16 @@ try {
 
     $role = strtolower((string)($me['role_name'] ?? ''));
     if (!$me || !in_array($role, ['administrator','editor'], true)) {
-        jerr('Leje e pamjaftueshme.', 403);
+        jerr('Nuk ke leje për këtë veprim.', 403);
     }
+
+    // Kyçi i ndryshimeve: njësoj si faqet e tjera
+    if (empty($_SESSION['edit_mode'])) jerr('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.', 403);
 
     // CSRF
     $csrf = (string)($data['csrf'] ?? '');
     if (empty($csrf) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
-        jerr('CSRF token i pavlefshëm.', 400);
+        jerr('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.', 400);
     }
 
     // Parametra
@@ -54,9 +57,9 @@ try {
     $field     = (string)($data['field'] ?? '');
     $value     = isset($data['value']) ? (string)$data['value'] : '';
 
-    if ($agency_id <= 0) jerr('ID agjencie e pavlefshme.');
+    if ($agency_id <= 0) jerr('Agjencia nuk u gjet. Rifresko faqen.');
     $allowed = ['company_name', 'nip_t', 'phone', 'address'];
-    if (!in_array($field, $allowed, true)) jerr('Fushë e palejuar për modifikim.');
+    if (!in_array($field, $allowed, true)) jerr('Kjo fushë nuk mund të ndryshohet këtu.');
 
     // Gjej rolin "agjencia"
     $roleStmt = $pdo->prepare("SELECT id FROM roles WHERE name = 'agjencia' LIMIT 1");
@@ -81,18 +84,18 @@ try {
     switch ($field) {
         case 'company_name':
             $value = trim(preg_replace('/\s+/u', ' ', $value));
-            if ($value === '') jerr('Emri i agjencisë s’mund të jetë bosh.');
-            if (mb_strlen($value) > 150) jerr('Emri është shumë i gjatë (≤150).');
+            if ($value === '') jerr('Shkruaj emrin e agjencisë.');
+            if (mb_strlen($value) > 150) jerr('Emri është shumë i gjatë (deri në 150 shkronja).');
             break;
 
         case 'nip_t':
             // Hiq çdo shenjë jo-alfanumerike dhe ktheje në UPPER
-            $value = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$value));
-            if ($value === '') jerr('NIPT s’mund të jetë bosh.');
+            $value = preg_replace('/[^A-Z0-9]/', '', strtoupper((string)$value));
+            if ($value === '') jerr('Shkruaj NIPT-in.');
 
             // Format i zakonshëm shqiptar: L + 8 shifra + (shkronjë ose shifër) = 10 shenja
             if (!preg_match('/^[A-Z]\d{8}[A-Z0-9]$/', $value)) {
-                jerr('Format NIPT i pavlefshëm (p.sh. L42202012A).');
+                jerr('NIPT-i ka 10 shenja: një shkronjë, 8 shifra dhe një shkronjë në fund, p.sh. L42202012A.');
             }
 
             // Unik për agjenci të tjera
@@ -103,14 +106,14 @@ try {
 
         case 'phone':
             $value = trim($value);
-            if ($value !== '' && mb_strlen($value) > 40) jerr('Telefoni është shumë i gjatë (≤40).');
+            if ($value !== '' && mb_strlen($value) > 40) jerr('Telefoni është shumë i gjatë (deri në 40 shenja).');
             // (opsionale) normalizim i thjeshtë hapësirash
             $value = preg_replace('/\s+/u', ' ', $value);
             break;
 
         case 'address':
             $value = trim($value);
-            if ($value !== '' && mb_strlen($value) > 500) jerr('Adresa është shumë e gjatë (≤500).');
+            if ($value !== '' && mb_strlen($value) > 500) jerr('Adresa është shumë e gjatë (deri në 500 shenja).');
             break;
     }
 
@@ -139,12 +142,12 @@ try {
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
-        jerr('Ndodhi një gabim gjatë ruajtjes.');
+        jerr('Ndryshimi nuk u ruajt. Provo sërish.');
     }
 
     // Përgjigja
     $display = ($value === '' ? '—' : $value);
     echo json_encode(['ok' => true, 'display' => $display], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
-    jerr('Gabim i papritur.');
+    jerr('Diçka nuk shkoi. Provo sërish.');
 }
