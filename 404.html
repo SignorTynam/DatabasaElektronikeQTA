@@ -1,15 +1,35 @@
 <!doctype html>
 <html lang="sq">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-  <title>404 — Faqja nuk u gjet · QTA</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Faqja nuk u gjet · Regjistri QTA</title>
+  <link rel="icon" href="/DatabasaElektronike/image/logoPNG2.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@500;600&family=Atkinson+Hyperlegible+Next:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/DatabasaElektronike/app/assets/css/error.css">
+  <script src="/DatabasaElektronike/app/assets/js/error-page.js"></script>
 </head>
 <body>
-  <header class="error-shell error-header"><a class="error-brand" href="/DatabasaElektronike/"><img src="/DatabasaElektronike/image/logoPNG2.png" alt="QTA"><strong>Regjistri QTA</strong></a><span class="error-context">Qendra e Trajnimeve të Avancuara</span></header>
-  <main class="error-shell error-main"><section class="error-card" aria-labelledby="error-title"><p class="error-code">Gabim 404</p><h1 id="error-title">Faqja nuk u gjet</h1><p>Faqja mund të jetë zhvendosur ose adresa është shkruar gabim. Mund të kthehesh pa humbur të dhënat e tjera të sesionit.</p><div class="error-request" data-request-path>—</div><div class="error-actions"><button class="error-button" type="button" data-back>Kthehu mbrapsht</button><a class="error-button primary" href="/DatabasaElektronike/">Faqja kryesore</a></div></section></main>
-  <script src="/DatabasaElektronike/app/assets/js/error-page.js" defer></script>
+  <header class="error-shell error-header">
+    <a class="error-brand" href="/DatabasaElektronike/"><img src="/DatabasaElektronike/image/logoPNG2.png" alt="QTA"><strong>Regjistri</strong></a>
+    <span class="error-context">Qendra e Trajnimeve të Avancuara</span>
+  </header>
+  <main class="error-shell error-main">
+    <section class="error-card" aria-labelledby="error-title">
+      <p class="error-code">Gabim 404</p>
+      <h1 id="error-title">Faqja nuk u gjet</h1>
+      <p>Lidhja mund të jetë e vjetër ose e shkruar gabim.</p>
+      <ul><li>Kontrollo adresën lart në shfletues.</li><li>Po kërkoje të verifikoje një certifikatë? Përdor faqen e verifikimit.</li></ul>
+      <div class="error-request" aria-label="Adresa që u kërkua" data-request-path>—</div>
+      <div class="error-actions">
+        <a class="error-button primary" href="/DatabasaElektronike/">Faqja kryesore</a>
+        <a class="error-button" href="/DatabasaElektronike/verify.php">Verifiko certifikatë</a>
+        <button class="error-button" type="button" data-back>Kthehu mbrapsht</button>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
