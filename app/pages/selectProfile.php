@@ -29,7 +29,7 @@ $NAV_ACTIVE = 'login';
 $pageTitle = 'Hyr në sistem - QTA';
 $pageDescription = 'Zgjidhni rolin dhe hyni në portalin QTA.';
 $publicPlugins = ['aos'];
-$pageScripts = ['app/assets/js/login-ui.js'];
+$pageScripts = [qta_asset('app/assets/js/login-ui.js')];
 
 $roles = [
   'administrator' => [
@@ -137,14 +137,14 @@ require_once __DIR__ . '/navbarMain.php';
             <label class="label" for="identifier_<?= h($key) ?>"><?= h($roleInfo['field_label']) ?></label>
             <input class="input<?= $roleInfo['type'] === 'email' ? '' : ' input-code' ?>"
                    id="identifier_<?= h($key) ?>" name="identifier" type="<?= h($roleInfo['type']) ?>"
-                   placeholder="<?= h($roleInfo['placeholder']) ?>" required>
+                   placeholder="<?= h($roleInfo['placeholder']) ?>" autocomplete="username" required>
           </div>
 
           <div class="field">
             <label class="label" for="password_<?= h($key) ?>">Fjalëkalimi</label>
             <div style="display:flex;gap:.4rem">
               <input class="input login-password" id="password_<?= h($key) ?>" name="password" type="password"
-                     placeholder="Shkruaj fjalëkalimin" required style="flex:1;min-width:0">
+                     placeholder="Shkruaj fjalëkalimin" autocomplete="current-password" required style="flex:1;min-width:0">
               <button class="btn btn-icon" type="button" data-password-toggle="#password_<?= h($key) ?>"
                       aria-label="Shfaq ose fsheh fjalëkalimin">
                 <i class="bi bi-eye"></i>

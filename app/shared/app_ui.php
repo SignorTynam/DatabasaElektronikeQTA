@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/url.php';
+
 /**
  * app_ui.php — Ndihmësit e përbashkët të panelit (faqet e brendshme).
  * Vetëm shtresa e prezantimit: nuk prek skemën apo query-t e databazës.
@@ -187,17 +189,5 @@ if (!function_exists('qta_app_menu')) {
 if (!function_exists('qta_app_can_search')) {
   function qta_app_can_search(string $role): bool {
     return in_array(strtolower($role), ['administrator', 'editor', 'agjencia'], true);
-  }
-}
-
-/**
- * Shton një "gishtërinj" versioni te asetet lokale, që shfletuesi të mos
- * shërbejë CSS/JS të vjetruar pas një përditësimi.
- */
-if (!function_exists('qta_asset')) {
-  function qta_asset(string $path): string {
-    $full = dirname(__DIR__, 2) . '/' . ltrim($path, '/');
-    $stamp = is_file($full) ? (string)filemtime($full) : '1';
-    return $path . '?v=' . $stamp;
   }
 }

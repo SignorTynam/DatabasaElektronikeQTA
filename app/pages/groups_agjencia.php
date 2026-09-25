@@ -163,7 +163,7 @@ require __DIR__ . '/../shared/app_head.php';
           <h1>Grupe – <?= htmlspecialchars($AGENCY['company_name'] ?? 'Agjencia') ?></h1>
         </div>
         <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
-    <form class="d-flex" method="get" action="groups_agency.php">
+    <form class="d-flex" method="get" action="groups_agjencia.php">
       <div class="input-group">
         <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
         <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control border-0" placeholder="Kërko studentë sipas AMZË/ID/Emri...">
@@ -175,7 +175,7 @@ require __DIR__ . '/../shared/app_head.php';
             </option>
           <?php endforeach; ?>
         </select>
-        <button class="btn btn-outline-secondary" type="button" onclick="window.location='groups_agency.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
+        <button class="btn btn-outline-secondary" type="button" onclick="window.location='groups_agjencia.php'"><i class="bi bi-x-circle me-1"></i>Pastro</button>
         <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
       </div>
     </form>

@@ -8,6 +8,7 @@
   var root = document.documentElement;
   var THEME_KEY = 'qta_theme';
   var DENSITY_KEY = 'qta_density';
+  var SIDEBAR_KEY = 'qta_sidebar';
 
   /* ------------------------------------------------------------- 1. Pamja */
   function resolveTheme() {
@@ -49,6 +50,20 @@
 
   setDensity(localStorage.getItem(DENSITY_KEY) === 'dense' ? 'dense' : 'normal');
 
+  /* --------------------------------------------------------- 2b. Sidebar */
+  function setSidebar(mode) {
+    var collapsed = mode === 'collapsed';
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? 'collapsed' : 'expanded');
+    document.querySelectorAll('[data-sidebar-toggle]').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+      btn.setAttribute('aria-label', collapsed ? 'Zgjero menunë anësore' : 'Ngushto menunë anësore');
+      btn.setAttribute('title', collapsed ? 'Zgjero menunë' : 'Ngushto menunë');
+    });
+  }
+
+  setSidebar(localStorage.getItem(SIDEBAR_KEY) === 'collapsed' ? 'collapsed' : 'expanded');
+
   /* ------------------------------------------------------------ 3. Klikimet */
   document.addEventListener('click', function (event) {
     var themeBtn = event.target.closest('[data-theme-toggle]');
@@ -62,6 +77,13 @@
     if (densityBtn) {
       event.preventDefault();
       setDensity(document.body.classList.contains('dense') ? 'normal' : 'dense');
+      return;
+    }
+
+    var sidebarBtn = event.target.closest('[data-sidebar-toggle]');
+    if (sidebarBtn) {
+      event.preventDefault();
+      setSidebar(document.body.classList.contains('sidebar-collapsed') ? 'expanded' : 'collapsed');
       return;
     }
 

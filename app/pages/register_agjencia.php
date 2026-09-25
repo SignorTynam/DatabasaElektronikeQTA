@@ -151,19 +151,21 @@ require __DIR__ . '/../shared/app_head.php';
       <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Regjistri</h5>
       <div class="d-flex align-items-center gap-2">
         <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
-        <div class="btn-group" role="group" aria-label="Shkarkime">
-          <a class="btn btn-outline-success"
-             href="register_export_agency.php?f=xlsx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </a>
-          <a class="btn btn-outline-danger"
-             href="register_export_agency.php?f=pdf&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
-          </a>
-          <a class="btn btn-outline-primary"
-             href="register_export_agency.php?f=docx&q=<?= urlencode($q) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-word me-1"></i> Word
-          </a>
+        <div class="export-actions" role="group" aria-label="Eksporto regjistrin">
+          <?php foreach ([
+            'xlsx' => ['bi-file-earmark-excel', 'Excel', 'btn-outline-success'],
+            'pdf'  => ['bi-file-earmark-pdf', 'PDF', 'btn-outline-danger'],
+            'docx' => ['bi-file-earmark-word', 'Word', 'btn-outline-primary'],
+          ] as $exportFormat => [$exportIcon, $exportLabel, $exportClass]): ?>
+            <form method="post" action="register_export_agency.php">
+              <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+              <input type="hidden" name="f" value="<?= h($exportFormat) ?>">
+              <input type="hidden" name="q" value="<?= h($q) ?>">
+              <button class="btn <?= h($exportClass) ?>" type="submit">
+                <i class="bi <?= h($exportIcon) ?> me-1" aria-hidden="true"></i><?= h($exportLabel) ?>
+              </button>
+            </form>
+          <?php endforeach; ?>
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ $currentUser = qta_public_current_user($pdo);
 $NAV_ACTIVE = 'contact';
 $pageTitle = 'Kontakt — Regjistri QTA';
 $pageDescription = 'Shkruaji administratës së Qendrës së Trajnimeve të Avancuara.';
-$pageScripts = ['app/assets/js/contact-ui.js'];
+$pageScripts = [qta_asset('app/assets/js/contact-ui.js')];
 
 require_once __DIR__ . '/../shared/public_head.php';
 require_once __DIR__ . '/navbarMain.php';

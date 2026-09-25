@@ -37,7 +37,7 @@ $links = [
   <div class="wrap masthead-inner">
 
     <a class="masthead-mark" href="index.php">
-      <img src="image/logoPNG2.png" alt="QTA">
+      <img src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="QTA">
       <span>
         <b>Regjistri QTA</b>
         <span>Certifikime profesionale</span>
@@ -69,13 +69,13 @@ $links = [
             <span class="initials"><?= h($avatar) ?></span>
             <span class="app-who-name d-none d-sm-inline"><?= h($displayName) ?></span>
           </button>
-          <ul class="dropdown-menu dropdown-menu-end" style="min-width:238px">
+          <ul class="dropdown-menu dropdown-menu-end app-account-menu">
             <li class="px-2 py-2 d-flex align-items-center gap-2">
               <span class="initials initials-lg"><?= h($avatar) ?></span>
               <span class="min-w-0">
-                <span class="d-block text-truncate" style="font-family:var(--font-record);font-weight:600"><?= h($displayName) ?></span>
+                <span class="d-block text-truncate app-account-name"><?= h($displayName) ?></span>
                 <?php if (!empty($currentUser['email'])): ?>
-                  <span class="d-block text-truncate muted" style="font-size:var(--fs-xs)"><?= h((string)$currentUser['email']) ?></span>
+                  <span class="d-block text-truncate muted app-account-email"><?= h((string)$currentUser['email']) ?></span>
                 <?php endif; ?>
               </span>
             </li>

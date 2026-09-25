@@ -71,15 +71,16 @@ $CSRF = $_SESSION['csrf_token'];
 /* ------------------------------
    CSRF
 --------------------------------*/
-if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_GET['csrf'] ?? ''))) {
+$request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($request['csrf'] ?? ''))) {
   qta_fail(400, 'Invalid CSRF token.');
 }
 
 /* ------------------------------
    Parametrat
 --------------------------------*/
-$f = strtolower((string)($_GET['f'] ?? 'xlsx'));   // xlsx|pdf|docx
-$q = trim((string)($_GET['q'] ?? ''));
+$f = strtolower((string)($request['f'] ?? 'xlsx'));   // xlsx|pdf|docx
+$q = trim((string)($request['q'] ?? ''));
 
 /* Auto-load librarish (nëse ekziston vendor/) */
 $autoload = __DIR__ . '/vendor/autoload.php';

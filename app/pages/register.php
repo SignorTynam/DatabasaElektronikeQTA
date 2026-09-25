@@ -224,19 +224,22 @@ require __DIR__ . '/../shared/app_head.php';
       <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Regjistri</h5>
       <div class="d-flex align-items-center gap-2">
         <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
-        <div class="btn-group" role="group">
-          <a class="btn btn-soft-success btn-pill"
-             href="register_export.php?f=xlsx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </a>
-          <a class="btn btn-soft-danger btn-pill"
-             href="register_export.php?f=pdf&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
-          </a>
-          <a class="btn btn-soft-primary btn-pill"
-             href="register_export.php?f=docx&q=<?= urlencode($q) ?>&from_amze=<?= urlencode($from_amze) ?>&csrf=<?= urlencode($CSRF) ?>">
-            <i class="bi bi-file-earmark-word me-1"></i> Word
-          </a>
+        <div class="export-actions" role="group" aria-label="Eksporto regjistrin">
+          <?php foreach ([
+            'xlsx' => ['bi-file-earmark-excel', 'Excel', 'btn-soft-success'],
+            'pdf'  => ['bi-file-earmark-pdf', 'PDF', 'btn-soft-danger'],
+            'docx' => ['bi-file-earmark-word', 'Word', 'btn-soft-primary'],
+          ] as $exportFormat => [$exportIcon, $exportLabel, $exportClass]): ?>
+            <form method="post" action="register_export.php">
+              <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+              <input type="hidden" name="f" value="<?= h($exportFormat) ?>">
+              <input type="hidden" name="q" value="<?= h($q) ?>">
+              <input type="hidden" name="from_amze" value="<?= h($from_amze) ?>">
+              <button class="btn <?= h($exportClass) ?>" type="submit">
+                <i class="bi <?= h($exportIcon) ?> me-1" aria-hidden="true"></i><?= h($exportLabel) ?>
+              </button>
+            </form>
+          <?php endforeach; ?>
         </div>
       </div>
     </div>

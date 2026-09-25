@@ -77,17 +77,18 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
   exit;
 }
 
-/* CSRF */
+/* CSRF — POST preferred so the session token never appears in the URL. */
+$request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $csrfSession = $_SESSION['csrf_token'] ?? '';
-$csrfQuery   = $_GET['csrf'] ?? '';
+$csrfQuery   = $request['csrf'] ?? '';
 if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
     qta_fail(403, 'CSRF gabim ose mungon.');
 }
 
 /* Parametra */
-$f = strtolower(trim($_GET['f'] ?? 'xlsx'));  // xlsx|pdf|docx
-$q = trim($_GET['q'] ?? '');
-$from_amze = trim($_GET['from_amze'] ?? '');
+$f = strtolower(trim((string)($request['f'] ?? 'xlsx')));  // xlsx|pdf|docx
+$q = trim((string)($request['q'] ?? ''));
+$from_amze = trim((string)($request['from_amze'] ?? ''));
 
 @ini_set('memory_limit', '-1');
 @set_time_limit(0);

@@ -25,7 +25,7 @@ $headExtra  = $headExtra  ?? '';
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title><?= h($pageTitle) ?></title>
-  <link rel="icon" type="image/png" href="image/logoPNG2.png">
+  <link rel="icon" type="image/png" href="<?= h(qta_asset('image/logoPNG2.png')) ?>">
 
   <script>
     (function () {
@@ -39,7 +39,7 @@ $headExtra  = $headExtra  ?? '';
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
@@ -47,12 +47,13 @@ $headExtra  = $headExtra  ?? '';
   <link href="<?= h(qta_asset('app/assets/css/protokoll.css')) ?>" rel="stylesheet">
   <link href="<?= h(qta_asset('app/assets/css/app.css')) ?>" rel="stylesheet">
   <link href="<?= h(qta_asset('app/assets/css/legacy-map.css')) ?>" rel="stylesheet">
+  <link href="<?= h(qta_asset('app/assets/css/claude-ui.css')) ?>" rel="stylesheet">
 <?php foreach ($pageStyles as $style): ?>
   <link href="<?= h((string)$style) ?>" rel="stylesheet">
 <?php endforeach; ?>
 <?= $headExtra ?>
 </head>
-<body class="<?= h($bodyClass) ?>">
+<body class="qta-claude-ui <?= h($bodyClass) ?>">
 <?php
 /* Koka doli: vizato navbar-in nëse faqja e kërkoi më herët. */
 $GLOBALS['QTA_HEAD_RENDERED'] = true;

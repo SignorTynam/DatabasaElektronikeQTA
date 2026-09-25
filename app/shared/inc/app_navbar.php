@@ -76,12 +76,17 @@ $navIsActive = static function (array $item) use ($navActive): bool {
   <div class="app-bar-inner">
 
     <a class="app-mark" href="<?= h($navHome) ?>">
-      <img src="image/logoPNG2.png" alt="QTA">
+      <img src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="QTA">
       <span class="app-mark-name">
         <b>Regjistri QTA</b>
         <span><?= h($navSub !== '' ? $navSub : 'Qendra e Trajnimeve të Avancuara') ?></span>
       </span>
     </a>
+
+    <button class="app-sidebar-toggle" type="button" data-sidebar-toggle
+            aria-pressed="false" aria-label="Ngushto menunë anësore" title="Ngushto menunë">
+      <i class="bi bi-layout-sidebar-inset" aria-hidden="true"></i>
+    </button>
 
     <?php
     /* Roli tregohet me ikonë; fjala "Nënshkrues" rri te titulli, jo në shirit. */
@@ -113,13 +118,17 @@ $navIsActive = static function (array $item) use ($navActive): bool {
             <li>
               <a class="app-nav-link<?= $isActive ? ' is-active' : '' ?>"
                  <?= $isActive ? 'aria-current="page"' : '' ?>
-                 href="<?= h((string)$item['href']) ?>"><?= h((string)$item['label']) ?></a>
+                 href="<?= h((string)$item['href']) ?>">
+                <i class="bi <?= h((string)($item['icon'] ?? 'bi-circle')) ?>" aria-hidden="true"></i>
+                <span><?= h((string)$item['label']) ?></span>
+              </a>
             </li>
           <?php else: ?>
             <li class="app-item">
               <button class="app-nav-link<?= $isActive ? ' is-active' : '' ?>" type="button"
                       data-sub-toggle aria-expanded="false" aria-controls="appSub<?= (int)$i ?>">
-                <?= h((string)$item['label']) ?><span class="caret" aria-hidden="true">▾</span>
+                <i class="bi <?= h((string)($item['icon'] ?? 'bi-circle')) ?>" aria-hidden="true"></i>
+                <span><?= h((string)$item['label']) ?></span><span class="caret" aria-hidden="true">▾</span>
               </button>
               <ul class="app-sub" id="appSub<?= (int)$i ?>">
                 <?php foreach ($item['children'] as $child): ?>
@@ -127,7 +136,10 @@ $navIsActive = static function (array $item) use ($navActive): bool {
                   <li>
                     <a class="app-nav-link<?= $childActive ? ' is-active' : '' ?>"
                        <?= $childActive ? 'aria-current="page"' : '' ?>
-                       href="<?= h((string)$child['href']) ?>"><?= h((string)$child['label']) ?></a>
+                       href="<?= h((string)$child['href']) ?>">
+                      <i class="bi <?= h((string)($child['icon'] ?? 'bi-circle')) ?>" aria-hidden="true"></i>
+                      <span><?= h((string)$child['label']) ?></span>
+                    </a>
                   </li>
                 <?php endforeach; ?>
               </ul>
@@ -165,13 +177,13 @@ $navIsActive = static function (array $item) use ($navActive): bool {
           <span class="initials"><?= h($navInit) ?></span>
           <span class="app-who-name d-none d-sm-inline"><?= h($navWho) ?></span>
         </button>
-        <ul class="dropdown-menu dropdown-menu-end" style="min-width:246px">
+        <ul class="dropdown-menu dropdown-menu-end app-account-menu">
           <li class="px-2 py-2 d-flex align-items-center gap-2">
             <span class="initials initials-lg"><?= h($navInit) ?></span>
             <span class="min-w-0">
-              <span class="d-block text-truncate" style="font-family:var(--font-record);font-weight:600"><?= h($navWho) ?></span>
+              <span class="d-block text-truncate app-account-name"><?= h($navWho) ?></span>
               <?php if ($navEmail !== ''): ?>
-                <span class="d-block text-truncate muted" style="font-size:var(--fs-xs)"><?= h($navEmail) ?></span>
+                <span class="d-block text-truncate muted app-account-email"><?= h($navEmail) ?></span>
               <?php endif; ?>
             </span>
           </li>

@@ -15,7 +15,7 @@ require_once __DIR__ . '/public_ui.php';
 
       <div class="col-lg-5">
         <div class="d-flex align-items-center gap-2 mb-3">
-          <img src="image/logoPNG2.png" alt="QTA" style="height:26px;width:auto">
+          <img class="footer-brand-logo" src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="QTA">
           <span style="font-family:var(--font-record);font-weight:600;font-size:var(--fs-lg)">
             Qendra e Trajnimeve të Avancuara
           </span>

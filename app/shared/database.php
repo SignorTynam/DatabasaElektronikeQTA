@@ -4,10 +4,11 @@
 declare(strict_types=1);
 
 function getPDO(): PDO {
-    $dbHost = '127.0.0.1';
-    $dbName = 'qta_db';
-    $dbUser = 'root';
-    $dbPass = ''; // XAMPP default is empty; change if you set a password
+    $dbHost = getenv('QTA_DB_HOST') ?: '127.0.0.1';
+    $dbName = getenv('QTA_DB_NAME') ?: 'qta_db';
+    $dbUser = getenv('QTA_DB_USER') ?: 'root';
+    $dbPass = getenv('QTA_DB_PASSWORD');
+    $dbPass = $dbPass === false ? '' : $dbPass;
     $charset = 'utf8mb4';
     $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=$charset";
 
@@ -20,7 +21,9 @@ function getPDO(): PDO {
     try {
         return new PDO($dsn, $dbUser, $dbPass, $options);
     } catch (PDOException $e) {
-        // In production, log error and show a generic message.
-        exit('Database connection failed: ' . $e->getMessage());
+        $incident = bin2hex(random_bytes(6));
+        error_log(sprintf('[QTA DB %s] %s', $incident, $e->getMessage()));
+        http_response_code(503);
+        exit('Shërbimi nuk mund të lidhet me databazën. Provo përsëri më vonë. Referenca: ' . $incident);
     }
 }
