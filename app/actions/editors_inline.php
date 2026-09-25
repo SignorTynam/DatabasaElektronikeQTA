@@ -12,7 +12,7 @@ qta_audit_attach($pdo);
 /* Guard: vetëm admin i loguar */
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'Nuk jeni i autentikuar.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Seanca ka mbaruar. Hyr sërish në llogari.']); exit;
 }
 $userStmt = $pdo->prepare("
     SELECT u.id, r.name AS role_name
@@ -25,7 +25,7 @@ $userStmt->execute([':uid'=>$_SESSION['user_id']]);
 $me = $userStmt->fetch(PDO::FETCH_ASSOC);
 if (!$me || strtolower((string)$me['role_name']) !== 'administrator') {
     http_response_code(403);
-    echo json_encode(['ok'=>false,'error'=>'Lejohet vetëm për administrator.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Vetëm administratorët mund t\'i ndryshojnë llogaritë e stafit.']); exit;
 }
 
 /* Lexo input (JSON ose form) */
@@ -43,9 +43,13 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csr
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
+if (empty($_SESSION['edit_mode'])) {
+    http_response_code(403);
+    echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
+}
 if ($user_id <= 0) {
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'ID përdoruesi e pavlefshme.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Llogaria nuk u gjet. Rifresko faqen.']); exit;
 }
 
 /* Target duhet të jetë EDITOR */
@@ -59,16 +63,16 @@ $roleQ = $pdo->prepare("
 $roleQ->execute([':uid'=>$user_id]);
 $target = $roleQ->fetch(PDO::FETCH_ASSOC);
 if (!$target) {
-    echo json_encode(['ok'=>false,'error'=>'Përdoruesi nuk u gjet.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Llogaria nuk u gjet. Rifresko faqen.']); exit;
 }
 if (strtolower((string)$target['role_name']) !== 'editor') {
-    echo json_encode(['ok'=>false,'error'=>'Ky veprim lejohet vetëm për llogari me rol editor.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Kjo llogari nuk është editor. Rifresko faqen.']); exit;
 }
 
 /* Fusha të lejuara */
 $allowed = ['full_name','email'];
 if (!in_array($field, $allowed, true)) {
-    echo json_encode(['ok'=>false,'error'=>'Fusha nuk lejohet për redaktim.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Kjo fushë nuk mund të ndryshohet këtu.']); exit;
 }
 
 $dispValue = null;
@@ -76,13 +80,13 @@ $dispValue = null;
 try {
     if ($field === 'email') {
         $v = trim((string)$value);
-        if ($v === '') throw new RuntimeException('Email-i është i detyrueshëm.');
-        if (!filter_var($v, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Email i pavlefshëm.');
+        if ($v === '') throw new RuntimeException('Shkruaj email-in.');
+        if (!filter_var($v, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Email-i nuk duket i saktë. Kontrolloje, p.sh. emri@qta.al.');
 
         // Unikësi (përveç përdoruesit aktual)
         $c = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = :e AND id <> :id");
         $c->execute([':e'=>$v, ':id'=>$user_id]);
-        if ((int)$c->fetchColumn() > 0) throw new RuntimeException('Ky email përdoret nga një përdorues tjetër.');
+        if ((int)$c->fetchColumn() > 0) throw new RuntimeException('Ky email përdoret nga një llogari tjetër.');
 
         $pdo->prepare("UPDATE users SET email=:e WHERE id=:id")->execute([':e'=>$v, ':id'=>$user_id]);
         $dispValue = $v;
