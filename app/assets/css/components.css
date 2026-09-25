@@ -1653,6 +1653,84 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
 }
 .val-arrow { margin: 0 .25rem; color: var(--text-subtle); }
 
+/* ============================================ 24f1. Historiku i ndryshimeve */
+/* Një ditë = një titull + listë veprimesh; çdo veprim thuhet si fjali. */
+.log-day { margin-bottom: var(--sp-6); }
+.log-day-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+}
+.log-day-count { color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-regular); }
+.log-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  list-style: none;
+}
+.log-item {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.log-item:first-child { border-top: 0; }
+.log-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-full);
+  font-size: var(--fs-sm);
+}
+.log-item.is-add .log-icon  { background: var(--success-soft); color: var(--success); }
+.log-item.is-edit .log-icon { background: var(--info-soft); color: var(--info); }
+.log-item.is-del .log-icon  { background: var(--danger-soft); color: var(--danger); }
+.log-dot { display: inline-block; width: .55rem; height: .55rem; margin-right: .4rem; border-radius: var(--r-full); vertical-align: middle; }
+.log-dot.is-add { background: var(--success); }
+.log-dot.is-edit { background: var(--info); }
+.log-dot.is-del { background: var(--danger); }
+.log-body { min-width: 0; }
+.log-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .25rem var(--sp-3);
+}
+.log-line { margin: 0; overflow-wrap: anywhere; }
+.log-subject { color: var(--text); }
+.log-when { color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.log-changes {
+  display: grid;
+  gap: .3rem;
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+}
+.log-change {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+.log-change dt { color: var(--text-muted); font-weight: var(--fw-regular); }
+.log-change dd { margin: 0; overflow-wrap: anywhere; }
+.log-more { margin-top: .35rem; font-size: var(--fs-xs); }
+@media (max-width: 479.98px) {
+  .log-item { grid-template-columns: minmax(0, 1fr); }
+  .log-icon { display: none; }
+  .log-change { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
 /* ================================================ 24f2. Regjistrimet (modulet) */
 .enroll-list {
   display: grid;
