@@ -2216,3 +2216,31 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
   .help-toc ul { display: flex; flex-wrap: wrap; gap: .25rem; }
   .help-toc a { border: 1px solid var(--border); border-radius: var(--r-full); padding: .3rem .75rem; font-size: var(--fs-xs); }
 }
+
+/* ============================================ 26. Tabela të gjera: kolona të ngrira */
+/* <table class="table table-freeze">: nr. i amzës dhe emri mbeten në vend kur
+   tabela lëviz horizontalisht, që të dihet gjithmonë për kë është rreshti. */
+@media (min-width: 768px) {
+  .table-freeze > :is(thead, tbody) > tr > :is(:first-child, :nth-child(2)) {
+    position: sticky;
+    z-index: 1;
+    background-color: var(--surface);
+  }
+  .table-freeze > :is(thead, tbody) > tr > :first-child {
+    left: 0;
+    width: 7.5rem;
+    min-width: 7.5rem;
+    max-width: 7.5rem;
+  }
+  .table-freeze > :is(thead, tbody) > tr > :nth-child(2) { left: 7.5rem; }
+  .table-freeze > :is(thead, tbody) > tr > :nth-child(2)::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -1px;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+  }
+  .table-freeze > thead > tr > :is(:first-child, :nth-child(2)) { z-index: 3; background-color: var(--surface-sunken); }
+}

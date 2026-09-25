@@ -229,7 +229,7 @@ else require __DIR__ . '/inc/navbar.php';
     ?>
 
     <div class="table-responsive">
-      <table class="table" id="registerTable" data-sortable>
+      <table class="table table-freeze" id="registerTable" data-sortable>
         <thead>
           <tr>
             <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>

@@ -1176,12 +1176,11 @@ $groupStatus = static function (array $h) use ($today): string {
         <table class="table" id="groupsTable" data-sortable>
           <thead>
             <tr>
-              <th scope="col" class="col-wide" data-sort="text">Moduli</th>
+              <th scope="col" class="col-medium" data-sort="text">Moduli</th>
               <th scope="col" class="nowrap" data-sort="text">Nr. i amzës</th>
               <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
               <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
               <th scope="col" class="nowrap num-col" data-sort="num">Kursantë</th>
-              <th scope="col" class="nowrap num-col" data-sort="num">Me pikë</th>
               <th scope="col" data-sort="text">Gjendja</th>
               <th scope="col" class="nowrap" data-sort="none">Mbyllur</th>
               <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
@@ -1202,7 +1201,7 @@ $groupStatus = static function (array $h) use ($today): string {
           ?>
           <tbody class="grp" data-gid="<?= (int)$gid ?>">
             <tr>
-              <td class="col-wide">
+              <td class="col-medium">
                 <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#gBody_<?= (int)$gid ?>"
                         aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
                   <i class="bi bi-chevron-right" aria-hidden="true"></i>
@@ -1221,8 +1220,12 @@ $groupStatus = static function (array $h) use ($today): string {
                 <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
                       data-field="end_date" data-group="<?= (int)$gid ?>" data-student="0"><?= h(qta_date($h0['end_date'])) ?></span>
               </td>
-              <td class="nowrap num-col"><?= $nStud ?><span class="text-subtle">/10</span></td>
-              <td class="nowrap num-col<?= ($nStud > 0 && $nScored < $nStud) ? ' text-warning' : '' ?>"><?= $nScored ?></td>
+              <td class="nowrap num-col" data-sort-value="<?= $nStud ?>">
+                <?= $nStud ?><span class="text-subtle">/10</span>
+                <?php if ($nStud > 0): ?>
+                  <span class="cell-sub<?= $nScored < $nStud ? ' text-warning' : '' ?>"><?= $nScored === $nStud ? 'të gjithë me pikë' : $nScored . ' me pikë' ?></span>
+                <?php endif; ?>
+              </td>
               <td data-group-status="<?= (int)$gid ?>"><?= $groupStatus($h0) ?></td>
               <td class="nowrap">
                 <div class="form-check form-switch mb-0">
@@ -1249,7 +1252,7 @@ $groupStatus = static function (array $h) use ($today): string {
             </tr>
 
             <tr class="row-details">
-              <td colspan="9">
+              <td colspan="8">
                 <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
                   <div class="row-details-inner">
 

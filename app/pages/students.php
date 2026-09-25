@@ -785,7 +785,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
     ?>
 
     <div class="table-responsive">
-      <table class="table" id="studentsTable" data-sortable>
+      <table class="table table-freeze" id="studentsTable" data-sortable>
         <thead>
           <tr>
             <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
