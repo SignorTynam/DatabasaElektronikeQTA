@@ -10,153 +10,111 @@ $currentUser = qta_public_current_user($pdo);
 
 $NAV_ACTIVE = 'contact';
 $pageTitle = 'Kontakt — Regjistri QTA';
-$pageDescription = 'Shkruaji administratës së Qendrës së Trajnimeve të Avancuara.';
+$pageDescription = 'Na kontaktoni për kualifikime, regjistrime ose probleme me hyrjen në sistem.';
 $pageScripts = [qta_asset('app/assets/js/contact-ui.js')];
 
 require_once __DIR__ . '/../shared/public_head.php';
 require_once __DIR__ . '/navbarMain.php';
 ?>
-<main class="wrap">
+<main id="main" tabindex="-1">
 
-  <!-- ====================================================== KOKA ========= -->
-  <section style="padding-top:2rem">
-    <div class="protocol-line">
-      <span>Qendra e Trajnimeve të Avancuara</span>
-      <span class="sep">·</span>
-      <span>Tiranë</span>
-      <span class="sep">·</span>
-      <span>Administrata</span>
-    </div>
-
-    <div class="title-block">
-      <div class="title-block-main">
-        <div class="title-block-eyebrow">Kontakt</div>
-        <h1>Shkruaji administratës</h1>
-        <p class="title-block-note">
-          Për kualifikime, regjistrime ose probleme me hyrjen në sistem. Për të kontrolluar
-          një certifikatë nuk duhet të na shkruash — <a href="verify.php">hap verifikimin</a>.
-        </p>
-      </div>
-      <div class="title-block-fields">
-        <div class="title-block-field">
-          <span class="label">Përgjigje brenda</span>
-          <span class="value">2 ditë pune</span>
-        </div>
-      </div>
-    </div>
+  <section class="wrap page-intro">
+    <span class="hero-eyebrow"><i class="bi bi-envelope" aria-hidden="true"></i>Kontakt · përgjigjemi brenda 2 ditëve të punës</span>
+    <h1 class="page-title">Na kontaktoni</h1>
+    <p class="page-lead">
+      Për kualifikime, regjistrime ose probleme me hyrjen në sistem. Për të kontrolluar një
+      certifikatë nuk duhet të na shkruani — <a href="verify.php">hapni verifikimin</a>.
+    </p>
   </section>
 
-  <!-- ====================================================== TRUPI ======== -->
-  <section class="band band-tight">
+  <div class="wrap pb-5">
     <div class="row g-4 g-lg-5">
 
-      <!-- Të dhënat e kontaktit -->
       <div class="col-lg-4">
-        <span class="label" style="display:block;padding-bottom:.5rem;border-bottom:1px solid var(--rule)">
-          Të dhënat
-        </span>
-
-        <dl style="margin:0">
-          <?php
-          $contacts = [
-            ['Adresa',   'Rruga Bilal Konxholli, Tiranë', null],
-            ['Telefon',  '+355 69 877 8837', 'tel:+355698778837'],
-            ['Email',    'officialqta@gmail.com', 'mailto:officialqta@gmail.com'],
-            ['Orari',    'E hënë – E premte, 09:00–17:00', null],
-          ];
-          foreach ($contacts as $c): ?>
-            <div style="padding:.8rem 0;border-bottom:1px solid var(--rule-hair)">
-              <dt class="label" style="margin-bottom:.15rem"><?= h($c[0]) ?></dt>
-              <dd style="margin:0;font-family:var(--font-record);font-size:var(--fs-md)">
-                <?php if ($c[2]): ?>
-                  <a href="<?= h($c[2]) ?>"><?= h($c[1]) ?></a>
-                <?php else: ?>
-                  <?= h($c[1]) ?>
-                <?php endif; ?>
-              </dd>
-            </div>
-          <?php endforeach; ?>
-        </dl>
-
-        <div class="mt-4" style="padding:.9rem 1rem;border:1px solid var(--rule);border-left:4px solid var(--ref);border-radius:var(--r-sm);background:var(--ref-wash)">
-          <span class="label" style="margin-bottom:.2rem">Shënim</span>
-          <p style="margin:0;font-size:var(--fs-sm)">
-            Formulari më poshtë e përgatit mesazhin dhe e hap në programin tënd të email-it.
-            Asgjë nuk ruhet në regjistër.
-          </p>
-        </div>
+        <h2 class="section-title mb-3">Na gjeni këtu</h2>
+        <ul class="contact-list">
+          <li class="contact-item">
+            <i class="bi bi-telephone" aria-hidden="true"></i>
+            <div><b>Telefon</b><a href="tel:+355698778837">+355 69 877 8837</a></div>
+          </li>
+          <li class="contact-item">
+            <i class="bi bi-envelope" aria-hidden="true"></i>
+            <div><b>Email</b><a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a></div>
+          </li>
+          <li class="contact-item">
+            <i class="bi bi-geo-alt" aria-hidden="true"></i>
+            <div><b>Adresa</b><span>Rruga Bilal Konxholli, Tiranë</span></div>
+          </li>
+          <li class="contact-item">
+            <i class="bi bi-clock" aria-hidden="true"></i>
+            <div><b>Orari</b><span>E hënë – e premte, 09:00–17:00</span></div>
+          </li>
+        </ul>
       </div>
 
-      <!-- Formulari -->
       <div class="col-lg-8">
-        <div class="leaf">
-          <div class="leaf-head">
-            <span class="ui-title">Përgatit mesazhin</span>
-            <span class="label" data-contact-count>Të gjitha fushat me yll janë të detyrueshme</span>
-          </div>
+        <section class="panel" aria-labelledby="formTitle">
+          <h2 class="section-title" id="formTitle">Shkruani mesazhin</h2>
+          <p class="text-muted mb-4">
+            Plotësoni fushat dhe shtypni "Hap në email". Mesazhi hapet i gatshëm në programin tuaj
+            të email-it — ju e dërgoni vetë. Asgjë nuk ruhet në regjistër.
+          </p>
 
-          <div class="leaf-body">
-            <div class="progress mb-4" style="height:3px">
-              <div class="progress-bar" data-contact-progress style="width:12%"></div>
-            </div>
-
-            <form id="contactForm" class="needs-validation" novalidate>
-              <div class="row g-3">
-
-                <div class="col-md-6">
-                  <label class="label" for="full_name">Emër dhe mbiemër *</label>
-                  <input class="input" id="full_name" name="full_name" type="text" required autocomplete="name">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="label" for="email">Email *</label>
-                  <input class="input" id="email" name="email" type="email" required autocomplete="email">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="label" for="phone">Telefon</label>
-                  <input class="input input-code" id="phone" name="phone" type="tel" autocomplete="tel">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="label" for="request_type">Lloji i kërkesës *</label>
-                  <select class="select" id="request_type" name="request_type" required>
-                    <option value="">Zgjidh llojin</option>
-                    <option>Informacion për module</option>
-                    <option>Regjistrim kursantësh</option>
-                    <option>Problem me hyrjen</option>
-                    <option>Verifikim certifikate</option>
-                    <option>Bashkëpunim</option>
-                    <option>Tjetër</option>
-                  </select>
-                </div>
-
-                <div class="col-12">
-                  <label class="label" for="subject">Subjekti *</label>
-                  <input class="input" id="subject" name="subject" type="text" required>
-                </div>
-
-                <div class="col-12">
-                  <label class="label" for="message">Mesazhi *</label>
-                  <textarea class="textarea" id="message" name="message" rows="7" required></textarea>
-                </div>
-
-                <div class="col-12 d-flex flex-wrap gap-2 pt-2">
-                  <a class="btn btn-ink btn-lg" id="contactMailto" href="mailto:officialqta@gmail.com">
-                    <i class="bi bi-envelope"></i>Hap në email
-                  </a>
-                  <a class="btn btn-lg" href="verify.php">Verifiko një certifikatë</a>
-                </div>
-
+          <form id="contactForm" novalidate>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="full_name">Emri dhe mbiemri <span class="req" aria-hidden="true">*</span></label>
+                <input class="form-control" id="full_name" name="full_name" type="text" required autocomplete="name">
+                <p class="invalid-feedback">Shkruani emrin.</p>
               </div>
-            </form>
-          </div>
-        </div>
+              <div class="col-md-6">
+                <label class="form-label" for="email">Email-i juaj <span class="req" aria-hidden="true">*</span></label>
+                <input class="form-control" id="email" name="email" type="email" required autocomplete="email">
+                <p class="invalid-feedback">Shkruani një email të vlefshëm, p.sh. emri@shembull.com.</p>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="phone">Telefoni <span class="optional">(nëse doni)</span></label>
+                <input class="form-control input-code" id="phone" name="phone" type="tel" autocomplete="tel">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="request_type">Për çfarë bëhet fjalë? <span class="req" aria-hidden="true">*</span></label>
+                <select class="form-select" id="request_type" name="request_type" required>
+                  <option value="">Zgjidhni…</option>
+                  <option>Informacion për module</option>
+                  <option>Regjistrim kursantësh</option>
+                  <option>Problem me hyrjen</option>
+                  <option>Verifikim certifikate</option>
+                  <option>Bashkëpunim</option>
+                  <option>Tjetër</option>
+                </select>
+                <p class="invalid-feedback">Zgjidhni një arsye.</p>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="subject">Titulli i mesazhit <span class="req" aria-hidden="true">*</span></label>
+                <input class="form-control" id="subject" name="subject" type="text" required>
+                <p class="invalid-feedback">Shkruani një titull të shkurtër.</p>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="message">Mesazhi <span class="req" aria-hidden="true">*</span></label>
+                <textarea class="form-control" id="message" name="message" rows="6" required></textarea>
+                <p class="invalid-feedback">Shkruani mesazhin.</p>
+              </div>
+              <div class="col-12 d-flex flex-wrap gap-2 pt-2">
+                <button class="btn btn-primary btn-lg" type="submit">
+                  <i class="bi bi-envelope-arrow-up" aria-hidden="true"></i>Hap në email
+                </button>
+                <a class="btn btn-secondary btn-lg" href="tel:+355698778837">
+                  <i class="bi bi-telephone" aria-hidden="true"></i>Ose na telefononi
+                </a>
+              </div>
+              <p class="col-12 text-muted small mb-0"><span class="req" aria-hidden="true">*</span> Fushat me yll janë të detyrueshme.</p>
+            </div>
+          </form>
+        </section>
       </div>
 
     </div>
-  </section>
-
+  </div>
 </main>
 
 <?php

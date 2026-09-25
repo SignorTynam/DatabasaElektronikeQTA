@@ -2,8 +2,9 @@
 declare(strict_types=1);
 
 /**
- * navbarMain.php — Kokëfleta publike (PROTOKOLL).
- * Institucioni majtas, seksionet djathtas, vijë boje 2px poshtë.
+ * navbarMain.php — Koka e faqeve publike (Themeli).
+ * Marka majtas; Kreu · Verifiko · Rreth nesh · Kontakt; pamja dhe hyrja djathtas.
+ * Në celular lidhjet hapen nga butoni "Menuja".
  */
 
 require_once __DIR__ . '/public_ui.php';
@@ -22,73 +23,68 @@ if (empty($NAV_ACTIVE)) {
 
 $currentUser = $currentUser ?? null;
 $roleName    = qta_public_role($currentUser);
-$displayName = (string)($currentUser['full_name'] ?? $currentUser['email'] ?? 'Përdorues');
+$displayName = (string)(($currentUser['full_name'] ?? '') ?: ($currentUser['email'] ?? 'Përdorues'));
 $panelHref   = qta_public_panel_href($roleName);
 $panelLabel  = qta_public_panel_label($roleName);
-$avatar      = qta_public_initials($displayName);
 
 $links = [
-  ['key' => 'home',    'href' => 'index.php',   'label' => 'Regjistri'],
-  ['key' => 'about',   'href' => 'aboutus.php', 'label' => 'Institucioni'],
-  ['key' => 'contact', 'href' => 'contact.php', 'label' => 'Kontakt'],
+  ['key' => 'home',    'href' => 'index.php',   'label' => 'Kreu',                 'icon' => null],
+  ['key' => 'verify',  'href' => 'verify.php',  'label' => 'Verifiko certifikatë', 'icon' => 'bi-qr-code-scan'],
+  ['key' => 'about',   'href' => 'aboutus.php', 'label' => 'Rreth nesh',           'icon' => null],
+  ['key' => 'contact', 'href' => 'contact.php', 'label' => 'Kontakt',              'icon' => null],
 ];
 ?>
-<header class="masthead">
+<header class="masthead no-print">
   <div class="wrap masthead-inner">
 
-    <a class="masthead-mark" href="index.php">
-      <img src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="QTA">
-      <span>
+    <a class="masthead-brand" href="index.php" aria-label="Regjistri QTA — kreu">
+      <img src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="">
+      <span class="masthead-brand-text">
         <b>Regjistri QTA</b>
-        <span>Certifikime profesionale</span>
+        <span>Qendra e Trajnimeve të Avancuara</span>
       </span>
     </a>
 
-    <button class="masthead-burger" type="button" data-mast-toggle
-            aria-expanded="false" aria-controls="mastNav" aria-label="Hap menunë">
-      <i class="bi bi-list"></i>
+    <button class="btn btn-secondary masthead-menu-btn" type="button" data-mast-toggle
+            aria-expanded="false" aria-controls="mastNav">
+      <i class="bi bi-list" aria-hidden="true"></i>Menuja
     </button>
 
-    <nav class="masthead-nav" id="mastNav" aria-label="Navigimi publik">
-      <?php foreach ($links as $l): ?>
-        <a class="masthead-link<?= $NAV_ACTIVE === $l['key'] ? ' is-active' : '' ?>"
-           href="<?= h($l['href']) ?>"
-           <?= $NAV_ACTIVE === $l['key'] ? 'aria-current="page"' : '' ?>><?= h($l['label']) ?></a>
+    <nav class="masthead-nav" id="mastNav" aria-label="Navigimi kryesor">
+      <?php foreach ($links as $l):
+        $isActive = $NAV_ACTIVE === $l['key']; ?>
+        <a class="masthead-link<?= $isActive ? ' is-active' : '' ?><?= $l['key'] === 'verify' ? ' is-verify' : '' ?>"
+           href="<?= h($l['href']) ?>"<?= $isActive ? ' aria-current="page"' : '' ?>>
+          <?php if ($l['icon']): ?><i class="bi <?= h($l['icon']) ?>" aria-hidden="true"></i><?php endif; ?>
+          <?= h($l['label']) ?>
+        </a>
       <?php endforeach; ?>
 
-      <a class="masthead-link<?= $NAV_ACTIVE === 'verify' ? ' is-active' : '' ?>"
-         href="verify.php" <?= $NAV_ACTIVE === 'verify' ? 'aria-current="page"' : '' ?>>Verifiko</a>
+      <div class="masthead-actions">
+        <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Ndrysho pamjen">
+          <i class="bi bi-moon-stars" aria-hidden="true"></i>
+        </button>
 
-      <button class="app-tool ms-2" type="button" data-theme-toggle aria-label="Ndërro pamjen">
-        <i class="bi bi-circle-half"></i>
-      </button>
-
-      <?php if (!empty($currentUser)): ?>
-        <div class="dropdown ms-2">
-          <button class="app-who" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <span class="initials"><?= h($avatar) ?></span>
-            <span class="app-who-name d-none d-sm-inline"><?= h($displayName) ?></span>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end app-account-menu">
-            <li class="px-2 py-2 d-flex align-items-center gap-2">
-              <span class="initials initials-lg"><?= h($avatar) ?></span>
-              <span class="min-w-0">
-                <span class="d-block text-truncate app-account-name"><?= h($displayName) ?></span>
-                <?php if (!empty($currentUser['email'])): ?>
-                  <span class="d-block text-truncate muted app-account-email"><?= h((string)$currentUser['email']) ?></span>
-                <?php endif; ?>
-              </span>
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="<?= h($panelHref) ?>"><i class="bi bi-journal-text"></i><?= h($panelLabel) ?></a></li>
-            <li><a class="dropdown-item" href="profile.php"><i class="bi bi-person"></i>Profili</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right"></i>Dil</a></li>
-          </ul>
-        </div>
-      <?php else: ?>
-        <a class="btn btn-ink btn-sm ms-2" href="selectProfile.php">Hyr në sistem</a>
-      <?php endif; ?>
+        <?php if (!empty($currentUser)): ?>
+          <div class="dropdown">
+            <button class="btn btn-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <span class="avatar" aria-hidden="true"><?= h(qta_initials($displayName)) ?></span>
+              <span class="d-none d-sm-inline text-truncate masthead-user"><?= h($displayName) ?></span>
+              <span class="visually-hidden">— menuja e llogarisë</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="<?= h($panelHref) ?>"><i class="bi bi-house-door" aria-hidden="true"></i><?= h($panelLabel) ?></a></li>
+              <li><a class="dropdown-item" href="profile.php"><i class="bi bi-person" aria-hidden="true"></i>Profili im</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Dil nga llogaria</a></li>
+            </ul>
+          </div>
+        <?php else: ?>
+          <a class="btn btn-primary" href="selectProfile.php"<?= $NAV_ACTIVE === 'login' ? ' aria-current="page"' : '' ?>>
+            <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Hyr
+          </a>
+        <?php endif; ?>
+      </div>
     </nav>
 
   </div>

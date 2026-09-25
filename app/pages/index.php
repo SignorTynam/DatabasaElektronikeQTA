@@ -11,205 +11,171 @@ $role = qta_public_role($currentUser);
 $panelHref = qta_public_panel_href($role);
 
 /* ===== Shifrat e regjistrit — të vërteta, jo dekorative ===== */
-$figures = ['certified' => 0, 'modules' => 0, 'groups' => 0];
+$figures = ['registered' => 0, 'modules' => 0, 'passed' => 0];
 try {
   $figures = $pdo->query("
     SELECT
-      (SELECT COUNT(*) FROM students)      AS certified,
-      (SELECT COUNT(*) FROM courses)       AS modules,
-      (SELECT COUNT(*) FROM course_groups) AS groups
+      (SELECT COUNT(*) FROM students) AS registered,
+      (SELECT COUNT(*) FROM courses)  AS modules,
+      (SELECT COUNT(*) FROM course_group_students WHERE final_score >= 50) AS passed
   ")->fetch(PDO::FETCH_ASSOC) ?: $figures;
 } catch (Throwable $e) {
   /* mbaj zerot */
 }
 
-/* ===== Indeksi i moduleve — përmbajtja e vërtetë e regjistrit ===== */
+/* ===== Modulet që certifikohen ===== */
 $modules = [];
 try {
   $modules = $pdo->query("
-    SELECT code, name
+    SELECT code, name, hours
     FROM courses
-    ORDER BY code ASC
+    ORDER BY name ASC
   ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {
-  /* pa indeks */
+  /* pa listë */
 }
 
 $NAV_ACTIVE = 'home';
 $pageTitle = 'Regjistri QTA — certifikime profesionale';
-$pageDescription = 'Regjistri publik i certifikimeve profesionale të Qendrës së Trajnimeve të Avancuara. Verifiko një certifikatë me kod ose QR.';
+$pageDescription = 'Regjistri publik i certifikimeve profesionale të Qendrës së Trajnimeve të Avancuara. Verifiko një certifikatë me kod ose QR, pa llogari.';
 
 require_once __DIR__ . '/../shared/public_head.php';
 require_once __DIR__ . '/navbarMain.php';
 ?>
-<main>
+<main id="main" tabindex="-1">
 
-  <!-- ================================================== KAPAKU ========= -->
-  <section class="cover">
-    <div class="wrap">
-      <div class="cover-grid">
-
-        <div>
-          <div class="protocol-line">
-            <span>Republika e Shqipërisë</span>
-            <span class="sep">·</span>
-            <span>Tiranë</span>
-            <span class="sep">·</span>
-            <span>Regjistër publik</span>
-            <span class="sep">·</span>
-            <span><b><?= h(date('Y')) ?></b></span>
-          </div>
-
-          <h1>Regjistri i certifikimeve profesionale</h1>
-
-          <p class="prose-lead">
-            Këtu regjistrohen kualifikimet e punonjësve në zanatet e ndërtimit dhe në sigurinë e
-            shëndetit në punë. Çdo certifikatë mban një kod unik dhe kontrollohet publikisht —
-            pa llogari dhe pa kërkesë.
-          </p>
-
-          <div class="cover-actions">
-            <a class="btn btn-ink btn-lg" href="verify.php">
-              <i class="bi bi-patch-check"></i>Verifiko një certifikatë
-            </a>
-            <a class="btn btn-lg" href="#modulet">Shih modulet</a>
-          </div>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="hero-eyebrow"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>Qendra e Trajnimeve të Avancuara · Tiranë</span>
+        <h1 class="hero-title">Regjistri i certifikimeve profesionale</h1>
+        <p class="hero-lead">
+          Këtu mbahen kualifikimet e punonjësve në zanatet e ndërtimit dhe në sigurinë në punë.
+          Çdo certifikatë ka një kod unik — kushdo mund ta kontrollojë, pa llogari.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="verify.php">
+            <i class="bi bi-qr-code-scan" aria-hidden="true"></i>Verifiko një certifikatë
+          </a>
+          <?php if ($currentUser): ?>
+            <a class="btn btn-secondary btn-lg" href="<?= h($panelHref) ?>">Vazhdo te <?= h(mb_strtolower(qta_public_panel_label($role))) ?></a>
+          <?php else: ?>
+            <a class="btn btn-secondary btn-lg" href="selectProfile.php">Hyr në sistem</a>
+          <?php endif; ?>
         </div>
 
-        <div>
-          <!-- Veprimi që publiku vjen të bëjë vërtet, pikërisht në kapak. -->
-          <form class="check-box" method="get" action="verify.php">
-            <span class="label">Kontroll i shpejtë</span>
-            <div class="check-row">
-              <input class="input input-code" type="text" name="t" inputmode="latin"
-                     placeholder="Kodi i certifikatës" aria-label="Kodi i certifikatës">
-              <button class="btn btn-ink" type="submit">Kontrollo</button>
-            </div>
-            <p class="check-note">
-              Kodin e gjen nën QR-in e certifikatës. Mund të skanosh edhe drejtpërdrejt te
-              <a href="verify.php">faqja e verifikimit</a>.
-            </p>
-          </form>
+        <ul class="figures" aria-label="Regjistri në shifra">
+          <li><b><?= number_format((int)$figures['registered'], 0, ',', '.') ?></b><span>regjistrime</span></li>
+          <li><b><?= number_format((int)$figures['modules'], 0, ',', '.') ?></b><span>module</span></li>
+          <li><b><?= number_format((int)$figures['passed'], 0, ',', '.') ?></b><span>provime të kaluara</span></li>
+        </ul>
+      </div>
 
-          <div class="tally mt-3 mb-0">
-            <div class="tally-cell">
-              <span class="label">Të regjistruar</span>
-              <span class="tally-value"><?= number_format((int)$figures['certified']) ?></span>
-            </div>
-            <div class="tally-cell">
-              <span class="label">Module</span>
-              <span class="tally-value"><?= number_format((int)$figures['modules']) ?></span>
-            </div>
-            <div class="tally-cell">
-              <span class="label">Grupe</span>
-              <span class="tally-value"><?= number_format((int)$figures['groups']) ?></span>
-            </div>
+      <div class="verify-card">
+        <h2 class="verify-card-title"><i class="bi bi-shield-check" aria-hidden="true"></i>Kontrollo një certifikatë</h2>
+        <p>Shkruaj kodin që gjendet poshtë kodit QR në certifikatë.</p>
+        <form method="get" action="verify.php" role="search" aria-label="Kontrollo një certifikatë">
+          <label class="form-label" for="homeCode">Kodi i certifikatës</label>
+          <div class="d-flex gap-2">
+            <input class="form-control form-control-lg input-code" id="homeCode" name="t" type="text"
+                   inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+                   placeholder="p.sh. 77d9f938…" required>
+            <button class="btn btn-primary btn-lg" type="submit">Kontrollo</button>
           </div>
-        </div>
-
+        </form>
+        <div class="or-divider">ose</div>
+        <a class="btn btn-secondary w-100" href="verify.php#skano">
+          <i class="bi bi-camera" aria-hidden="true"></i>Skano kodin QR me kamerë
+        </a>
       </div>
     </div>
   </section>
 
-  <!-- ================================================== MODULET ======== -->
-  <section class="band band-rule" id="modulet">
+  <section class="band band-alt" id="si-funksionon" aria-labelledby="howTitle">
     <div class="wrap">
       <div class="band-head">
-        <h2>Indeksi i moduleve</h2>
-        <span class="label"><?= count($modules) ?> zëra</span>
+        <h2 id="howTitle">Si funksionon</h2>
+        <p>Çdo kualifikim kalon të njëjtët katër hapa, me të njëjtat rregulla për të gjithë.</p>
       </div>
+      <ol class="steps-grid">
+        <li><h3>Regjistrimi</h3><p>Punonjësi regjistrohet vetë ose nga kompania që e dërgon. Merr një numër amze.</p></li>
+        <li><h3>Trajnimi në grup</h3><p>Caktohet në një grup të modulit, me datë fillimi dhe mbarimi.</p></li>
+        <li><h3>Provimi</h3><p>Në fund jepet provimi. Kalon kush merr 50 pikë ose më shumë.</p></li>
+        <li><h3>Certifikata</h3><p>Certifikata lëshohet me kod unik dhe QR, që kontrollohet publikisht.</p></li>
+      </ol>
+    </div>
+  </section>
 
+  <section class="band" id="modulet" aria-labelledby="modTitle">
+    <div class="wrap">
+      <div class="band-head">
+        <h2 id="modTitle">Modulet që certifikojmë</h2>
+        <p><?= count($modules) ?> module në zanatet e ndërtimit dhe në sigurinë në punë.</p>
+      </div>
       <?php if ($modules): ?>
-        <ul class="index-list">
+        <ul class="module-grid">
           <?php foreach ($modules as $m): ?>
-            <li class="index-row">
-              <span class="code"><?= h((string)$m['code']) ?></span>
-              <span class="name"><?= h((string)$m['name']) ?></span>
-              <span class="dots" aria-hidden="true"></span>
+            <li class="module-item">
+              <span class="module-code"><?= h((string)$m['code']) ?></span>
+              <span class="module-name"><?= h((string)$m['name']) ?></span>
+              <?php if ((int)($m['hours'] ?? 0) > 0): ?>
+                <span class="module-hours"><?= (int)$m['hours'] ?> orë</span>
+              <?php endif; ?>
             </li>
           <?php endforeach; ?>
         </ul>
       <?php else: ?>
-        <div class="blank">
-          <span class="blank-title">Indeksi nuk u ngarkua</span>
-          <span class="blank-note">Provo ta rifreskosh faqen. Nëse vazhdon, na shkruaj.</span>
-        </div>
+        <?= qta_empty('Lista e moduleve nuk u ngarkua', 'Provo ta rifreskosh faqen. Nëse vazhdon, na kontakto.', 'bi-book') ?>
       <?php endif; ?>
     </div>
   </section>
 
-  <!-- ================================================== PROCEDURA ====== -->
-  <section class="band band-rule" id="procedura">
+  <section class="band band-alt" aria-labelledby="whoTitle">
     <div class="wrap">
       <div class="band-head">
-        <h2>Procedura</h2>
-        <span class="label">Katër hapa</span>
+        <h2 id="whoTitle">Për kë është</h2>
+        <p>Secili sheh vetëm atë që i duhet.</p>
       </div>
-
-      <div class="steps">
-        <?php
-        /* Numërimi këtu mban informacion: hapat ndodhin në këtë rend, gjithnjë. */
-        $steps = [
-          ['Regjistrimi', 'Kursanti regjistrohet vetë ose nëpërmjet kompanisë që e dërgon. Të dhënat hyjnë në regjistër me numër amze.'],
-          ['Grupi dhe trajnimi', 'Kursanti caktohet në një grup me datë nisjeje dhe mbarimi, sipas modulit të zgjedhur.'],
-          ['Provimi', 'Në fund të modulit mbahet provimi dhe rezultati shënohet në procesverbal.'],
-          ['Certifikata', 'Certifikata lëshohet me kod unik dhe QR. Nga ai çast kontrollohet publikisht nga kushdo.'],
-        ];
-        foreach ($steps as $s): ?>
-          <div class="step">
-            <div>
-              <h3><?= h($s[0]) ?></h3>
-              <p><?= h($s[1]) ?></p>
-            </div>
-          </div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  </section>
-
-  <!-- ================================================== PËR KË ========= -->
-  <section class="band band-rule">
-    <div class="wrap">
-      <div class="band-head">
-        <h2>Kush e përdor</h2>
-      </div>
-
-      <div class="audience">
-        <div class="audience-cell">
-          <span class="label">Punonjësi</span>
+      <div class="audience-grid">
+        <div class="audience">
+          <span class="audience-icon"><i class="bi bi-person-badge" aria-hidden="true"></i></span>
           <h3>Kursanti</h3>
-          <p>Sheh modulet e ndjekura, datat e grupit dhe certifikatat e veta në një vend.</p>
+          <p>Sheh modulet e veta, datat e provimit, rezultatet dhe kodin QR të certifikatave.</p>
+          <a href="selectProfile.php?role=student">Hyr si kursant</a>
         </div>
-        <div class="audience-cell">
-          <span class="label">Punëdhënësi</span>
-          <h3>Kompania</h3>
-          <p>Regjistron punonjësit në module, ndjek grupet dhe merr dokumentet e nevojshme.</p>
+        <div class="audience">
+          <span class="audience-icon"><i class="bi bi-building" aria-hidden="true"></i></span>
+          <h3>Agjencia</h3>
+          <p>Kompania ndjek punonjësit e saj: grupet, provimet dhe dokumentet.</p>
+          <a href="selectProfile.php?role=agjencia">Hyr si agjenci</a>
         </div>
-        <div class="audience-cell">
-          <span class="label">Kontrolli</span>
+        <div class="audience">
+          <span class="audience-icon"><i class="bi bi-cone-striped" aria-hidden="true"></i></span>
           <h3>Inspektori</h3>
-          <p>Skanon QR-in te kantieri dhe merr përgjigje të menjëhershme për vlefshmërinë.</p>
+          <p>Skanon QR-në në kantier dhe merr menjëherë përgjigjen: e vlefshme apo jo.</p>
+          <a href="verify.php">Verifiko një certifikatë</a>
         </div>
-        <div class="audience-cell">
-          <span class="label">Institucioni</span>
-          <h3>Stafi i QTA</h3>
+        <div class="audience">
+          <span class="audience-icon"><i class="bi bi-person-workspace" aria-hidden="true"></i></span>
+          <h3>Stafi i QTA-së</h3>
           <p>Mban regjistrin, cakton grupet, shënon provimet dhe lëshon certifikatat.</p>
+          <a href="selectProfile.php?role=staff">Hyr si staf</a>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ================================================== MBYLLJA ======== -->
-  <section class="band band-tight">
+  <section class="band">
     <div class="wrap">
       <div class="closing">
         <div>
           <h2>Ke një certifikatë për të kontrolluar?</h2>
           <p>Kontrolli është publik, i menjëhershëm dhe nuk kërkon llogari.</p>
         </div>
-        <a class="btn btn-ink btn-lg" href="verify.php">
-          <i class="bi bi-patch-check"></i>Hap verifikimin
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-primary btn-lg" href="verify.php"><i class="bi bi-qr-code-scan" aria-hidden="true"></i>Hap verifikimin</a>
+          <a class="btn btn-secondary btn-lg" href="contact.php">Na kontakto</a>
+        </div>
       </div>
     </div>
   </section>

@@ -2,42 +2,38 @@
 declare(strict_types=1);
 
 /**
- * footer.php — Kolofoni i regjistrit publik.
- * Mban vetëm atë që një dokument zyrtar mban në fund: kush e lëshon, ku
- * gjendet, si kontaktohet dhe nën çfarë kushtesh përdoret.
+ * footer.php — Fundi i faqeve publike: kush jemi, lidhje, kontakt.
  */
 
 require_once __DIR__ . '/public_ui.php';
 ?>
-<footer class="colophon">
+<footer class="site-footer no-print">
   <div class="wrap">
-    <div class="row g-4">
+    <div class="site-footer-grid">
 
-      <div class="col-lg-5">
-        <div class="d-flex align-items-center gap-2 mb-3">
-          <img class="footer-brand-logo" src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="QTA">
-          <span style="font-family:var(--font-record);font-weight:600;font-size:var(--fs-lg)">
-            Qendra e Trajnimeve të Avancuara
-          </span>
+      <div>
+        <div class="site-footer-brand">
+          <img src="<?= h(qta_asset('image/logoPNG2.png')) ?>" alt="QTA">
+          <b>Qendra e Trajnimeve të Avancuara</b>
         </div>
-        <p class="prose" style="font-size:var(--fs-sm);max-width:46ch">
-          Qendër e akredituar për kualifikimin dhe certifikimin e punonjësve në zanatet e ndërtimit
-          dhe në sigurinë e shëndetit në punë. Çdo certifikatë e lëshuar mund të kontrollohet publikisht.
+        <p class="site-footer-about">
+          Kualifikim dhe certifikim i punonjësve në zanatet e ndërtimit dhe në sigurinë në punë.
+          Çdo certifikatë e lëshuar mund të kontrollohet publikisht.
         </p>
       </div>
 
-      <div class="col-6 col-lg-2">
-        <h3>Regjistri</h3>
+      <div>
+        <h2>Regjistri</h2>
         <ul>
-          <li><a href="index.php">Kryefaqja</a></li>
+          <li><a href="index.php">Kreu</a></li>
+          <li><a href="verify.php">Verifiko certifikatë</a></li>
           <li><a href="index.php#modulet">Modulet</a></li>
-          <li><a href="index.php#procedura">Procedura</a></li>
-          <li><a href="verify.php">Verifiko certifikatën</a></li>
+          <li><a href="index.php#si-funksionon">Si funksionon</a></li>
         </ul>
       </div>
 
-      <div class="col-6 col-lg-2">
-        <h3>Institucioni</h3>
+      <div>
+        <h2>Institucioni</h2>
         <ul>
           <li><a href="aboutus.php">Rreth nesh</a></li>
           <li><a href="contact.php">Kontakt</a></li>
@@ -45,24 +41,20 @@ require_once __DIR__ . '/public_ui.php';
         </ul>
       </div>
 
-      <div class="col-lg-3">
-        <h3>Selia</h3>
+      <div>
+        <h2>Na kontaktoni</h2>
         <ul>
-          <li class="muted" style="font-size:var(--fs-sm)">Rruga Bilal Konxholli, Tiranë</li>
-          <li><a href="tel:+355698778837" class="code">+355 69 877 8837</a></li>
+          <li class="text-muted">Rruga Bilal Konxholli, Tiranë</li>
+          <li><a href="tel:+355698778837">+355 69 877 8837</a></li>
           <li><a href="mailto:officialqta@gmail.com">officialqta@gmail.com</a></li>
         </ul>
       </div>
 
     </div>
 
-    <div class="colophon-foot">
-      <span>&copy; <?= date('Y') ?> Qendra e Trajnimeve të Avancuara</span>
-      <span>Tiranë, Shqipëri</span>
+    <div class="site-footer-bottom">
+      <span>&copy; <?= date('Y') ?> Qendra e Trajnimeve të Avancuara · Tiranë</span>
+      <span>E hënë – e premte, 09:00–17:00</span>
     </div>
   </div>
 </footer>
-
-<button class="to-top no-print" type="button" data-back-top aria-label="Kthehu në krye">
-  <i class="bi bi-arrow-up"></i>
-</button>

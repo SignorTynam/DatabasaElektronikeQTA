@@ -169,7 +169,35 @@
     if (t.closest('[data-back-top]')) {
       event.preventDefault();
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
     }
+
+    /* Menuja publike në celular */
+    var mast = t.closest('[data-mast-toggle]');
+    if (mast) {
+      event.preventDefault();
+      var nav = document.getElementById(mast.getAttribute('aria-controls') || 'mastNav');
+      if (nav) {
+        var open = nav.classList.toggle('is-open');
+        mast.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      return;
+    }
+    var mastOpen = document.querySelector('.masthead-nav.is-open');
+    if (mastOpen && (t.closest('.masthead-nav a') || !t.closest('.masthead'))) {
+      mastOpen.classList.remove('is-open');
+      var mb = document.querySelector('[data-mast-toggle]');
+      if (mb) mb.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    var nav = document.querySelector('.masthead-nav.is-open');
+    if (!nav) return;
+    nav.classList.remove('is-open');
+    var btn = document.querySelector('[data-mast-toggle]');
+    if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.focus(); }
   });
 
   document.addEventListener('keydown', function (event) {

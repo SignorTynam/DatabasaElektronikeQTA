@@ -405,6 +405,8 @@ textarea.form-control { min-height: 6.5rem; resize: vertical; }
   right: .25rem;
   transform: translateY(-50%);
 }
+.password-field:has(.is-invalid) ~ .invalid-feedback { display: block; }
+.caps-note[hidden] { display: none; }
 .caps-note {
   display: flex;
   align-items: center;

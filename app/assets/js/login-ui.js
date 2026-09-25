@@ -1,110 +1,79 @@
+/* Hyrja: fusha përshtatet me rolin, Caps Lock, validim i butë, gjendja "po hyn". */
 (function () {
   'use strict';
 
-  var roleMeta = {
-    administrator: {
-      title: 'Administrator',
-      hint: 'Akses për menaxhim të plotë të sistemit.'
-    },
-    editor: {
-      title: 'Editor',
-      hint: 'Akses për menaxhimin e proceseve dhe të dhënave.'
-    },
-    agjencia: {
-      title: 'Agjenci',
-      hint: 'Akses për kursantët dhe grupet e agjencisë.'
-    },
-    student: {
-      title: 'Student',
-      hint: 'Akses për të dhënat personale, progresin dhe certifikatat.'
+  var form = document.querySelector('[data-login-form]');
+  if (!form) return;
+
+  var input = form.querySelector('#identifier');
+  var label = form.querySelector('[data-id-label]');
+  var help = form.querySelector('[data-id-help]');
+  var forgot = form.querySelector('[data-forgot-text]');
+  var password = form.querySelector('#password');
+  var caps = form.querySelector('[data-caps-warning]');
+
+  function applyRole(radio, focus) {
+    if (!radio) return;
+    var type = radio.getAttribute('data-type') || 'text';
+    if (label) label.textContent = radio.getAttribute('data-label') || '';
+    if (help) help.textContent = radio.getAttribute('data-help') || '';
+    if (forgot) forgot.textContent = radio.getAttribute('data-forgot') || '';
+    if (input) {
+      if (input.type !== type) input.value = '';
+      input.type = type;
+      input.placeholder = radio.getAttribute('data-placeholder') || '';
+      input.classList.toggle('input-code', type !== 'email');
+      input.setAttribute('inputmode', type === 'email' ? 'email' : 'text');
+      input.setAttribute('autocapitalize', type === 'email' ? 'off' : 'characters');
+      input.classList.remove('is-invalid');
+      if (focus) input.focus();
     }
-  };
-
-  function selectRole(role, focusInput) {
-    if (!roleMeta[role]) {
-      role = 'administrator';
-    }
-
-    document.querySelectorAll('[data-role-option]').forEach(function (button) {
-      var active = button.getAttribute('data-role-option') === role;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-
-    document.querySelectorAll('form.login-form').forEach(function (form) {
-      form.classList.toggle('d-none', form.getAttribute('data-role') !== role);
-    });
-
-    var hint = document.querySelector('[data-role-hint]');
-    if (hint) {
-      hint.textContent = roleMeta[role].hint;
-    }
-
-    var url = new URL(window.location.href);
-    url.searchParams.set('role', role);
-    window.history.replaceState({}, '', url);
-
-    if (focusInput) {
-      var input = document.querySelector('form.login-form[data-role="' + role + '"] input[name="identifier"]');
-      if (input) {
-        input.focus();
-      }
-    }
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.set('role', radio.value);
+      window.history.replaceState({}, '', url);
+    } catch (e) { /* pa URL API */ }
   }
 
-  document.querySelectorAll('[data-role-option]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      selectRole(button.getAttribute('data-role-option'), true);
-    });
+  form.querySelectorAll('input[name="role"]').forEach(function (radio) {
+    radio.addEventListener('change', function () { applyRole(radio, true); });
   });
 
-  document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      var input = document.querySelector(button.getAttribute('data-password-toggle'));
-      if (!input) {
-        return;
-      }
-      var show = input.getAttribute('type') === 'password';
-      input.setAttribute('type', show ? 'text' : 'password');
-      button.innerHTML = show ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
-      input.focus();
-    });
+  if (password && caps) {
+    var update = function (event) {
+      var on = !!(event.getModifierState && event.getModifierState('CapsLock'));
+      caps.hidden = !on;
+    };
+    password.addEventListener('keydown', update);
+    password.addEventListener('keyup', update);
+    password.addEventListener('blur', function () { caps.hidden = true; });
+  }
+
+  [input, password].forEach(function (el) {
+    if (el) el.addEventListener('input', function () { el.classList.remove('is-invalid'); });
   });
 
-  document.querySelectorAll('.login-password').forEach(function (input) {
-    var warning = input.closest('form')?.querySelector('[data-caps-warning]');
-    if (!warning) {
+  form.addEventListener('submit', function (event) {
+    var missing = [input, password].filter(function (el) { return el && !el.value.trim(); });
+    if (missing.length) {
+      event.preventDefault();
+      missing.forEach(function (el) { el.classList.add('is-invalid'); });
+      missing[0].focus();
       return;
     }
-    var update = function (event) {
-      warning.classList.toggle('d-none', !(event.getModifierState && event.getModifierState('CapsLock')));
-    };
-    input.addEventListener('keydown', update);
-    input.addEventListener('keyup', update);
-    input.addEventListener('blur', function () { warning.classList.add('d-none'); });
+    var button = form.querySelector('button[type="submit"]');
+    if (button) {
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+    }
   });
 
-  document.querySelectorAll('form.login-form').forEach(function (form) {
-    form.addEventListener('submit', function (event) {
-      if (!form.checkValidity()) {
-        event.preventDefault();
-        event.stopPropagation();
-        form.classList.add('was-validated');
-        return;
-      }
-
-      var button = form.querySelector('button[type="submit"]');
-      if (button) {
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Po hyn…';
-      }
-    });
-  });
-
-  if (window.QTA_LOGIN_ERROR && window.qtaToast) {
-    window.qtaToast(window.QTA_LOGIN_ERROR, 'danger');
+  var error = document.querySelector('[data-login-error]');
+  if (error) {
+    error.focus();
+  } else if (input && !input.value) {
+    input.focus();
+  } else if (password) {
+    password.focus();
   }
-
-  var initial = document.querySelector('[data-role-option].is-active')?.getAttribute('data-role-option') || 'administrator';
-  selectRole(initial, false);
 })();

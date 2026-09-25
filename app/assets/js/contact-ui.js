@@ -1,89 +1,46 @@
+/* Kontakti: kontrollon fushat, pastaj hap mesazhin e gatshëm në programin e email-it. */
 (function () {
   'use strict';
 
   var form = document.querySelector('#contactForm');
-  if (!form) {
-    return;
-  }
-
-  var mailto = document.querySelector('#contactMailto');
-  var progress = document.querySelector('[data-contact-progress]');
-  var fields = ['full_name', 'email', 'phone', 'subject', 'request_type', 'message'];
+  if (!form) return;
 
   function value(name) {
-    return (form.elements[name]?.value || '').trim();
-  }
-
-  function updateProgress() {
-    var filled = fields.filter(function (name) { return value(name).length > 0; }).length;
-    if (progress) {
-      progress.style.width = Math.max(12, Math.round((filled / fields.length) * 100)) + '%';
-    }
-  }
-
-  function updateMailto() {
-    if (!mailto) {
-      return;
-    }
-    var subject = encodeURIComponent('[Kontakt QTA] ' + (value('subject') || value('request_type') || 'Kërkesë'));
-    var body = encodeURIComponent(
-      'Emër dhe mbiemër: ' + value('full_name') + '\n' +
-      'Email: ' + value('email') + '\n' +
-      'Telefon: ' + value('phone') + '\n' +
-      'Lloji i kërkesës: ' + value('request_type') + '\n\n' +
-      'Mesazhi:\n' + value('message') + '\n'
-    );
-    mailto.href = 'mailto:officialqta@gmail.com?subject=' + subject + '&body=' + body;
-  }
-
-  fields.forEach(function (name) {
     var el = form.elements[name];
-    if (!el) {
-      return;
-    }
-    el.addEventListener('input', function () {
-      updateProgress();
-      updateMailto();
-    });
-    el.addEventListener('change', function () {
-      updateProgress();
-      updateMailto();
+    return el ? String(el.value || '').trim() : '';
+  }
+
+  function mailtoHref() {
+    var subject = '[Kontakt QTA] ' + (value('subject') || value('request_type') || 'Kërkesë');
+    var body =
+      'Emri dhe mbiemri: ' + value('full_name') + '\n' +
+      'Email: ' + value('email') + '\n' +
+      'Telefoni: ' + (value('phone') || '—') + '\n' +
+      'Arsyeja: ' + value('request_type') + '\n\n' +
+      value('message') + '\n';
+    return 'mailto:officialqta@gmail.com?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  }
+
+  Array.prototype.forEach.call(form.elements, function (el) {
+    if (!el.name) return;
+    ['input', 'change'].forEach(function (type) {
+      el.addEventListener(type, function () { if (el.checkValidity()) el.classList.remove('is-invalid'); });
     });
   });
 
   form.addEventListener('submit', function (event) {
     event.preventDefault();
-    form.classList.add('was-validated');
-
-    if (!form.checkValidity()) {
-      updateProgress();
+    var invalid = Array.prototype.filter.call(form.elements, function (el) {
+      return el.name && el.willValidate && !el.checkValidity();
+    });
+    invalid.forEach(function (el) { el.classList.add('is-invalid'); });
+    if (invalid.length) {
+      invalid[0].focus();
       return;
     }
-
-    updateMailto();
+    window.location.href = mailtoHref();
     if (window.qtaToast) {
-      window.qtaToast('Mesazhi u përgatit. Përdorni email-in zyrtar ose telefonin për dërgim zyrtar.', 'success');
-    }
-    if (mailto) {
-      mailto.focus();
+      window.qtaToast('Mesazhi u hap në programin e email-it. Mos harroni ta dërgoni.', 'success');
     }
   });
-
-  document.querySelectorAll('[data-copy]').forEach(function (button) {
-    button.addEventListener('click', async function () {
-      try {
-        await navigator.clipboard.writeText(button.getAttribute('data-copy') || '');
-        if (window.qtaToast) {
-          window.qtaToast('U kopjua.', 'primary');
-        }
-      } catch (error) {
-        if (window.qtaToast) {
-          window.qtaToast('Kopjimi nuk u krye nga shfletuesi.', 'warning');
-        }
-      }
-    });
-  });
-
-  updateProgress();
-  updateMailto();
 })();

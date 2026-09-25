@@ -1,13 +1,11 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/url.php';
+require_once __DIR__ . '/themeli.php';
 
-if (!function_exists('h')) {
-  function h(?string $s): string {
-    return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8');
-  }
-}
+/**
+ * public_ui.php — Ndihmësit e faqeve publike.
+ */
 
 if (!function_exists('qta_public_current_user')) {
   function qta_public_current_user(PDO $pdo): ?array {
@@ -49,40 +47,23 @@ if (!function_exists('qta_public_panel_href')) {
 if (!function_exists('qta_public_panel_label')) {
   function qta_public_panel_label(?string $role): string {
     return match (strtolower((string)$role)) {
-      'administrator' => 'Paneli i administrimit',
-      'editor' => 'Paneli i editorit',
+      'administrator', 'editor' => 'Paneli i punës',
       'agjencia', 'agency' => 'Paneli i agjencisë',
-      'student' => 'Paneli i studentit',
-      default => 'Zgjidh profilin',
+      'student' => 'Faqja ime',
+      default => 'Hyr në sistem',
     };
   }
 }
 
 if (!function_exists('qta_public_initials')) {
   function qta_public_initials(?string $name): string {
-    $name = trim((string)$name);
-    if ($name === '') {
-      return 'Q';
-    }
-
-    $parts = preg_split('/\s+/', $name) ?: [];
-    $initials = '';
-    foreach ($parts as $part) {
-      $letter = function_exists('mb_substr') ? mb_substr($part, 0, 1, 'UTF-8') : substr($part, 0, 1);
-      $initials .= function_exists('mb_strtoupper') ? mb_strtoupper($letter, 'UTF-8') : strtoupper($letter);
-      $length = function_exists('mb_strlen') ? mb_strlen($initials, 'UTF-8') : strlen($initials);
-      if ($length >= 2) {
-        break;
-      }
-    }
-
-    return $initials ?: 'Q';
+    return qta_initials($name);
   }
 }
 
 if (!function_exists('qta_public_active')) {
   function qta_public_active(string $slug, ?string $active): string {
-    return $slug === $active ? 'active' : '';
+    return $slug === $active ? 'is-active' : '';
   }
 }
 

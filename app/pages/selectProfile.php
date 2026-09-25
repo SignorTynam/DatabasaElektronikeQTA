@@ -8,16 +8,23 @@ require_once __DIR__ . '/../shared/public_ui.php';
 $pdo = getPDO();
 $currentUser = qta_public_current_user($pdo);
 
-$validRoles = ['administrator', 'editor', 'agjencia', 'student'];
-$activeRole = (string)($_GET['role'] ?? 'administrator');
-if (!in_array($activeRole, $validRoles, true)) {
-  $activeRole = 'administrator';
-}
+/* Roli i parazgjedhur (?role=…). Administratori dhe editori hyjnë si "staf". */
+$requested = (string)($_GET['role'] ?? 'staff');
+$activeRole = match ($requested) {
+  'agjencia' => 'agjencia',
+  'student'  => 'student',
+  default    => 'staff',
+};
 
 $loginError = null;
 if (!empty($_SESSION['login_error'])) {
   $loginError = (string)$_SESSION['login_error'];
   unset($_SESSION['login_error']);
+}
+$rememberedId = '';
+if (!empty($_SESSION['login_identifier'])) {
+  $rememberedId = (string)$_SESSION['login_identifier'];
+  unset($_SESSION['login_identifier']);
 }
 
 if (empty($_SESSION['csrf_login'])) {
@@ -25,154 +32,143 @@ if (empty($_SESSION['csrf_login'])) {
 }
 $CSRF = $_SESSION['csrf_login'];
 
-$NAV_ACTIVE = 'login';
-$pageTitle = 'Hyr në sistem - QTA';
-$pageDescription = 'Zgjidhni rolin dhe hyni në portalin QTA.';
-$publicPlugins = ['aos'];
-$pageScripts = [qta_asset('app/assets/js/login-ui.js')];
-
 $roles = [
-  'administrator' => [
-    'label' => 'Administrator',
-    'short' => 'Admin',
-    'icon' => 'bi-person-gear',
-    'field_label' => 'Email i administratorit',
-    'placeholder' => 'admin@qta.al',
-    'type' => 'email',
-    'button' => 'Hyr si administrator',
-  ],
-  'editor' => [
-    'label' => 'Editor',
-    'short' => 'Editor',
-    'icon' => 'bi-pencil-square',
-    'field_label' => 'Email i editorit',
-    'placeholder' => 'editor@qta.al',
-    'type' => 'email',
-    'button' => 'Hyr si editor',
+  'staff' => [
+    'title' => 'Staf i QTA-së',
+    'text'  => 'Hyj me email-in e punës',
+    'icon'  => 'bi-person-workspace',
+    'label' => 'Email-i i punës',
+    'type'  => 'email',
+    'placeholder' => 'emri@qta.al',
+    'help'  => 'Email-i me të cilin të ka regjistruar administratori i QTA-së.',
+    'forgot' => 'Kërkoji administratorit të QTA-së të ta rivendosë fjalëkalimin.',
   ],
   'agjencia' => [
-    'label' => 'Agjenci',
-    'short' => 'Agjenci',
-    'icon' => 'bi-building',
-    'field_label' => 'NIPT',
+    'title' => 'Agjenci',
+    'text'  => 'Hyj me NIPT-in e kompanisë',
+    'icon'  => 'bi-building',
+    'label' => 'NIPT-i i agjencisë',
+    'type'  => 'text',
     'placeholder' => 'p.sh. L12345678Q',
-    'type' => 'text',
-    'button' => 'Hyr si agjenci',
+    'help'  => 'NIPT-i ka 10 shenja: një shkronjë, tetë shifra dhe një shkronjë.',
+    'forgot' => 'Për siguri, fjalëkalimin e rivendos vetëm QTA. Na telefono ose na shkruaj nga email-i i kompanisë.',
   ],
   'student' => [
-    'label' => 'Student',
-    'short' => 'Student',
-    'icon' => 'bi-mortarboard',
-    'field_label' => 'Numri personal',
-    'placeholder' => 'Vendos numrin personal',
-    'type' => 'text',
-    'button' => 'Hyr si student',
+    'title' => 'Kursant',
+    'text'  => 'Hyj me numrin personal',
+    'icon'  => 'bi-person-badge',
+    'label' => 'Numri personal',
+    'type'  => 'text',
+    'placeholder' => 'p.sh. J75010110A',
+    'help'  => 'Numri personal nga karta e identitetit (10 shenja).',
+    'forgot' => 'Për siguri, fjalëkalimin e rivendos vetëm QTA. Na telefono ose eja në zyrë me kartën e identitetit.',
   ],
 ];
+$active = $roles[$activeRole];
+
+$NAV_ACTIVE = 'login';
+$pageTitle = 'Hyr në sistem — Regjistri QTA';
+$pageDescription = 'Hyr në Regjistrin QTA si staf, agjenci ose kursant.';
+$pageScripts = [qta_asset('app/assets/js/login-ui.js')];
 
 require_once __DIR__ . '/../shared/public_head.php';
 require_once __DIR__ . '/navbarMain.php';
 ?>
-<main class="wrap">
-  <div class="gate">
+<main id="main" tabindex="-1">
+  <div class="wrap login-layout">
 
-    <aside class="gate-aside">
-      <div class="protocol-line">
-        <span>Republika e Shqipërisë</span>
-        <span class="sep">·</span>
-        <span>Tiranë</span>
-      </div>
-
-      <h1 style="margin-bottom:.8rem">Hyrje në regjistër</h1>
-      <p class="prose-lead" style="margin-bottom:1.75rem">
-        Aksesi jepet sipas rolit. Çdo veprim mbi regjistrin shënohet dhe i atribuohet
-        nënshkruesit që e kryen.
-      </p>
-
-      <dl style="margin:0;border-top:1px solid var(--rule)">
-        <?php
-        $gateNotes = [
-          ['Administratori', 'Mban regjistrin e plotë: përdoruesit, modulet, grupet dhe auditimin.'],
-          ['Editori', 'Regjistron kursantë, cakton grupe dhe shënon provimet.'],
-          ['Agjencia', 'Regjistron punonjësit e vet dhe ndjek grupet ku janë caktuar.'],
-          ['Kursanti', 'Sheh modulet, grupet dhe certifikatat e veta.'],
-        ];
-        foreach ($gateNotes as $n): ?>
-          <div style="display:grid;grid-template-columns:9rem 1fr;gap:1rem;padding:.7rem 0;border-bottom:1px solid var(--rule-hair)">
-            <dt class="label" style="padding-top:.15rem"><?= h($n[0]) ?></dt>
-            <dd style="margin:0;font-size:var(--fs-sm);color:var(--pencil)"><?= h($n[1]) ?></dd>
-          </div>
-        <?php endforeach; ?>
+    <aside class="login-aside">
+      <span class="hero-eyebrow"><i class="bi bi-lock" aria-hidden="true"></i>Hyrje e sigurt</span>
+      <h2>Mirë se erdhe në Regjistrin QTA</h2>
+      <p class="lead-text mb-4">Me llogarinë tënde ndjek regjistrimet, grupet, provimet dhe certifikatat. Secili sheh vetëm atë që i përket.</p>
+      <dl class="kv mb-4">
+        <dt>Stafi</dt><dd>Regjistron kursantët, cakton grupet, shënon provimet.</dd>
+        <dt>Agjencia</dt><dd>Ndjek punonjësit e vet dhe dokumentet e tyre.</dd>
+        <dt>Kursanti</dt><dd>Sheh modulet, provimet dhe kodin QR të certifikatave.</dd>
       </dl>
+      <div class="notice">
+        <i class="bi bi-qr-code-scan" aria-hidden="true"></i>
+        <span>Do vetëm të kontrollosh një certifikatë? Nuk duhet llogari —
+          <a href="verify.php">hap verifikimin</a>.</span>
+      </div>
     </aside>
 
-    <section class="gate-form" aria-labelledby="gateTitle">
-      <h2 id="gateTitle" style="margin-bottom:.25rem">Identifikohu</h2>
-      <p class="muted" style="font-size:var(--fs-sm);margin-bottom:1.4rem" data-role-hint>
-        Zgjidh rolin për të parë fushat e sakta.
-      </p>
-
-      <div class="role-tabs" role="group" aria-label="Zgjidh rolin">
-        <?php foreach ($roles as $key => $roleInfo): ?>
-          <button class="role-tab <?= $key === $activeRole ? 'is-active' : '' ?>" type="button"
-                  data-role-option="<?= h($key) ?>"
-                  aria-pressed="<?= $key === $activeRole ? 'true' : 'false' ?>"><?= h($roleInfo['short']) ?></button>
-        <?php endforeach; ?>
-      </div>
+    <section class="login-card" aria-labelledby="loginTitle">
+      <h1 class="login-title" id="loginTitle">Hyr në llogari</h1>
+      <p class="text-muted mb-4">Zgjidh kush je, pastaj shkruaj të dhënat.</p>
 
       <?php if ($loginError): ?>
-        <div class="alert alert-danger mb-3" role="alert" aria-live="assertive">
-          <strong style="display:block">Hyrja nuk u krye</strong>
-          <?= h($loginError) ?>
+        <div class="alert alert-danger" role="alert" tabindex="-1" data-login-error>
+          <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+          <div><span class="alert-title">Hyrja nuk u krye</span><?= h($loginError) ?></div>
         </div>
       <?php endif; ?>
 
-      <?php foreach ($roles as $key => $roleInfo): ?>
-        <form class="login-form <?= $key === $activeRole ? '' : 'd-none' ?>" data-role="<?= h($key) ?>"
-              action="login_handler.php" method="post" autocomplete="off" novalidate>
-          <input type="hidden" name="role" value="<?= h($key) ?>">
-          <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
+      <form method="post" action="login_handler.php" data-login-form novalidate>
+        <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
 
-          <div class="field">
-            <label class="label" for="identifier_<?= h($key) ?>"><?= h($roleInfo['field_label']) ?></label>
-            <input class="input<?= $roleInfo['type'] === 'email' ? '' : ' input-code' ?>"
-                   id="identifier_<?= h($key) ?>" name="identifier" type="<?= h($roleInfo['type']) ?>"
-                   placeholder="<?= h($roleInfo['placeholder']) ?>" autocomplete="username" required>
+        <fieldset class="role-options">
+          <legend class="form-label mb-2">Kush je?</legend>
+          <?php foreach ($roles as $key => $r): ?>
+            <label class="role-option">
+              <input type="radio" name="role" value="<?= h($key) ?>" <?= $key === $activeRole ? 'checked' : '' ?>
+                     data-label="<?= h($r['label']) ?>" data-type="<?= h($r['type']) ?>"
+                     data-placeholder="<?= h($r['placeholder']) ?>" data-help="<?= h($r['help']) ?>"
+                     data-forgot="<?= h($r['forgot']) ?>">
+              <span class="role-option-icon"><i class="bi <?= h($r['icon']) ?>" aria-hidden="true"></i></span>
+              <span class="role-option-text"><b><?= h($r['title']) ?></b><span><?= h($r['text']) ?></span></span>
+              <span class="role-option-check" aria-hidden="true"></span>
+            </label>
+          <?php endforeach; ?>
+        </fieldset>
+
+        <div class="mb-3">
+          <label class="form-label" for="identifier" data-id-label><?= h($active['label']) ?></label>
+          <input class="form-control form-control-lg<?= $active['type'] === 'email' ? '' : ' input-code' ?>"
+                 id="identifier" name="identifier" type="<?= h($active['type']) ?>"
+                 placeholder="<?= h($active['placeholder']) ?>" value="<?= h($rememberedId) ?>"
+                 autocomplete="username" autocapitalize="off" spellcheck="false" required
+                 aria-describedby="idHelp idError">
+          <p class="form-text" id="idHelp" data-id-help><?= h($active['help']) ?></p>
+          <p class="invalid-feedback" id="idError">Shkruaj identifikimin tënd.</p>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label" for="password">Fjalëkalimi</label>
+          <div class="password-field">
+            <input class="form-control form-control-lg" id="password" name="password" type="password"
+                   autocomplete="current-password" required aria-describedby="pwError capsNote">
+            <button class="btn btn-ghost btn-icon password-toggle" type="button" data-password-toggle="#password"
+                    aria-label="Shfaq fjalëkalimin" aria-pressed="false">
+              <i class="bi bi-eye" aria-hidden="true"></i>
+            </button>
           </div>
+          <p class="invalid-feedback" id="pwError">Shkruaj fjalëkalimin.</p>
+          <p class="caps-note" id="capsNote" data-caps-warning hidden>
+            <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>Caps Lock është i ndezur — shkronjat po dalin të mëdha.
+          </p>
+        </div>
 
-          <div class="field">
-            <label class="label" for="password_<?= h($key) ?>">Fjalëkalimi</label>
-            <div style="display:flex;gap:.4rem">
-              <input class="input login-password" id="password_<?= h($key) ?>" name="password" type="password"
-                     placeholder="Shkruaj fjalëkalimin" autocomplete="current-password" required style="flex:1;min-width:0">
-              <button class="btn btn-icon" type="button" data-password-toggle="#password_<?= h($key) ?>"
-                      aria-label="Shfaq ose fsheh fjalëkalimin">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
-            <div class="caps-note d-none" data-caps-warning>Caps Lock është i ndezur.</div>
+        <button class="btn btn-primary btn-lg w-100 mt-3" type="submit">
+          <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Hyr
+        </button>
+
+        <p class="mt-3 mb-0">
+          <button class="btn btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#forgotHelp"
+                  aria-expanded="false" aria-controls="forgotHelp">Harrove fjalëkalimin?</button>
+        </p>
+        <div class="collapse" id="forgotHelp">
+          <div class="notice mt-1">
+            <i class="bi bi-key" aria-hidden="true"></i>
+            <span><span data-forgot-text><?= h($active['forgot']) ?></span>
+              Tel. <a href="tel:+355698778837">+355 69 877 8837</a> · <a href="contact.php">Kontakt</a></span>
           </div>
-
-          <button class="btn btn-ink btn-lg w-100" type="submit" style="margin-top:.6rem">
-            <?= h($roleInfo['button']) ?>
-          </button>
-        </form>
-      <?php endforeach; ?>
-
-      <p class="muted" style="font-size:var(--fs-xs);margin:1.1rem 0 0">
-        Nuk ke akses? Shkruaj te <a href="contact.php">administrata e QTA-së</a>.
-        Për të kontrolluar një certifikatë nuk duhet llogari —
-        <a href="verify.php">hap verifikimin</a>.
-      </p>
+        </div>
+      </form>
     </section>
 
   </div>
 </main>
-<?php if ($loginError): ?>
-  <script>
-    window.QTA_LOGIN_ERROR = <?= json_encode($loginError, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
-  </script>
-<?php endif; ?>
 <?php
 require_once __DIR__ . '/../shared/footer.php';
 require_once __DIR__ . '/../shared/public_scripts.php';
