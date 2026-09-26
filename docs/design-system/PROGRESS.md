@@ -59,6 +59,11 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | K3 | History | Course-plan changes showed "(nuk ekziston më)" for plans that still exist |
 | K4 | Dialogs | Dialogs opened from code (not `data-bs-toggle`) left focus on the page body when closed; focus now returns to the button that opened them |
 | K5 | Procesverbal | Printed the course's current hours; a scheduled group now prints the hours of the course copy it follows |
+| K6 | Course structure | Topics could get more hours than their module (e.g. 100 h in a 20 h module), and modules more than the course; now every save refuses it with a dialog that says how many hours are allowed and can set them with one click |
+| K7 | Course page | "Ndrysho kursin" kept the values from page load, so after a one-click fix saving it could bring old hours back; it now opens with the last saved values |
+| K8 | Group page | Opening a group at `#kursantet` showed an empty page for a moment; the tab now opens without the transition |
+| K9 | Tables | Names of trainees, courses and groups were underlined; they are now plain links (underline on hover) |
+| K10 | Earlier groups | "Grupet e mëparshme" opens with a banner: new groups are created in "Grupet" (link to the create dialog); "Shto grup të mëparshëm" is only for groups held earlier |
 
 ## Security fixes
 

@@ -591,6 +591,11 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
   white-space: nowrap;
 }
 .person-name { font-weight: var(--fw-semibold); }
+/* Emrat (kursant, kurs, grup) që hapin faqen e tyre janë lidhje pa nënvizim:
+   dallohen nga ngjyra dhe pesha; nënvizimi del kur kalon miu sipër. */
+a.person-name,
+a.row-open { text-decoration: none; }
+a.person-name:hover { text-decoration: underline; text-underline-offset: .15em; }
 .cell-sub { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
 
 /* Rreshti që hap hollësitë në një dialog mbi faqe (grupi, grupet e modulit).
@@ -598,6 +603,7 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
          <span><span class="person-name">…</span><span class="cell-sub">…</span></span>
          <i class="bi bi-chevron-right"></i></button> */
 .row-open {
+  position: relative; /* teksti i fshehur për lexuesin e ekranit mbetet brenda tabelës */
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
@@ -1967,6 +1973,10 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
 .callout.is-info { border-color: var(--info-border); background: var(--info-soft); }
 .callout.is-info .callout-icon,
 .callout.is-info .callout-label { color: var(--info); }
+.callout.is-warning { border-color: var(--warning-border); background: var(--warning-soft); }
+.callout.is-warning .callout-icon,
+.callout.is-warning .callout-label { color: var(--warning); }
+.callout > .btn { flex: none; }
 
 /* ====================================================== 24g. Shiriti i zgjedhjes */
 .bulk-bar {
@@ -2418,6 +2428,7 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
 .cur-modules { display: grid; gap: var(--sp-4); margin: 0; padding: 0; list-style: none; }
 .cur-module { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); scroll-margin-top: calc(var(--topbar-h) + var(--sp-4)); }
 .cur-module.has-issue { border-color: var(--warning-border); }
+.cur-module.is-over { border-color: var(--danger-border); }
 .cur-module:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .cur-module-head { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-4) var(--sp-4) var(--sp-3); }
 .cur-pos {

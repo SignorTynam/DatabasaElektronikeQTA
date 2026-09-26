@@ -69,7 +69,10 @@ if (!function_exists('qta_json_out')) {
       qta_json_out(['ok' => false, 'confirm' => ['title' => $e->title, 'message' => $e->getMessage(), 'confirm' => $e->confirmLabel]], 409);
     }
     if ($e instanceof QtaUserError) {
-      qta_json_out(['ok' => false, 'error' => $e->getMessage(), 'code' => $e->data['code'] ?? null], 400);
+      $out = ['ok' => false, 'error' => $e->getMessage(), 'code' => $e->data['code'] ?? null];
+      /* Disa gabime shfaqen si dialog me një rregullim të propozuar (p.sh. orët). */
+      if (isset($e->data['dialog']) && is_array($e->data['dialog'])) $out['dialog'] = $e->data['dialog'];
+      qta_json_out($out, 400);
     }
     if ($e instanceof PDOException && ($e->errorInfo[0] ?? '') === '45000' && !empty($e->errorInfo[2])) {
       /* Rregull i bazës (trigger) me mesazh shqip. */

@@ -36,9 +36,19 @@ Hours are always whole teaching hours ("orë mësimore").
   hand-edited gap is reported as an issue with a one-click "Rregullo radhën".
 - **Hour invariants:** Σ module hours = course hours, and for every module Σ topic hours =
   module hours.
-- A course that breaks an invariant is a **draft**: it can be edited and saved, but it is
-  never used to create a scheduled group. `qta_course_check()` returns `ready` plus a list of
-  plain-language issues, each with a fix where one is obvious ("Vendos orët e kursit në 40").
+- **The parts never exceed the whole — enforced on every save.** Σ topic hours ≤ module
+  hours and Σ module hours ≤ course hours; a module cannot drop below its topics, nor a course
+  below its modules (`qta_curriculum_assert_topic_hours/_module_hours/_course_hours`, used by
+  every write path, including the inline hours cell in `courses.php`). A refused save changes
+  nothing and returns `code = hours_limit` with a dialog: what is wrong, how many hours are
+  allowed, and — when a valid value exists — a one-click "Vendos 10 orë" that saves it.
+  A change that *lowers* hours is always allowed, so data saved before this rule (e.g. topics
+  100 h in a 20 h module) can be repaired step by step; opening such a course with the edit
+  mode on shows "Orët nuk përputhen" once per browser session.
+- Less than the whole is a **draft**: it can be edited and saved, but it is never used to
+  create a scheduled group. `qta_course_check()` returns `ready` plus a list of
+  plain-language issues, each with a fix where one is valid ("Vendos orët e kursit në 40";
+  a module is offered more hours only when the course still has room for them).
 - A course is **ready** ("Gati për grup") when it has at least one module, every module has
   at least one topic, both hour invariants hold, and all positions are contiguous.
 
@@ -83,6 +93,10 @@ Guarantees, from the inside out:
 
 There is **no conversion** between the two kinds. A legacy group is never given a schedule,
 inferred topics or recalculated dates.
+
+New groups are created in "Grupet". "Grupet e mëparshme" opens with a banner that says so
+and links to the create dialog there; its own "Shto grup të mëparshëm" stays only for
+recording a group held earlier, without a schedule.
 
 ## 4. Creating a scheduled group
 
@@ -230,8 +244,8 @@ database tests; they refuse `qta_db` unless `QTA_ALLOW_MAIN_DB=1`.
 | File | Covers |
 |---|---|
 | `tests/unit/schedule_engine_test.php` | calendar facts, acceptance B, C, E, module boundary inside a day, Sunday rules, 0-hour weekdays, input errors, verifier tamper detection, determinism, large totals |
-| `tests/unit/curriculum_check_test.php` | acceptance A, hour mismatches, ordering, input validation |
-| `tests/integration/lesson_groups_test.php` | legacy isolation (D), curriculum CRUD + audit, readiness rollback, C and E through the services and stored rows, course edits after a schedule (F), past-day and closed-group confirmations, exam conflicts, members, legacy guards in services and database, concurrency lock |
+| `tests/unit/curriculum_check_test.php` | acceptance A, hour mismatches and their one-click fixes, ordering, input validation |
+| `tests/integration/lesson_groups_test.php` | legacy isolation (D), curriculum CRUD + audit, hour limits (parts never exceed the whole, dialog data, repair of older data, no history for refusals), readiness rollback, C and E through the services and stored rows, course edits after a schedule (F), past-day and closed-group confirmations, exam conflicts, members, legacy guards in services and database, concurrency lock |
 
 ## 12. Known limitations
 

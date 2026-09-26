@@ -152,6 +152,7 @@ return [
     'tips' => [
       'Një grup mban deri në 10 kursantë. Një regjistrim (nr. i amzës) mund të jetë vetëm në një grup.',
       '"Raporti për QKL" krijon raportin për një interval numrash amze.',
+      'Grupet e reja krijohen te "Grupet", me orar mësimi. "Shto grup të mëparshëm" është vetëm për grupe të mbajtura më parë.',
     ],
   ],
 
@@ -194,10 +195,11 @@ return [
       ['Shto modulet', 'Shtyp "Shto modul": emri, orët dhe vendi në radhë. P.sh. Microsoft Office 50 orë = Word 10 + Excel 10 + PowerPoint 10 + Access 10 + Outlook 10.'],
       ['Shto temat', 'Poshtë çdo moduli shkruaj emrin e temës dhe orët, pastaj shtyp "Shto temën" (ose Enter). Fusha mbetet gati për temën tjetër.'],
       ['Rendit', 'Butonat me shigjetë lëvizin një modul ose një temë një vend lart ose poshtë. Për një vend të largët, përdor "Ndrysho" dhe zgjidh "Vendi në radhë".'],
-      ['Kontrollo orët', 'Lart shfaqet sa orë kanë modulet nga orët e kursit. Çdo problem thuhet me fjalë, disa me një buton rregullimi, p.sh. "Vendos orët e modulit në 10".'],
+      ['Kontrollo orët', 'Lart shfaqet sa orë kanë modulet nga orët e kursit; te çdo modul, sa orë kanë temat dhe sa mbeten. Çdo problem thuhet me fjalë, disa me një buton rregullimi, p.sh. "Vendos orët e modulit në 10".'],
     ],
     'tips' => [
       'Orët janë orë mësimi të plota: 1, 2, 3 …',
+      'Orët e temave nuk kalojnë kurrë orët e modulit, dhe orët e moduleve nuk kalojnë orët e kursit. Nëse një ndryshim do t\'i kalonte, del një dritare që të thotë sa orë lejohen dhe t\'i vendos me një klik.',
       'Grupet që ekzistojnë kanë kopjen e tyre të moduleve dhe temave: ndryshimet këtu vlejnë për grupet e reja.',
       'Një kurs që nuk është "Gati" mund të ruhet dhe të plotësohet më vonë, por nuk mund të përdoret për grup me orar.',
     ],

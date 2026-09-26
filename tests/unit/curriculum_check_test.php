@@ -64,6 +64,13 @@ t_case('Mospërputhjet e orëve zbulohen dhe shpjegohen', function () use ($W, $
   [$course, $modules] = cur_fixture(50, [['Word', 10, [2, 2, 2, 2, 1, 1, 3]], ['Excel', 10, $W], ['PowerPoint', 10, $W], ['Access', 10, $W], ['Outlook', 10, $W]]);
   $c = qta_course_check($course, $modules);
   t_ok(!$c['ready'] && str_contains($c['issues'][0]['text'], 'moduli ka vetëm 10 orë'), 'temat > moduli: mesazh i qartë');
+  t_eq(null, $c['issues'][0]['fix'], 'temat > moduli, kursi pa vend: moduli nuk rritet me një klik');
+  t_ok(!str_contains($c['issues'][0]['text'], 'rrit orët e modulit'), 'nuk propozohet rritja e modulit');
+
+  [$course, $modules] = cur_fixture(60, [['Word', 10, [2, 2, 2, 2, 1, 1, 3]], ['Excel', 10, $W], ['PowerPoint', 10, $W], ['Access', 10, $W], ['Outlook', 10, $W]]);
+  $c = qta_course_check($course, $modules);
+  $word = array_values(array_filter($c['issues'], static fn($i) => ($i['module_id'] ?? null) === 101));
+  t_eq(['set_module_hours', 13], [$word[0]['fix']['action'] ?? null, $word[0]['fix']['value'] ?? null], 'kursi ka vend: propozohet moduli 13 orë');
 
   [$course, $modules] = cur_fixture(50, [['Word', 10, $W], ['Excel', 10, $W], ['PowerPoint', 10, $W], ['Access', 10, $W], ['Outlook', 10, []]]);
   $c = qta_course_check($course, $modules);

@@ -1166,7 +1166,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
   <header class="page-head">
     <div class="page-head-main">
       <h1 class="page-title">Grupet e mëparshme</h1>
-      <p class="page-lead">Grupet e krijuara para orarit të mësimit, pa orar ditë pas dite. Mbeten siç ishin: kursantët, datat, provimet, pikët dhe dokumentet ndryshohen si më parë. Grupet e reja janë te <a href="lesson_groups.php">Grupet</a>.</p>
+      <p class="page-lead">Grupet e krijuara para orarit të mësimit, pa orar ditë pas dite. Mbeten siç ishin: kursantët, datat, provimet, pikët dhe dokumentet ndryshohen si më parë.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -1176,13 +1176,23 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       </button>
       <?php if ($EDIT_MODE): ?>
         <button class="btn btn-secondary" type="button" data-bs-toggle="modal" data-bs-target="#createGroupModal">
-          <i class="bi bi-plus-lg" aria-hidden="true"></i>Shto grup pa orar
+          <i class="bi bi-plus-lg" aria-hidden="true"></i>Shto grup të mëparshëm
         </button>
       <?php else: ?>
-        <a class="btn btn-secondary" href="<?= h($createHref) ?>"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto grup pa orar</a>
+        <a class="btn btn-secondary" href="<?= h($createHref) ?>"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto grup të mëparshëm</a>
       <?php endif; ?>
     </div>
   </header>
+
+  <?php /* Grupet e reja nuk krijohen këtu: ata marrin orar mësimi te "Grupet". */ ?>
+  <div class="callout is-warning mb-4" role="note" aria-labelledby="newGroupsTitle">
+    <span class="callout-icon"><i class="bi bi-signpost-split" aria-hidden="true"></i></span>
+    <div class="callout-body">
+      <span class="callout-title" id="newGroupsTitle">Grupet e reja krijohen te "Grupet"</span>
+      <span class="callout-text">Çdo grup i ri krijohet te menuja <a href="lesson_groups.php">Grupet</a>, ku merr orar mësimi ditë pas dite. Këtu shto vetëm grupe të mbajtura më parë, pa orar.</span>
+    </div>
+    <a class="btn btn-primary" href="lesson_groups.php?edit=1&amp;create=1"><i class="bi bi-calendar-plus" aria-hidden="true"></i>Krijo një grup të ri</a>
+  </div>
 
   <form class="filters" method="get" action="groups.php" role="search" aria-label="Kërko grupe">
     <div class="filter-field is-grow">
@@ -1213,7 +1223,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
     <div class="notice mb-4">
       <i class="bi bi-people" aria-hidden="true"></i>
       <span><b><?= h(qta_plural($countNoGroup, 'kursant pret', 'kursantë presin')) ?> një grup.</b>
-        <a href="students_without_groups.php">Caktoji në grup</a> ose shto numrat e tyre të amzës kur krijon një grup të ri.</span>
+        <a href="students_without_groups.php">Caktoji në grup</a> ose shto numrat e tyre të amzës kur krijon një grup të ri te <a href="lesson_groups.php">Grupet</a>.</span>
     </div>
   <?php endif; ?>
 
@@ -1539,13 +1549,13 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_group">
       <div class="modal-header">
-        <h2 class="modal-title" id="createGroupTitle"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto një grup pa orar</h2>
+        <h2 class="modal-title" id="createGroupTitle"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto një grup të mëparshëm</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
         <div class="notice is-sunken mb-3">
           <i class="bi bi-info-circle" aria-hidden="true"></i>
-          <span><b>Grupet e reja krijohen te <a href="lesson_groups.php?edit=1&amp;create=1">Grupet</a></b>, me orar mësimi ditë pas dite. Këtu shto vetëm një grup pa orar, p.sh. një grup të mbajtur më parë.</span>
+          <span><b>Grupet e reja krijohen te <a href="lesson_groups.php?edit=1&amp;create=1">Grupet</a></b>, me orar mësimi ditë pas dite. Këtu shto vetëm një grup të mbajtur më parë, pa orar.</span>
         </div>
         <div class="row g-3">
           <div class="col-md-6">

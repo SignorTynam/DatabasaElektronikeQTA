@@ -140,7 +140,7 @@ if (!function_exists('qta_course_check')) {
         ? ['text' => 'Modulet kanë ' . qta_hours_label($moduleSum) . ' nga ' . qta_hours_label($courseHours) . ' të kursit. Shto edhe ' . qta_hours_label($diff) . ' te modulet, ose ul orët e kursit në ' . $moduleSum . '.',
            'module_id' => null, 'fix' => ['action' => 'set_course_hours', 'value' => $moduleSum, 'label' => 'Vendos orët e kursit në ' . $moduleSum]]
         : ['text' => 'Modulet kanë ' . qta_hours_label($moduleSum) . ', por kursi ka vetëm ' . qta_hours_label($courseHours) . '. Hiq ' . qta_hours_label($diff) . ' nga modulet, ose rrit orët e kursit në ' . $moduleSum . '.',
-           'module_id' => null, 'fix' => ['action' => 'set_course_hours', 'value' => $moduleSum, 'label' => 'Vendos orët e kursit në ' . $moduleSum]];
+           'module_id' => null, 'over' => true, 'fix' => ['action' => 'set_course_hours', 'value' => $moduleSum, 'label' => 'Vendos orët e kursit në ' . $moduleSum]];
     }
     if (!$modulesOrdered) {
       $issues[] = ['text' => 'Radha e moduleve nuk është e qartë. Shtyp "Rregullo radhën" që modulet të numërohen 1, 2, 3 … siç shfaqen.',
@@ -167,11 +167,18 @@ if (!function_exists('qta_course_check')) {
       }
       if ($sum !== (int)$m['hours']) {
         $diff = abs((int)$m['hours'] - $sum);
-        $issues[] = $sum < (int)$m['hours']
-          ? ['text' => 'Temat e modulit ' . $name . ' kanë ' . qta_hours_label($sum) . ' nga ' . qta_hours_label((int)$m['hours']) . '. Shto edhe ' . qta_hours_label($diff) . ' te temat, ose ul orët e modulit në ' . $sum . '.',
-             'module_id' => $mid, 'fix' => ['action' => 'set_module_hours', 'value' => $sum, 'label' => 'Vendos orët e modulit në ' . $sum]]
-          : ['text' => 'Temat e modulit ' . $name . ' kanë ' . qta_hours_label($sum) . ', por moduli ka vetëm ' . qta_hours_label((int)$m['hours']) . '. Hiq ' . qta_hours_label($diff) . ' nga temat, ose rrit orët e modulit në ' . $sum . '.',
-             'module_id' => $mid, 'fix' => ['action' => 'set_module_hours', 'value' => $sum, 'label' => 'Vendos orët e modulit në ' . $sum]];
+        if ($sum < (int)$m['hours']) {
+          $issues[] = ['text' => 'Temat e modulit ' . $name . ' kanë ' . qta_hours_label($sum) . ' nga ' . qta_hours_label((int)$m['hours']) . '. Shto edhe ' . qta_hours_label($diff) . ' te temat, ose ul orët e modulit në ' . $sum . '.',
+                       'module_id' => $mid, 'fix' => ['action' => 'set_module_hours', 'value' => $sum, 'label' => 'Vendos orët e modulit në ' . $sum]];
+        } else {
+          /* Temat kalojnë modulin (vetëm te të dhëna më të vjetra: sot nuk lejohet).
+             Moduli rritet me një klik vetëm kur kursi ka ende vend për të. */
+          $fits = $moduleSum - (int)$m['hours'] + $sum <= $courseHours;
+          $issues[] = ['text' => 'Temat e modulit ' . $name . ' kanë ' . qta_hours_label($sum) . ', por moduli ka vetëm ' . qta_hours_label((int)$m['hours']) . '. Hiq ' . qta_hours_label($diff) . ' nga temat'
+                                 . ($fits ? ', ose rrit orët e modulit në ' . $sum . '.' : '.'),
+                       'module_id' => $mid, 'over' => true,
+                       'fix' => $fits ? ['action' => 'set_module_hours', 'value' => $sum, 'label' => 'Vendos orët e modulit në ' . $sum] : null];
+        }
       }
       if (!$ordered) {
         $issues[] = ['text' => 'Radha e temave te moduli ' . $name . ' nuk është e qartë. Shtyp "Rregullo radhën".',
@@ -300,6 +307,115 @@ if (!function_exists('qta_curriculum_lock_course')) {
     return $n;
   }
 
+  /* ------------------------------------------------------------------
+     Orët e pjesëve nuk kalojnë kurrë orët e së tërës:
+       Σ temat ≤ moduli  dhe  Σ modulet ≤ kursi.
+     Më pak lejohet (kursi ndërtohet hap pas hapi); gati për grup është vetëm
+     kur shumat janë të barabarta. Një ndryshim që i ul orët lejohet gjithmonë,
+     edhe kur të dhëna më të vjetra e kalojnë kufirin: e afron te rregulli.
+     ------------------------------------------------------------------ */
+
+  /** Shuma e orëve të temave të një moduli, pa temën $exceptId. */
+  function qta_curriculum_topic_hours(PDO $pdo, int $moduleId, int $exceptId = 0): int
+  {
+    $st = $pdo->prepare('SELECT COALESCE(SUM(hours), 0) FROM course_topics WHERE module_id = ? AND id <> ?');
+    $st->execute([$moduleId, $exceptId]);
+    return (int)$st->fetchColumn();
+  }
+
+  /** Shuma e orëve të moduleve të një kursi, pa modulin $exceptId. */
+  function qta_curriculum_module_hours(PDO $pdo, int $courseId, int $exceptId = 0): int
+  {
+    $st = $pdo->prepare('SELECT COALESCE(SUM(hours), 0) FROM course_modules WHERE course_id = ? AND id <> ?');
+    $st->execute([$courseId, $exceptId]);
+    return (int)$st->fetchColumn();
+  }
+
+  /**
+   * Gabimi që ndërfaqja e shfaq si dialog: çfarë nuk shkon dhe, kur ka një vlerë
+   * të vlefshme, butoni që e vendos ("Vendos 10 orë").
+   */
+  function qta_hours_limit_error(string $title, string $message, ?int $fixValue = null): QtaUserError
+  {
+    $fix = $fixValue !== null && $fixValue >= 1
+      ? ['value' => $fixValue, 'label' => 'Vendos ' . qta_hours_label($fixValue)]
+      : null;
+    return new QtaUserError($title . '. ' . $message, [
+      'code' => 'hours_limit',
+      'dialog' => ['title' => $title, 'message' => $message, 'fix' => $fix],
+    ]);
+  }
+
+  /** Tema e re ose tema me më shumë orë nuk i kalon orët e modulit. */
+  function qta_curriculum_assert_topic_hours(PDO $pdo, array $module, int $newHours, ?array $topic = null): void
+  {
+    $oldHours = $topic ? (int)$topic['hours'] : 0;
+    if ($topic && $newHours <= $oldHours) return;
+    $others = qta_curriculum_topic_hours($pdo, (int)$module['id'], $topic ? (int)$topic['id'] : 0);
+    $limit = (int)$module['hours'];
+    if ($others + $newHours <= $limit) return;
+    $max = max(0, $limit - $others);
+    $lead = 'Moduli "' . $module['title'] . '" ka ' . qta_hours_label($limit) . '. '
+      . ($topic ? 'Me këtë ndryshim' : 'Me këtë temë') . ', temat e tij do të kishin ' . qta_hours_label($others + $newHours) . '. ';
+    if ($max > 0) {
+      $next = $topic ? 'Kjo temë mund të ketë deri në ' . qta_hours_label($max) . '.' : 'Për temën e re mbeten ' . qta_hours_label($max) . '.';
+    } elseif ($others > $limit) {
+      $next = ($topic ? 'Temat e tjera' : 'Temat që ka') . ' i kalojnë tashmë orët e modulit (' . $others . ' nga ' . $limit . '). Ul së pari orët e tyre.';
+    } else {
+      $next = ($topic ? 'Temat e tjera' : 'Temat që ka') . ' i kanë zënë të gjitha orët e modulit. Ul orët e një teme' . ($topic ? ' tjetër' : '')
+        . ', ose rrit orët e modulit me "Ndrysho".';
+    }
+    throw qta_hours_limit_error('Temat kalojnë orët e modulit', $lead . $next, $max > 0 ? $max : null);
+  }
+
+  /**
+   * Orët e reja të një moduli: jo më pak se temat e tij dhe, bashkë me modulet
+   * e tjera, jo më shumë se kursi. $module = null për modul të ri.
+   */
+  function qta_curriculum_assert_module_hours(PDO $pdo, array $course, int $newHours, ?array $module = null): void
+  {
+    $oldHours = $module ? (int)$module['hours'] : 0;
+    if ($module && $newHours === $oldHours) return;
+    if ($module && $newHours < $oldHours) {
+      $topicHours = qta_curriculum_topic_hours($pdo, (int)$module['id']);
+      if ($newHours >= $topicHours) return;
+      throw qta_hours_limit_error('Temat kanë më shumë orë se moduli',
+        'Temat e modulit "' . $module['title'] . '" kanë ' . qta_hours_label($topicHours) . ', prandaj moduli nuk mund të ketë më pak se '
+          . qta_hours_label($topicHours) . '. Për ta ulur, ul së pari orët e temave.',
+        $topicHours <= $oldHours ? $topicHours : null);
+    }
+    $others = qta_curriculum_module_hours($pdo, (int)$course['id'], $module ? (int)$module['id'] : 0);
+    $limit = (int)$course['hours'];
+    if ($others + $newHours <= $limit) return;
+    $max = max(0, $limit - $others);
+    $topicHours = $module ? qta_curriculum_topic_hours($pdo, (int)$module['id']) : 0;
+    /* Vlera e propozuar duhet të respektojë edhe temat e modulit. */
+    $fix = $max > 0 && ($max >= $oldHours || $max >= $topicHours) ? $max : null;
+    $lead = 'Kursi "' . $course['name'] . '" ka ' . qta_hours_label($limit) . '. '
+      . ($module ? 'Me këtë ndryshim' : 'Me këtë modul') . ', modulet e tij do të kishin ' . qta_hours_label($others + $newHours) . '. ';
+    if ($max > 0) {
+      $next = $module ? 'Ky modul mund të ketë deri në ' . qta_hours_label($max) . '.' : 'Për modulin e ri mbeten ' . qta_hours_label($max) . '.';
+    } elseif ($others > $limit) {
+      $next = ($module ? 'Modulet e tjera' : 'Modulet që ka') . ' i kalojnë tashmë orët e kursit (' . $others . ' nga ' . $limit . '). Ul së pari orët e tyre, ose rrit orët e kursit me "Ndrysho kursin".';
+    } else {
+      $next = ($module ? 'Modulet e tjera' : 'Modulet që ka') . ' i kanë zënë të gjitha orët e kursit. Ul orët e një moduli' . ($module ? ' tjetër' : '')
+        . ', ose rrit orët e kursit me "Ndrysho kursin".';
+    }
+    throw qta_hours_limit_error('Modulet kalojnë orët e kursit', $lead . $next, $fix);
+  }
+
+  /** Orët e kursit nuk ulen nën shumën e moduleve të tij. */
+  function qta_curriculum_assert_course_hours(PDO $pdo, array $course, int $newHours): void
+  {
+    if ($newHours >= (int)$course['hours']) return;
+    $moduleHours = qta_curriculum_module_hours($pdo, (int)$course['id']);
+    if ($newHours >= $moduleHours) return;
+    throw qta_hours_limit_error('Modulet kanë më shumë orë se kursi',
+      'Modulet e kursit "' . $course['name'] . '" kanë ' . qta_hours_label($moduleHours) . ', prandaj kursi nuk mund të ketë më pak se '
+        . qta_hours_label($moduleHours) . '. Për ta ulur, ul së pari orët e moduleve.',
+      $moduleHours);
+  }
+
   /**
    * Vendos rreshtin $movedId në vendin $target (1 = i pari) dhe rinumëron
    * 1, 2, 3 … Përditëson vetëm rreshtat që ndryshojnë vend (historiku mbetet i pastër).
@@ -330,9 +446,10 @@ if (!function_exists('qta_curriculum_lock_course')) {
   function qta_curriculum_add_module(PDO $pdo, int $courseId, $title, $hours, $position = null): int
   {
     return qta_tx($pdo, function () use ($pdo, $courseId, $title, $hours, $position): int {
-      qta_curriculum_lock_course($pdo, $courseId);
+      $course = qta_curriculum_lock_course($pdo, $courseId);
       $title = qta_curriculum_title($title, QTA_MODULE_TITLE_MAX, 'module');
       $hours = qta_curriculum_hours($hours, 'module');
+      qta_curriculum_assert_module_hours($pdo, $course, $hours);
       $count = (int)$pdo->query('SELECT COUNT(*) FROM course_modules WHERE course_id = ' . $courseId)->fetchColumn();
       $pdo->prepare('INSERT INTO course_modules (course_id, position, title, hours) VALUES (?, ?, ?, ?)')
           ->execute([$courseId, $count + 1, $title, $hours]);
@@ -351,12 +468,17 @@ if (!function_exists('qta_curriculum_lock_course')) {
     return qta_tx($pdo, function () use ($pdo, $moduleId, $fields): array {
       $m = qta_module_find($pdo, $moduleId);
       if (!$m) throw new QtaUserError('Moduli nuk u gjet. Rifresko faqen.');
-      qta_curriculum_lock_course($pdo, $m['course_id']);
+      $course = qta_curriculum_lock_course($pdo, $m['course_id']);
       $m = qta_module_find($pdo, $moduleId) ?? $m;
       $sets = [];
       $vals = [];
       if (array_key_exists('title', $fields)) { $sets[] = 'title = ?'; $vals[] = qta_curriculum_title($fields['title'], QTA_MODULE_TITLE_MAX, 'module'); }
-      if (array_key_exists('hours', $fields)) { $sets[] = 'hours = ?'; $vals[] = qta_curriculum_hours($fields['hours'], 'module'); }
+      if (array_key_exists('hours', $fields)) {
+        $newHours = qta_curriculum_hours($fields['hours'], 'module');
+        qta_curriculum_assert_module_hours($pdo, $course, $newHours, $m);
+        $sets[] = 'hours = ?';
+        $vals[] = $newHours;
+      }
       if ($sets) {
         $vals[] = $moduleId;
         $pdo->prepare('UPDATE course_modules SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($vals);
@@ -393,8 +515,10 @@ if (!function_exists('qta_curriculum_lock_course')) {
       $m = qta_module_find($pdo, $moduleId);
       if (!$m) throw new QtaUserError('Moduli nuk u gjet. Rifresko faqen.');
       qta_curriculum_lock_course($pdo, $m['course_id']);
+      $m = qta_module_find($pdo, $moduleId) ?? $m;
       $title = qta_curriculum_title($title, QTA_TOPIC_TITLE_MAX, 'topic');
       $hours = qta_curriculum_hours($hours, 'topic');
+      qta_curriculum_assert_topic_hours($pdo, $m, $hours);
       $count = (int)$pdo->query('SELECT COUNT(*) FROM course_topics WHERE module_id = ' . $moduleId)->fetchColumn();
       $pdo->prepare('INSERT INTO course_topics (module_id, position, title, hours) VALUES (?, ?, ?, ?)')
           ->execute([$moduleId, $count + 1, $title, $hours]);
@@ -414,10 +538,17 @@ if (!function_exists('qta_curriculum_lock_course')) {
       $t = qta_topic_find($pdo, $topicId);
       if (!$t) throw new QtaUserError('Tema nuk u gjet. Rifresko faqen.');
       qta_curriculum_lock_course($pdo, $t['course_id']);
+      $t = qta_topic_find($pdo, $topicId) ?? $t;
       $sets = [];
       $vals = [];
       if (array_key_exists('title', $fields)) { $sets[] = 'title = ?'; $vals[] = qta_curriculum_title($fields['title'], QTA_TOPIC_TITLE_MAX, 'topic'); }
-      if (array_key_exists('hours', $fields)) { $sets[] = 'hours = ?'; $vals[] = qta_curriculum_hours($fields['hours'], 'topic'); }
+      if (array_key_exists('hours', $fields)) {
+        $newHours = qta_curriculum_hours($fields['hours'], 'topic');
+        $module = qta_module_find($pdo, (int)$t['module_id']);
+        if ($module) qta_curriculum_assert_topic_hours($pdo, $module, $newHours, $t);
+        $sets[] = 'hours = ?';
+        $vals[] = $newHours;
+      }
       if ($sets) {
         $vals[] = $topicId;
         $pdo->prepare('UPDATE course_topics SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($vals);
@@ -488,8 +619,9 @@ if (!function_exists('qta_curriculum_lock_course')) {
   function qta_curriculum_set_course_hours(PDO $pdo, int $courseId, $hours): void
   {
     qta_tx($pdo, function () use ($pdo, $courseId, $hours): void {
-      qta_curriculum_lock_course($pdo, $courseId);
+      $course = qta_curriculum_lock_course($pdo, $courseId);
       $h = qta_curriculum_hours($hours, 'course');
+      qta_curriculum_assert_course_hours($pdo, $course, $h);
       $pdo->prepare('UPDATE courses SET hours = ? WHERE id = ?')->execute([$h, $courseId]);
     });
   }

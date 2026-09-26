@@ -42,7 +42,12 @@
   }
   document.addEventListener('DOMContentLoaded', function () {
     var hash = (window.location.hash || '').slice(1);
-    if (hash === 'kursantet' || hash === 'dokumentet') showTab(hash);
+    if (hash !== 'kursantet' && hash !== 'dokumentet') return;
+    /* Skeda nga adresa hapet menjëherë, pa kalim, që faqja të mos dalë bosh për një çast. */
+    var panes = document.querySelectorAll('.tab-pane.fade');
+    Array.prototype.forEach.call(panes, function (p) { p.classList.remove('fade'); });
+    showTab(hash);
+    Array.prototype.forEach.call(panes, function (p) { p.classList.add('fade'); });
   });
   document.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (btn) {
     btn.addEventListener('shown.bs.tab', function () {

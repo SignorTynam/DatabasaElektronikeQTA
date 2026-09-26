@@ -203,6 +203,10 @@ Courses and scheduled groups (see `docs/domain/COURSES-AND-SCHEDULES.md`):
 - `php tests/run.php` and `--integration` against a test database pass;
 - a course is "Gati për grup" only when module hours = course hours and topic hours =
   module hours; a draft cannot be chosen for a new group;
+- topic hours never exceed the module and module hours never exceed the course: the save
+  is refused with a dialog ("Vendos 10 orë" / "Ndrysho orët") and nothing changes;
+- "Grupet e mëparshme" shows the banner that links to "Grupet";
+- names of trainees, courses and groups in tables are not underlined;
 - modules and topics reorder with the keyboard (arrow buttons "Lëviz lart" / "Lëviz poshtë"), focus stays on the item;
 - 100-hour course from 01.10.2026 at 5 hours/day with Sunday 11.10.2026 at 4 hours ends on
   23.10.2026 with a 1-hour last day;

@@ -24,7 +24,7 @@ if (!function_exists('qta_render_course_structure')) {
     $mCount = count($modules);
     ob_start();
     ?>
-    <section class="section cur-status" aria-labelledby="curStatusTitle">
+    <section class="section cur-status" aria-labelledby="curStatusTitle" data-course-hours="<?= (int)$check['course_hours'] ?>" data-module-hours="<?= (int)$check['module_hours'] ?>">
       <div class="panel cur-summary<?= $check['ready'] ? ' is-ready' : '' ?>">
         <div class="cur-summary-head">
           <h2 class="section-title" id="curStatusTitle">
@@ -105,7 +105,8 @@ if (!function_exists('qta_render_course_structure')) {
             $tCount = count($topics);
             $titleId = 'curModule' . $mid;
           ?>
-            <li class="cur-module<?= $info['ok'] ? '' : ' has-issue' ?>" id="modul-<?= $mid ?>" data-module="<?= $mid ?>" aria-labelledby="<?= $titleId ?>">
+            <li class="cur-module<?= $info['ok'] ? '' : ((int)$info['topic_hours'] > (int)$m['hours'] ? ' has-issue is-over' : ' has-issue') ?>" id="modul-<?= $mid ?>" data-module="<?= $mid ?>" aria-labelledby="<?= $titleId ?>"
+                data-hours="<?= (int)$m['hours'] ?>" data-topic-hours="<?= (int)$info['topic_hours'] ?>" data-title="<?= h((string)$m['title']) ?>">
               <div class="cur-module-head">
                 <span class="cur-pos" aria-hidden="true"><?= $pos ?></span>
                 <div class="cur-module-main">
@@ -113,9 +114,22 @@ if (!function_exists('qta_render_course_structure')) {
                   <p class="cur-module-meta">
                     <span><?= h(qta_hours_label((int)$m['hours'])) ?></span>
                     <span><?= h(qta_plural($tCount, 'temë', 'tema')) ?></span>
-                    <?= $info['ok']
-                      ? qta_status('Temat: ' . (int)$info['topic_hours'] . ' nga ' . (int)$m['hours'] . ' orë', 'success', 'bi-check2')
-                      : qta_status($tCount ? 'Temat: ' . (int)$info['topic_hours'] . ' nga ' . (int)$m['hours'] . ' orë' : 'Pa tema', 'warning', 'bi-exclamation-triangle') ?>
+                    <?php
+                      $tHours = (int)$info['topic_hours'];
+                      $mHours = (int)$m['hours'];
+                      $sumText = 'Temat: ' . $tHours . ' nga ' . $mHours . ' orë';
+                      if ($info['ok']) {
+                        echo qta_status($sumText, 'success', 'bi-check2');
+                      } elseif (!$tCount) {
+                        echo qta_status('Pa tema', 'warning', 'bi-exclamation-triangle');
+                      } elseif ($tHours > $mHours) {
+                        echo qta_status($sumText . ' · ' . ($tHours - $mHours) . ' tepër', 'danger', 'bi-x-circle');
+                      } elseif ($tHours < $mHours) {
+                        echo qta_status($sumText . ' · mbeten ' . ($mHours - $tHours), 'warning', 'bi-exclamation-triangle');
+                      } else {
+                        echo qta_status($sumText, 'warning', 'bi-exclamation-triangle');
+                      }
+                    ?>
                   </p>
                 </div>
                 <?php if ($edit): ?>

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../shared/curriculum.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -101,7 +102,12 @@ try {
               throw new RuntimeException('Orët duhet të jenë një numër i plotë, p.sh. 40.');
           }
           $iv = (int)$v;
-          $pdo->prepare("UPDATE courses SET hours=:v WHERE id=:id")->execute([':v'=>$iv, ':id'=>$course_id]);
+          /* Orët e kursit nuk ulen nën shumën e moduleve të tij. */
+          qta_tx($pdo, function () use ($pdo, $course_id, $iv): void {
+              $course = qta_curriculum_lock_course($pdo, $course_id);
+              qta_curriculum_assert_course_hours($pdo, $course, $iv);
+              $pdo->prepare("UPDATE courses SET hours=:v WHERE id=:id")->execute([':v'=>$iv, ':id'=>$course_id]);
+          });
 
           if (function_exists('qta_audit_log')) {
             qta_audit_log($pdo, 'course.update_field', ['course_id'=>$course_id, 'field'=>'hours', 'value'=>$iv, 'actor'=>$_SESSION['user_id'] ?? null]);
@@ -189,5 +195,10 @@ try {
 
 } catch (Throwable $e) {
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+    $out = ['ok'=>false,'error'=>$e->getMessage()];
+    if ($e instanceof QtaUserError) {
+        $out['code'] = $e->data['code'] ?? null;
+        if (isset($e->data['dialog'])) $out['dialog'] = $e->data['dialog'];
+    }
+    echo json_encode($out);
 }

@@ -137,7 +137,7 @@ require __DIR__ . '/../shared/app_head.php';
           <div class="col-6">
             <label class="form-label" for="mdHours">Orë <span class="req" aria-hidden="true">*</span></label>
             <input class="form-control" id="mdHours" name="hours" type="number" min="1" max="<?= QTA_HOURS_MAX ?>" step="1" inputmode="numeric" required placeholder="p.sh. 10" aria-describedby="mdHoursHelp">
-            <div class="form-text" id="mdHoursHelp">Orë të plota. Temat e modulit duhet të mblidhen në këtë numër.</div>
+            <div class="form-text" id="mdHoursHelp"><span data-hours-hint></span> Temat e modulit mblidhen në këtë numër.</div>
           </div>
           <div class="col-6">
             <label class="form-label" for="mdPosition">Vendi në radhë</label>
@@ -176,7 +176,8 @@ require __DIR__ . '/../shared/app_head.php';
           </div>
           <div class="col-6">
             <label class="form-label" for="tdHours">Orë <span class="req" aria-hidden="true">*</span></label>
-            <input class="form-control" id="tdHours" name="hours" type="number" min="1" max="<?= QTA_HOURS_MAX ?>" step="1" inputmode="numeric" required>
+            <input class="form-control" id="tdHours" name="hours" type="number" min="1" max="<?= QTA_HOURS_MAX ?>" step="1" inputmode="numeric" required aria-describedby="tdHoursHelp">
+            <div class="form-text" id="tdHoursHelp" data-hours-hint></div>
           </div>
           <div class="col-6">
             <label class="form-label" for="tdPosition">Vendi në modul</label>
@@ -213,7 +214,8 @@ require __DIR__ . '/../shared/app_head.php';
           </div>
           <div class="col-5">
             <label class="form-label" for="cdHours">Orë mësimi <span class="req" aria-hidden="true">*</span></label>
-            <input class="form-control" id="cdHours" name="hours" type="number" min="1" max="<?= QTA_HOURS_MAX ?>" step="1" inputmode="numeric" required value="<?= (int)$course['hours'] ?>">
+            <input class="form-control" id="cdHours" name="hours" type="number" min="1" max="<?= QTA_HOURS_MAX ?>" step="1" inputmode="numeric" required value="<?= (int)$course['hours'] ?>" aria-describedby="cdHoursHelp">
+            <div class="form-text" id="cdHoursHelp" data-hours-hint></div>
           </div>
         </div>
         <p class="form-text mb-0 mt-3">Grupet me orar që ekzistojnë nuk ndryshojnë: ata kanë kopjen e tyre të temave dhe orëve.</p>
@@ -232,6 +234,7 @@ require __DIR__ . '/../shared/app_head.php';
 <script type="application/json" id="curConfig"><?= json_encode([
   'csrf' => $CSRF, 'course' => (int)$course['id'], 'edit' => $EDIT_MODE,
   'endpoint' => 'course_structure_update.php', 'flash' => $flashOk,
+  'courseData' => ['name' => (string)$course['name'], 'code' => (string)$course['code'], 'hours' => (int)$course['hours']],
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <?php endif; ?>
 </body>

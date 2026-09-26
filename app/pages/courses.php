@@ -556,7 +556,11 @@ async function post(payload){
     body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
   });
   const json = await res.json().catch(()=> null);
-  if (!json || !json.ok) throw new Error((json && json.error) || 'Ndryshimi nuk u ruajt. Provo sërish.');
+  if (!json || !json.ok) {
+    const err = new Error((json && json.error) || 'Ndryshimi nuk u ruajt. Provo sërish.');
+    err.data = json;
+    throw err;
+  }
   return json;
 }
 
@@ -593,6 +597,16 @@ async function saveInline(el){
     cell.classList.remove('cell-saving');
     el.textContent = prev;
     flashCell(cell, 'cell-err');
+    /* Orët e kursit nën shumën e moduleve: dialog me vlerën më të vogël të lejuar. */
+    const d = e.data && e.data.code === 'hours_limit' ? e.data.dialog : null;
+    if (d && window.qtaConfirm) {
+      el.focus();
+      const ok = await window.qtaConfirm({ title: d.title, message: d.message, danger: false, icon: 'bi-exclamation-triangle',
+        confirm: d.fix ? d.fix.label : 'Ndrysho orët', cancel: d.fix ? 'Ndrysho orët' : false });
+      if (ok && d.fix) { el.textContent = String(d.fix.value); await saveInline(el); }
+      else el.focus();
+      return;
+    }
     notify('danger', e.message);
   }
 }

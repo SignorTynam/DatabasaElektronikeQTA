@@ -428,16 +428,21 @@
   }
 
   /* Dialog konfirmimi i aksesueshëm — zëvendëson confirm() të shfletuesit.
-     qtaConfirm({title, message, confirm, cancel, danger}) → Promise<boolean> */
+     qtaConfirm({title, message, confirm, cancel, danger, icon}) → Promise<boolean>
+     cancel: false = vetëm një buton (njoftim që kërkon vëmendje);
+     icon: p.sh. 'bi-exclamation-triangle' për një problem që duhet rregulluar. */
   window.qtaConfirm = function (opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
       if (!window.bootstrap || !window.bootstrap.Modal) {
+        if (opts.cancel === false) { window.alert(opts.message || opts.title || ''); resolve(true); return; }
         resolve(window.confirm(opts.message || opts.title || 'Je i sigurt?'));
         return;
       }
       var id = 'qtaConfirm' + Date.now();
       var danger = opts.danger !== false;
+      var single = opts.cancel === false;
+      var icon = opts.icon || (danger ? 'bi-exclamation-octagon' : 'bi-question-circle');
       /* Pas përgjigjes, fokusi kthehet te kontrolli që e hapi pyetjen. */
       var returnTo = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
       /* Pyetja mund të dalë mbi një dialog tjetër që mbetet i hapur (p.sh. një grup). */
@@ -447,12 +452,12 @@
         '<div class="modal fade" id="' + id + '" tabindex="-1" aria-labelledby="' + id + 'T" aria-describedby="' + id + 'D">' +
           '<div class="modal-dialog modal-dialog-centered"><div class="modal-content">' +
             '<div class="modal-body pt-4">' +
-              '<span class="confirm-icon' + (danger ? ' is-danger' : '') + '"><i class="bi ' + (danger ? 'bi-exclamation-octagon' : 'bi-question-circle') + '" aria-hidden="true"></i></span>' +
+              '<span class="confirm-icon' + (danger ? ' is-danger' : '') + '"><i class="bi ' + esc(icon) + '" aria-hidden="true"></i></span>' +
               '<h2 class="modal-title mb-2" id="' + id + 'T">' + esc(opts.title || 'Je i sigurt?') + '</h2>' +
               '<p class="text-muted mb-0" id="' + id + 'D">' + esc(opts.message || '') + '</p>' +
             '</div>' +
             '<div class="modal-footer">' +
-              '<button type="button" class="btn btn-secondary" data-qta-cancel>' + esc(opts.cancel || 'Anulo') + '</button>' +
+              (single ? '' : '<button type="button" class="btn btn-secondary" data-qta-cancel>' + esc(opts.cancel || 'Anulo') + '</button>') +
               '<button type="button" class="btn ' + (danger ? 'btn-danger' : 'btn-primary') + '" data-qta-ok>' + esc(opts.confirm || 'Po, vazhdo') + '</button>' +
             '</div>' +
           '</div></div>' +
@@ -463,8 +468,9 @@
       var modal = new window.bootstrap.Modal(modalEl);
       var answered = false;
       modalEl.querySelector('[data-qta-ok]').addEventListener('click', function () { answered = true; modal.hide(); resolve(true); });
-      modalEl.querySelector('[data-qta-cancel]').addEventListener('click', function () { modal.hide(); });
-      modalEl.addEventListener('shown.bs.modal', function () { modalEl.querySelector('[data-qta-cancel]').focus(); });
+      var cancelBtn = modalEl.querySelector('[data-qta-cancel]');
+      if (cancelBtn) cancelBtn.addEventListener('click', function () { modal.hide(); });
+      modalEl.addEventListener('shown.bs.modal', function () { (cancelBtn || modalEl.querySelector('[data-qta-ok]')).focus(); });
       modalEl.addEventListener('hidden.bs.modal', function () {
         if (!answered) resolve(false);
         modal.dispose();

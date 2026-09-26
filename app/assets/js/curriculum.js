@@ -13,6 +13,8 @@
   var CFG = JSON.parse(cfgEl.textContent || '{}');
   var announcer = document.getElementById('curAnnounce');
   var pendingFocus = null;
+  /* Të dhënat e fundit të kursit (pas çdo ruajtjeje), për dialogun "Ndrysho kursin". */
+  var current = CFG.courseData || null;
 
   function toast(message, variant, opts) {
     if (window.qtaToast) window.qtaToast(message, variant || 'success', null, opts || {});
@@ -33,9 +35,43 @@
       return res.json().catch(function () { return null; });
     }).then(function (json) {
       if (!json) throw new Error('Nuk mora përgjigje nga serveri. Kontrollo lidhjen dhe provo sërish.');
-      if (!json.ok) throw new Error(json.error || 'Ndryshimi nuk u ruajt.');
+      if (!json.ok) {
+        var err = new Error(json.error || 'Ndryshimi nuk u ruajt.');
+        err.data = json;
+        throw err;
+      }
       return json;
     });
+  }
+
+  function resubmit(form) {
+    if (form.requestSubmit) form.requestSubmit();
+    else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
+
+  /* Orët e temave kalojnë modulin (ose modulet kursin, ose e tëra ulet nën
+     pjesët): serveri e refuzon dhe këtu del një dialog që shpjegon çfarë nuk
+     shkon. Kur ka një vlerë të vlefshme, "Vendos 10 orë" e vendos dhe ruan. */
+  function hoursProblem(err, input, retry) {
+    var d = err && err.data && err.data.code === 'hours_limit' ? err.data.dialog : null;
+    if (!d || !window.qtaConfirm) return false;
+    var fix = d.fix && input && retry ? d.fix : null;
+    if (input && document.contains(input)) input.focus();
+    window.qtaConfirm({
+      title: d.title,
+      message: d.message,
+      danger: false,
+      icon: 'bi-exclamation-triangle',
+      confirm: fix ? fix.label : 'Ndrysho orët',
+      cancel: fix ? 'Ndrysho orët' : false
+    }).then(function (ok) {
+      if (ok && fix) { input.value = String(fix.value); retry(); return; }
+      if (input && document.contains(input)) {
+        input.focus();
+        if (input.select) input.select();
+      }
+    });
+    return true;
   }
 
   function busy(el, on) {
@@ -83,6 +119,7 @@
   function render(json, focus, quiet) {
     root.innerHTML = json.html;
     if (json.course) {
+      current = json.course;
       var hoursEl = document.querySelector('[data-course-hours]');
       if (hoursEl) hoursEl.textContent = json.course.hours + ' orë';
       var codeEl = document.querySelector('[data-course-code]');
@@ -143,6 +180,46 @@
     box.hidden = !message;
   }
 
+  /* ------------------------------------------- Sa orë lejohen (udhëzimet) */
+  function num(el, attr) { return el ? parseInt(el.getAttribute(attr), 10) || 0 : 0; }
+  function totals() {
+    var s = root.querySelector('.cur-status');
+    return { course: num(s, 'data-course-hours'), modules: num(s, 'data-module-hours') };
+  }
+  function hint(form, text) {
+    var el = form.querySelector('[data-hours-hint]');
+    if (el) el.textContent = text;
+  }
+  function moduleHint(form, mode, btn) {
+    var t = totals();
+    if (mode !== 'edit') {
+      var free = t.course - t.modules;
+      hint(form, free > 0
+        ? 'Mbeten ' + free + ' orë nga ' + t.course + ' të kursit.'
+        : 'Modulet i kanë zënë të gjitha orët e kursit (' + t.course + '). Për një modul të ri, rrit orët e kursit me "Ndrysho kursin".');
+      return;
+    }
+    var own = num(btn, 'data-hours');
+    var topics = num(root.querySelector('.cur-module[data-module="' + btn.getAttribute('data-id') + '"]'), 'data-topic-hours');
+    var max = t.course - (t.modules - own);
+    var min = Math.max(1, topics);
+    if (max < 1) hint(form, 'Modulet kalojnë orët e kursit: ul orët e moduleve, ose rrit orët e kursit.');
+    else if (max < min) hint(form, 'Temat e këtij moduli kanë ' + topics + ' orë, më shumë se sa lejon kursi (' + max + ').');
+    else if (min === max) hint(form, 'Ky modul duhet të ketë ' + min + ' orë.');
+    else hint(form, topics > 0
+      ? 'Nga ' + min + ' orë (sa kanë temat) deri në ' + max + ' orë (sa lejon kursi).'
+      : 'Deri në ' + max + ' orë (sa lejon kursi).');
+  }
+  function topicHint(form, btn) {
+    var box = btn.closest('.cur-module');
+    var mh = num(box, 'data-hours');
+    var th = num(box, 'data-topic-hours');
+    var others = th - num(btn, 'data-hours');
+    hint(form, th > mh
+      ? 'Temat e modulit kanë ' + th + ' orë, por moduli ka vetëm ' + mh + ': ul orët.'
+      : 'Deri në ' + Math.max(0, mh - others) + ' orë: moduli ka ' + mh + ' orë, temat e tjera ' + others + '.');
+  }
+
   function openModuleDialog(mode, btn) {
     if (!moduleDialog) return;
     var form = moduleDialog.querySelector('form');
@@ -155,6 +232,7 @@
     form.elements.title.value = isEdit ? btn.getAttribute('data-title') : '';
     form.elements.hours.value = isEdit ? btn.getAttribute('data-hours') : '';
     fillPositions(form.elements.position, count, isEdit ? parseInt(btn.getAttribute('data-position'), 10) : count + 1, !isEdit);
+    moduleHint(form, mode, btn);
     moduleDialog.querySelector('[data-dialog-title]').textContent = isEdit ? 'Ndrysho modulin' : 'Shto një modul';
     moduleDialog.querySelector('[data-submit-label] span').textContent = isEdit ? 'Ruaj ndryshimet' : 'Shto modulin';
     modal(moduleDialog).show(btn || undefined);
@@ -170,6 +248,7 @@
     form.elements.title.value = btn.getAttribute('data-title');
     form.elements.hours.value = btn.getAttribute('data-hours');
     fillPositions(form.elements.position, parseInt(btn.getAttribute('data-count'), 10) || 1, parseInt(btn.getAttribute('data-position'), 10), false);
+    topicHint(form, btn);
     topicDialog.querySelector('[data-dialog-eyebrow]').textContent = 'Moduli ' + (btn.getAttribute('data-module-title') || '');
     modal(topicDialog).show(btn);
   }
@@ -182,11 +261,26 @@
         var count = root.querySelectorAll('.cur-module').length;
         form.dataset.mode = 'add';
         fillPositions(form.elements.position, count, count + 1, true);
+        moduleHint(form, 'add', null);
       }
     });
     moduleDialog.addEventListener('shown.bs.modal', function () { moduleDialog.querySelector('input[name="title"]').focus(); });
   }
   if (topicDialog) topicDialog.addEventListener('shown.bs.modal', function () { topicDialog.querySelector('input[name="title"]').focus(); });
+  if (courseDialog) {
+    /* Hapet gjithmonë me vlerat e ruajtura së fundi (edhe pas një rregullimi me një klik). */
+    courseDialog.addEventListener('show.bs.modal', function () {
+      var form = courseDialog.querySelector('form');
+      formError(form, '');
+      if (current) {
+        form.elements.name.value = current.name;
+        form.elements.code.value = current.code;
+        form.elements.hours.value = current.hours;
+      }
+      var t = totals();
+      hint(form, t.modules > 0 ? 'Të paktën ' + t.modules + ' orë: aq kanë modulet.' : '');
+    });
+  }
 
   document.addEventListener('submit', function (ev) {
     var form = ev.target;
@@ -216,6 +310,7 @@
         if (host) hideModal(host);
       }).catch(function (err) {
         busy(btn, false);
+        if (hoursProblem(err, form.elements.hours, function () { resubmit(form); })) return;
         formError(form, err.message);
         var first = form.querySelector('input:not([type="hidden"])');
         if (first) first.focus();
@@ -236,6 +331,7 @@
         render(json, undefined, 'Tema u shtua.');
       }).catch(function (err) {
         busy(addBtn, false);
+        if (hoursProblem(err, form.elements.hours, function () { resubmit(form); })) return;
         fail(err, form.elements.title);
       });
     }
@@ -295,9 +391,47 @@
       busy(fix, true);
       send({ action: action, value: fix.getAttribute('data-value'), module_id: fix.getAttribute('data-module') })
         .then(function (json) { render(json); })
-        .catch(function (err) { busy(fix, false); fail(err, fix); });
+        .catch(function (err) { busy(fix, false); if (!hoursProblem(err, null, null)) fail(err, fix); });
     }
   });
 
   if (CFG.flash) toast(CFG.flash);
+
+  /* Të dhëna më të vjetra ku temat kalojnë modulin (ose modulet kursin): sot kjo
+     nuk lejohet, prandaj kur hapen ndryshimet del një dialog që kërkon rregullimin.
+     "Më vonë" e hesht për këtë gjendje deri në mbylljen e shfletuesit. */
+  (function overLimitNotice() {
+    if (!CFG.edit || !window.qtaConfirm) return;
+    var t = totals();
+    var parts = [];
+    var first = null;
+    if (t.modules > t.course) {
+      parts.push('Modulet kanë ' + t.modules + ' orë, por kursi ka vetëm ' + t.course + '.');
+      first = document.getElementById('curStatusTitle');
+    }
+    Array.prototype.forEach.call(root.querySelectorAll('.cur-module.is-over'), function (box) {
+      parts.push('Temat e modulit "' + box.getAttribute('data-title') + '" kanë ' + num(box, 'data-topic-hours') + ' orë, por moduli ka vetëm ' + num(box, 'data-hours') + '.');
+      if (!first) first = box;
+    });
+    if (!parts.length) return;
+    var key = 'qtaHoursNotice:' + CFG.course + ':' + parts.join('|');
+    try { if (sessionStorage.getItem(key)) return; } catch (e) { /* pa kujtesë: dialogu del sërish */ }
+    window.qtaConfirm({
+      title: 'Orët nuk përputhen',
+      message: parts.join(' ') + ' Orët e temave nuk mund të kalojnë orët e modulit, as modulet orët e kursit. Rregulloji që kursi të përdoret për grupe me orar.',
+      danger: false,
+      icon: 'bi-exclamation-triangle',
+      confirm: 'Rregulloji tani',
+      cancel: 'Më vonë'
+    }).then(function (ok) {
+      if (!ok) {
+        try { sessionStorage.setItem(key, '1'); } catch (e) { /* pa kujtesë */ }
+        return;
+      }
+      if (!first) return;
+      first.setAttribute('tabindex', '-1');
+      first.scrollIntoView({ block: 'center' });
+      focusEl(first);
+    });
+  })();
 })();

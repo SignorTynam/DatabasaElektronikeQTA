@@ -127,6 +127,7 @@ try {
         if ($name === '') throw new QtaUserError('Shkruaj emrin e kursit.');
         if ($code === '') throw new QtaUserError('Shkruaj kodin e kursit, p.sh. MSO-01.');
         $hours = qta_curriculum_hours($data['hours'] ?? '', 'course');
+        qta_curriculum_assert_course_hours($pdo, $course, $hours);
         $dup = $pdo->prepare('SELECT COUNT(*) FROM courses WHERE code = ? AND id <> ?');
         $dup->execute([$code, $courseId]);
         if ((int)$dup->fetchColumn() > 0) throw new QtaUserError('Ky kod i përket një kursi tjetër. Zgjidh një kod tjetër.');

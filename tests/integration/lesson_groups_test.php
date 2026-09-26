@@ -100,20 +100,20 @@ t_case('Pranimi A — struktura ruhet, radha është e qartë, historiku shënoh
   qta_curriculum_update_module($pdo, $excel, ['position' => 2]);
   t_eq(['Word', 'Excel', 'PowerPoint', 'Access', 'Outlook'], array_column(qta_course_modules($pdo, $cid), 'title'), 'Excel kthehet në vendin 2');
 
-  /* Mospërputhja zbulohet, pastaj rregullohet me "Vendos orët e modulit". */
+  /* Mospërputhja zbulohet (temat 9 nga 10), pastaj rregullohet. */
   $word = qta_course_modules($pdo, $cid)[0];
-  qta_curriculum_update_topic($pdo, $word['topics'][5]['id'], ['hours' => 2]);
+  qta_curriculum_update_topic($pdo, $word['topics'][0]['id'], ['hours' => 1]);
   $check = qta_course_check(qta_course_find($pdo, $cid), qta_course_modules($pdo, $cid));
-  t_eq(false, $check['ready'], 'Word me 11 orë tema: jo gati');
+  t_eq(false, $check['ready'], 'Word me 9 orë tema: jo gati');
   t_eq(false, qta_course_summaries($pdo, [$cid])[$cid]['ready'], 'përmbledhja: jo gati');
-  qta_curriculum_update_topic($pdo, $word['topics'][5]['id'], ['hours' => 1]);
-  t_eq(true, qta_course_check(qta_course_find($pdo, $cid), qta_course_modules($pdo, $cid))['ready'], 'pas korrigjimit: gati');
 
-  /* Fshirja e një teme rinumëron të tjerat. */
+  /* Fshirja e një teme rinumëron të tjerat (tema e përkohshme zë orën e lirë). */
   $tid = qta_curriculum_add_topic($pdo, $word['id'], 'Temë e përkohshme', 1, 2);
   t_eq(2, qta_topic_find($pdo, $tid)['position'], 'tema e re u fut në vendin 2');
   qta_curriculum_delete_topic($pdo, $tid);
   t_eq([1, 2, 3, 4, 5, 6], array_column(qta_course_modules($pdo, $cid)[0]['topics'], 'position'), 'pas fshirjes radha është 1…6');
+  qta_curriculum_update_topic($pdo, $word['topics'][0]['id'], ['hours' => 2]);
+  t_eq(true, qta_course_check(qta_course_find($pdo, $cid), qta_course_modules($pdo, $cid))['ready'], 'pas korrigjimit: gati');
 
   /* Radha e prishur jashtë aplikacionit zbulohet dhe rregullohet. */
   $pdo->prepare('UPDATE course_modules SET position = 1 WHERE id = ?')->execute([qta_course_modules($pdo, $cid)[3]['id']]);
@@ -122,6 +122,81 @@ t_case('Pranimi A — struktura ruhet, radha është e qartë, historiku shënoh
   t_throws(QtaUserError::class, fn() => qta_lg_preview_new($pdo, $cid, '01.10.2026', 5), 'grupi nuk krijohet me radhë të paqartë', 'nuk është ende gati');
   qta_curriculum_normalize($pdo, $cid);
   t_eq(true, qta_course_check(qta_course_find($pdo, $cid), qta_course_modules($pdo, $cid))['ready'], '"Rregullo radhën" e zgjidh');
+});
+
+/** Ekzekuton $fn dhe kthen të dhënat e dialogut të orëve (ose null nëse nuk u refuzua). */
+function it_hours_limit(callable $fn): ?array
+{
+  try {
+    $fn();
+  } catch (QtaUserError $e) {
+    return ($e->data['code'] ?? '') === 'hours_limit' ? $e->data['dialog'] + ['error' => $e->getMessage()] : ['other' => $e->getMessage()];
+  }
+  return null;
+}
+
+t_case('Orët e pjesëve nuk kalojnë të tërën: temat ≤ moduli, modulet ≤ kursi', function () use ($pdo, $tag) {
+  $cid = it_course($pdo, 'LIM-' . $tag, 'Kurs me kufij', 30, [['Word', 20, [10, 5]], ['Excel', 5, [5]]]);
+  [$word, $excel] = qta_course_modules($pdo, $cid);
+  $auditBefore = it_count($pdo, "SELECT COUNT(*) FROM audit_events WHERE table_name IN ('courses','course_modules','course_topics')");
+  $topicsBefore = it_count($pdo, 'SELECT COUNT(*) FROM course_topics WHERE module_id = ?', [$word['id']]);
+
+  /* Tema e re: mbeten 5 orë te Word. */
+  $d = it_hours_limit(fn() => qta_curriculum_add_topic($pdo, $word['id'], 'Tabelat', 90));
+  t_eq('Temat kalojnë orët e modulit', $d['title'] ?? null, 'tema 90 orë te moduli 20 orë: refuzohet me dialog');
+  t_ok(str_contains($d['message'] ?? '', 'do të kishin 105 orë') && str_contains($d['message'] ?? '', 'mbeten 5 orë'), 'dialogu thotë shumën dhe sa mbeten');
+  t_eq(['value' => 5, 'label' => 'Vendos 5 orë'], $d['fix'] ?? null, 'propozimi: 5 orë');
+  t_eq($topicsBefore, it_count($pdo, 'SELECT COUNT(*) FROM course_topics WHERE module_id = ?', [$word['id']]), 'asgjë nuk u shtua');
+
+  /* Moduli plot: asnjë propozim, vetëm shpjegimi. */
+  qta_curriculum_add_topic($pdo, $word['id'], 'Tabelat', 5);
+  $d = it_hours_limit(fn() => qta_curriculum_add_topic($pdo, $word['id'], 'Grafikët', 1));
+  t_ok(is_array($d) && array_key_exists('fix', $d) && $d['fix'] === null, 'moduli plot: pa propozim');
+  t_ok(str_contains($d['message'] ?? '', 'i kanë zënë të gjitha orët e modulit'), 'moduli plot: mesazh i qartë');
+
+  /* Rritja e një teme përtej modulit refuzohet; ulja lejohet. */
+  $t10 = qta_course_modules($pdo, $cid)[0]['topics'][0];
+  $d = it_hours_limit(fn() => qta_curriculum_update_topic($pdo, $t10['id'], ['hours' => 12]));
+  t_eq(['value' => 10, 'label' => 'Vendos 10 orë'], $d['fix'] ?? null, 'tema mund të ketë deri në 10 orë');
+  t_ok(str_contains($d['message'] ?? '', 'Kjo temë mund të ketë deri në 10 orë'), 'mesazhi për ndryshimin e temës');
+  t_eq(null, it_hours_limit(fn() => qta_curriculum_update_topic($pdo, $t10['id'], ['hours' => 8])), 'ulja e temës lejohet');
+  t_eq(null, it_hours_limit(fn() => qta_curriculum_update_topic($pdo, $t10['id'], ['hours' => 10])), 'rritja brenda modulit lejohet');
+
+  /* Moduli nuk ulet nën temat e tij. */
+  $d = it_hours_limit(fn() => qta_curriculum_update_module($pdo, $word['id'], ['hours' => 15]));
+  t_eq('Temat kanë më shumë orë se moduli', $d['title'] ?? null, 'moduli 15 < temat 20: refuzohet');
+  t_eq(20, $d['fix']['value'] ?? null, 'propozimi: sa temat (20)');
+  t_eq(20, qta_module_find($pdo, $word['id'])['hours'], 'moduli mbeti 20 orë');
+
+  /* Modulet nuk kalojnë kursin (30 orë: Word 20 + Excel 5, mbeten 5). */
+  $d = it_hours_limit(fn() => qta_curriculum_add_module($pdo, $cid, 'PowerPoint', 10));
+  t_eq('Modulet kalojnë orët e kursit', $d['title'] ?? null, 'moduli i ri 10 orë: refuzohet');
+  t_eq(5, $d['fix']['value'] ?? null, 'për modulin e ri mbeten 5 orë');
+  $d = it_hours_limit(fn() => qta_curriculum_update_module($pdo, $excel['id'], ['hours' => 12]));
+  t_eq(10, $d['fix']['value'] ?? null, 'Excel mund të ketë deri në 10 orë');
+  t_eq(2, count(qta_course_modules($pdo, $cid)), 'asnjë modul nuk u shtua');
+
+  /* Kursi nuk ulet nën modulet e tij; rritja lejohet. */
+  $d = it_hours_limit(fn() => qta_curriculum_set_course_hours($pdo, $cid, 20));
+  t_eq('Modulet kanë më shumë orë se kursi', $d['title'] ?? null, 'kursi 20 < modulet 25: refuzohet');
+  t_eq(25, $d['fix']['value'] ?? null, 'propozimi: 25 orë');
+  t_eq(null, it_hours_limit(fn() => qta_curriculum_set_course_hours($pdo, $cid, 25)), 'kursi sa modulet: lejohet');
+  t_eq(null, it_hours_limit(fn() => qta_curriculum_set_course_hours($pdo, $cid, 40)), 'rritja e kursit lejohet');
+
+  /* Të dhëna më të vjetra që e kalojnë kufirin: emri ndryshon, ulja lejohet, rritja jo. */
+  $pdo->prepare('UPDATE course_topics SET hours = 90 WHERE id = ?')->execute([$t10['id']]);
+  t_eq(null, it_hours_limit(fn() => qta_curriculum_update_topic($pdo, $t10['id'], ['title' => 'Hyrje', 'hours' => 90])), 'vetëm emri: lejohet edhe kur kalon');
+  t_ok(it_hours_limit(fn() => qta_curriculum_update_topic($pdo, $t10['id'], ['hours' => 91])) !== null, 'rritja mbi kufi: refuzohet');
+  t_eq(null, it_hours_limit(fn() => qta_curriculum_update_topic($pdo, $t10['id'], ['hours' => 50])), 'ulja drejt kufirit: lejohet');
+  $check = qta_course_check(qta_course_find($pdo, $cid), qta_course_modules($pdo, $cid));
+  $over = array_values(array_filter($check['issues'], static fn($i) => !empty($i['over'])));
+  t_ok($over && str_contains($over[0]['text'], 'por moduli ka vetëm 20 orë'), 'gjendja e vjetër shfaqet si problem');
+  t_eq(null, $over[0]['fix'] ?? null, 'moduli nuk rritet me një klik kur kursi s\'ka vend');
+  qta_curriculum_update_topic($pdo, $t10['id'], ['hours' => 10]);
+
+  /* Refuzimet nuk lënë gjurmë në historik. */
+  $changes = it_count($pdo, "SELECT COUNT(*) FROM audit_events WHERE table_name IN ('courses','course_modules','course_topics')") - $auditBefore;
+  t_eq(9, $changes, 'historiku ka vetëm ndryshimet e lejuara (1 temë e re + 6 ndryshime temash + 2 të kursit), asnjë refuzim');
 });
 
 t_case('Kursi jo gati nuk përdoret për grup me orar', function () use ($pdo, $W, $tag) {
@@ -249,7 +324,7 @@ t_case('Pranimi F — ndryshimi i kursit nuk prek orarin e grupeve ekzistuese', 
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid, ['type' => 'refresh'], ['revision' => $r['revision'], 'today' => '2026-10-05']),
     'grupi ka nisur: temat nuk rimerren', 'ka nisur');
   /* Kursi jo gati nuk jep kopje të re. */
-  qta_curriculum_update_topic($pdo, $modules[2]['topics'][0]['id'], ['hours' => 5]);
+  qta_curriculum_update_topic($pdo, $modules[2]['topics'][0]['id'], ['hours' => 1]);
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid, ['type' => 'refresh'], ['revision' => $r['revision'], 'today' => '2026-09-26']),
     'kursi jo gati: nuk merret kopje', 'nuk është ende gati');
   qta_curriculum_update_topic($pdo, $modules[2]['topics'][0]['id'], ['hours' => 2]);

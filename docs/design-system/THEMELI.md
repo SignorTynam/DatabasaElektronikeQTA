@@ -119,7 +119,7 @@ and "nothing matches".
 | Page head | `.page-head`, `.page-title`, `.page-lead`, `.page-actions`, `.crumbs` (ol/li), `.eyebrow` | |
 | Sections | `.section`, `.section-head`, `.section-title`, `.section-meta`, `.section-link`, `.count` | |
 | Panels | `.panel`, `.panel-sunken`, `.card` | Use only for a bounded object |
-| Tables | `.table`, `.table-sm`, `.id-code`, `.person-name`, `.cell-sub`, `.num-col`, `.col-wide`, `.col-medium`, `.col-actions`, `.pick-col`, `.row-actions`, `.inline-action` | `data-sortable` + `th[data-sort]`; `td[data-sort-value]` |
+| Tables | `.table`, `.table-sm`, `.id-code`, `.person-name`, `.cell-sub`, `.num-col`, `.col-wide`, `.col-medium`, `.col-actions`, `.pick-col`, `.row-actions`, `.inline-action` | `data-sortable` + `th[data-sort]`; `td[data-sort-value]`. Names that open a page (`a.person-name`, `a.row-open`) are not underlined; the underline appears on hover |
 | Rows that open a dialog | `.row-open` (+ `.row-open-text`) with `data-bs-toggle="modal"` | Details open over the page, never as show/hide rows (groups, a module's groups, agency groups) |
 | Record dialog | `.modal-record`, `.modal-meta`, `.modal-section`, `.modal-section-head`, `.modal-section-title`, `.modal-footer-start` | Header = the record's key facts; sections inside; quiet actions left, "Mbyll" right. `modal-fullscreen-md-down` for tables |
 | Documents | `.doc-grid`, `.doc-card(-icon/-body/-title/-text/-actions)` via `qta_group_documents()` | One card per document, one button per format; downloads start directly (POST, new tab) |
@@ -127,7 +127,7 @@ and "nothing matches".
 | Frozen columns | `.table-freeze` | First two columns (AMZË + name) stay visible ≥768px |
 | Inline editing | `.editable[contenteditable]`, `td.cell-saving/-ok/-err`, `.is-saved/.is-failed` | Enter saves, Esc restores, empty shows "Shto…" |
 | Status | `.status.status-{success,warning,danger,info,accent,neutral}` via `qta_status()` | Always a word + icon |
-| Messages | `.alert`, `.notice(.is-sunken)`, `.callout(.is-info)`, toasts | Toasts via `qtaToast()` |
+| Messages | `.alert`, `.notice(.is-sunken)`, `.callout(.is-info,.is-warning)`, toasts | Toasts via `qtaToast()`. `.callout.is-warning` + one primary link = a page-level redirect (e.g. "Grupet e reja krijohen te Grupet") |
 | Edit lock | `.edit-lock(.is-open)` via `partials/edit_lock.php` | Yellow strip on `body.is-editing` |
 | Stats | `.stats`, `.stat`, `.stat-label`, `.stat-value`, `.stat-note` | Two per row on phones |
 | Key/value | `.kv`, `.kv.kv-2` | Two pairs per row ≥768px |
@@ -138,7 +138,7 @@ and "nothing matches".
 | QR | `.qr-frame[data-qr]`, `.qr-code-text` | Always dark on white |
 | Bulk | `.bulk-bar`, `.bulk-count` | Sticky at the bottom while rows are selected |
 | Other | `.person-head`, `.avatar(-lg,-xl)`, `.empty(.is-compact,.is-success)`, `.skeleton`, `.back-top`, `.help-layout` | |
-| Course structure (27) | `.cur-summary(-head)`, `.cur-meter(-text)`, `.hours-bar(.is-full,.is-over)`, `.cur-issues`, `.cur-usage`, `.cur-modules > .cur-module(.has-issue)` (`-head/-main/-title/-meta`), `.cur-pos`, `.cur-actions`, `.cur-topics > .cur-topic` (`-pos/-title/-hours`), `.cur-quick(-title/-hours)`, `.cur-empty` | Rendered by `qta_render_course_structure()`. Ordered lists (`ol`) carry the order; up/down arrow buttons ("Lëviz lart" / "Lëviz poshtë"), never drag-only. The hours bar is a native `<progress>` with the numbers in text next to it |
+| Course structure (27) | `.cur-summary(-head)`, `.cur-meter(-text)`, `.hours-bar(.is-full,.is-over)`, `.cur-issues`, `.cur-usage`, `.cur-modules > .cur-module(.has-issue,.is-over)` (`-head/-main/-title/-meta`), `.cur-pos`, `.cur-actions`, `.cur-topics > .cur-topic` (`-pos/-title/-hours`), `.cur-quick(-title/-hours)`, `.cur-empty` | Rendered by `qta_render_course_structure()`. Ordered lists (`ol`) carry the order; up/down arrow buttons ("Lëviz lart" / "Lëviz poshtë"), never drag-only. The hours bar is a native `<progress>` with the numbers in text next to it. Each module says "Temat: 15 nga 20 orë · mbeten 5" (or "· 80 tepër" in red for older data) |
 | Plan preview (28) | `.plan-preview(.is-ok,.is-warning,.is-error)` | Live result inside a form: end date, lesson days, what changes; `aria-live="polite"` |
 | Timetable (28) | `.timetable > .tt-day(.is-week,.is-off,.is-today)`, `.tt-date`, `.tt-main`, `.tt-head`, `.tt-title`, `.tt-hours`, `.tt-off`, `.tt-note`, `.tt-rule-note`, `.tt-module(-name)`, `.tt-flag`, `.tt-slots > .tt-slot` (`.tt-num`, `.tt-topic`, `.tt-slot-hours`, `.tt-part`), `.tt-actions` | Rendered by `qta_render_timetable()`. One `li#dita-YYYY-MM-DD` per calendar date; split topics say "ora 1 nga 2 · vazhdon në ditën tjetër"; prints as a plain list |
 | Scheduled group page (28) | `.lg-lead`, `.lg-tabs` (scrolls sideways on phones), `.lg-date`, `.lg-hours-choice`, `.lg-danger`, `fieldset > legend.form-label` | Facts row under the title; tabs "Orari i mësimit / Kursantët dhe provimet / Dokumentet"; the delete zone sits last |
@@ -148,7 +148,7 @@ and "nothing matches".
 | API | Use |
 |---|---|
 | `qtaToast(message, variant, title?, {autohide, delay})` | Feedback toast; identical repeated messages merge with a counter |
-| `qtaConfirm({title, message, confirm, cancel, danger})` → `Promise<boolean>` | Accessible confirm dialog; returns focus to the opener |
+| `qtaConfirm({title, message, confirm, cancel, danger, icon})` → `Promise<boolean>` | Accessible confirm dialog; returns focus to the opener. `cancel: false` = one button; `icon: 'bi-exclamation-triangle'` for a problem to fix |
 | `form[data-confirm="…"]` (+ `data-confirm-title`, `-ok`, `-danger="0"`) | Declarative confirmation before submit |
 | `form[data-loading]` | Busy state on the submit button |
 | `.modal[data-open-on-load="param"]` | Opens on load (e.g. `?add=1`) and removes the parameter from the URL |
@@ -161,6 +161,7 @@ and "nothing matches".
 | `[data-open-palette]`, Ctrl+K, `/` | Search palette (`app/actions/search_advanced.php`) |
 | `input[data-dmy]` | Formats a date as `dd.mm.vvvv` while typing (digits only needed) |
 | Dialogs opened from code | `Modal.show(opener)`: on close without saving, focus returns to the opener (as with `data-bs-toggle`) |
+| Hours that do not fit | JSON endpoints answer HTTP 400 `{code: 'hours_limit', dialog: {title, message, fix: {value, label} \| null}}`; the page shows `qtaConfirm` with "Vendos 10 orë" (saves the valid value) and "Ndrysho orët" (back to the field). Dialog hints say beforehand how many hours are allowed |
 | Server-driven confirmation | JSON endpoints answer HTTP 409 `{confirm: {title, message, confirm}}` (`QtaConfirmNeeded`); the page shows `qtaConfirm` and resends with `force = 1`. The same service computes `dry_run` previews, so the dialog shows the consequence before saving |
 
 ## 7. PHP helpers (themeli.php)
@@ -194,7 +195,7 @@ database rule messages as written, anything else → 500 with a reference, no de
 | Nr. i amzës (AMZË in short messages) | ID, amze |
 | **Kursi** (what a trainee enrols in and is certified for) → **Modulet** → **Temat** | "Modul" for the whole course (the name before September 2026), lëndë |
 | Grupi, Provimi, Pikët | notë, test |
-| "Grupet" (with a lesson schedule) and "Grupet e mëparshme" (created before schedules) | legacy, model, grupe të vjetra |
+| "Grupet" (with a lesson schedule) and "Grupet e mëparshme" (created before schedules; "Shto grup të mëparshëm" records one held earlier) | legacy, model, grupe të vjetra |
 | "Orari i mësimit", "Ditë pas dite", "Ditë e veçantë", "Pa mësim", "orë mësimi" | kalendar, slot, override |
 | "Gati për grup" / "Jo gati" + the reason + the fix ("Shto edhe 10 orë te modulet, ose ul orët e kursit në 40.") | "Invalid curriculum" |
 | Dates inside sentences: "Mbaron më 23.10.2026 (e premte)." | "Mbaron e premte, 23.10.2026" |
