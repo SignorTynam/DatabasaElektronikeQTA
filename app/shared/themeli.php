@@ -177,20 +177,18 @@ if (!function_exists('qta_status')) {
 }
 
 if (!function_exists('qta_score_status')) {
-  /** Rezultati i provimit si status i kuptueshëm. Kalon me ≥ 50 pikë. */
+  /** Rezultati i provimit: vetëm pikët. Sistemi nuk ka "kaloi / nuk kaloi". */
   function qta_score_status($score, ?string $examDate = null): string {
     if ($score !== null && $score !== '') {
       $value = rtrim(rtrim(number_format((float)$score, 2, ',', ''), '0'), ',');
-      return (float)$score >= 50
-        ? qta_status('Kaloi · ' . $value, 'success')
-        : qta_status('Nuk kaloi · ' . $value, 'danger');
+      return qta_status($value . ' pikë', 'neutral', 'bi-clipboard-check');
     }
     if ($examDate) {
       $n = qta_days_until($examDate);
       if ($n !== null && $n >= 0) {
         return qta_status('Provimi ' . qta_when_label($examDate), 'info', 'bi-calendar-event');
       }
-      return qta_status('Pret rezultatin', 'warning');
+      return qta_status('Pret pikët', 'warning', 'bi-hourglass-split');
     }
     return qta_status('Pa provim ende', 'neutral');
   }
@@ -200,11 +198,13 @@ if (!function_exists('qta_enrollment_status')) {
   /**
    * Gjendja e një regjistrimi (kursant në grup) me fjalë të thjeshta.
    * Pret: start_date, end_date, exam_date, final_score (çdonjëra mund të mungojë).
+   * $showScore = false në tabelat që kanë kolonë më vete për pikët: atëherë
+   * thuhet vetëm "Përfunduar", që numri të mos përsëritet.
    */
-  function qta_enrollment_status(array $row): string {
+  function qta_enrollment_status(array $row, bool $showScore = true): string {
     $score = $row['final_score'] ?? null;
     if ($score !== null && $score !== '') {
-      return qta_score_status($score);
+      return $showScore ? qta_score_status($score) : qta_status('Përfunduar', 'neutral', 'bi-check2');
     }
     $exam = (string)($row['exam_date'] ?? $row['my_exam'] ?? '');
     if ($exam !== '') {

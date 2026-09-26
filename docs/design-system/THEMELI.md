@@ -17,7 +17,8 @@ COMPONENTS.md are the original specification; where they differ, this file wins.
    unlocked on purpose ("Lejo ndryshimet") and every save gives feedback in place.
 3. **One primary action per context**, secondary actions quieter, destructive actions
    always confirmed with a sentence that explains the consequence.
-4. **Status in words**, never colour alone: "Në mësim", "Pret rezultatin", "Kaloi · 64".
+4. **Status in words**, never colour alone: "Në mësim", "Pret pikët", "64 pikë".
+   The system records **points only** (0–100): there is no "kaloi / nuk kaloi" anywhere.
 5. **Dates are always `dd.mm.yyyy`**; inputs also accept `-`, `/` and ISO.
 6. **Accessible baseline**: WCAG 2.2 AA contrast, visible focus, labels on every
    control, keyboard paths for every pointer action, dialogs that trap and return focus.
@@ -116,7 +117,10 @@ and "nothing matches".
 | Sections | `.section`, `.section-head`, `.section-title`, `.section-meta`, `.section-link`, `.count` | |
 | Panels | `.panel`, `.panel-sunken`, `.card` | Use only for a bounded object |
 | Tables | `.table`, `.table-sm`, `.id-code`, `.person-name`, `.cell-sub`, `.num-col`, `.col-wide`, `.col-medium`, `.col-actions`, `.pick-col`, `.row-actions`, `.inline-action` | `data-sortable` + `th[data-sort]`; `td[data-sort-value]` |
-| Expandable rows | `.row-toggle`, `tr.row-details`, `.row-details-inner`, `.doc-actions` | One `<tbody>` per item keeps filter/sort units together |
+| Rows that open a dialog | `.row-open` (+ `.row-open-text`) with `data-bs-toggle="modal"` | Details open over the page, never as show/hide rows (groups, a module's groups, agency groups) |
+| Record dialog | `.modal-record`, `.modal-meta`, `.modal-section`, `.modal-section-head`, `.modal-section-title`, `.modal-footer-start` | Header = the record's key facts; sections inside; quiet actions left, "Mbyll" right. `modal-fullscreen-md-down` for tables |
+| Documents | `.doc-grid`, `.doc-card(-icon/-body/-title/-text/-actions)` via `qta_group_documents()` | One card per document, one button per format; downloads start directly (POST, new tab) |
+| Dialog in dialog | automatic (app.js) | A dialog opened from another returns to it on cancel and reopens it after a save reload; `qtaConfirm` stacks above (`.is-stacked`) |
 | Frozen columns | `.table-freeze` | First two columns (AMZË + name) stay visible ≥768px |
 | Inline editing | `.editable[contenteditable]`, `td.cell-saving/-ok/-err`, `.is-saved/.is-failed` | Enter saves, Esc restores, empty shows "Shto…" |
 | Status | `.status.status-{success,warning,danger,info,accent,neutral}` via `qta_status()` | Always a word + icon |
@@ -154,11 +158,11 @@ and "nothing matches".
 `h()`, `qta_date()`, `qta_datetime()`, `qta_ago()`, `qta_when_label()` ("sot", "nesër",
 "pas 3 ditësh"), `qta_weekday()`, `qta_month_short()`, `qta_plural()`, `qta_full_name()`,
 `qta_initials()`, `qta_status()`, `qta_score_status()`, `qta_enrollment_status()`
-("Nis …", "Në mësim", "Provimi …", "Pret rezultatin", "Kaloi · 64", "Pa grup ende"),
+("Nis …", "Në mësim", "Provimi …", "Pret pikët", "64 pikë" — or "Përfunduar" where the points have their own column — "Pa grup ende"),
 `qta_absolute_url()`, `qta_help_button()`, `qta_empty()`.
 
 Shared partials: `edit_lock`, `edit_mode_off_banner`, `table_filter`, `export_menu`
-(POST, CSRF never in URLs), `group_documents_modal`, `qkl_report_modal`,
+(POST, CSRF never in URLs), `group_documents` (`qta_group_documents()`), `qkl_report_modal`,
 `staff_accounts` (admins + editors), `dashboard_staff`, `download_generation_toast`.
 Shared pages: `activity_log.php` (history for admins and editors).
 

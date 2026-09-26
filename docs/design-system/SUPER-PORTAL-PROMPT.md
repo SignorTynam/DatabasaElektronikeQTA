@@ -52,7 +52,7 @@ with a QR code that anyone can verify publicly.
    useful step. Errors say what failed, why (if known), and what to do.
 4. **Prevent mistakes, then make them recoverable.** Editing is protected by an explained
    lock; destructive actions use an accessible confirm dialog that states the consequence.
-5. **Status in words + icon + colour** — never colour alone ("✓ Kaloi", "Pritet provimi").
+5. **Status in words + icon + colour** — never colour alone ("64 pikë", "Pritet provimi"). Points only — no pass/fail.
 6. **Recognition over recall.** Search everywhere, recent items, visible labels, consistent
    icons, identical names for the same thing on every page.
 7. **Legible by default.** Hyperlegible type (distinguishes I/l/1 and O/0 — essential for

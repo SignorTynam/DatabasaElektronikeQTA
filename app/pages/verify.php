@@ -89,58 +89,21 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $chk->execute([':sid'=>$sid, ':t'=>$token]);
   if (!$chk->fetchColumn()) return ['valid'=>false, 'reason'=>'Token i pavlefshëm ose nuk përputhet me këtë student.'];
 
+  /* Verifikimi publik kthen vetëm emrin, numrin personal të maskuar dhe modulet:
+     pa agjenci, arsim, pikë apo statistika. */
   $sql = "
     SELECT
-      s.id, s.nr_amze, u.created_at,
-      el.label AS edu_label,
-      ajs.agency_id, ag.company_name AS agency_name,
+      s.id, s.nr_amze,
       p.first_name, p.father_name, p.last_name, p.personal_number
     FROM students s
     JOIN users u    ON u.id = s.user_id
     JOIN persons p  ON p.id = s.person_id
-    LEFT JOIN education_levels el ON el.id = s.education_level_id
-    LEFT JOIN agency_students ajs  ON ajs.student_id = s.id
-    LEFT JOIN agencies ag          ON ag.id = ajs.agency_id
     WHERE s.id = :sid
     LIMIT 1
   ";
   $st = $pdo->prepare($sql); $st->execute([':sid'=>$sid]);
   $S = $st->fetch(PDO::FETCH_ASSOC);
   if (!$S) return ['valid'=>false, 'reason'=>'Studenti nuk u gjet.'];
-
-  // # Modulet (UNION: cgs + scp)
-  $qCourses = $pdo->prepare("
-    SELECT COUNT(*) FROM (
-      SELECT DISTINCT c.id
-      FROM course_group_students cgs
-      JOIN course_groups cg ON cg.id = cgs.group_id
-      JOIN courses c        ON c.id  = cg.course_id
-      WHERE cgs.student_id = :sid1
-      UNION
-      SELECT DISTINCT c.id
-      FROM student_course_plans scp
-      JOIN courses c ON c.id = scp.course_id
-      WHERE scp.student_id = :sid2
-    ) x
-  ");
-  $qCourses->execute([':sid1'=>$sid, ':sid2'=>$sid]);
-  $coursesCnt = (int)$qCourses->fetchColumn();
-
-  // # Grupe
-  $qGroups = $pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE student_id=:sid");
-  $qGroups->execute([':sid'=>$sid]); $groupsCnt = (int)$qGroups->fetchColumn();
-
-  // Mesatare / kalueshmëri
-  $qAvg = $pdo->prepare("SELECT AVG(final_score) FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL");
-  $qAvg->execute([':sid'=>$sid]); $avg = $qAvg->fetchColumn();
-  $avgScore = $avg!==null ? round((float)$avg,1) : null;
-
-  $qPR = $pdo->prepare("
-    SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100
-    FROM course_group_students WHERE student_id=:sid AND final_score IS NOT NULL
-  ");
-  $qPR->execute([':sid'=>$sid]); $pr = $qPR->fetchColumn();
-  $passRate = $pr!==null ? round((float)$pr,1) : null;
 
   // Lista e kurseve (max 5)
   $qList = $pdo->prepare("
@@ -208,15 +171,6 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
       'father_name'=>$S['father_name'],
       'last_name'=>$S['last_name'],
       'personal_number_masked'=>mask_id($S['personal_number'] ?? null),
-      'edu_label'=>$S['edu_label'] ?? null,
-      'agency'=>$S['agency_name'] ?? null,
-      'created_at'=>$S['created_at'] ?? null,
-      'stats'=>[
-        'courses'=>$coursesCnt,
-        'groups'=>$groupsCnt,
-        'avg_score'=>$avgScore,
-        'pass_rate'=>$passRate
-      ],
       'courses_list'=>$coursesList,
       'groups'=>$groups
     ]
@@ -240,12 +194,8 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
   if (!$P) return ['valid'=>false, 'reason'=>'Personi nuk u gjet.'];
 
   $st = $pdo->prepare("
-    SELECT s.id, s.nr_amze, el.label AS edu_label,
-           ag.company_name AS agency_name
+    SELECT s.id, s.nr_amze
     FROM students s
-    LEFT JOIN education_levels el ON el.id = s.education_level_id
-    LEFT JOIN agency_students ajs  ON ajs.student_id = s.id
-    LEFT JOIN agencies ag          ON ag.id = ajs.agency_id
     WHERE s.person_id = :pid
     ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   ");
@@ -253,51 +203,11 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
   $students = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   $ids = array_map(fn($r)=> (int)$r['id'], $students);
-  $stats = ['courses'=>0,'groups'=>0,'avg_score'=>null,'pass_rate'=>null];
   $coursesList = [];
   $groups = [];
 
   if ($ids){
     $ph = implode(',', array_fill(0,count($ids),'?'));
-
-    $q1 = $pdo->prepare("
-      SELECT COUNT(*) FROM (
-        SELECT DISTINCT c.id
-        FROM course_group_students cgs
-        JOIN course_groups cg ON cg.id = cgs.group_id
-        JOIN courses c        ON c.id  = cg.course_id
-        WHERE cgs.student_id IN ($ph)
-        UNION
-        SELECT DISTINCT c.id
-        FROM student_course_plans scp
-        JOIN courses c ON c.id = scp.course_id
-        WHERE scp.student_id IN ($ph)
-      ) xx
-    ");
-    $q1->execute(array_merge($ids,$ids));
-    $stats['courses'] = (int)$q1->fetchColumn();
-
-    $q2 = $pdo->prepare("SELECT COUNT(*) FROM course_group_students WHERE student_id IN ($ph)");
-    $q2->execute($ids);
-    $stats['groups'] = (int)$q2->fetchColumn();
-
-    $q3 = $pdo->prepare("
-      SELECT AVG(final_score)
-      FROM course_group_students
-      WHERE student_id IN ($ph) AND final_score IS NOT NULL
-    ");
-    $q3->execute($ids);
-    $avg = $q3->fetchColumn();
-    $stats['avg_score'] = $avg!==null ? round((float)$avg,1) : null;
-
-    $q4 = $pdo->prepare("
-      SELECT SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100
-      FROM course_group_students
-      WHERE student_id IN ($ph) AND final_score IS NOT NULL
-    ");
-    $q4->execute($ids);
-    $pr = $q4->fetchColumn();
-    $stats['pass_rate'] = $pr!==null ? round((float)$pr,1) : null;
 
     $q5 = $pdo->prepare("
       SELECT id, code, name FROM (
@@ -363,12 +273,7 @@ function verify_person(PDO $pdo, int $pid, string $token): array {
       'father_name'=>$P['father_name'],
       'last_name'=>$P['last_name'],
       'personal_number_masked'=>mask_id($P['personal_number'] ?? null),
-      'students'=>array_map(fn($r)=>[
-        'id'=>(int)$r['id'], 'amze'=>$r['nr_amze'],
-        'edu_label'=>$r['edu_label'] ?? null,
-        'agency'=>$r['agency_name'] ?? null
-      ], $students),
-      'stats'=>$stats,
+      'students'=>array_map(fn($r)=>['id'=>(int)$r['id'], 'amze'=>$r['nr_amze']], $students),
       'courses_list'=>$coursesList,
       'groups'=>$groups
     ]

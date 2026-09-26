@@ -119,9 +119,9 @@ require_once __DIR__ . '/navbarMain.php';
           </div>
         </details>
         <details class="faq">
-          <summary><span>Kur është provimi dhe si e mësoj rezultatin?</span><i class="bi bi-plus-lg faq-icon" aria-hidden="true"></i></summary>
+          <summary><span>Kur është provimi dhe si i mësoj pikët?</span><i class="bi bi-plus-lg faq-icon" aria-hidden="true"></i></summary>
           <div class="faq-body">
-            <p>Data e provimit caktohet pasi mbaron mësimi i grupit. Kursantët e shohin datën dhe rezultatin te "Faqja ime" pasi hyjnë në portal; agjencitë e shohin te "Punonjësit tanë". Kalohet me 50 pikë e lart.</p>
+            <p>Data e provimit caktohet pasi mbaron mësimi i grupit. Kursantët e shohin datën dhe pikët te "Faqja ime" pasi hyjnë në portal; agjencitë e shohin te "Punonjësit tanë".</p>
             <a class="btn btn-secondary btn-sm" href="selectProfile.php"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Hyr në portal</a>
           </div>
         </details>

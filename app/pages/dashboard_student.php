@@ -141,7 +141,7 @@ foreach ($groups as $g) {
     }
   }
 }
-$passedCount = count(array_filter($groups, static fn($g) => $g['final_score'] !== null && (float)$g['final_score'] >= 50));
+$passedCount = count(array_filter($groups, static fn($g) => $g['final_score'] !== null && $g['final_score'] !== ''));
 
 $fullName  = qta_full_name($stud['first_name'] ?? '', $stud['father_name'] ?? '', $stud['last_name'] ?? '');
 $firstName = trim((string)($stud['first_name'] ?? '')) ?: trim((string)strtok((string)($currentUser['full_name'] ?? ''), ' '));
@@ -161,7 +161,7 @@ require __DIR__ . '/inc/navbar3.php';
     <div class="page-head-main">
       <span class="eyebrow"><?= h(ucfirst(qta_today_label())) ?></span>
       <h1 class="page-title"><?= h(qta_greeting()) ?><?= $firstName !== '' ? ', ' . h($firstName) : '' ?></h1>
-      <p class="page-lead">Këtu sheh modulet ku je regjistruar, provimet dhe rezultatet e tua.</p>
+      <p class="page-lead">Këtu sheh modulet ku je regjistruar, provimet dhe pikët e tua.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -190,7 +190,7 @@ require __DIR__ . '/inc/navbar3.php';
         <div class="section-head">
           <h2 class="section-title" id="modTitle">Modulet e mia</h2>
           <?php if ($groups): ?>
-            <span class="section-meta"><?= h($passedCount . ' nga ' . count($groups)) ?> të kaluara</span>
+            <span class="section-meta"><?= h($passedCount . ' nga ' . count($groups)) ?> me pikë</span>
           <?php endif; ?>
         </div>
 

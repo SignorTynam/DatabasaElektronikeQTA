@@ -945,11 +945,18 @@ $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(P
 $params = [];
 $w = ["1=1"];
 if ($q !== '') {
-  $w[] = "(s.nr_amze LIKE :kw
-        OR p.personal_number LIKE :kw2
-        OR p.first_name LIKE :kw3
-        OR p.father_name LIKE :kw4
-        OR p.last_name LIKE :kw5)";
+  /* Grupet ku është kursanti i kërkuar — me të gjithë kursantët e tyre,
+     që dritarja e grupit të tregojë grupin e plotë. */
+  $w[] = "cg.id IN (
+          SELECT cgs2.group_id
+          FROM course_group_students cgs2
+          JOIN students s2 ON s2.id = cgs2.student_id
+          LEFT JOIN persons p2 ON p2.id = s2.person_id
+          WHERE s2.nr_amze LIKE :kw
+             OR p2.personal_number LIKE :kw2
+             OR p2.first_name LIKE :kw3
+             OR p2.father_name LIKE :kw4
+             OR p2.last_name LIKE :kw5)";
   $params[':kw']  = '%'.$q.'%';
   $params[':kw2'] = '%'.$q.'%';
   $params[':kw3'] = '%'.$q.'%';
@@ -1074,8 +1081,10 @@ foreach ($rows as $r) {
 }
 foreach ($groups as $gid => &$g) {
   $amzes = [];
+  $g['scored'] = 0;
   foreach ($g['students'] as $stRow) {
     if (!empty($stRow['nr_amze'])) $amzes[] = (int)$stRow['nr_amze'];
+    if ($stRow['final_score'] !== null && $stRow['final_score'] !== '') $g['scored']++;
   }
   $g['min_amze'] = $amzes ? min($amzes) : PHP_INT_MAX;
   $g['max_amze'] = $amzes ? max($amzes) : null;
@@ -1090,6 +1099,44 @@ $groupStatus = static function (array $h) use ($today): string {
   if ($start > $today) return qta_status('Nis ' . qta_when_label($start), 'info', 'bi-calendar-event');
   if ($end >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
   return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
+};
+
+/* Shënimi në krye të dritares së grupit: i hapur / i mbyllur, me veprimin përkatës.
+   E njëjta përmbajtje ndërtohet edhe në JS (paintGroupState). */
+$groupNotice = static function (int $gid, bool $completed) use ($EDIT_MODE): string {
+  $html = '<i class="bi ' . ($completed ? 'bi-lock' : 'bi-unlock') . '" aria-hidden="true" data-notice-icon></i>'
+    . '<span data-notice-text>' . ($completed
+      ? '<b>Grupi është i mbyllur.</b> Çdo ndryshim kërkon konfirmim, sepse dokumentet mund të jenë lëshuar.'
+      : '<b>Grupi është i hapur.</b> Kur provimet dhe pikët të jenë të plota, mbylle grupin.') . '</span>';
+  if ($EDIT_MODE) {
+    $html .= '<button type="button" class="btn btn-secondary btn-sm notice-action" data-complete-toggle="' . $gid . '">'
+      . ($completed ? '<i class="bi bi-unlock" aria-hidden="true"></i>Rihape grupin' : '<i class="bi bi-lock" aria-hidden="true"></i>Mbylle grupin')
+      . '</button>';
+  } else {
+    $unlockQs = $_GET;
+    unset($unlockQs['create']);
+    $unlockQs['edit'] = '1';
+    $unlockQs['group'] = (string)$gid;
+    $html .= '<a class="btn btn-secondary btn-sm notice-action" href="groups.php?' . h(http_build_query($unlockQs)) . '">'
+      . '<i class="bi bi-unlock" aria-hidden="true"></i>Lejo ndryshimet</a>';
+  }
+  return $html;
+};
+
+/* "ende pa pikë" / "3 me pikë" / "të gjithë me pikë" */
+$scoredLabel = static function (int $scored, int $total): string {
+  if ($scored === 0) return 'ende pa pikë';
+  return $scored === $total ? 'të gjithë me pikë' : $scored . ' me pikë';
+};
+
+/* Kursanti që përputhet me kërkimin theksohet brenda grupit. */
+$qNeedle = mb_strtolower($q, 'UTF-8');
+$isMatch = static function (array $r) use ($qNeedle): bool {
+  if ($qNeedle === '') return false;
+  foreach (['nr_amze', 'personal_number', 'first_name', 'father_name', 'last_name'] as $k) {
+    if (($r[$k] ?? '') !== '' && str_contains(mb_strtolower((string)$r[$k], 'UTF-8'), $qNeedle)) return true;
+  }
+  return false;
 };
 ?>
 
@@ -1158,9 +1205,7 @@ $groupStatus = static function (array $h) use ($today): string {
         <span class="count"><?= number_format(count($groups), 0, ',', '.') ?></span>
       </h2>
       <?php if ($groups): ?>
-        <button id="toggleAllBtn" class="btn btn-ghost" type="button" aria-pressed="false">
-          <i class="bi bi-arrows-expand" id="toggleAllIcon" aria-hidden="true"></i><span id="toggleAllText">Hap të gjitha</span>
-        </button>
+        <span class="section-meta">Hap një grup për kursantët, provimet, pikët dhe dokumentet.</span>
       <?php endif; ?>
     </div>
 
@@ -1187,28 +1232,23 @@ $groupStatus = static function (array $h) use ($today): string {
             </tr>
           </thead>
 
+          <tbody>
           <?php foreach ($groups as $gid => $g):
             $h0 = $g['header'];
             $completed = (int)$h0['is_completed'] === 1;
             $minLbl = ($g['min_amze'] === PHP_INT_MAX) ? '—' : (string)$g['min_amze'];
             $maxLbl = ($g['max_amze'] === null || $g['max_amze'] === $g['min_amze']) ? '' : '–' . $g['max_amze'];
             $nStud = count($g['students']);
-            $nScored = 0;
-            foreach ($g['students'] as $srow) {
-              if ($srow['final_score'] !== null && $srow['final_score'] !== '') { $nScored++; }
-            }
-            $groupLabel = 'Grupi #' . (int)$gid . ' · ' . $h0['course_name'];
+            $nScored = $g['scored'];
           ?>
-          <tbody class="grp" data-gid="<?= (int)$gid ?>">
-            <tr>
+            <tr data-gid="<?= (int)$gid ?>">
               <td class="col-medium">
-                <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#gBody_<?= (int)$gid ?>"
-                        aria-expanded="false" aria-controls="gBody_<?= (int)$gid ?>">
-                  <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                <button class="row-open" type="button" data-bs-toggle="modal" data-bs-target="#groupModal_<?= (int)$gid ?>" aria-haspopup="dialog">
                   <span>
                     <span class="person-name"><?= h((string)$h0['course_name']) ?></span>
                     <span class="cell-sub">Grupi #<?= (int)$gid ?></span>
                   </span>
+                  <i class="bi bi-chevron-right" aria-hidden="true"></i>
                 </button>
               </td>
               <td class="nowrap"><span class="id-code"><?= h($minLbl . $maxLbl) ?></span></td>
@@ -1223,7 +1263,7 @@ $groupStatus = static function (array $h) use ($today): string {
               <td class="nowrap num-col" data-sort-value="<?= $nStud ?>">
                 <?= $nStud ?><span class="text-subtle">/10</span>
                 <?php if ($nStud > 0): ?>
-                  <span class="cell-sub<?= $nScored < $nStud ? ' text-warning' : '' ?>"><?= $nScored === $nStud ? 'të gjithë me pikë' : $nScored . ' me pikë' ?></span>
+                  <span class="cell-sub<?= $nScored < $nStud ? ' text-warning' : '' ?>" data-scored-label="<?= (int)$gid ?>"><?= h($scoredLabel($nScored, $nStud)) ?></span>
                 <?php endif; ?>
               </td>
               <td data-group-status="<?= (int)$gid ?>"><?= $groupStatus($h0) ?></td>
@@ -1250,84 +1290,10 @@ $groupStatus = static function (array $h) use ($today): string {
                 <?php endif; ?>
               </td>
             </tr>
-
-            <tr class="row-details">
-              <td colspan="8">
-                <div id="gBody_<?= (int)$gid ?>" class="collapse group-body">
-                  <div class="row-details-inner">
-
-                    <div id="statusAlert_<?= (int)$gid ?>" class="notice mb-3">
-                      <i class="bi <?= $completed ? 'bi-lock' : 'bi-unlock' ?>" aria-hidden="true"></i>
-                      <span><?= $completed
-                        ? '<b>Grupi është i mbyllur.</b> Ndryshimet kërkojnë konfirmim, sepse dokumentet mund të jenë lëshuar.'
-                        : '<b>Grupi është i hapur.</b> Kur të mbarojnë provimet, shëno "Mbyllur".' ?></span>
-                    </div>
-
-                    <?php if ($g['students']): ?>
-                      <div class="table-responsive">
-                        <table class="table table-sm">
-                          <thead>
-                            <tr>
-                              <th scope="col" class="nowrap">Nr. i amzës</th>
-                              <th scope="col">Kursanti</th>
-                              <th scope="col" class="nowrap">Data e provimit</th>
-                              <th scope="col" class="nowrap num-col">Pikët</th>
-                              <th scope="col">Gjendja</th>
-                              <th scope="col" class="nowrap num-col">Mosha</th>
-                              <th scope="col" class="nowrap">Arsimi</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <?php foreach ($g['students'] as $r):
-                              $full = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? ''); ?>
-                              <tr data-student-row>
-                                <td class="nowrap"><span class="id-code"><?= h((string)$r['nr_amze']) ?></span></td>
-                                <td>
-                                  <a class="person-name" href="student_card.php?sid=<?= (int)$r['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër') ?></a>
-                                  <?php if (!empty($r['personal_number'])): ?><span class="cell-sub code"><?= h((string)$r['personal_number']) ?></span><?php endif; ?>
-                                </td>
-                                <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="exam_date" title="Jo para mbarimit të grupit (dd.mm.vvvv)">
-                                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['exam_date'])) ?></span>
-                                </td>
-                                <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= (int)$gid ?>" data-field="final_score" title="Pikët 0–100. Kalon me 50 e lart.">
-                                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= $r['final_score'] !== null ? h(rtrim(rtrim((string)$r['final_score'], '0'), '.')) : '—' ?></span>
-                                </td>
-                                <td data-status><?= qta_enrollment_status(['start_date' => $h0['start_date'], 'end_date' => $h0['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']]) ?></td>
-                                <td class="nowrap num-col"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
-                                <td class="nowrap"><?= h((string)(($r['edu_label'] ?? '') ?: '—')) ?></td>
-                              </tr>
-                            <?php endforeach; ?>
-                          </tbody>
-                        </table>
-                      </div>
-                    <?php else: ?>
-                      <?= qta_empty('Grupi është bosh', $EDIT_MODE ? 'Shto kursantë nga "Ndrysho → Kursantët e grupit".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
-                    <?php endif; ?>
-
-                    <div class="doc-actions">
-                      <span class="doc-actions-label">Dokumentet e grupit:</span>
-                      <?php foreach ([
-                        'proces_verbal' => ['bi-file-earmark-check', 'Procesverbali'],
-                        'lista_emerore' => ['bi-list-ol', 'Lista emërore'],
-                        'praktika_profesionale' => ['bi-tools', 'Praktika profesionale'],
-                        'rregullat_sigurimi_teknik' => ['bi-shield-check', 'Rregullat e sigurisë'],
-                      ] as $docKey => [$docIcon, $docLabel]): ?>
-                        <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#groupDocModal"
-                                data-doc="<?= h($docKey) ?>" data-group-id="<?= (int)$gid ?>" data-group-label="<?= h($groupLabel) ?>">
-                          <i class="bi <?= h($docIcon) ?>" aria-hidden="true"></i><?= h($docLabel) ?>
-                        </button>
-                      <?php endforeach; ?>
-                    </div>
-
-                  </div>
-                </div>
-              </td>
-            </tr>
-          </tbody>
           <?php endforeach; ?>
+          </tbody>
         </table>
       </div>
-      <p class="text-muted small mt-2 mb-0">Kliko emrin e modulit për të parë kursantët e grupit.</p>
     <?php else: ?>
       <?= qta_empty(
             $hasFilters ? 'Asnjë grup nuk përputhet' : 'Ende nuk ka grupe',
@@ -1339,12 +1305,117 @@ $groupStatus = static function (array $h) use ($today): string {
   </section>
 </main>
 
+<?php require_once __DIR__ . '/../shared/partials/group_documents.php'; ?>
 <?php foreach ($groups as $gid => $g):
+  $gid = (int)$gid;
   $h0 = $g['header'];
+  $completed = (int)$h0['is_completed'] === 1;
+  $nStud = count($g['students']);
   $prefillAmze = [];
   foreach ($g['students'] as $stRow) { $prefillAmze[] = (string)((int)$stRow['nr_amze']); }
   $prefillAmzeStr = implode(', ', $prefillAmze);
 ?>
+  <!-- Dritarja e grupit #<?= $gid ?>: kursantët, provimet, pikët dhe dokumentet -->
+  <div class="modal fade modal-record" id="groupModal_<?= $gid ?>" tabindex="-1" aria-labelledby="gmTitle_<?= $gid ?>" aria-hidden="true" data-group-modal="<?= $gid ?>">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-md-down">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow mb-0">Grupi #<?= $gid ?></span>
+            <h2 class="modal-title" id="gmTitle_<?= $gid ?>"><?= h((string)$h0['course_name']) ?></h2>
+            <div class="modal-meta">
+              <span><i class="bi bi-calendar-range" aria-hidden="true"></i><span data-group-dates="<?= $gid ?>"><?= h(qta_date($h0['start_date'])) ?> – <?= h(qta_date($h0['end_date'])) ?></span></span>
+              <span><i class="bi bi-people" aria-hidden="true"></i><?= $nStud ?>/10 kursantë</span>
+              <span data-group-status="<?= $gid ?>"><?= $groupStatus($h0) ?></span>
+            </div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="statusAlert_<?= $gid ?>" class="notice has-action"><?= $groupNotice($gid, $completed) ?></div>
+
+          <section class="modal-section" aria-labelledby="gmMembers_<?= $gid ?>">
+            <div class="modal-section-head">
+              <h3 class="modal-section-title" id="gmMembers_<?= $gid ?>">Kursantët <span class="count"><?= $nStud ?></span></h3>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <?php if ($nStud): ?>
+                  <span class="section-meta" data-scored-label="<?= $gid ?>"><?= h($scoredLabel($g['scored'], $nStud)) ?></span>
+                <?php endif; ?>
+                <?php if ($EDIT_MODE): ?>
+                  <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= $gid ?>"><i class="bi bi-people" aria-hidden="true"></i>Ndrysho kursantët</button>
+                <?php endif; ?>
+              </div>
+            </div>
+            <?php if ($g['students']): ?>
+              <div class="table-responsive">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="nowrap">Nr. i amzës</th>
+                      <th scope="col">Kursanti</th>
+                      <th scope="col" class="nowrap">Data e provimit</th>
+                      <th scope="col" class="nowrap num-col">Pikët</th>
+                      <th scope="col">Gjendja</th>
+                      <th scope="col" class="nowrap num-col">Mosha</th>
+                      <th scope="col" class="nowrap">Arsimi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php foreach ($g['students'] as $r):
+                      $full = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? ''); ?>
+                      <tr data-student-row<?= $isMatch($r) ? ' class="table-active"' : '' ?>>
+                        <td class="nowrap"><span class="id-code"><?= h((string)$r['nr_amze']) ?></span></td>
+                        <td>
+                          <a class="person-name" href="student_card.php?sid=<?= (int)$r['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër') ?></a>
+                          <?php if (!empty($r['personal_number'])): ?><span class="cell-sub code"><?= h((string)$r['personal_number']) ?></span><?php endif; ?>
+                        </td>
+                        <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= $gid ?>" data-field="exam_date" title="Jo para mbarimit të grupit (dd.mm.vvvv)">
+                          <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit"' : '' ?>><?= h(qta_date($r['exam_date'])) ?></span>
+                        </td>
+                        <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët, nga 0 deri në 100">
+                          <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Pikët" inputmode="decimal"' : '' ?>><?= $r['final_score'] !== null ? h(rtrim(rtrim((string)$r['final_score'], '0'), '.')) : '—' ?></span>
+                        </td>
+                        <td data-status><?= qta_enrollment_status(['start_date' => $h0['start_date'], 'end_date' => $h0['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']], false) ?></td>
+                        <td class="nowrap num-col"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
+                        <td class="nowrap"><?= h((string)(($r['edu_label'] ?? '') ?: '—')) ?></td>
+                      </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <?php if ($EDIT_MODE): ?>
+                <p class="form-text mt-2 mb-0">Kliko datën e provimit ose pikët për t'i ndryshuar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon.</p>
+              <?php endif; ?>
+            <?php else: ?>
+              <?= qta_empty('Grupi është bosh', $EDIT_MODE ? 'Shto kursantë me butonin "Ndrysho kursantët".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
+            <?php endif; ?>
+          </section>
+
+          <?php if ($g['students']): ?>
+            <section class="modal-section" aria-labelledby="gmDocs_<?= $gid ?>">
+              <div class="modal-section-head">
+                <h3 class="modal-section-title" id="gmDocs_<?= $gid ?>">Dokumentet e grupit</h3>
+                <span class="section-meta">Zgjidh formatin — dokumenti hapet në një skedë të re.</span>
+              </div>
+              <?= qta_group_documents($gid, $CSRF) ?>
+            </section>
+          <?php endif; ?>
+        </div>
+
+        <div class="modal-footer">
+          <?php if ($EDIT_MODE): ?>
+            <div class="modal-footer-start">
+              <button type="button" class="btn btn-ghost" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= $gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho modulin</button>
+              <button type="button" class="btn btn-ghost btn-ghost-danger" data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= $gid ?>"><i class="bi bi-trash" aria-hidden="true"></i>Fshi grupin</button>
+            </div>
+          <?php endif; ?>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Dialog: kursantët e grupit #<?= (int)$gid ?> -->
   <div class="modal fade" id="editMembersModal_<?= (int)$gid ?>" tabindex="-1" aria-labelledby="emTitle_<?= (int)$gid ?>" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -1405,7 +1476,7 @@ $groupStatus = static function (array $h) use ($today): string {
               <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === (int)$h0['course_id']) ? 'selected' : '' ?>><?= h($c['name']) ?></option>
             <?php endforeach; ?>
           </select>
-          <p class="form-text">Përdore vetëm për të korrigjuar një gabim — të gjithë kursantët e grupit kalojnë në modulin e ri.</p>
+          <p class="form-text">Përdore vetëm për të korrigjuar një gabim — të gjithë kursantët e grupit zhvendosen te moduli i ri, me datat dhe pikët e tyre.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
@@ -1439,7 +1510,6 @@ $groupStatus = static function (array $h) use ($today): string {
 <?php endforeach; ?>
 
 <?php require __DIR__ . '/../shared/partials/qkl_report_modal.php'; ?>
-<?php require __DIR__ . '/../shared/partials/group_documents_modal.php'; ?>
 
 <!-- Dialog: krijo grup -->
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupTitle" aria-hidden="true"<?= $openCreate ? ' data-open-on-load="create"' : '' ?>>
@@ -1625,19 +1695,78 @@ function normalizeValueForField(field, rawValue, ctx){
   return { value: s, display: s };
 }
 
+/* ===== Gjendjet me fjalë — e njëjta logjikë si në server (themeli.php).
+   Sistemi ka vetëm pikë: asnjë "kaloi / nuk kaloi". ===== */
+const TODAY = <?= json_encode($today) ?>;
+
+function statusHtml(label, variant, icon){
+  return '<span class="status status-' + variant + '"><i class="bi ' + icon + '" aria-hidden="true"></i>' + String(label).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>';
+}
+function whenLabel(iso){
+  const n = Math.round((Date.parse(iso) - Date.parse(TODAY)) / 86400000);
+  if (isNaN(n)) return '';
+  if (n === 0) return 'sot';
+  if (n === 1) return 'nesër';
+  if (n === -1) return 'dje';
+  return n > 1 ? 'pas ' + n + ' ditësh' : Math.abs(n) + ' ditë më parë';
+}
+function readIso(el){
+  const txt = clean(el ? el.textContent : '');
+  if (!txt || txt === '—') return '';
+  try { return normalizeDateForServer(txt); } catch(e) { return ''; }
+}
+function groupDates(gid){
+  return {
+    start: readIso(document.querySelector(`.editable[data-field="start_date"][data-group="${gid}"]`)),
+    end: readIso(document.querySelector(`.editable[data-field="end_date"][data-group="${gid}"]`))
+  };
+}
+function groupStatusHtml(gid){
+  if (Number(GROUP_COMPLETED[gid] || 0) === 1) return statusHtml('I mbyllur', 'success', 'bi-lock-fill');
+  const d = groupDates(gid);
+  if (d.start && d.start > TODAY) return statusHtml('Nis ' + whenLabel(d.start), 'info', 'bi-calendar-event');
+  if (d.end && d.end >= TODAY) return statusHtml('Në mësim', 'accent', 'bi-easel');
+  return statusHtml('Pret mbylljen', 'warning', 'bi-hourglass-split');
+}
+
 function refreshStudentStatus(row, gid){
   const cell = row && row.querySelector('[data-status]');
   if (!cell) return;
   const score = clean(row.querySelector('td[data-field="final_score"] .editable')?.textContent);
-  const exam = clean(row.querySelector('td[data-field="exam_date"] .editable')?.textContent);
-  const mk = (label, variant, icon) => '<span class="status status-' + variant + '"><i class="bi ' + icon + '" aria-hidden="true"></i>' + label.replace(/</g,'&lt;') + '</span>';
-  if (score && score !== '—' && !isNaN(score.replace(',','.'))) {
-    cell.innerHTML = parseFloat(score.replace(',','.')) >= 50 ? mk('Kaloi · ' + score, 'success', 'bi-check-circle-fill') : mk('Nuk kaloi · ' + score, 'danger', 'bi-x-circle-fill');
-  } else if (exam && exam !== '—') {
-    let iso = ''; try { iso = normalizeDateForServer(exam); } catch(e){}
-    const today = new Date().toISOString().slice(0,10);
-    cell.innerHTML = (iso && iso >= today) ? mk('Provimi më ' + exam, 'info', 'bi-calendar-event') : mk('Pret rezultatin', 'warning', 'bi-clock-fill');
-  }
+  const exam = readIso(row.querySelector('td[data-field="exam_date"] .editable'));
+  const d = groupDates(gid);
+  let html;
+  if (score && score !== '—') html = statusHtml('Përfunduar', 'neutral', 'bi-check2');
+  else if (exam) html = exam >= TODAY ? statusHtml('Provimi ' + whenLabel(exam), 'info', 'bi-calendar-event') : statusHtml('Pret pikët', 'warning', 'bi-hourglass-split');
+  else if (d.start && d.start > TODAY) html = statusHtml('Nis ' + whenLabel(d.start), 'info', 'bi-calendar-event');
+  else if (d.start && d.end && TODAY >= d.start && TODAY <= d.end) html = statusHtml('Në mësim', 'accent', 'bi-easel');
+  else if (d.end && d.end < TODAY) html = statusHtml('Pret datën e provimit', 'warning', 'bi-clock-fill');
+  else html = statusHtml('Pa grup ende', 'neutral', 'bi-dash-circle');
+  cell.innerHTML = html;
+}
+
+/* Sa kursantë kanë pikë — në tabelë dhe në dritaren e grupit. */
+function refreshScored(gid){
+  const rows = document.querySelectorAll(`#groupModal_${gid} tr[data-student-row]`);
+  if (!rows.length) return;
+  let scored = 0;
+  rows.forEach(r => {
+    const s = clean(r.querySelector('td[data-field="final_score"] .editable')?.textContent);
+    if (s && s !== '—') scored++;
+  });
+  const text = scored === 0 ? 'ende pa pikë' : (scored === rows.length ? 'të gjithë me pikë' : scored + ' me pikë');
+  document.querySelectorAll(`[data-scored-label="${gid}"]`).forEach(el => {
+    el.textContent = text;
+    if (el.classList.contains('cell-sub')) el.classList.toggle('text-warning', scored < rows.length);
+  });
+}
+
+/* Pas ndryshimit të datave të grupit: datat në dritare, gjendja e grupit dhe e kursantëve. */
+function refreshGroup(gid){
+  const d = groupDates(gid);
+  document.querySelectorAll(`[data-group-dates="${gid}"]`).forEach(el => { el.textContent = isoToDmy(d.start) + ' – ' + isoToDmy(d.end); });
+  document.querySelectorAll(`[data-group-status="${gid}"]`).forEach(el => { el.innerHTML = groupStatusHtml(gid); });
+  document.querySelectorAll(`#groupModal_${gid} tr[data-student-row]`).forEach(r => refreshStudentStatus(r, gid));
 }
 
 async function saveEditable(editable){
@@ -1667,7 +1796,12 @@ async function saveEditable(editable){
     editable.dataset.prev = editable.textContent;
     cell.classList.remove('cell-saving');
     flashCell(cell, 'cell-ok');
-    refreshStudentStatus(editable.closest('tr[data-student-row]'), ctx.group_id);
+    if (ctx.field === 'start_date' || ctx.field === 'end_date') {
+      refreshGroup(ctx.group_id);
+    } else {
+      refreshStudentStatus(editable.closest('tr[data-student-row]'), ctx.group_id);
+      if (ctx.field === 'final_score') refreshScored(ctx.group_id);
+    }
     notify('success','Ndryshimi u ruajt.');
   }catch(err){
     cell.classList.remove('cell-saving');
@@ -1681,7 +1815,8 @@ document.querySelectorAll('.editable').forEach(ed=>{
   ed.addEventListener('keydown', (e)=>{
     if (!EDIT_MODE) return;
     if (e.key === 'Enter'){ e.preventDefault(); ed.blur(); }
-    if (e.key === 'Escape'){ e.preventDefault(); ed.textContent = ed.dataset.prev ?? ed.textContent; ed.blur(); }
+    /* Esc anulon vetëm redaktimin — nuk e mbyll dritaren e grupit. */
+    if (e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); ed.textContent = ed.dataset.prev ?? ed.textContent; ed.blur(); }
   });
   ed.addEventListener('focus', ()=>{ ed.dataset.prev = clean(ed.textContent); });
   ed.addEventListener('paste', (e)=>{
@@ -1692,20 +1827,34 @@ document.querySelectorAll('.editable').forEach(ed=>{
   ed.addEventListener('blur', ()=>{ if (EDIT_MODE) saveEditable(ed); });
 });
 
-/* ===== Mbyllja e grupit ===== */
+/* ===== Mbyllja e grupit =====
+   Nga çelësi "Mbyllur" në tabelë ose nga butoni në dritaren e grupit. */
 function paintGroupState(gid, done){
   const badge = document.querySelector(`.group-badge[data-group="${gid}"]`);
   if (badge) badge.textContent = done ? 'Po' : 'Jo';
-  const statusCell = document.querySelector(`[data-group-status="${gid}"]`);
-  if (statusCell && done) statusCell.innerHTML = '<span class="status status-success"><i class="bi bi-lock-fill" aria-hidden="true"></i>I mbyllur</span>';
-  if (statusCell && !done) statusCell.innerHTML = '<span class="status status-neutral"><i class="bi bi-unlock" aria-hidden="true"></i>I hapur</span>';
-  const alertBox = document.getElementById(`statusAlert_${gid}`);
-  if (alertBox){
-    alertBox.innerHTML = done
-      ? '<i class="bi bi-lock" aria-hidden="true"></i><span><b>Grupi është i mbyllur.</b> Ndryshimet kërkojnë konfirmim, sepse dokumentet mund të jenë lëshuar.</span>'
-      : '<i class="bi bi-unlock" aria-hidden="true"></i><span><b>Grupi është i hapur.</b> Kur të mbarojnë provimet, shëno "Mbyllur".</span>';
-  }
+  document.querySelectorAll(`[data-group-status="${gid}"]`).forEach(el => { el.innerHTML = groupStatusHtml(gid); });
+  const box = document.getElementById(`statusAlert_${gid}`);
+  if (!box) return;
+  const icon = box.querySelector('[data-notice-icon]');
+  const text = box.querySelector('[data-notice-text]');
+  const btn = box.querySelector('[data-complete-toggle]');
+  if (icon) icon.className = 'bi ' + (done ? 'bi-lock' : 'bi-unlock');
+  if (text) text.innerHTML = done
+    ? '<b>Grupi është i mbyllur.</b> Çdo ndryshim kërkon konfirmim, sepse dokumentet mund të jenë lëshuar.'
+    : '<b>Grupi është i hapur.</b> Kur provimet dhe pikët të jenë të plota, mbylle grupin.';
+  if (btn) btn.innerHTML = done
+    ? '<i class="bi bi-unlock" aria-hidden="true"></i>Rihape grupin'
+    : '<i class="bi bi-lock" aria-hidden="true"></i>Mbylle grupin';
 }
+
+/* Butoni "Mbylle grupin / Rihape grupin" brenda dritares përdor çelësin e tabelës,
+   që pyetja, ruajtja dhe njoftimet të jenë të njëjta. */
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest ? e.target.closest('[data-complete-toggle]') : null;
+  if (!btn) return;
+  const sw = document.getElementById('gDone_' + btn.dataset.completeToggle);
+  if (sw && !sw.disabled) sw.click();
+});
 
 document.querySelectorAll('.toggle-completed').forEach(sw=>{
   sw.addEventListener('change', async ()=>{
@@ -1728,28 +1877,23 @@ document.querySelectorAll('.toggle-completed').forEach(sw=>{
   });
 });
 
-/* ===== Hap/mbyll të gjitha grupet ===== */
-(function(){
-  let allOpen = false;
-  const btn = document.getElementById('toggleAllBtn');
-  if (!btn) return;
-  btn.addEventListener('click', ()=>{
-    allOpen = !allOpen;
-    document.querySelectorAll('.group-body').forEach(el=>{
-      const c = bootstrap.Collapse.getOrCreateInstance(el, {toggle:false});
-      allOpen ? c.show() : c.hide();
-    });
-    btn.setAttribute('aria-pressed', allOpen ? 'true' : 'false');
-    document.getElementById('toggleAllIcon').className = allOpen ? 'bi bi-arrows-collapse' : 'bi bi-arrows-expand';
-    document.getElementById('toggleAllText').textContent = allOpen ? 'Mbyll të gjitha' : 'Hap të gjitha';
-  });
-})();
-
-/* Rrotullimi i shigjetës sipas gjendjes së grupit */
-document.querySelectorAll('.group-body').forEach(el=>{
-  const opener = document.querySelector(`[data-bs-target="#${el.id}"]`);
-  el.addEventListener('show.bs.collapse', ()=> opener && opener.setAttribute('aria-expanded','true'));
-  el.addEventListener('hide.bs.collapse', ()=> opener && opener.setAttribute('aria-expanded','false'));
+/* ===== groups.php?group=12 hap direkt dritaren e grupit #12
+   (p.sh. nga faqja e moduleve ose nga kartela e kursantit). ===== */
+document.addEventListener('DOMContentLoaded', ()=>{
+  let url;
+  try { url = new URL(window.location.href); } catch(e) { return; }
+  const gid = parseInt(url.searchParams.get('group') || '0', 10);
+  if (!gid) return;
+  const el = document.getElementById('groupModal_' + gid);
+  if (!el) {
+    notify('warning', 'Grupi #' + gid + ' nuk është në këtë listë. Pastro kërkimin për ta parë.');
+    return;
+  }
+  el.addEventListener('hidden.bs.modal', ()=>{
+    url.searchParams.delete('group');
+    try { history.replaceState(history.state, '', url.pathname + url.search + url.hash); } catch(e) { /* adresa mbetet */ }
+  }, { once: true });
+  bootstrap.Modal.getOrCreateInstance(el).show();
 });
 
 /* ===== Maska e datave në formularin e krijimit ===== */

@@ -15,7 +15,7 @@ return [
   'start' => [
     'title' => 'Hapat e parë',
     'roles' => ['administrator', 'editor', 'agjencia', 'student'],
-    'intro' => 'Regjistri QTA mban kualifikimet profesionale të punonjësve: kush u regjistrua, në cilin modul, në cilin grup, kur dha provimin dhe me çfarë rezultati.',
+    'intro' => 'Regjistri QTA mban kualifikimet profesionale të punonjësve: kush u regjistrua, në cilin modul, në cilin grup, kur dha provimin dhe sa pikë mori.',
     'steps' => [
       ['Hyr me rolin tënd', 'Stafi hyn me email, agjencitë me NIPT, kursantët me numrin personal.'],
       ['Nis nga "Kreu"', 'Aty sheh çfarë pret për ty sot dhe veprimet më të shpeshta.'],
@@ -77,10 +77,10 @@ return [
   'dashboard_student' => [
     'title' => 'Faqja ime',
     'roles' => ['student'],
-    'intro' => 'Këtu sheh modulet ku je regjistruar, datat, provimet dhe rezultatet e tua.',
+    'intro' => 'Këtu sheh modulet ku je regjistruar, datat, provimet dhe pikët e tua.',
     'steps' => [
       ['Shiko provimin e radhës', 'Nëse ke një provim të caktuar, data shfaqet në krye.'],
-      ['Shiko modulet', 'Çdo modul tregon nëse është në vazhdim, nëse pret provimin ose nëse ke kaluar.'],
+      ['Shiko modulet', 'Çdo modul tregon nëse është në vazhdim, kur është provimi dhe pikët që more.'],
       ['Trego kodin QR', 'Kodi yt QR i tregon inspektorit që certifikatat e tua janë të vërteta. Shtyp "Shfaq më të madh" për ta treguar nga telefoni.'],
     ],
     'tips' => [
@@ -109,10 +109,10 @@ return [
   'student_card' => [
     'title' => 'Kartela e kursantit',
     'roles' => ['administrator', 'editor', 'agjencia'],
-    'intro' => 'Kartela bashkon gjithçka për një person: të dhënat personale, çdo modul me datat dhe rezultatin, provimet e ardhshme dhe kodin QR të verifikimit.',
+    'intro' => 'Kartela bashkon gjithçka për një person: të dhënat personale, çdo modul me datat dhe pikët, provimet e ardhshme dhe kodin QR të verifikimit.',
     'steps' => [
       ['Gjej personin', 'Kërko me emër, numër personal ose numër amze dhe shtyp "Hap kartelën".'],
-      ['Lexo kartelën', 'Në krye janë shifrat; poshtë çdo modul me gjendjen ("Në mësim", "Kaloi · 64" …).'],
+      ['Lexo kartelën', 'Në krye janë shifrat; poshtë çdo modul me gjendjen ("Në mësim", "Pret pikët", "64 pikë" …).'],
       ['Ndrysho të dhënat', 'Stafi, me "Lejo ndryshimet", klikon një vlerë te "Të dhënat personale", e ndryshon dhe del nga fusha. Esc e kthen vlerën.'],
       ['Kodi QR', 'Hap faqen e verifikimit, shkarko kodin si PNG për printim ose kopjo lidhjen. Nëse mungon, shtyp "Krijo kodin QR".'],
     ],
@@ -142,12 +142,12 @@ return [
     'roles' => $staff,
     'intro' => 'Çdo grup ndjek një modul në data të caktuara. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet e grupit.',
     'steps' => [
-      ['Hap një grup', 'Kliko emrin e modulit për të parë kursantët brenda grupit.'],
-      ['Cakto datat', 'Me ndryshimet e hapura, kliko datën e fillimit, mbarimit ose të provimit dhe shkruaj dd.mm.vvvv.'],
-      ['Shëno rezultatet', 'Kliko pikët dhe shkruaj 0–100. Kalon kush merr 50 ose më shumë.'],
-      ['Ndrysho kursantët', '"Ndrysho" → "Kursantët e grupit": shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10, grupi ndahet vetë — të tregohet si para se të ruhet.'],
-      ['Mbyll grupin', 'Kur mbarojnë provimet, ndiz çelësin "Mbyllur". Pas kësaj çdo ndryshim kërkon konfirmim.'],
-      ['Shkarko dokumentet', 'Te "Dokumentet e grupit": Procesverbali, Lista emërore, Praktika profesionale dhe Rregullat e sigurisë, në PDF, Word ose Excel.'],
+      ['Hap një grup', 'Kliko emrin e modulit: grupi hapet në një dritare me kursantët, provimet, pikët dhe dokumentet.'],
+      ['Cakto datat', 'Me ndryshimet e hapura, kliko datën e fillimit ose të mbarimit në tabelë, ose datën e provimit brenda grupit, dhe shkruaj dd.mm.vvvv.'],
+      ['Shëno pikët', 'Kliko pikët dhe shkruaj një numër nga 0 deri në 100.'],
+      ['Ndrysho kursantët', 'Brenda grupit shtyp "Ndrysho kursantët" dhe shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10, grupi ndahet vetë — të tregohet si para se të ruhet.'],
+      ['Mbyll grupin', 'Kur provimet dhe pikët janë të plota, shtyp "Mbylle grupin" brenda grupit ose ndiz çelësin "Mbyllur" në tabelë. Pas kësaj çdo ndryshim kërkon konfirmim.'],
+      ['Shkarko dokumentet', 'Brenda grupit, te "Dokumentet e grupit": shtyp formatin (PDF, Word ose Excel) te Procesverbali, Lista emërore, Praktika profesionale ose Rregullat e sigurisë.'],
     ],
     'tips' => [
       'Një grup mban deri në 10 kursantë. Një regjistrim (nr. i amzës) mund të jetë vetëm në një grup.',
@@ -174,7 +174,7 @@ return [
     'steps' => [
       ['Shto një modul', 'Shtyp "Shto modul": emri, një kod i shkurtër (p.sh. SLD-04) dhe orët e mësimit.'],
       ['Ndrysho', 'Me ndryshimet e hapura kliko kodin, emrin ose orët dhe shkruaj vlerën e re.'],
-      ['Shiko grupet e modulit', 'Kliko "N grupe" për t\'i parë. "Kalo te një modul tjetër" korrigjon një grup të vendosur gabim.'],
+      ['Shiko grupet e modulit', 'Kliko "N grupe": grupet hapen në një dritare. "Zhvendos grupin" korrigjon një grup të vendosur gabim; kliko një grup për ta hapur.'],
     ],
     'tips' => [
       'Një modul që ka grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët.',
@@ -255,7 +255,7 @@ return [
   'agency_students' => [
     'title' => 'Punonjësit tanë',
     'roles' => ['agjencia'],
-    'intro' => 'Lista e punonjësve të agjencisë suaj që janë regjistruar në QTA, me modulin e fundit, provimin dhe rezultatin.',
+    'intro' => 'Lista e punonjësve të agjencisë suaj që janë regjistruar në QTA, me modulin e fundit, provimin dhe pikët.',
     'steps' => [
       ['Kërko', 'Shkruaj emrin, numrin personal ose numrin e amzës.'],
       ['Hap kartelën', 'Kliko emrin për të parë të gjitha modulet e punonjësit.'],
@@ -269,9 +269,9 @@ return [
   'agency_groups' => [
     'title' => 'Grupet',
     'roles' => ['agjencia'],
-    'intro' => 'Grupet ku janë caktuar punonjësit tuaj, me datat e trajnimit, provimet dhe rezultatet.',
+    'intro' => 'Grupet ku janë caktuar punonjësit tuaj, me datat e trajnimit, provimet dhe pikët.',
     'steps' => [
-      ['Hap një grup', 'Kliko emrin e modulit për të parë punonjësit dhe rezultatin e secilit.'],
+      ['Hap një grup', 'Kliko emrin e modulit: grupi hapet në një dritare me punonjësit dhe pikët e secilit.'],
       ['Shiko kush pret', 'Poshtë, "Presin një grup" tregon punonjësit që QTA do t\'i caktojë së shpejti.'],
     ],
     'tips' => [],
@@ -283,11 +283,11 @@ return [
     'roles' => ['student'],
     'intro' => 'Të gjitha modulet ku je regjistruar, me datat, provimin dhe rezultatin.',
     'steps' => [
-      ['Lexo gjendjen', '"Në mësim", "Pret rezultatin", "Kaloi · 64" ose "Nuk kaloi · 45".'],
+      ['Lexo gjendjen', '"Në mësim", "Provimi pas 3 ditësh", "Pret pikët" ose pikët që more, p.sh. "64 pikë".'],
       ['Moduli pa grup', '"Pret grupin" do të thotë që QTA do të të caktojë në grupin e radhës.'],
     ],
     'tips' => [
-      '"Kaloi" do të thotë që moduli shfaqet si i vlefshëm kur dikush skanon kodin tënd QR.',
+      'Kushdo që skanon kodin tënd QR sheh modulet e tua në regjistër.',
     ],
   ],
 

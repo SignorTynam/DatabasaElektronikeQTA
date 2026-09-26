@@ -69,7 +69,7 @@ $stmt = $pdo->prepare("
   SELECT COUNT(*)
   FROM course_group_students cgs
   JOIN agency_students a ON a.student_id = cgs.student_id
-  WHERE a.agency_id = :cid AND cgs.final_score >= 50
+  WHERE a.agency_id = :cid AND cgs.final_score IS NOT NULL
 ");
 $stmt->execute([':cid'=>$cid]);
 $passedCnt = (int)$stmt->fetchColumn();
@@ -185,7 +185,7 @@ require __DIR__ . '/inc/navbar2.php';
         <span class="stat-value"><?= number_format($noGroupCnt, 0, ',', '.') ?></span>
       </div>
       <div class="stat">
-        <span class="stat-label">Provime të kaluara</span>
+        <span class="stat-label">Provime me pikë</span>
         <span class="stat-value"><?= number_format($passedCnt, 0, ',', '.') ?></span>
       </div>
     </div>

@@ -440,6 +440,8 @@
       var danger = opts.danger !== false;
       /* Pas përgjigjes, fokusi kthehet te kontrolli që e hapi pyetjen. */
       var returnTo = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      /* Pyetja mund të dalë mbi një dialog tjetër që mbetet i hapur (p.sh. një grup). */
+      var under = document.querySelector('.modal.show');
       var wrap = document.createElement('div');
       wrap.innerHTML =
         '<div class="modal fade" id="' + id + '" tabindex="-1" aria-labelledby="' + id + 'T" aria-describedby="' + id + 'D">' +
@@ -456,6 +458,7 @@
           '</div></div>' +
         '</div>';
       var modalEl = wrap.firstChild;
+      if (under) modalEl.classList.add('is-stacked');
       document.body.appendChild(modalEl);
       var modal = new window.bootstrap.Modal(modalEl);
       var answered = false;
@@ -466,11 +469,24 @@
         if (!answered) resolve(false);
         modal.dispose();
         modalEl.remove();
+        /* Dialogu poshtë është ende i hapur: faqja mbetet e bllokuar dhe
+           tastiera mbetet brenda tij. */
+        if (under && under.classList.contains('show')) {
+          document.body.classList.add('modal-open');
+          var below = window.bootstrap.Modal.getInstance(under);
+          if (below && below._focustrap) {
+            try { below._focustrap.deactivate(); below._focustrap.activate(); } catch (e) { /* vazhdon pa kurth fokusi */ }
+          }
+        }
         if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
           try { returnTo.focus({ preventScroll: true }); } catch (e) { /* kontrolli s'merr dot fokus */ }
         }
       });
       modal.show();
+      if (under) {
+        var drops = document.querySelectorAll('.modal-backdrop');
+        if (drops.length) drops[drops.length - 1].classList.add('is-stacked');
+      }
     });
   };
 
@@ -610,6 +626,71 @@
       } catch (e) { /* adresa mbetet siç është */ }
     }
   });
+
+  /* Dialog i hapur nga një dialog tjetër (p.sh. "Ndrysho kursantët" brenda një
+     grupi): Bootstrap e mbyll të parin dhe hap të dytin. Kur i dyti mbyllet pa
+     ruajtje, kthehemi te i pari, te butoni që e hapi. Kur ruhet dhe faqja
+     ringarkohet, i pari rihapet, që puna të vazhdojë aty ku ishte. */
+  (function () {
+    var REOPEN_KEY = 'qtaReopenModal';
+    function showModal(el) {
+      if (el && window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+
+    document.addEventListener('show.bs.modal', function (ev) {
+      var el = ev.target;
+      var trigger = ev.relatedTarget;
+      if (!trigger || !trigger.closest) return; /* hapur nga kodi: kthimi i mëparshëm mbetet */
+      var origin = trigger.closest('.modal');
+      if (origin && origin !== el && origin.id) {
+        el.setAttribute('data-return-to', origin.id);
+        el._qtaReturnTrigger = trigger;
+      } else {
+        el.removeAttribute('data-return-to');
+        el._qtaReturnTrigger = null;
+      }
+    });
+
+    document.addEventListener('hidden.bs.modal', function (ev) {
+      var el = ev.target;
+      var back = el.getAttribute('data-return-to');
+      if (!back) return;
+      /* Një dialog tjetër e zuri vendin (p.sh. parashikimi i ndarjes): kthimi pret. */
+      if (document.querySelector('.modal.show')) return;
+      el.removeAttribute('data-return-to');
+      var origin = document.getElementById(back);
+      var trigger = el._qtaReturnTrigger;
+      el._qtaReturnTrigger = null;
+      if (!origin) return;
+      if (trigger) {
+        origin.addEventListener('shown.bs.modal', function () {
+          if (document.contains(trigger)) {
+            try { trigger.focus({ preventScroll: true }); } catch (e) { /* mbetet te dialogu */ }
+          }
+        }, { once: true });
+      }
+      showModal(origin);
+    });
+
+    window.qtaReopenAfterReload = function (el) {
+      var host = el && el.closest ? el.closest('.modal[data-return-to]') : null;
+      if (!host) return;
+      try { sessionStorage.setItem(REOPEN_KEY, host.getAttribute('data-return-to')); } catch (e) { /* pa kujtesë */ }
+    };
+
+    /* Ruajtja me formular të zakonshëm: faqja ringarkohet pas saj. */
+    document.addEventListener('submit', function (ev) {
+      var form = ev.target;
+      if (ev.defaultPrevented || !form || form.getAttribute('target') === '_blank') return;
+      window.qtaReopenAfterReload(form);
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var id = null;
+      try { id = sessionStorage.getItem(REOPEN_KEY); sessionStorage.removeItem(REOPEN_KEY); } catch (e) { id = null; }
+      if (id && !document.querySelector('.modal[data-open-on-load]')) showModal(document.getElementById(id));
+    });
+  })();
 
   /* ------------------------------------------ 8. Kërkimi në regjistër */
   /* Hapet me Ctrl+K, "/" ose butonin "Kërko…". Serveri vendos kufijtë e rolit;

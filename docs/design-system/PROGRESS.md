@@ -49,6 +49,10 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | M2 | Modules | Moving a group skipped the closed-group and "already took this module" checks |
 | W1 | Without group | "Hiq modulin" had server support but no button; restored |
 | L1 | History | CSV exported only the visible page; now all matches, Excel-friendly |
+| D1 | Dialogs | Footer buttons had no padding or gap (invalid Bootstrap calc from a two-value `--bs-modal-padding`); a confirm opened over another dialog sat under its backdrop |
+| D2 | Groups / modules | Group details and a module's groups opened as show/hide rows; now dialogs over the page, documents inside the group dialog |
+| D3 | Everywhere | "Kaloi / Nuk kaloi" (pass at ≥ 50) shown although the system records only points; now points only |
+| D4 | Verification | Public result showed extra personal data ("Të dhëna shtesë"); now name, masked personal number and modules only; QR photo reader library did not load |
 
 ## Security fixes
 

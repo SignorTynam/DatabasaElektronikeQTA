@@ -95,6 +95,14 @@
   --bs-btn-disabled-bg: transparent;
   --bs-btn-disabled-border-color: transparent;
 }
+/* Veprim i qetë që fshin (p.sh. "Fshi grupin" në fund të një dialogu). */
+.btn-ghost.btn-ghost-danger {
+  --bs-btn-color: var(--danger);
+  --bs-btn-hover-color: var(--danger-hover);
+  --bs-btn-hover-bg: var(--danger-soft);
+  --bs-btn-active-color: var(--danger-hover);
+  --bs-btn-active-bg: var(--danger-soft);
+}
 
 .btn-outline-primary {
   --bs-btn-color: var(--accent-text);
@@ -585,12 +593,13 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
 .person-name { font-weight: var(--fw-semibold); }
 .cell-sub { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
 
-/* Rreshta që hapen: një rresht përmbledhës + një rresht me hollësitë.
-   <tbody><tr>…<button class="row-toggle" data-bs-toggle="collapse">…</tr>
-          <tr class="row-details"><td colspan="…"><div class="collapse"><div class="row-details-inner">… */
-.row-toggle {
+/* Rreshti që hap hollësitë në një dialog mbi faqe (grupi, grupet e modulit).
+   <td><button class="row-open" data-bs-toggle="modal" data-bs-target="#…">
+         <span><span class="person-name">…</span><span class="cell-sub">…</span></span>
+         <i class="bi bi-chevron-right"></i></button> */
+.row-open {
   display: inline-flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--sp-2);
   min-height: var(--touch-min);
   padding: 0;
@@ -601,43 +610,71 @@ body.dense .table > tbody > tr > * { padding-block: .375rem; }
   text-align: left;
   cursor: pointer;
 }
-.row-toggle > .bi {
+.row-open .person-name,
+.row-open > .row-open-text { color: var(--link); }
+.row-open > .bi {
   flex: none;
-  margin-top: .2rem;
-  color: var(--text-muted);
-  transition: transform var(--dur-2) var(--ease);
+  color: var(--text-subtle);
+  transition: transform var(--dur-2) var(--ease), color var(--dur-2) var(--ease);
 }
-.row-toggle[aria-expanded="true"] > .bi { transform: rotate(90deg); color: var(--accent-text); }
-.row-toggle:hover .person-name { color: var(--link-hover); text-decoration: underline; text-underline-offset: .15em; }
-.row-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-xs); }
-.table > tbody > tr.row-details > td { padding: 0; border-bottom: 0; }
-.table > tbody > tr.row-details:hover > * { --bs-table-bg-state: transparent; }
-.row-details-inner {
-  padding: var(--sp-4) var(--sp-4) var(--sp-5) calc(var(--sp-4) + 1.5rem);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-sunken);
-}
-.row-details-inner > .table-responsive { background: var(--surface); }
+.row-open:hover .person-name,
+.row-open:hover > .row-open-text { color: var(--link-hover); text-decoration: underline; text-underline-offset: .15em; }
+.row-open:hover > .bi { color: var(--link-hover); transform: translateX(2px); }
+.row-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-xs); }
 
-/* Dokumentet që shkarkohen nga një rresht (p.sh. procesverbali i grupit) */
-.doc-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-top: var(--sp-4);
+/* Dokumentet e grupit: një kartë për dokument, një buton për çdo format.
+   Shkarkimi nis direkt nga butoni — pa dialog të dytë. */
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  gap: var(--sp-3);
 }
-.doc-actions-label {
-  margin-right: var(--sp-1);
+.doc-card {
+  display: flex;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.doc-card-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+.doc-card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.doc-card-title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-snug);
+}
+.doc-card-text {
+  margin: 0;
   color: var(--text-muted);
   font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
+  line-height: var(--lh-snug);
 }
-@media (max-width: 575.98px) {
-  .row-details-inner { padding-left: var(--sp-4); }
-  .doc-actions > .btn { flex: 1 1 calc(50% - var(--sp-2)); justify-content: center; }
-  .doc-actions-label { flex-basis: 100%; }
+.doc-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-2);
 }
 
 /* ====================================================== 5. Redaktimi në vend */
@@ -804,6 +841,14 @@ td.cell-err { transition: box-shadow var(--dur-3) var(--ease); }
 .notice > .bi { flex: none; margin-top: .15rem; color: var(--info); }
 .notice b, .notice strong { color: var(--text); }
 .notice.is-sunken { background: var(--surface-sunken); }
+/* Një veprim i vetëm që i përket shënimit, p.sh. "Mbylle grupin":
+   <div class="notice has-action"><i …></i><span>…</span><button class="notice-action …"> */
+.notice > .notice-action { flex: none; margin: -.25rem 0 -.25rem auto; }
+@media (max-width: 575.98px) {
+  .notice.has-action { flex-wrap: wrap; }
+  .notice.has-action > span { flex: 1 1 calc(100% - 1.5rem); min-width: 0; }
+  .notice > .notice-action { margin: 0 0 0 1.5rem; }
+}
 
 /* ================================================== 9. Menutë (dropdown) */
 .dropdown-menu {
@@ -875,12 +920,77 @@ td.cell-err { transition: box-shadow var(--dur-3) var(--ease); }
   font-weight: var(--fw-bold);
 }
 .modal-title > .bi { color: var(--text-muted); }
+/* Bootstrap e llogarit hapësirën e fundit me calc(var(--bs-modal-padding) − …);
+   meqë këtu --bs-modal-padding ka dy vlera, ajo llogaritje del e pavlefshme dhe
+   butonat ngelnin pa hapësirë, ngjitur me cepin. Prandaj hapësira jepet qartë. */
 .modal-footer {
+  gap: .5rem;
+  padding: .875rem 1.5rem;
   border-bottom-right-radius: var(--bs-modal-inner-border-radius);
   border-bottom-left-radius: var(--bs-modal-inner-border-radius);
 }
 .modal-footer > * { margin: 0; }
+/* Veprimet dytësore majtas (p.sh. "Ndrysho kursantët"), mbyllja djathtas. */
+.modal-footer > .modal-footer-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  margin-right: auto;
+}
+@media (max-width: 479.98px) {
+  .modal-footer { padding: .75rem 1rem; }
+  .modal-footer > .btn { flex: 1 1 auto; }
+  .modal-footer > .modal-footer-start { flex: 1 1 100%; }
+  .modal-footer > .modal-footer-start > .btn { flex: 1 1 auto; }
+}
 .modal-body > :last-child { margin-bottom: 0; }
+
+/* Dialog mbi dialog (p.sh. konfirmimi kur ndryshon pikët e një grupi të mbyllur):
+   i dyti del sipër dhe sfondi i tij errëson të parin. */
+.modal.is-stacked { --bs-modal-zindex: 1065; }
+.modal-backdrop.is-stacked { --bs-backdrop-zindex: 1060; }
+
+/* Dialogu i një regjistri (një grup, grupet e një moduli): koka mban të dhënat
+   kryesore, trupi ka pjesë me tituj të vegjël, veprimet janë poshtë. */
+.modal-record .modal-header {
+  align-items: flex-start;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.modal-record .modal-title {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-snug);
+}
+.modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .375rem 1rem;
+  margin-top: .5rem;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.modal-meta > span { display: inline-flex; align-items: center; gap: .375rem; }
+.modal-meta > span > .bi { color: var(--text-subtle); }
+.modal-section + .modal-section { margin-top: var(--sp-6); }
+.modal-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+.modal-record .modal-body > .notice { margin-bottom: var(--sp-5); }
 
 /* Dialogu i konfirmimit: pasoja thuhet qartë. */
 .confirm-icon {
@@ -2233,7 +2343,8 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
     max-width: 7.5rem;
   }
   .table-freeze > :is(thead, tbody) > tr > :nth-child(2) { left: 7.5rem; }
-  .table-freeze > :is(thead, tbody) > tr > :nth-child(2)::after {
+  /* Vija ndarëse përdor ::before: ::after i përket shigjetës së renditjes. */
+  .table-freeze > :is(thead, tbody) > tr > :nth-child(2)::before {
     content: "";
     position: absolute;
     top: 0;
@@ -2241,6 +2352,7 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
     bottom: 0;
     width: 1px;
     background: var(--border);
+    pointer-events: none;
   }
   .table-freeze > thead > tr > :is(:first-child, :nth-child(2)) { z-index: 3; background-color: var(--surface-sunken); }
 }

@@ -69,8 +69,8 @@ if ($personId > 0) {
 }
 
 $scored = array_values(array_filter($groups, static fn($g) => $g['final_score'] !== null));
-$passed = count(array_filter($scored, static fn($g) => (float)$g['final_score'] >= 50));
-$hoursDone = array_sum(array_map(static fn($g) => (float)$g['final_score'] >= 50 ? (int)$g['hours'] : 0, $scored));
+$passed = count($scored);
+$hoursDone = array_sum(array_map(static fn($g) => (int)$g['hours'], $scored));
 
 $NAV_ACTIVE = 'student_groups';
 $HELP_TOPIC = 'student_groups';
@@ -85,7 +85,7 @@ require __DIR__ . '/../shared/app_head.php';
   <header class="page-head">
     <div class="page-head-main">
       <h1 class="page-title">Modulet e mia</h1>
-      <p class="page-lead">Çdo modul ku je regjistruar: datat e mësimit, provimi dhe rezultati. Kalon me 50 pikë e lart.</p>
+      <p class="page-lead">Çdo modul ku je regjistruar: datat e mësimit, provimi dhe pikët.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -99,7 +99,7 @@ require __DIR__ . '/../shared/app_head.php';
         <span class="stat-value"><?= count($groups) + count($planned) ?></span>
       </div>
       <div class="stat">
-        <span class="stat-label">Të kaluara</span>
+        <span class="stat-label">Me pikë</span>
         <span class="stat-value"><?= $passed ?></span>
       </div>
       <div class="stat">
@@ -140,11 +140,11 @@ require __DIR__ . '/../shared/app_head.php';
     <?php if ($passed): ?>
       <div class="notice is-sunken mt-4">
         <i class="bi bi-qr-code" aria-hidden="true"></i>
-        <span>Modulet e kaluara mund t'i verifikojë kushdo me kodin tënd QR — e gjen te <a href="dashboard_student.php">Kreu</a>.</span>
+        <span>Modulet e tua mund t'i verifikojë kushdo me kodin tënd QR — e gjen te <a href="dashboard_student.php">Kreu</a>.</span>
       </div>
     <?php endif; ?>
   <?php else: ?>
-    <?= qta_empty('Ende pa module', 'Kur QTA të regjistrojë në një modul, ai shfaqet këtu me datat dhe rezultatin.', 'bi-journal', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
+    <?= qta_empty('Ende pa module', 'Kur QTA të regjistrojë në një modul, ai shfaqet këtu me datat dhe pikët.', 'bi-journal', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
   <?php endif; ?>
 </main>
 

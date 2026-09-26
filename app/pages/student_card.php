@@ -163,14 +163,12 @@ if ($pid > 0) {
         $q2 = $pdo->prepare("
           SELECT
             AVG(final_score) AS avg_score,
-            SUM(CASE WHEN final_score>=50 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0) * 100 AS pass_rate,
             MAX(final_score) AS best_score
           FROM course_group_students
           WHERE student_id IN ($ph) AND final_score IS NOT NULL
         ");
         $q2->execute($ids); $row = $q2->fetch(PDO::FETCH_ASSOC);
         $stats['avg_score'] = $row['avg_score']!==null ? round((float)$row['avg_score'],2) : null;
-        $stats['pass_rate'] = $row['pass_rate']!==null ? round((float)$row['pass_rate'],1) : null;
         $stats['best']      = $row['best_score']!==null ? round((float)$row['best_score'],1) : null;
 
         // Nota e fundit
@@ -409,7 +407,7 @@ $flashErr  = flash('err');
     $amzeList = array_values(array_unique(array_filter(array_map(static fn($r) => (string)$r['nr_amze'], $studentsOfPerson))));
     $passed = 0; $scored = 0;
     foreach ($groups as $gr) {
-      if ($gr['final_score'] !== null && $gr['final_score'] !== '') { $scored++; if ((float)$gr['final_score'] >= 50) $passed++; }
+      if ($gr['final_score'] !== null && $gr['final_score'] !== '') { $scored++; $passed++; }
     }
     $genderLabel = (string)($person['gender_label'] ?? '');
     $agencyNames = array_values(array_unique(array_filter(array_map(static fn($r) => (string)($r['agency_name'] ?? ''), $studentsOfPerson))));
@@ -465,14 +463,14 @@ $flashErr  = flash('err');
           <span class="stat-note"><?= count($planned) ? h(qta_plural(count($planned), 'pret grup', 'presin grup')) : 'të gjitha me grup' ?></span>
         </div>
         <div class="stat">
-          <span class="stat-label">Të kaluara</span>
+          <span class="stat-label">Me pikë</span>
           <span class="stat-value"><?= $passed ?><span class="text-subtle fs-6"> / <?= $scored ?></span></span>
-          <span class="stat-note"><?= $scored ? 'nga provimet me pikë' : 'ende pa pikë' ?></span>
+          <span class="stat-note"><?= $scored ? 'nga ' . count($groups) . ' grupe' : 'ende pa pikë' ?></span>
         </div>
         <div class="stat">
           <span class="stat-label">Mesatarja</span>
           <span class="stat-value"><?= ($stats['avg_score'] ?? null) !== null ? h(rtrim(rtrim(number_format((float)$stats['avg_score'], 1, ',', ''), '0'), ',')) : '—' ?></span>
-          <span class="stat-note">pikë (kalon me 50)</span>
+          <span class="stat-note">e pikëve (0–100)</span>
         </div>
         <div class="stat">
           <span class="stat-label">Orë mësimi</span>
@@ -505,7 +503,7 @@ $flashErr  = flash('err');
                       <span class="person-name"><?= h((string)$gr['name']) ?></span>
                       <span class="cell-sub">
                         <?php if (!$IS_AGENCY): ?>
-                          <a href="groups.php?q=<?= rawurlencode((string)$gr['nr_amze']) ?>">Grupi #<?= (int)$gr['group_id'] ?></a>
+                          <a href="groups.php?group=<?= (int)$gr['group_id'] ?>">Grupi #<?= (int)$gr['group_id'] ?></a>
                         <?php else: ?>Grupi #<?= (int)$gr['group_id'] ?><?php endif; ?>
                         <?php if (!empty($gr['code'])): ?> · <span class="code"><?= h((string)$gr['code']) ?></span><?php endif; ?>
                       </span>
@@ -629,7 +627,7 @@ $flashErr  = flash('err');
       <!-- Kodi QR -->
       <section class="panel mb-4" aria-labelledby="qrTitle">
         <h2 class="section-title mb-1" id="qrTitle">Kodi QR i verifikimit</h2>
-        <p class="text-muted small">Kushdo që e skanon me kamerën e telefonit sheh modulet që ky person ka kaluar.</p>
+        <p class="text-muted small">Kushdo që e skanon me kamerën e telefonit sheh modulet e këtij personi në regjistër.</p>
 
         <div data-qr-panel <?= $verifyURL ? '' : 'hidden' ?>>
           <div class="text-center">

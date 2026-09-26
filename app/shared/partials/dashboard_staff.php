@@ -94,7 +94,7 @@ $figures = $one($pdo, "
     (SELECT COUNT(*) FROM course_groups WHERE CURDATE() BETWEEN start_date AND end_date) AS active_groups,
     (SELECT COUNT(*) FROM course_group_students cgs JOIN course_groups cg ON cg.id = cgs.group_id
       WHERE CURDATE() BETWEEN cg.start_date AND cg.end_date) AS active_enrollments,
-    (SELECT COUNT(*) FROM course_group_students WHERE final_score >= 50) AS passed
+    (SELECT COUNT(*) FROM course_group_students WHERE final_score IS NOT NULL) AS passed
 ", ['students_total' => 0, 'active_groups' => 0, 'active_enrollments' => 0, 'passed' => 0]);
 
 $firstName = trim((string)strtok((string)($currentUser['full_name'] ?: ($currentUser['email'] ?? '')), ' '));
@@ -273,7 +273,7 @@ $agendaKinds = [
             <span class="stat-note"><?= h(qta_plural((int)$figures['active_enrollments'], 'kursant', 'kursantë')) ?> në mësim</span>
           </a>
           <div class="stat">
-            <span class="stat-label">Provime të kaluara</span>
+            <span class="stat-label">Provime me pikë</span>
             <span class="stat-value"><?= number_format((int)$figures['passed'], 0, ',', '.') ?></span>
             <span class="stat-note">me 50 pikë e lart</span>
           </div>

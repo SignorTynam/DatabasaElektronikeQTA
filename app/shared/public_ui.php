@@ -68,8 +68,10 @@ if (!function_exists('qta_public_active')) {
 }
 
 if (!function_exists('qta_plugin_enabled')) {
-  function qta_plugin_enabled(string $plugin): bool {
-    $plugins = $GLOBALS['publicPlugins'] ?? [];
+  /** $plugins: vargu i faqes ($publicPlugins). Pa të, lexohet vargu global —
+   *  por ai mungon kur faqja përfshihet brenda një funksioni, prandaj jepe. */
+  function qta_plugin_enabled(string $plugin, ?array $plugins = null): bool {
+    $plugins = $plugins ?? ($GLOBALS['publicPlugins'] ?? []);
     return in_array($plugin, $plugins, true) || !empty($plugins[$plugin]);
   }
 }

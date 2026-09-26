@@ -17,7 +17,7 @@ try {
     SELECT
       (SELECT COUNT(*) FROM students) AS registered,
       (SELECT COUNT(*) FROM courses)  AS modules,
-      (SELECT COUNT(*) FROM course_group_students WHERE final_score >= 50) AS passed
+      (SELECT COUNT(*) FROM course_group_students WHERE final_score IS NOT NULL) AS passed
   ")->fetch(PDO::FETCH_ASSOC) ?: $figures;
 } catch (Throwable $e) {
   /* mbaj zerot */
@@ -67,7 +67,7 @@ require_once __DIR__ . '/navbarMain.php';
         <ul class="figures" aria-label="Regjistri në shifra">
           <li><b><?= number_format((int)$figures['registered'], 0, ',', '.') ?></b><span>regjistrime</span></li>
           <li><b><?= number_format((int)$figures['modules'], 0, ',', '.') ?></b><span>module</span></li>
-          <li><b><?= number_format((int)$figures['passed'], 0, ',', '.') ?></b><span>provime të kaluara</span></li>
+          <li><b><?= number_format((int)$figures['passed'], 0, ',', '.') ?></b><span>provime të dhëna</span></li>
         </ul>
       </div>
 
@@ -100,7 +100,7 @@ require_once __DIR__ . '/navbarMain.php';
       <ol class="steps-grid">
         <li><h3>Regjistrimi</h3><p>Punonjësi regjistrohet vetë ose nga kompania që e dërgon. Merr një numër amze.</p></li>
         <li><h3>Trajnimi në grup</h3><p>Caktohet në një grup të modulit, me datë fillimi dhe mbarimi.</p></li>
-        <li><h3>Provimi</h3><p>Në fund jepet provimi. Kalon kush merr 50 pikë ose më shumë.</p></li>
+        <li><h3>Provimi</h3><p>Në fund jepet provimi dhe pikët shënohen në regjistër.</p></li>
         <li><h3>Certifikata</h3><p>Certifikata lëshohet me kod unik dhe QR, që kontrollohet publikisht.</p></li>
       </ol>
     </div>
@@ -140,7 +140,7 @@ require_once __DIR__ . '/navbarMain.php';
         <div class="audience">
           <span class="audience-icon"><i class="bi bi-person-badge" aria-hidden="true"></i></span>
           <h3>Kursanti</h3>
-          <p>Sheh modulet e veta, datat e provimit, rezultatet dhe kodin QR të certifikatave.</p>
+          <p>Sheh modulet e veta, datat e provimit, pikët dhe kodin QR të certifikatave.</p>
           <a href="selectProfile.php?role=student">Hyr si kursant</a>
         </div>
         <div class="audience">

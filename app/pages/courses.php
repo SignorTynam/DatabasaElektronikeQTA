@@ -293,6 +293,7 @@ require __DIR__ . '/../shared/app_head.php';
               <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
             </tr>
           </thead>
+          <tbody>
           <?php foreach ($courses as $c):
             $cid = (int)$c['course_id'];
             $grList = $groupsByCourse[$cid] ?? [];
@@ -300,8 +301,7 @@ require __DIR__ . '/../shared/app_head.php';
             $members = array_sum(array_map(static fn($g) => (int)$g['members'], $grList));
             $plannedN = $plannedByCourse[$cid] ?? 0;
           ?>
-          <tbody data-course="<?= $cid ?>">
-            <tr>
+            <tr data-course="<?= $cid ?>">
               <td class="cell nowrap" data-id="<?= $cid ?>" data-field="code">
                 <span class="editable id-code" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" <?= $EDIT_MODE ? 'role="textbox" aria-label="Kodi i modulit"' : '' ?>><?= h((string)$c['code']) ?></span>
               </td>
@@ -314,9 +314,8 @@ require __DIR__ . '/../shared/app_head.php';
               </td>
               <td class="nowrap" data-sort-value="<?= $grCount ?>">
                 <?php if ($grCount): ?>
-                  <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courseGroups_<?= $cid ?>"
-                          aria-expanded="false" aria-controls="courseGroups_<?= $cid ?>">
-                    <i class="bi bi-chevron-right" aria-hidden="true"></i><span><?= h(qta_plural($grCount, 'grup', 'grupe')) ?></span>
+                  <button class="row-open" type="button" data-bs-toggle="modal" data-bs-target="#courseGroupsModal_<?= $cid ?>" aria-haspopup="dialog">
+                    <span class="row-open-text"><?= h(qta_plural($grCount, 'grup', 'grupe')) ?></span><i class="bi bi-chevron-right" aria-hidden="true"></i>
                   </button>
                 <?php else: ?>
                   <span class="text-muted">Asnjë grup</span>
@@ -334,50 +333,8 @@ require __DIR__ . '/../shared/app_head.php';
                 <?php endif; ?>
               </td>
             </tr>
-            <?php if ($grCount): ?>
-              <tr class="row-details">
-                <td colspan="6">
-                  <div class="collapse" id="courseGroups_<?= $cid ?>">
-                    <div class="row-details-inner">
-                      <div class="table-responsive">
-                        <table class="table table-sm">
-                          <thead>
-                            <tr>
-                              <th scope="col" class="nowrap">Grupi</th>
-                              <th scope="col" class="nowrap">Datat</th>
-                              <th scope="col" class="nowrap num-col">Kursantë</th>
-                              <th scope="col">Gjendja</th>
-                              <th scope="col" class="col-actions"><span class="visually-hidden">Veprime</span></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <?php foreach ($grList as $g): $gid = (int)$g['id']; ?>
-                              <tr id="groupRow_<?= $gid ?>" data-members="<?= (int)$g['members'] ?>">
-                                <td class="nowrap"><a href="groups.php?course_id=<?= $cid ?>">Grupi #<?= $gid ?></a></td>
-                                <td class="nowrap"><?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?></td>
-                                <td class="nowrap num-col"><?= (int)$g['members'] ?>/10</td>
-                                <td><?= $groupState($g) ?></td>
-                                <td class="col-actions">
-                                  <?php if ($EDIT_MODE): ?>
-                                    <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#moveGroupModal"
-                                            data-group-id="<?= $gid ?>" data-current-course="<?= $cid ?>" data-completed="<?= (int)$g['is_completed'] ?>"
-                                            data-group-label="Grupi #<?= $gid ?> · <?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?>">
-                                      <i class="bi bi-arrow-left-right" aria-hidden="true"></i>Kalo te një modul tjetër
-                                    </button>
-                                  <?php endif; ?>
-                                </td>
-                              </tr>
-                            <?php endforeach; ?>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            <?php endif; ?>
-          </tbody>
           <?php endforeach; ?>
+          </tbody>
         </table>
       </div>
 
@@ -398,6 +355,75 @@ require __DIR__ . '/../shared/app_head.php';
     <?php endif; ?>
   </section>
 </main>
+
+<?php foreach ($courses as $c):
+  $cid = (int)$c['course_id'];
+  $grList = $groupsByCourse[$cid] ?? [];
+  if (!$grList) continue;
+  $members = array_sum(array_map(static fn($g) => (int)$g['members'], $grList));
+?>
+  <!-- Dritarja: grupet e modulit <?= h((string)$c['code']) ?> -->
+  <div class="modal fade modal-record" id="courseGroupsModal_<?= $cid ?>" tabindex="-1" aria-labelledby="cgmTitle_<?= $cid ?>" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow mb-0">Moduli · <span class="code"><?= h((string)$c['code']) ?></span></span>
+            <h2 class="modal-title" id="cgmTitle_<?= $cid ?>"><?= h((string)$c['name']) ?></h2>
+            <div class="modal-meta">
+              <span><i class="bi bi-clock" aria-hidden="true"></i><?= h(qta_plural((int)$c['hours'], 'orë', 'orë')) ?></span>
+              <span><i class="bi bi-collection" aria-hidden="true"></i><?= h(qta_plural(count($grList), 'grup', 'grupe')) ?></span>
+              <span><i class="bi bi-people" aria-hidden="true"></i><?= h(qta_plural($members, 'kursant', 'kursantë')) ?></span>
+            </div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+        </div>
+        <div class="modal-body">
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th scope="col" class="nowrap">Grupi</th>
+                  <th scope="col" class="nowrap">Datat</th>
+                  <th scope="col" class="nowrap num-col">Kursantë</th>
+                  <th scope="col">Gjendja</th>
+                  <?php if ($EDIT_MODE): ?><th scope="col" class="col-actions"><span class="visually-hidden">Veprime</span></th><?php endif; ?>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($grList as $g): $gid = (int)$g['id']; ?>
+                  <tr id="groupRow_<?= $gid ?>">
+                    <td class="nowrap"><a class="person-name" href="groups.php?group=<?= $gid ?>">Grupi #<?= $gid ?></a></td>
+                    <td class="nowrap"><?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?></td>
+                    <td class="nowrap num-col"><?= (int)$g['members'] ?><span class="text-subtle">/10</span></td>
+                    <td><?= $groupState($g) ?></td>
+                    <?php if ($EDIT_MODE): ?>
+                      <td class="col-actions">
+                        <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#moveGroupModal"
+                                data-group-id="<?= $gid ?>" data-current-course="<?= $cid ?>" data-completed="<?= (int)$g['is_completed'] ?>"
+                                data-group-label="Grupi #<?= $gid ?> · <?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?>"
+                                aria-label="Zhvendos Grupin #<?= $gid ?> te një modul tjetër">
+                          <i class="bi bi-arrow-left-right" aria-hidden="true"></i>Zhvendos grupin
+                        </button>
+                      </td>
+                    <?php endif; ?>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+          <p class="form-text mt-2 mb-0">Kliko një grup për ta hapur me kursantët, pikët dhe dokumentet.</p>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-start">
+            <a class="btn btn-ghost" href="groups.php?course_id=<?= $cid ?>"><i class="bi bi-collection" aria-hidden="true"></i>Shiko te "Grupet"</a>
+          </div>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        </div>
+      </div>
+    </div>
+  </div>
+<?php endforeach; ?>
 
 <!-- Dialog: shto modul -->
 <div class="modal fade" id="addCourseModal" tabindex="-1" aria-labelledby="addCourseTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
@@ -447,7 +473,7 @@ require __DIR__ . '/../shared/app_head.php';
         <p class="mb-2"><b id="delName"></b> <span class="code text-muted" id="delCode"></span></p>
         <div id="delBlocked" class="alert alert-warning mb-0" hidden>
           <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
-          <div><b>Ky modul ka <span id="delGroups"></span>.</b> Një modul me grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët. Kaloji grupet te një modul tjetër ose fshiji ato te "Grupet".</div>
+          <div><b>Ky modul ka <span id="delGroups"></span>.</b> Një modul me grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët. Zhvendosi grupet te një modul tjetër ose fshiji ato te "Grupet".</div>
         </div>
         <div id="delAllowed">
           <p class="text-muted mb-0">Moduli hiqet nga katalogu. <span id="delPlanned"></span>Kjo nuk mund të kthehet mbrapsht.</p>
@@ -461,14 +487,14 @@ require __DIR__ . '/../shared/app_head.php';
   </div>
 </div>
 
-<!-- Dialog: kalo grupin te një modul tjetër -->
+<!-- Dialog: zhvendos grupin te një modul tjetër -->
 <div class="modal fade" id="moveGroupModal" tabindex="-1" aria-labelledby="moveGroupTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <form class="modal-content" id="moveGroupForm">
       <div class="modal-header">
         <div>
           <span class="eyebrow mb-0" id="mvGroupLabel">Grupi</span>
-          <h2 class="modal-title" id="moveGroupTitle"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>Kalo grupin te një modul tjetër</h2>
+          <h2 class="modal-title" id="moveGroupTitle"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>Zhvendos grupin te një modul tjetër</h2>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
@@ -480,11 +506,11 @@ require __DIR__ . '/../shared/app_head.php';
             <option value="<?= (int)$ac['id'] ?>"><?= h((string)$ac['name']) ?> (<?= h((string)$ac['code']) ?>)</option>
           <?php endforeach; ?>
         </select>
-        <p class="form-text mb-0">Përdore për të korrigjuar një gabim: të gjithë kursantët e grupit kalojnë në modulin e ri, me datat dhe pikët e tyre.</p>
+        <p class="form-text mb-0">Përdore për të korrigjuar një gabim: të gjithë kursantët e grupit zhvendosen te moduli i ri, me datat dhe pikët e tyre.</p>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit" id="mvSubmit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Kalo grupin</button>
+        <button class="btn btn-primary" type="submit" id="mvSubmit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Zhvendos grupin</button>
       </div>
     </form>
   </div>
@@ -580,7 +606,7 @@ document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', 
   document.getElementById('delSubmit').hidden = groups > 0;
 });
 
-/* ===== Kalimi i një grupi te një modul tjetër ===== */
+/* ===== Zhvendosja e një grupi te një modul tjetër ===== */
 (function(){
   const modal = document.getElementById('moveGroupModal');
   if (!modal) return;
@@ -601,13 +627,13 @@ document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', 
   document.getElementById('moveGroupForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const target = parseInt(sel.value || '0', 10);
-    if (!target) { notify('warning', 'Zgjidh modulin ku do të kalojë grupi.'); sel.focus(); return; }
+    if (!target) { notify('warning', 'Zgjidh modulin ku do të zhvendoset grupi.'); sel.focus(); return; }
     let force = 0;
     if (completed) {
       const ok = await window.qtaConfirm({
         title: 'Ky grup është i mbyllur',
-        message: 'Dokumentet e këtij grupi mund të jenë lëshuar tashmë. Je i sigurt që do ta kalosh te një modul tjetër?',
-        confirm: 'Po, kaloje', danger: false
+        message: 'Dokumentet e këtij grupi mund të jenë lëshuar tashmë. Je i sigurt që do ta zhvendosësh te një modul tjetër?',
+        confirm: 'Po, zhvendose', danger: false
       });
       if (!ok) return;
       force = 1;
@@ -616,7 +642,10 @@ document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', 
     btn.disabled = true; btn.classList.add('is-loading');
     try {
       await post({action:'move_group_course', group_id: groupId, new_course_id: target, force});
-      sessionStorage.setItem('qtaFlash', 'Grupi #' + groupId + ' kaloi te moduli i ri.');
+      const targetName = (sel.options[sel.selectedIndex]?.text || 'moduli i ri').replace(/\s*\([^)]*\)\s*$/, '');
+      try { sessionStorage.setItem('qtaFlash', 'Grupi #' + groupId + ' u zhvendos te "' + targetName + '".'); } catch (e) { /* pa njoftim */ }
+      /* Pas ringarkimit rihapet dritarja e grupeve të modulit, nëse u nis prej saj. */
+      if (window.qtaReopenAfterReload) window.qtaReopenAfterReload(modal);
       location.reload();
     } catch (e) {
       btn.disabled = false; btn.classList.remove('is-loading');

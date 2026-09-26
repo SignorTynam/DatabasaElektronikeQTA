@@ -223,7 +223,7 @@ else require __DIR__ . '/inc/navbar.php';
     <?php
       $tfTarget = '#registerTable';
       $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, modul…';
-      $tfChips = [['label' => 'Kaloi', 'match' => 'kaloi'], ['label' => 'Pa provim', 'match' => 'pret']];
+      $tfChips = [['label' => 'Përfunduar', 'match' => 'përfunduar'], ['label' => 'Presin pikët', 'match' => 'pret pikët'], ['label' => 'Në mësim', 'match' => 'në mësim']];
       $tfNoun = 'regjistrime';
       require __DIR__ . '/../shared/partials/table_filter.php';
     ?>
@@ -275,11 +275,11 @@ else require __DIR__ . '/inc/navbar.php';
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date" title="Data e provimit, jo para mbarimit të grupit (dd.mm.vvvv)">
               <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['exam_date'])) ?></span>
             </td>
-            <td class="cell nowrap num-col" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët 0–100. Kalon me 50 e lart.">
+            <td class="cell nowrap num-col" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët 0–100">
               <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($scoreText) ?></span>
             </td>
             <td data-status>
-              <?= $gid ? qta_enrollment_status(['start_date' => $r['start_date'], 'end_date' => $r['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']])
+              <?= $gid ? qta_enrollment_status(['start_date' => $r['start_date'], 'end_date' => $r['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']], false)
                        : qta_status('Pret caktimin në grup', 'neutral', 'bi-hourglass-split') ?>
             </td>
             <td class="nowrap">
@@ -353,7 +353,7 @@ function normalizeDateForServer(v){
 }
 function toIso(v){ try { return normalizeDateForServer(v); } catch(e){ return ''; } }
 
-/* Gjendja e rreshtit — e njëjta logjikë si në server (Kalon me ≥ 50) */
+/* Gjendja e rreshtit — e njëjta logjikë si në server (vetëm pikët, pa "kaloi") */
 function statusHtml(label, variant, icon){
   const span = document.createElement('span');
   span.className = 'status status-' + variant;
@@ -373,10 +373,9 @@ function refreshStatus(row){
   const when = d => { const n = days(d); return n===0?'sot':n===1?'nesër':n>1?('pas '+n+' ditësh'):(Math.abs(n)+' ditë më parë'); };
   let html;
   if (scoreTxt !== '' && scoreTxt !== '—' && !isNaN(scoreTxt.replace(',','.'))) {
-    const n = parseFloat(scoreTxt.replace(',','.'));
-    html = n >= 50 ? statusHtml('Kaloi · '+scoreTxt, 'success', 'bi-check-circle-fill') : statusHtml('Nuk kaloi · '+scoreTxt, 'danger', 'bi-x-circle-fill');
+    html = statusHtml('Përfunduar', 'neutral', 'bi-check2');
   } else if (exam) {
-    html = days(exam) >= 0 ? statusHtml('Provimi '+when(exam), 'info', 'bi-calendar-event') : statusHtml('Pret rezultatin', 'warning', 'bi-clock-fill');
+    html = days(exam) >= 0 ? statusHtml('Provimi '+when(exam), 'info', 'bi-calendar-event') : statusHtml('Pret pikët', 'warning', 'bi-hourglass-split');
   } else if (start && start > today) {
     html = statusHtml('Nis '+when(start), 'info', 'bi-calendar-event');
   } else if (start && end && today >= start && today <= end) {

@@ -96,18 +96,7 @@
       '</tr>';
     }).join('');
 
-    var agencies = [], edus = [];
-    if (person) {
-      (d.students || []).forEach(function (s) {
-        if (s.agency && agencies.indexOf(s.agency) < 0) agencies.push(s.agency);
-        if (s.edu_label && edus.indexOf(s.edu_label) < 0) edus.push(s.edu_label);
-      });
-    } else {
-      if (d.agency) agencies.push(d.agency);
-      if (d.edu_label) edus.push(d.edu_label);
-    }
-    var st = d.stats || {};
-
+    /* Verifikimi publik tregon vetëm personin dhe modulet — asgjë tjetër. */
     result.innerHTML =
       '<p class="result-person">' + esc(full) + '</p>' +
       '<p class="result-id">' + idLine + '</p>' +
@@ -115,16 +104,6 @@
       (rows
         ? '<div class="table-responsive"><table class="table"><thead><tr><th scope="col">Moduli</th><th scope="col">Nr. i amzës</th><th scope="col">Gjendja</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
         : '<p class="text-muted">Nuk ka ende module të regjistruara.</p>') +
-      '<details class="mt-4"><summary class="fw-semibold">Të dhëna shtesë</summary>' +
-        '<dl class="kv mt-3">' +
-          '<dt>Agjencia</dt><dd>' + esc(agencies.join(', ') || '—') + '</dd>' +
-          '<dt>Arsimi</dt><dd>' + esc(edus.join(', ') || '—') + '</dd>' +
-          '<dt>Module</dt><dd>' + esc(st.courses != null ? st.courses : '—') + '</dd>' +
-          '<dt>Grupe</dt><dd>' + esc(st.groups != null ? st.groups : '—') + '</dd>' +
-          '<dt>Mesatarja e pikëve</dt><dd>' + esc(st.avg_score != null ? st.avg_score : '—') + '</dd>' +
-          '<dt>Provime të kaluara</dt><dd>' + esc(st.pass_rate != null ? st.pass_rate + '%' : '—') + '</dd>' +
-        '</dl>' +
-      '</details>' +
       actionsHtml(true);
   }
 

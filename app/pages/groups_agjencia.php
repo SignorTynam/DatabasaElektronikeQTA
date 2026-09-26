@@ -129,7 +129,7 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
     <div class="page-head-main">
       <span class="eyebrow"><?= h((string)($AGENCY['company_name'] ?: 'Agjencia')) ?></span>
       <h1 class="page-title">Grupet</h1>
-      <p class="page-lead">Grupet ku janë punonjësit tuaj: moduli, datat dhe rezultati i secilit. Kliko një grup për të parë punonjësit.</p>
+      <p class="page-lead">Grupet ku janë punonjësit tuaj: moduli, datat dhe pikët e secilit. Hap një grup për të parë punonjësit.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -175,61 +175,27 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
               <th scope="col">Gjendja</th>
             </tr>
           </thead>
+          <tbody>
           <?php foreach ($groups as $gid => $g):
             $hd = $g['header'];
             $n = count($g['students']);
-            $passed = count(array_filter($g['students'], static fn($s) => $s['final_score'] !== null && (float)$s['final_score'] >= 50)); ?>
-            <tbody>
-              <tr>
-                <td class="col-wide">
-                  <button class="row-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#gaBody<?= (int)$gid ?>" aria-expanded="false" aria-controls="gaBody<?= (int)$gid ?>">
-                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
-                    <span>
-                      <span class="person-name"><?= h((string)$hd['course_name']) ?></span>
-                      <span class="cell-sub">Grupi #<?= (int)$gid ?><?= !empty($hd['hours']) ? ' · ' . (int)$hd['hours'] . ' orë' : '' ?></span>
-                    </span>
-                  </button>
-                </td>
-                <td class="nowrap"><?= h(qta_date($hd['start_date'])) ?> – <?= h(qta_date($hd['end_date'])) ?></td>
-                <td class="nowrap num-col"><?= $n ?><?php if ($passed): ?><span class="cell-sub"><?= $passed ?> kaluan</span><?php endif; ?></td>
-                <td><?= $groupState($hd) ?></td>
-              </tr>
-              <tr class="row-details">
-                <td colspan="4">
-                  <div class="collapse" id="gaBody<?= (int)$gid ?>">
-                    <div class="row-details-inner">
-                      <div class="table-responsive">
-                        <table class="table table-sm">
-                          <thead>
-                            <tr>
-                              <th scope="col" class="nowrap">Nr. i amzës</th>
-                              <th scope="col">Punonjësi</th>
-                              <th scope="col" class="nowrap">Provimi</th>
-                              <th scope="col">Rezultati</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <?php foreach ($g['students'] as $s):
-                              $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? ''); ?>
-                              <tr>
-                                <td class="nowrap"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
-                                <td>
-                                  <a class="person-name" href="student_card.php?sid=<?= (int)$s['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
-                                  <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
-                                </td>
-                                <td class="nowrap"><?= h(qta_date($s['exam_date'] ?? null)) ?></td>
-                                <td><?= qta_enrollment_status($s) ?></td>
-                              </tr>
-                            <?php endforeach; ?>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
+            $scored = count(array_filter($g['students'], static fn($s) => $s['final_score'] !== null && $s['final_score'] !== '')); ?>
+            <tr>
+              <td class="col-wide">
+                <button class="row-open" type="button" data-bs-toggle="modal" data-bs-target="#gaGroupModal_<?= (int)$gid ?>" aria-haspopup="dialog">
+                  <span>
+                    <span class="person-name"><?= h((string)$hd['course_name']) ?></span>
+                    <span class="cell-sub">Grupi #<?= (int)$gid ?><?= !empty($hd['hours']) ? ' · ' . (int)$hd['hours'] . ' orë' : '' ?></span>
+                  </span>
+                  <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+              </td>
+              <td class="nowrap"><?= h(qta_date($hd['start_date'])) ?> – <?= h(qta_date($hd['end_date'])) ?></td>
+              <td class="nowrap num-col"><?= $n ?><?php if ($scored): ?><span class="cell-sub"><?= $scored ?> me pikë</span><?php endif; ?></td>
+              <td><?= $groupState($hd) ?></td>
+            </tr>
           <?php endforeach; ?>
+          </tbody>
         </table>
       </div>
     <?php else: ?>
@@ -270,6 +236,66 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
     </section>
   <?php endif; ?>
 </main>
+
+<?php foreach ($groups as $gid => $g):
+  $gid = (int)$gid;
+  $hd = $g['header']; ?>
+  <!-- Dritarja e grupit #<?= $gid ?>: punonjësit e agjencisë në këtë grup -->
+  <div class="modal fade modal-record" id="gaGroupModal_<?= $gid ?>" tabindex="-1" aria-labelledby="gaTitle_<?= $gid ?>" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow mb-0">Grupi #<?= $gid ?></span>
+            <h2 class="modal-title" id="gaTitle_<?= $gid ?>"><?= h((string)$hd['course_name']) ?></h2>
+            <div class="modal-meta">
+              <span><i class="bi bi-calendar-range" aria-hidden="true"></i><?= h(qta_date($hd['start_date'])) ?> – <?= h(qta_date($hd['end_date'])) ?></span>
+              <?php if (!empty($hd['hours'])): ?><span><i class="bi bi-clock" aria-hidden="true"></i><?= (int)$hd['hours'] ?> orë</span><?php endif; ?>
+              <span><?= $groupState($hd) ?></span>
+            </div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+        </div>
+        <div class="modal-body">
+          <section class="modal-section" aria-labelledby="gaMembers_<?= $gid ?>">
+            <div class="modal-section-head">
+              <h3 class="modal-section-title" id="gaMembers_<?= $gid ?>">Punonjësit tuaj në këtë grup <span class="count"><?= count($g['students']) ?></span></h3>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th scope="col" class="nowrap">Nr. i amzës</th>
+                    <th scope="col">Punonjësi</th>
+                    <th scope="col" class="nowrap">Provimi</th>
+                    <th scope="col">Gjendja</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php foreach ($g['students'] as $s):
+                    $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? ''); ?>
+                    <tr>
+                      <td class="nowrap"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
+                      <td>
+                        <a class="person-name" href="student_card.php?sid=<?= (int)$s['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
+                        <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
+                      </td>
+                      <td class="nowrap"><?= h(qta_date($s['exam_date'] ?? null)) ?></td>
+                      <td><?= qta_enrollment_status($s) ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        </div>
+      </div>
+    </div>
+  </div>
+<?php endforeach; ?>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>
