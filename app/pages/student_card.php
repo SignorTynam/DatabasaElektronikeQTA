@@ -189,6 +189,7 @@ if ($pid > 0) {
             cgs.student_id,
             s.nr_amze,
             cg.id AS group_id,
+            cg.model AS group_model,
             c.code,
             c.name,
             cg.start_date,
@@ -205,7 +206,7 @@ if ($pid > 0) {
         $q4->execute($ids);
         $groups = $q4->fetchAll(PDO::FETCH_ASSOC);
 
-        // Modulet e planifikuara (pa grup)
+        // Kurset e planifikuara (pa grup)
         $q5 = $pdo->prepare("
           SELECT
             scp.id AS scp_id,
@@ -331,7 +332,7 @@ $flashErr  = flash('err');
   <header class="page-head">
     <div class="page-head-main">
       <h1 class="page-title">Kartela e kursantit</h1>
-      <p class="page-lead">Gjej një person dhe shiko gjithçka për të në një vend: të dhënat, modulet, provimet dhe kodin QR.</p>
+      <p class="page-lead">Gjej një person dhe shiko gjithçka për të në një vend: të dhënat, kurset, provimet dhe kodin QR.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -458,7 +459,7 @@ $flashErr  = flash('err');
 
       <div class="stats mb-4" aria-label="Përmbledhje">
         <div class="stat">
-          <span class="stat-label">Module</span>
+          <span class="stat-label">Kurse</span>
           <span class="stat-value"><?= (int)($stats['courses'] ?? 0) + count($planned) ?></span>
           <span class="stat-note"><?= count($planned) ? h(qta_plural(count($planned), 'pret grup', 'presin grup')) : 'të gjitha me grup' ?></span>
         </div>
@@ -475,21 +476,21 @@ $flashErr  = flash('err');
         <div class="stat">
           <span class="stat-label">Orë mësimi</span>
           <span class="stat-value"><?= number_format((int)($stats['hours'] ?? 0), 0, ',', '.') ?></span>
-          <span class="stat-note">në modulet me grup</span>
+          <span class="stat-note">në kurset me grup</span>
         </div>
       </div>
 
-      <!-- Modulet -->
+      <!-- Kurset -->
       <section class="section" aria-labelledby="modTitle">
         <div class="section-head">
-          <h2 class="section-title" id="modTitle">Modulet dhe provimet</h2>
+          <h2 class="section-title" id="modTitle">Kurset dhe provimet</h2>
         </div>
         <?php if ($groups || $planned): ?>
           <div class="table-responsive">
             <table class="table">
               <thead>
                 <tr>
-                  <th scope="col" class="col-wide">Moduli</th>
+                  <th scope="col" class="col-wide">Kursi</th>
                   <th scope="col" class="nowrap">Nr. i amzës</th>
                   <th scope="col" class="nowrap">Datat e grupit</th>
                   <th scope="col" class="nowrap">Provimi</th>
@@ -503,7 +504,7 @@ $flashErr  = flash('err');
                       <span class="person-name"><?= h((string)$gr['name']) ?></span>
                       <span class="cell-sub">
                         <?php if (!$IS_AGENCY): ?>
-                          <a href="groups.php?group=<?= (int)$gr['group_id'] ?>">Grupi #<?= (int)$gr['group_id'] ?></a>
+                          <a href="<?= ($gr['group_model'] ?? 'legacy') === 'scheduled' ? 'lesson_group.php?id=' . (int)$gr['group_id'] : 'groups.php?group=' . (int)$gr['group_id'] ?>">Grupi #<?= (int)$gr['group_id'] ?></a>
                         <?php else: ?>Grupi #<?= (int)$gr['group_id'] ?><?php endif; ?>
                         <?php if (!empty($gr['code'])): ?> · <span class="code"><?= h((string)$gr['code']) ?></span><?php endif; ?>
                       </span>
@@ -518,7 +519,7 @@ $flashErr  = flash('err');
                   <tr>
                     <td class="col-wide">
                       <span class="person-name"><?= h((string)$pl['name']) ?></span>
-                      <span class="cell-sub">Moduli është zgjedhur<?php if (!empty($pl['code'])): ?> · <span class="code"><?= h((string)$pl['code']) ?></span><?php endif; ?></span>
+                      <span class="cell-sub">Kursi është zgjedhur<?php if (!empty($pl['code'])): ?> · <span class="code"><?= h((string)$pl['code']) ?></span><?php endif; ?></span>
                     </td>
                     <td class="nowrap"><span class="id-code"><?= h((string)$pl['nr_amze']) ?></span></td>
                     <td class="nowrap text-muted">—</td>
@@ -535,7 +536,7 @@ $flashErr  = flash('err');
             </table>
           </div>
         <?php else: ?>
-          <?= qta_empty('Ende pa module', 'Ky person nuk ka asnjë modul të zgjedhur dhe nuk është në asnjë grup.', 'bi-journal', $CAN_EDIT ? '<a class="btn btn-secondary" href="students_without_groups.php">Te kursantët pa grup</a>' : '', 'is-compact') ?>
+          <?= qta_empty('Ende pa kurse', 'Ky person nuk ka asnjë kurs të zgjedhur dhe nuk është në asnjë grup.', 'bi-journal', $CAN_EDIT ? '<a class="btn btn-secondary" href="students_without_groups.php">Te kursantët pa grup</a>' : '', 'is-compact') ?>
         <?php endif; ?>
       </section>
 
@@ -627,7 +628,7 @@ $flashErr  = flash('err');
       <!-- Kodi QR -->
       <section class="panel mb-4" aria-labelledby="qrTitle">
         <h2 class="section-title mb-1" id="qrTitle">Kodi QR i verifikimit</h2>
-        <p class="text-muted small">Kushdo që e skanon me kamerën e telefonit sheh modulet e këtij personi në regjistër.</p>
+        <p class="text-muted small">Kushdo që e skanon me kamerën e telefonit sheh kurset e këtij personi në regjistër.</p>
 
         <div data-qr-panel <?= $verifyURL ? '' : 'hidden' ?>>
           <div class="text-center">

@@ -227,7 +227,7 @@ $sql = "
       LIMIT 1
     ) AS group_end_date,
 
-    /* Moduli i planifikuar (nëse nuk ka grup) */
+    /* Kursi i planifikuar (nëse nuk ka grup) */
     (
       SELECT c.name
       FROM student_course_plans scp
@@ -266,8 +266,8 @@ $headers = array(
     'Datëlindja',
     'Vendlindja',
     'Arsimi',
-    'Moduli',
-    'Datat e modulit',
+    'Kursi',
+    'Datat e kursit',
     'Gjinia',
     'Tel.',
 );
@@ -279,10 +279,10 @@ foreach ($rows as $r) {
         ($r['edu_label'] ?? '')
     );
 
-    // Moduli
+    // Kursi
     $moduleName = $r['group_name'] ?: $r['planned_course_name'] ?: '';
 
-    // Datat e modulit
+    // Datat e kursit
     $datesLabel = '';
     $from = fmtDate_dmy($r['group_start_date'] ?? null);
     $to   = fmtDate_dmy($r['group_end_date'] ?? null);

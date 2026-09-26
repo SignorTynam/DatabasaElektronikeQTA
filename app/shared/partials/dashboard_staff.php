@@ -34,16 +34,28 @@ $many = static function (PDO $pdo, string $sql): array {
 $checks = [
   ['Kursantë pa grup', 'Janë regjistruar, por ende nuk janë caktuar në një grup.', 'students_without_groups.php', 'Cakto në grup', 'warning',
    "SELECT COUNT(*) n FROM students s WHERE NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.student_id = s.id)"],
-  ['Grupe që kanë mbaruar, por s\'janë mbyllur', 'Data e mbarimit ka kaluar. Kontrollo provimet dhe mbyll grupin.', 'groups.php', 'Shiko grupet', 'warning',
-   "SELECT COUNT(*) n FROM course_groups WHERE end_date < CURDATE() AND (is_completed = 0 OR is_completed IS NULL)"],
+  ['Grupe që kanë mbaruar, por s\'janë mbyllur', 'Mësimi ka mbaruar. Kontrollo provimet dhe pikët, pastaj mbyll grupin.', 'lesson_groups.php', 'Shiko grupet', 'warning',
+   "SELECT COUNT(*) n FROM course_groups WHERE model = 'scheduled' AND end_date < CURDATE() AND (is_completed = 0 OR is_completed IS NULL)"],
+  ['Grupe të mëparshme që kanë mbaruar, por s\'janë mbyllur', 'Data e mbarimit ka kaluar. Kontrollo provimet dhe mbyll grupin.', 'groups.php', 'Shiko grupet e mëparshme', 'warning',
+   "SELECT COUNT(*) n FROM course_groups WHERE model = 'legacy' AND end_date < CURDATE() AND (is_completed = 0 OR is_completed IS NULL)"],
+  ['Kurse që kursantët i presin, por s\'janë gati', 'Kursantët e kanë zgjedhur kursin, por kursi nuk ka ende module dhe tema me orët e plota, prandaj grupi me orar nuk krijohet.', 'courses.php', 'Plotëso kurset', 'info',
+   "SELECT COUNT(*) n FROM courses c
+     WHERE EXISTS (SELECT 1 FROM student_course_plans p WHERE p.course_id = c.id AND p.status = 'planned')
+       AND (NOT EXISTS (SELECT 1 FROM course_modules m WHERE m.course_id = c.id)
+            OR c.hours <> (SELECT COALESCE(SUM(m.hours),0) FROM course_modules m WHERE m.course_id = c.id)
+            OR EXISTS (SELECT 1 FROM course_modules m
+                       WHERE m.course_id = c.id
+                         AND m.hours <> (SELECT COALESCE(SUM(t.hours),0) FROM course_topics t WHERE t.module_id = m.id)))"],
   ['Kursantë pa datë provimi', 'Grupi ka mbaruar, por kursantit nuk i është caktuar data e provimit.', 'register.php', 'Cakto provimet', 'danger',
    "SELECT COUNT(*) n FROM course_group_students cgs JOIN course_groups cg ON cg.id = cgs.group_id WHERE cgs.exam_date IS NULL AND cg.end_date < CURDATE()"],
   ['Kartela pa numër personal', 'Pa numrin personal kursanti nuk mund të hyjë në llogarinë e vet.', 'students.php', 'Plotëso', 'info',
    "SELECT COUNT(*) n FROM persons WHERE personal_number IS NULL OR personal_number = ''"],
   ['Datëlindje për t\'u kontrolluar', 'Mosha del nën 15 ose mbi 90 vjeç — ndoshta data është shkruar gabim.', 'students.php', 'Kontrollo', 'info',
    "SELECT COUNT(*) n FROM persons WHERE birth_date IS NOT NULL AND TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) NOT BETWEEN 15 AND 90"],
-  ['Grupe bosh', 'Grupe pa asnjë kursant brenda.', 'groups.php', 'Shiko grupet', 'neutral',
-   "SELECT COUNT(*) n FROM course_groups cg WHERE NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.group_id = cg.id)"],
+  ['Grupe bosh', 'Grupe pa asnjë kursant brenda.', 'lesson_groups.php', 'Shiko grupet', 'neutral',
+   "SELECT COUNT(*) n FROM course_groups cg WHERE cg.model = 'scheduled' AND NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.group_id = cg.id)"],
+  ['Grupe të mëparshme bosh', 'Grupe pa asnjë kursant brenda.', 'groups.php', 'Shiko grupet e mëparshme', 'neutral',
+   "SELECT COUNT(*) n FROM course_groups cg WHERE cg.model = 'legacy' AND NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.group_id = cg.id)"],
 ];
 $waiting = [];
 foreach ($checks as $c) {
@@ -175,9 +187,9 @@ $agendaKinds = [
             <span class="quick-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
             <span><span class="quick-title">Cakto në grup</span><span class="quick-text">Kursantët që presin një grup.</span></span>
           </a>
-          <a class="quick" href="groups.php">
+          <a class="quick" href="lesson_groups.php">
             <span class="quick-icon"><i class="bi bi-collection" aria-hidden="true"></i></span>
-            <span><span class="quick-title">Grupet</span><span class="quick-text">Datat, provimet, dokumentet.</span></span>
+            <span><span class="quick-title">Grupet</span><span class="quick-text">Orari i mësimit, provimet, dokumentet.</span></span>
           </a>
           <a class="quick" href="register.php">
             <span class="quick-icon"><i class="bi bi-journal-text" aria-hidden="true"></i></span>
@@ -229,7 +241,7 @@ $agendaKinds = [
       <section class="section" aria-labelledby="weekTitle">
         <div class="section-head">
           <h2 class="section-title" id="weekTitle">Kjo javë</h2>
-          <a class="section-link" href="groups.php">Të gjitha grupet <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+          <a class="section-link" href="lesson_groups.php">Të gjitha grupet <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
         <?php if ($agenda): ?>
           <ul class="agenda">
@@ -267,7 +279,7 @@ $agendaKinds = [
             <span class="stat-label">Kursantë të regjistruar</span>
             <span class="stat-value"><?= number_format((int)$figures['students_total'], 0, ',', '.') ?></span>
           </a>
-          <a class="stat" href="groups.php">
+          <a class="stat" href="lesson_groups.php">
             <span class="stat-label">Grupe në vazhdim</span>
             <span class="stat-value"><?= number_format((int)$figures['active_groups'], 0, ',', '.') ?></span>
             <span class="stat-note"><?= h(qta_plural((int)$figures['active_enrollments'], 'kursant', 'kursantë')) ?> në mësim</span>

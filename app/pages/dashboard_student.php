@@ -94,7 +94,7 @@ if ($studentIds) {
   $groups = $G->fetchAll(PDO::FETCH_ASSOC);
 }
 
-/* Modulet e planifikuara që ende s'kanë grup */
+/* Kurset e planifikuara që ende s'kanë grup */
 $planned = [];
 if ($studentIds) {
   $ph = implode(',', array_fill(0, count($studentIds), '?'));
@@ -161,7 +161,7 @@ require __DIR__ . '/inc/navbar3.php';
     <div class="page-head-main">
       <span class="eyebrow"><?= h(ucfirst(qta_today_label())) ?></span>
       <h1 class="page-title"><?= h(qta_greeting()) ?><?= $firstName !== '' ? ', ' . h($firstName) : '' ?></h1>
-      <p class="page-lead">Këtu sheh modulet ku je regjistruar, provimet dhe pikët e tua.</p>
+      <p class="page-lead">Këtu sheh kurset ku je regjistruar, provimet dhe pikët e tua.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -188,7 +188,7 @@ require __DIR__ . '/inc/navbar3.php';
     <div class="col-12 col-lg-7">
       <section class="section" aria-labelledby="modTitle">
         <div class="section-head">
-          <h2 class="section-title" id="modTitle">Modulet e mia</h2>
+          <h2 class="section-title" id="modTitle">Kurset e mia</h2>
           <?php if ($groups): ?>
             <span class="section-meta"><?= h($passedCount . ' nga ' . count($groups)) ?> me pikë</span>
           <?php endif; ?>
@@ -224,7 +224,7 @@ require __DIR__ . '/inc/navbar3.php';
             <?php endforeach; ?>
           </ul>
         <?php else: ?>
-          <?= qta_empty('Ende pa module', 'Sapo QTA të të caktojë në një grup, moduli dhe datat shfaqen këtu.', 'bi-mortarboard') ?>
+          <?= qta_empty('Ende pa kurse', 'Sapo QTA të të caktojë në një grup, kursi dhe datat shfaqen këtu.', 'bi-mortarboard') ?>
         <?php endif; ?>
       </section>
     </div>

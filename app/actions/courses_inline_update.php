@@ -26,7 +26,7 @@ $me = $userStmt->fetch(PDO::FETCH_ASSOC);
 $meRole = strtolower((string)($me['role_name'] ?? ''));
 if (!in_array($meRole, ['administrator','editor'], true)) {
   http_response_code(403);
-  echo json_encode(['ok'=>false,'error'=>'Vetëm stafi i QTA mund t\'i ndryshojë modulet.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Vetëm stafi i QTA mund t\'i ndryshojë kurset.']); exit;
 }
 
 /* Guard: ndryshimet duhet të jenë të hapura. Faqja përdor kyçin e përbashkët
@@ -52,19 +52,19 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csr
 try {
 
   /* ==========================================================
-     1) UPDATE FUSHAT E MODULIT (code, name, hours) – inline
+     1) UPDATE FUSHAT E KURSIT (code, name, hours) – inline
      ========================================================== */
   if ($action === 'update_field') {
       $course_id = (int)($data['course_id'] ?? 0);
       $field     = trim((string)($data['field'] ?? ''));
       $value     = $data['value'] ?? null;
 
-      if ($course_id <= 0) { throw new RuntimeException('Moduli nuk u gjet. Rifresko faqen.'); }
+      if ($course_id <= 0) { throw new RuntimeException('Kursi nuk u gjet. Rifresko faqen.'); }
 
       /* Verifiko që kursi ekziston */
       $chk = $pdo->prepare("SELECT id FROM courses WHERE id = :id LIMIT 1");
       $chk->execute([':id'=>$course_id]);
-      if (!$chk->fetch()) { throw new RuntimeException('Moduli nuk u gjet. Rifresko faqen.'); }
+      if (!$chk->fetch()) { throw new RuntimeException('Kursi nuk u gjet. Rifresko faqen.'); }
 
       /* Whitelist fushash */
       $allowed = ['code','name','hours'];
@@ -74,10 +74,10 @@ try {
 
       if ($field === 'code') {
           $v = trim((string)$value);
-          if ($v === '') throw new RuntimeException('Shkruaj kodin e modulit.');
+          if ($v === '') throw new RuntimeException('Shkruaj kodin e kursit.');
           $q = $pdo->prepare("SELECT COUNT(*) FROM courses WHERE code=:v AND id<>:id");
           $q->execute([':v'=>$v, ':id'=>$course_id]);
-          if ((int)$q->fetchColumn() > 0) throw new RuntimeException('Ky kod i përket një moduli tjetër. Zgjidh një kod tjetër.');
+          if ((int)$q->fetchColumn() > 0) throw new RuntimeException('Ky kod i përket një kursi tjetër. Zgjidh një kod tjetër.');
           $pdo->prepare("UPDATE courses SET code=:v WHERE id=:id")->execute([':v'=>$v, ':id'=>$course_id]);
 
           if (function_exists('qta_audit_log')) {
@@ -87,7 +87,7 @@ try {
 
       } elseif ($field === 'name') {
           $v = trim((string)$value);
-          if ($v === '') throw new RuntimeException('Shkruaj emrin e modulit.');
+          if ($v === '') throw new RuntimeException('Shkruaj emrin e kursit.');
           $pdo->prepare("UPDATE courses SET name=:v WHERE id=:id")->execute([':v'=>$v, ':id'=>$course_id]);
 
           if (function_exists('qta_audit_log')) {
@@ -113,20 +113,24 @@ try {
   }
 
   /* ==========================================================
-     2) ZHVENDOS GRUPIN TE MODUL TJETËR
+     2) ZHVENDOS GRUPIN (E MËPARSHËM) TE KURS TJETËR
      ========================================================== */
   if ($action === 'move_group_course') {
       $group_id = (int)($data['group_id'] ?? 0);
       $new_course_id = (int)($data['new_course_id'] ?? 0);
 
       $force = (int)($data['force'] ?? 0);
-      if ($group_id <= 0 || $new_course_id <= 0) throw new RuntimeException('Zgjidh modulin ku do të kalojë grupi.');
+      if ($group_id <= 0 || $new_course_id <= 0) throw new RuntimeException('Zgjidh kursin ku do të kalojë grupi.');
       // ekziston grupi?
-      $gq = $pdo->prepare("SELECT cg.id, cg.course_id, cg.is_completed FROM course_groups cg WHERE cg.id=:g LIMIT 1");
+      $gq = $pdo->prepare("SELECT cg.id, cg.course_id, cg.is_completed, cg.model FROM course_groups cg WHERE cg.id=:g LIMIT 1");
       $gq->execute([':g'=>$group_id]);
       $g = $gq->fetch(PDO::FETCH_ASSOC);
       if (!$g) throw new RuntimeException('Grupi nuk u gjet. Rifresko faqen.');
-      if ((int)$g['course_id'] === $new_course_id) throw new RuntimeException('Grupi është tashmë në këtë modul.');
+      /* Një grup me orar mësimi e ka orarin të ndërtuar nga temat e kursit të vet. */
+      if (($g['model'] ?? 'legacy') === 'scheduled') {
+          throw new RuntimeException('Grupi #' . $group_id . ' ka orar mësimi të ndërtuar nga temat e këtij kursi, prandaj nuk kalon te një kurs tjetër. Nëse kursi është gabim, fshije grupin dhe krijoje sërish te "Grupet".');
+      }
+      if ((int)$g['course_id'] === $new_course_id) throw new RuntimeException('Grupi është tashmë në këtë kurs.');
 
       /* Njësoj si te "Grupet": grupi i mbyllur ndryshohet vetëm me konfirmim */
       if ((int)$g['is_completed'] === 1 && !$force) {
@@ -136,9 +140,9 @@ try {
       // ekziston kursi target?
       $cq = $pdo->prepare("SELECT id FROM courses WHERE id=:id LIMIT 1");
       $cq->execute([':id'=>$new_course_id]);
-      if (!$cq->fetch()) throw new RuntimeException('Moduli i zgjedhur nuk u gjet. Rifresko faqen.');
+      if (!$cq->fetch()) throw new RuntimeException('Kursi i zgjedhur nuk u gjet. Rifresko faqen.');
 
-      /* Njësoj si te "Grupet": askush në grup nuk duhet ta ketë ndjekur tashmë modulin e ri */
+      /* Njësoj si te "Grupet": askush në grup nuk duhet ta ketë ndjekur tashmë kursin e ri */
       $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
           FROM course_group_students cgs
@@ -162,7 +166,7 @@ try {
           $hit = $confPN->fetchAll(PDO::FETCH_ASSOC);
           if ($hit) {
               $items = array_map(fn($r) => (string)($r['nr_amze'] ?: $r['personal_number']), $hit);
-              throw new RuntimeException('Grupi nuk u zhvendos: disa persona e kanë ndjekur tashmë modulin e ri (nr. i amzës: ' . implode(', ', $items) . ').');
+              throw new RuntimeException('Grupi nuk u zhvendos: disa persona e kanë ndjekur tashmë kursin e ri (nr. i amzës: ' . implode(', ', $items) . ').');
           }
       }
 

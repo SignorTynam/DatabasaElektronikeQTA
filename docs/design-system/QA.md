@@ -198,6 +198,20 @@ Confirm unchanged:
 - profile/account;
 - search.
 
+Courses and scheduled groups (see `docs/domain/COURSES-AND-SCHEDULES.md`):
+
+- `php tests/run.php` and `--integration` against a test database pass;
+- a course is "Gati për grup" only when module hours = course hours and topic hours =
+  module hours; a draft cannot be chosen for a new group;
+- modules and topics reorder with the keyboard (arrow buttons "Lëviz lart" / "Lëviz poshtë"), focus stays on the item;
+- 100-hour course from 01.10.2026 at 5 hours/day with Sunday 11.10.2026 at 4 hours ends on
+  23.10.2026 with a 1-hour last day;
+- every earlier group opens in "Grupet e mëparshme" with unchanged dates, exams and points,
+  and cannot be opened, dated or moved through the scheduled-group pages or endpoints;
+- a change that touches past days or a closed group asks first; an exam date before the new
+  end blocks the change;
+- agencies and trainees cannot open `course.php`, `lesson_groups.php`, `lesson_group.php`.
+
 ## 16. Visual review
 
 Take screenshots at minimum:

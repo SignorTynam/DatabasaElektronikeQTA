@@ -354,7 +354,7 @@ try {
 
     $c2=$pdo->prepare("SELECT COUNT(*) FROM student_course_plans WHERE student_id=:sid");
     $c2->execute([':sid'=>$sid]);
-    if ((int)$c2->fetchColumn()>0) throw new RuntimeException('Nuk mund të fshihet: ky regjistrim ka një modul të zgjedhur.');
+    if ((int)$c2->fetchColumn()>0) throw new RuntimeException('Nuk mund të fshihet: ky regjistrim ka një kurs të zgjedhur.');
 
     $del=$pdo->prepare("DELETE FROM students WHERE id=:id");
     $del->execute([':id'=>$sid]);

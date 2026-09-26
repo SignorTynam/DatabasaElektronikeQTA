@@ -93,7 +93,7 @@ if ($group_id <= 0) {
   $gq->execute([':sid'=>$student_id]);
   $group_id = (int)$gq->fetchColumn();
   if (!$group_id) {
-    echo json_encode(['ok'=>false,'error'=>'Së pari caktoni një grup/modul për këtë student.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Së pari cakto kursantin në një grup.']); exit;
   }
 }
 
@@ -105,11 +105,16 @@ if (!$chk->fetchColumn()) {
 }
 
 /* Lexo datat e grupit (për validim) */
-$ginfo = $pdo->prepare("SELECT start_date, end_date FROM course_groups WHERE id=:gid");
+$ginfo = $pdo->prepare("SELECT start_date, end_date, model FROM course_groups WHERE id=:gid");
 $ginfo->execute([':gid'=>$group_id]);
 $G = $ginfo->fetch(PDO::FETCH_ASSOC);
 if(!$G){
   echo json_encode(['ok'=>false,'error'=>'Grupi nuk u gjet.']); exit;
+}
+/* Grupi me orar mësimi: datat dalin nga orari, nuk shkruhen me dorë. */
+if (($G['model'] ?? 'legacy') === 'scheduled' && in_array($action, ['update_group_start', 'update_group_end'], true)) {
+  http_response_code(400);
+  echo json_encode(['ok'=>false,'error'=>'Datat e këtij grupi i llogarit orari i mësimit. Ndryshoji te faqja e grupit, te "Grupet".']); exit;
 }
 
 try {

@@ -74,7 +74,7 @@ $eduLevels = $pdo->query("SELECT id, code, label FROM education_levels ORDER BY 
 $genders   = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (int)$g['id']; break; } }
 
-/* Kurse (modulet) për zgjedhje */
+/* Kurset për zgjedhje */
 try {
     $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
@@ -300,8 +300,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($dup->fetchColumn()) {
                         // Ky person ka bërë / po bën këtë modul me një AMZË tjetër
                         throw new RuntimeException(
-                            'Ky student ka tashmë një regjistrim për këtë modul (në një AMZË tjetër). '
-                            .'Ju lutem zgjidh një modul tjetër ose lëre bosh.'
+                            'Ky person ka tashmë një regjistrim për këtë kurs (me një numër tjetër amze). '
+                            .'Zgjidh një kurs tjetër ose lëre bosh.'
                         );
                     }
                 }
@@ -628,7 +628,7 @@ $listStmt = $pdo->prepare("
         ) AS group_end_date,
 
 
-        /* Moduli i planifikuar (nëse nuk ka grup) */
+        /* Kursi i planifikuar (nëse nuk ka grup) */
         (
           SELECT c.name
           FROM student_course_plans scp
@@ -778,8 +778,8 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
 
     <?php
       $tfTarget = '#studentsTable';
-      $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, vendlindje, modul…';
-      $tfChips = [['label' => 'Pa modul', 'match' => '—']];
+      $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, vendlindje, kurs…';
+      $tfChips = [['label' => 'Pa kurs', 'match' => '—']];
       $tfNoun = 'kursantë';
       require __DIR__ . '/../shared/partials/table_filter.php';
     ?>
@@ -796,7 +796,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
             <th scope="col" class="nowrap" data-sort="date">Datëlindja</th>
             <th scope="col" class="col-medium" data-sort="text">Vendlindja</th>
             <th scope="col" data-sort="text">Arsimi</th>
-            <th scope="col" class="col-wide" data-sort="text">Moduli</th>
+            <th scope="col" class="col-wide" data-sort="text">Kursi</th>
             <th scope="col" data-sort="text">Gjinia</th>
             <th scope="col" data-sort="text">Telefoni</th>
             <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
@@ -973,7 +973,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
             </select>
           </div>
           <div class="col-md-4">
-            <label class="form-label" for="planSelect">Moduli <span class="optional">(nëse dihet)</span></label>
+            <label class="form-label" for="planSelect">Kursi <span class="optional">(nëse dihet)</span></label>
             <select name="planned_course_id" id="planSelect" class="form-select" aria-describedby="planHelp">
               <option value="">— Më vonë —</option>
               <?php foreach ($courses as $c): ?>
@@ -998,23 +998,23 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
   </div>
 </div>
 
-<!-- Dialog: moduli pas ndryshimit të numrit të amzës -->
+<!-- Dialog: kursi pas ndryshimit të numrit të amzës -->
 <div class="modal fade" id="pickCourseModal" tabindex="-1" aria-labelledby="pickCourseTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title" id="pickCourseTitle"><i class="bi bi-book" aria-hidden="true"></i>Cili modul është për këtë amzë?</h2>
+        <h2 class="modal-title" id="pickCourseTitle"><i class="bi bi-book" aria-hidden="true"></i>Cili kurs është për këtë amzë?</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
-        <label class="form-label" for="pickCourseSelect">Moduli</label>
+        <label class="form-label" for="pickCourseSelect">Kursi</label>
         <select id="pickCourseSelect" class="form-select">
           <option value="">— Nuk dua të zgjedh tani —</option>
           <?php foreach ($courses as $c): ?>
             <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
           <?php endforeach; ?>
         </select>
-        <p class="form-text">Moduli vetëm planifikohet; grupi caktohet më vonë.</p>
+        <p class="form-text">Kursi vetëm planifikohet; grupi caktohet më vonë.</p>
       </div>
       <div class="modal-footer">
         <button type="button" id="btnSkipCourse" class="btn btn-secondary" data-bs-dismiss="modal">Më vonë</button>
@@ -1035,7 +1035,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
           <dt>Kursanti</dt><dd id="delName">—</dd>
           <dt>Nr. i amzës</dt><dd class="code" id="delAmze">—</dd>
         </dl>
-        <p class="mb-2">Bashkë me të fshihen edhe planet e modulit, vendi në grup dhe kodi QR i këtij regjistrimi. <b>Kjo nuk mund të kthehet mbrapsht.</b></p>
+        <p class="mb-2">Bashkë me të fshihen edhe kursi i zgjedhur, vendi në grup dhe kodi QR i këtij regjistrimi. <b>Kjo nuk mund të kthehet mbrapsht.</b></p>
         <div class="form-check">
           <input class="form-check-input" type="checkbox" id="delAlsoIdentity">
           <label class="form-check-label" for="delAlsoIdentity">
@@ -1422,7 +1422,7 @@ function attachDateMaskInput(inp){
 document.querySelectorAll('td.cell[data-field="birth_date"] .editable').forEach(attachDateMaskContentEditable);
 const bdInputEl = document.getElementById('bdInput'); if (bdInputEl) attachDateMaskInput(bdInputEl);
 
-/* Modal e modulit pas ndryshimit të nr_amze */
+/* Dialogu i kursit pas ndryshimit të nr_amze */
 const pickCourseSelect = document.getElementById('pickCourseSelect');
 document.getElementById('btnSaveCourse')?.addEventListener('click', ()=>{
   if (!pendingAmzeChange) return;

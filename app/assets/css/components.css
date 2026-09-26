@@ -1871,7 +1871,7 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
   .log-change { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 
-/* ================================================ 24f2. Regjistrimet (modulet) */
+/* ================================================ 24f2. Regjistrimet (kurset) */
 .enroll-list {
   display: grid;
   gap: var(--sp-3);
@@ -2355,4 +2355,251 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
     pointer-events: none;
   }
   .table-freeze > thead > tr > :is(:first-child, :nth-child(2)) { z-index: 3; background-color: var(--surface-sunken); }
+}
+
+/* ============================================ 27. Struktura e kursit (modulet, temat) */
+/* course.php: gatishmëria e kursit, modulet me radhë dhe temat e secilit.
+   Radha shihet (numri), dëgjohet (listë e renditur) dhe ndryshohet me butona
+   "Lart" / "Poshtë" — pa tërheqje me miun. */
+.cur-summary { display: grid; gap: var(--sp-4); }
+.cur-summary.is-ready { border-color: var(--success-border); }
+.cur-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+}
+.cur-summary-head .section-title { font-size: var(--fs-base); }
+.cur-meter { display: grid; gap: var(--sp-2); }
+.cur-meter-text {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+}
+/* Shiriti i orëve: sa nga orët e kursit janë ndarë në module. */
+.hours-bar {
+  appearance: none;
+  width: 100%;
+  height: .5rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  color: var(--info);
+}
+.hours-bar::-webkit-progress-bar { border-radius: var(--r-full); background: var(--surface-sunken); }
+.hours-bar::-webkit-progress-value { border-radius: var(--r-full); background: var(--info); }
+.hours-bar::-moz-progress-bar { border-radius: var(--r-full); background: var(--info); }
+.hours-bar.is-full::-webkit-progress-value { background: var(--success); }
+.hours-bar.is-full::-moz-progress-bar { background: var(--success); }
+.hours-bar.is-over::-webkit-progress-value { background: var(--danger); }
+.hours-bar.is-over::-moz-progress-bar { background: var(--danger); }
+
+.cur-issues { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.cur-issues > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--r-md);
+  background: var(--warning-soft);
+  font-size: var(--fs-sm);
+}
+.cur-issues > li > .bi { flex: none; color: var(--warning); }
+.cur-issues > li > span { flex: 1 1 16rem; min-width: 0; }
+.cur-usage { display: flex; gap: var(--sp-2); margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.cur-usage > .bi { flex: none; margin-top: .15rem; color: var(--info); }
+
+.cur-modules { display: grid; gap: var(--sp-4); margin: 0; padding: 0; list-style: none; }
+.cur-module { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); scroll-margin-top: calc(var(--topbar-h) + var(--sp-4)); }
+.cur-module.has-issue { border-color: var(--warning-border); }
+.cur-module:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cur-module-head { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-4) var(--sp-4) var(--sp-3); }
+.cur-pos {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.cur-module-main { flex: 1 1 0; min-width: 0; }
+.cur-module-title { margin: 0; font-family: var(--font-sans); font-size: var(--fs-base); font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+.cur-module-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  margin: .25rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.cur-actions { display: inline-flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.cur-topics { margin: 0; padding: 0; border-top: 1px solid var(--border); list-style: none; }
+.cur-topic {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: .4rem var(--sp-4);
+  border-top: 1px solid var(--border);
+  scroll-margin-top: calc(var(--topbar-h) + var(--sp-4));
+}
+.cur-topic:first-child { border-top: 0; }
+.cur-topic-pos { color: var(--text-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: center; }
+.cur-topic-title { min-width: 0; overflow-wrap: anywhere; }
+.cur-topic-hours { color: var(--text-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cur-empty { margin: 0; padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--fs-sm); }
+.cur-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  background: var(--surface-sunken);
+}
+.cur-quick-title { flex: 1 1 14rem; min-width: 0; }
+.cur-quick-hours { flex: 0 0 6rem; }
+@media (max-width: 575.98px) {
+  .cur-module-head { flex-wrap: wrap; }
+  .cur-module-head > .cur-actions { justify-content: flex-end; width: 100%; }
+  .cur-topic { grid-template-columns: 1.5rem minmax(0, 1fr) auto; padding-inline: var(--sp-3); }
+  .cur-topic > .cur-actions { grid-column: 2 / -1; justify-content: flex-end; }
+  .cur-quick { padding-inline: var(--sp-3); }
+}
+
+/* ============================================ 28. Orari i mësimit (grupet me orar) */
+/* Parashikimi i një ndryshimi para ruajtjes: "Do të mbarojë …". */
+.plan-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.plan-preview > .bi { flex: none; margin-top: .15rem; color: var(--text-muted); }
+.plan-preview.is-ok { border-style: solid; border-color: var(--success-border); background: var(--success-soft); }
+.plan-preview.is-ok > .bi { color: var(--success); }
+.plan-preview.is-warning { border-style: solid; border-color: var(--warning-border); background: var(--warning-soft); }
+.plan-preview.is-warning > .bi { color: var(--warning); }
+.plan-preview.is-error { border-style: solid; border-color: var(--danger-border); background: var(--danger-soft); }
+.plan-preview.is-error > .bi { color: var(--danger); }
+
+.lg-lead { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem var(--sp-4); }
+.lg-tabs { flex-wrap: nowrap; margin-bottom: var(--sp-5); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.lg-tabs .nav-link { min-height: var(--touch-min); white-space: nowrap; }
+.lg-tabs .count { margin-left: .15rem; }
+.lg-date { font-size: var(--fs-xl); }
+.lg-hours-choice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.lg-hours-choice > .form-control { width: 5.5rem; }
+.lg-danger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+fieldset > legend.form-label { float: none; width: auto; margin-bottom: .5rem; font-size: var(--fs-sm); }
+
+/* Ditë pas dite: çdo datë nga fillimi te mbarimi, me temat e grupuara sipas modulit. */
+.timetable {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  list-style: none;
+}
+.tt-day {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  scroll-margin-top: calc(var(--topbar-h) + var(--sp-6));
+}
+.tt-day:first-child { border-top: 0; }
+.tt-day.is-week { border-top: 2px solid var(--border-strong); }
+.tt-day.is-off { padding-block: var(--sp-2); background: var(--surface-sunken); }
+.tt-day.is-today { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent-text); }
+.tt-day:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tt-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: .3rem 0;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  line-height: 1.1;
+}
+.tt-day.is-off .tt-date { background: transparent; }
+.tt-date b { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.tt-date span { color: var(--text-muted); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
+.tt-main { min-width: 0; }
+.tt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+}
+.tt-day.is-off .tt-head { margin: 0; font-weight: var(--fw-semibold); }
+.tt-title { min-width: 0; }
+.tt-hours { color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.tt-off { color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-regular); }
+.tt-note { color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-regular); }
+.tt-rule-note { margin: -.25rem 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-sm); }
+.tt-module + .tt-module { margin-top: var(--sp-2); }
+.tt-module-name { margin: 0 0 .15rem; color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.tt-flag {
+  display: inline-block;
+  margin-left: .35rem;
+  padding: 0 .45rem;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-2xs);
+}
+.tt-slots { display: grid; gap: .25rem; margin: 0; padding: 0; list-style: none; }
+.tt-slot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0 var(--sp-3); font-size: var(--fs-sm); }
+.tt-topic { min-width: 0; overflow-wrap: anywhere; }
+.tt-num { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tt-slot-hours { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tt-part { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--fs-xs); }
+.tt-actions { align-self: center; }
+@media (max-width: 575.98px) {
+  .tt-day { grid-template-columns: 2.75rem minmax(0, 1fr); padding-inline: var(--sp-3); }
+  .tt-day > .tt-actions { grid-column: 2; }
+}
+@media print {
+  .lg-tabs, .tt-actions, .lg-danger, .page-actions, .edit-lock, #lgState, .plan-preview { display: none !important; }
+  .tab-pane:not(#orari) { display: none !important; }
+  .timetable { border: 0; }
+  .tt-day { break-inside: avoid; }
+  .tt-day.is-today { box-shadow: none; }
 }

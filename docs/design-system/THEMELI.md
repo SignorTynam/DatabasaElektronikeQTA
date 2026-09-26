@@ -29,13 +29,16 @@ COMPONENTS.md are the original specification; where they differ, this file wins.
 |---|---|
 | `app/assets/css/tokens.css` | Primitives (stone, brick, blue, green, amber, red) → semantic tokens (light + dark) → Bootstrap `--bs-*` mapping |
 | `app/assets/css/base.css` | Element defaults, headings, links, focus, utilities (`.num`, `.code`, `.eyebrow`, `.visually-hidden`…) |
-| `app/assets/css/components.css` | Every reusable component (sections 1–26, see §5) |
+| `app/assets/css/components.css` | Every reusable component (sections 1–28, see §5) |
 | `app/assets/css/shell.css` | Authenticated shell: sidebar, rail mode, mobile drawer, topbar, footer |
 | `app/assets/css/public.css` | Public shell: masthead, hero, verification, login, contact, footer |
 | `app/assets/css/error.css` | Standalone styles for the static 400/401/403/404/500 pages |
 | `app/assets/js/app.js` | Theme, drawer, toasts, confirm dialog, table filter/sort, QR, copy, search palette… (§6) |
 | `app/assets/js/verify.js`, `login-ui.js`, `contact-ui.js`, `error-page.js` | Page-specific behaviour |
+| `app/assets/js/curriculum.js` | Course page: modules and topics, order, fixes (`course.php`) |
+| `app/assets/js/lesson-groups.js`, `lesson-group.js` | Scheduled groups: create preview; group page tabs, schedule changes, trainees, exams and points |
 | `app/shared/themeli.php` | PHP helpers for dates, names, statuses, empty states (§7) |
+| `app/shared/domain.php`, `schedule.php`, `curriculum.php`, `group_members.php`, `lesson_groups.php`, `staff_guard.php` | Domain services for courses, modules, topics and scheduled groups — see `docs/domain/COURSES-AND-SCHEDULES.md` |
 | `app/shared/app_ui.php` | Role labels, menus, active item |
 | `app/shared/help.php`, `help_topics.php` | Help panel ("Si funksionon?") and help centre content |
 
@@ -135,6 +138,10 @@ and "nothing matches".
 | QR | `.qr-frame[data-qr]`, `.qr-code-text` | Always dark on white |
 | Bulk | `.bulk-bar`, `.bulk-count` | Sticky at the bottom while rows are selected |
 | Other | `.person-head`, `.avatar(-lg,-xl)`, `.empty(.is-compact,.is-success)`, `.skeleton`, `.back-top`, `.help-layout` | |
+| Course structure (27) | `.cur-summary(-head)`, `.cur-meter(-text)`, `.hours-bar(.is-full,.is-over)`, `.cur-issues`, `.cur-usage`, `.cur-modules > .cur-module(.has-issue)` (`-head/-main/-title/-meta`), `.cur-pos`, `.cur-actions`, `.cur-topics > .cur-topic` (`-pos/-title/-hours`), `.cur-quick(-title/-hours)`, `.cur-empty` | Rendered by `qta_render_course_structure()`. Ordered lists (`ol`) carry the order; up/down arrow buttons ("Lëviz lart" / "Lëviz poshtë"), never drag-only. The hours bar is a native `<progress>` with the numbers in text next to it |
+| Plan preview (28) | `.plan-preview(.is-ok,.is-warning,.is-error)` | Live result inside a form: end date, lesson days, what changes; `aria-live="polite"` |
+| Timetable (28) | `.timetable > .tt-day(.is-week,.is-off,.is-today)`, `.tt-date`, `.tt-main`, `.tt-head`, `.tt-title`, `.tt-hours`, `.tt-off`, `.tt-note`, `.tt-rule-note`, `.tt-module(-name)`, `.tt-flag`, `.tt-slots > .tt-slot` (`.tt-num`, `.tt-topic`, `.tt-slot-hours`, `.tt-part`), `.tt-actions` | Rendered by `qta_render_timetable()`. One `li#dita-YYYY-MM-DD` per calendar date; split topics say "ora 1 nga 2 · vazhdon në ditën tjetër"; prints as a plain list |
+| Scheduled group page (28) | `.lg-lead`, `.lg-tabs` (scrolls sideways on phones), `.lg-date`, `.lg-hours-choice`, `.lg-danger`, `fieldset > legend.form-label` | Facts row under the title; tabs "Orari i mësimit / Kursantët dhe provimet / Dokumentet"; the delete zone sits last |
 
 ## 6. JavaScript API (app.js)
 
@@ -152,6 +159,9 @@ and "nothing matches".
 | `partials/table_filter.php` | Instant filter of visible rows (ignores dropdown options) with quick chips |
 | `[data-theme-set="light|system|dark"]` | Theme choice anywhere |
 | `[data-open-palette]`, Ctrl+K, `/` | Search palette (`app/actions/search_advanced.php`) |
+| `input[data-dmy]` | Formats a date as `dd.mm.vvvv` while typing (digits only needed) |
+| Dialogs opened from code | `Modal.show(opener)`: on close without saving, focus returns to the opener (as with `data-bs-toggle`) |
+| Server-driven confirmation | JSON endpoints answer HTTP 409 `{confirm: {title, message, confirm}}` (`QtaConfirmNeeded`); the page shows `qtaConfirm` and resends with `force = 1`. The same service computes `dry_run` previews, so the dialog shows the consequence before saving |
 
 ## 7. PHP helpers (themeli.php)
 
@@ -163,8 +173,18 @@ and "nothing matches".
 
 Shared partials: `edit_lock`, `edit_mode_off_banner`, `table_filter`, `export_menu`
 (POST, CSRF never in URLs), `group_documents` (`qta_group_documents()`), `qkl_report_modal`,
-`staff_accounts` (admins + editors), `dashboard_staff`, `download_generation_toast`.
+`staff_accounts` (admins + editors), `dashboard_staff`, `download_generation_toast`,
+`course_structure` (`qta_render_course_structure()`), `timetable` (`qta_render_timetable()`).
 Shared pages: `activity_log.php` (history for admins and editors).
+
+Domain helpers (`domain.php`): `QtaUserError` (message shown as is), `QtaConfirmNeeded`
+(title, message, confirm label), `qta_parse_date_input()` (dd.mm.yyyy, `-`, `/`, ISO),
+`qta_parse_int_input()`, `qta_clean_text()`, `qta_tx()`, `qta_hours_label()` ("1 orë",
+"5 orë"). Date phrases for sentences: `qta_sched_day_label()` ("e diel, 04.10.2026") and
+`qta_sched_on_label()` ("më 23.10.2026 (e premte)"). JSON endpoints for staff use
+`staff_guard.php`: `qta_json_require_staff()`, `qta_json_require_csrf()`,
+`qta_json_require_edit_mode()`, `qta_json_fail()` (user errors → 400, confirmations → 409,
+database rule messages as written, anything else → 500 with a reference, no details).
 
 ## 8. Writing guide
 
@@ -172,7 +192,13 @@ Shared pages: `activity_log.php` (history for admins and editors).
 |---|---|
 | Kursant / Kursantët | Student, studentë |
 | Nr. i amzës (AMZË in short messages) | ID, amze |
-| Moduli, Grupi, Provimi, Pikët | Kurs, notë, test |
+| **Kursi** (what a trainee enrols in and is certified for) → **Modulet** → **Temat** | "Modul" for the whole course (the name before September 2026), lëndë |
+| Grupi, Provimi, Pikët | notë, test |
+| "Grupet" (with a lesson schedule) and "Grupet e mëparshme" (created before schedules) | legacy, model, grupe të vjetra |
+| "Orari i mësimit", "Ditë pas dite", "Ditë e veçantë", "Pa mësim", "orë mësimi" | kalendar, slot, override |
+| "Gati për grup" / "Jo gati" + the reason + the fix ("Shto edhe 10 orë te modulet, ose ul orët e kursit në 40.") | "Invalid curriculum" |
+| Dates inside sentences: "Mbaron më 23.10.2026 (e premte)." | "Mbaron e premte, 23.10.2026" |
+| The action's verb returns in its feedback: "Shto modulin" → "Moduli … u shtua në vendin 3."; "Ruaj ditën" → "Dita u ruajt dhe orari u rillogarit." | A different word for the same action |
 | "Lejo ndryshimet" / "Mbyll ndryshimet" | Edit mode ON/OFF |
 | "Ndryshimi u ruajt." | "U ruajt me sukses." |
 | "Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish." | "CSRF token mismatch" |
@@ -186,8 +212,12 @@ Errors say what happened and what to do next. Confirmations say the consequence
 ## 9. Quality gates used on this branch
 
 - `php -l` on every PHP file; `node --check` on every JS file.
-- Automated DOM audit on every page × role at 320/360/390/1280/1440 px: horizontal
-  overflow, one `h1`, labelled controls, named buttons/links, duplicate ids, PHP notices.
+- `php tests/run.php` (scheduling engine, course readiness) and, against a test database,
+  `QTA_TEST_DB=1 QTA_DB_NAME=… php tests/run.php --integration` (services, database guards,
+  legacy isolation, audit, concurrency). See `docs/domain/COURSES-AND-SCHEDULES.md` §11.
+- Automated DOM audit on every page × role at 320/360/375/390/768/1024/1280/1440 px, with
+  the edit mode on and off: horizontal overflow, one `h1`, labelled controls, named
+  buttons/links, duplicate ids, PHP notices.
 - Real Apache 2.4 check of `.htaccess` (routing, blocked internal paths, error pages).
 - Manual flows in the browser for every changed action (create/edit/delete, dialogs,
   confirmations, exports, QR, password change), with the database checked after saves.

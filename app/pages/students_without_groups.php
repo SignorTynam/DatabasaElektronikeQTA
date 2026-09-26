@@ -43,14 +43,18 @@ function json_response(array $payload): void {
    AJAX (POST JSON) — e trajtojmë këtu (nuk përdorim skedar tjetër)
    Veprime:
    - assign_to_group: vendos studentin në grup, heq çdo plan "planned"
-   - set_student_plan: ndërron/ vendos modulin "planned" (upsert)
-   - remove_student_plan: heq studentin nga një modul (fshin planin 'planned')
+   - set_student_plan: ndërron/ vendos kursin "planned" (upsert)
+   - remove_student_plan: heq studentin nga një kurs (fshin planin 'planned')
 ========================================================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
   $payload = json_decode(file_get_contents('php://input'), true) ?: [];
   try {
     if (empty($payload['csrf']) || !hash_equals($_SESSION['csrf_token'], (string)$payload['csrf'])) {
       throw new RuntimeException('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
+    }
+    /* Kyçi i ndryshimeve vlen edhe në server (jo vetëm te butonat e çaktivizuar). */
+    if (empty($_SESSION['edit_mode'])) {
+      throw new RuntimeException('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.');
     }
     $action = (string)($payload['action'] ?? '');
 
@@ -95,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $getPersonPN->execute([':sid'=>$student_id]);
       $pn = $getPersonPN->fetchColumn();
       if ($hasAttendedCoursePN((int)$g['course_id'], $pn)) {
-        throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul, prandaj nuk mund ta ndjekë sërish.');
+        throw new RuntimeException('Ky person e ka ndjekur më parë këtë kurs, prandaj nuk mund ta ndjekë sërish.');
       }
 
       $pdo->beginTransaction();
@@ -115,20 +119,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
     if ($action === 'set_student_plan') {
       $student_id = (int)($payload['student_id'] ?? 0);
       $course_id  = (int)($payload['course_id']  ?? 0);
-      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh kursantin dhe modulin.');
+      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh kursantin dhe kursin.');
 
       // S’lejohet plan nëse studenti është në ndonjë grup
       $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students WHERE student_id=:s LIMIT 1");
       $inGroup->execute([':s'=>$student_id]);
       if ($inGroup->fetchColumn()) {
-        throw new RuntimeException('Ky kursant është në një grup. Hiqe nga grupi para se të ndryshosh modulin.');
+        throw new RuntimeException('Ky kursant është në një grup. Hiqe nga grupi para se të ndryshosh kursin.');
       }
 
       // Ndalim: i njëjti person s’mund ta ketë ndjekur (në grupe) të njëjtin modul
       $getPersonPN->execute([':sid'=>$student_id]);
       $pn = $getPersonPN->fetchColumn();
       if ($hasAttendedCoursePN($course_id, $pn)) {
-        throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul. Zgjidh një modul tjetër.');
+        throw new RuntimeException('Ky person e ka ndjekur më parë këtë kurs. Zgjidh një kurs tjetër.');
       }
 
       $pdo->beginTransaction();
@@ -151,21 +155,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $pdo->commit();
 
       // Flash për toast pas rifreskimit
-      $_SESSION['flash_ok'] = 'Moduli u ruajt. Tani zgjidh grupin.';
-      json_response(['ok'=>true, 'message'=>'Moduli u ruajt. Tani zgjidh grupin.']);
+      $_SESSION['flash_ok'] = 'Kursi u ruajt. Tani zgjidh grupin.';
+      json_response(['ok'=>true, 'message'=>'Kursi u ruajt. Tani zgjidh grupin.']);
     }
 
     /* NEW: Hiq studentin nga një modul (fshi planin e modulit) */
     if ($action === 'remove_student_plan') {
       $student_id = (int)($payload['student_id'] ?? 0);
       $course_id  = (int)($payload['course_id']  ?? 0);
-      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh kursantin dhe modulin.');
+      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh kursantin dhe kursin.');
 
       // Student nuk duhet të jetë në ndonjë grup të këtij moduli
       $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students cgs JOIN course_groups cg ON cg.id=cgs.group_id WHERE cgs.student_id=:s AND cg.course_id=:c LIMIT 1");
       $inGroup->execute([':s'=>$student_id, ':c'=>$course_id]);
       if ($inGroup->fetchColumn()) {
-        throw new RuntimeException('Ky kursant është në një grup të këtij moduli. Hiqe nga grupi së pari.');
+        throw new RuntimeException('Ky kursant është në një grup të këtij kursi. Hiqe nga grupi së pari.');
       }
 
       // Fshi vetëm planet 'planned' për këtë modul
@@ -173,12 +177,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $del->execute([':s'=>$student_id, ':c'=>$course_id]);
 
       if ($del->rowCount() < 1) {
-        throw new RuntimeException('Ky kursant nuk ka modul të zgjedhur.');
+        throw new RuntimeException('Ky kursant nuk ka kurs të zgjedhur.');
       }
 
       // Flash për toast pas rifreskimit
-      $_SESSION['flash_ok'] = 'Moduli u hoq. Zgjidh një modul tjetër kur të jesh gati.';
-      json_response(['ok'=>true, 'message'=>'Moduli u hoq. Zgjidh një modul tjetër kur të jesh gati.']);
+      $_SESSION['flash_ok'] = 'Kursi u hoq. Zgjidh një kurs tjetër kur të jesh gati.';
+      json_response(['ok'=>true, 'message'=>'Kursi u hoq. Zgjidh një kurs tjetër kur të jesh gati.']);
     }
 
     throw new RuntimeException('Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.');
@@ -214,7 +218,7 @@ $groupsMeta = $pdo->query("
     cg.id,
     cg.course_id,
     c.name AS course_name,
-    cg.start_date, cg.end_date, cg.is_completed,
+    cg.start_date, cg.end_date, cg.is_completed, cg.model, cg.model,
     COUNT(cgs.student_id) AS members
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
@@ -395,7 +399,7 @@ usort($waiting, static fn($a, $b) => ((int)$a['nr_amze'] <=> (int)$b['nr_amze'])
 /* Etiketa e një grupi në listat e zgjedhjes: "Grupi #7 · nis 24.09.2026 · 6/10" */
 $groupOption = static function (array $g): string {
   $members = (int)$g['members'];
-  $label = 'Grupi #' . (int)$g['id'] . ' · ' . qta_date($g['start_date']) . ' – ' . qta_date($g['end_date']) . ' · ' . $members . '/10';
+  $label = 'Grupi #' . (int)$g['id'] . (($g['model'] ?? '') === 'scheduled' ? ' (me orar)' : '') . ' · ' . qta_date($g['start_date']) . ' – ' . qta_date($g['end_date']) . ' · ' . $members . '/10';
   if ($members >= 10) $label .= ' · plot';
   elseif (!empty($g['is_completed'])) $label .= ' · i mbyllur';
   $disabled = $members >= 10 ? ' disabled' : '';
@@ -412,7 +416,7 @@ $groupOptionsByCourse = static function () use ($groupsByCourse, $groupOption): 
   return $html;
 };
 $allGroupOptions = $groupOptionsByCourse();
-$createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1']);
+$createHref = 'lesson_groups.php?' . http_build_query(['edit' => '1', 'create' => '1']);
 ?>
 
 <main class="app-main" id="main" tabindex="-1">
@@ -437,12 +441,12 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
     <div class="stat">
       <span class="stat-label">Gati për grup</span>
       <span class="stat-value"><?= number_format((int)$countPlannedNoGroup, 0, ',', '.') ?></span>
-      <span class="stat-note">e kanë modulin të zgjedhur</span>
+      <span class="stat-note">e kanë kursin të zgjedhur</span>
     </div>
     <div class="stat">
-      <span class="stat-label">Pa modul</span>
+      <span class="stat-label">Pa kurs</span>
       <span class="stat-value"><?= number_format((int)$countNoPlanNoGroup, 0, ',', '.') ?></span>
-      <span class="stat-note">zgjidh modulin së pari</span>
+      <span class="stat-note">zgjidh kursin së pari</span>
     </div>
   </div>
 
@@ -455,9 +459,9 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
       </div>
     </div>
     <div class="filter-field">
-      <label class="form-label" for="swgC">Moduli</label>
+      <label class="form-label" for="swgC">Kursi</label>
       <select class="form-select" id="swgC" name="course_id">
-        <option value="">Të gjitha modulet</option>
+        <option value="">Të gjitha kurset</option>
         <?php foreach ($courses as $c): ?>
           <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
         <?php endforeach; ?>
@@ -487,8 +491,8 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
     <?php if ($waiting): ?>
       <?php
         $tfTarget = '#waitTable';
-        $tfPlaceholder = 'Filtro — emër, amzë ose modul';
-        $tfChips = [['label' => 'Pa modul', 'match' => 'Pa modul ende'], ['label' => 'Gati për grup', 'match' => 'Me modul']];
+        $tfPlaceholder = 'Filtro — emër, amzë ose kurs';
+        $tfChips = [['label' => 'Pa kurs', 'match' => 'Pa kurs ende'], ['label' => 'Gati për grup', 'match' => 'Me kurs']];
         $tfNoun = 'kursantë';
         require __DIR__ . '/../shared/partials/table_filter.php';
       ?>
@@ -501,7 +505,7 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
               </th>
               <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
               <th scope="col" data-sort="text">Kursanti</th>
-              <th scope="col" class="col-medium" data-sort="text">Moduli</th>
+              <th scope="col" class="col-medium" data-sort="text">Kursi</th>
               <th scope="col" class="nowrap" data-sort="none">Cakto në grup</th>
             </tr>
           </thead>
@@ -526,22 +530,22 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
                 <td class="col-medium">
                   <?php if ($pcid > 0): ?>
                     <span class="d-inline-flex align-items-center gap-2">
-                      <span class="visually-hidden">Me modul:</span>
+                      <span class="visually-hidden">Me kurs:</span>
                       <span><?= h($s['plan_course_name']) ?></span>
                       <?php if ($EDIT_MODE): ?>
                         <button class="btn btn-ghost btn-sm btn-icon" type="button" data-role="plan-remove"
                                 data-student="<?= $sid ?>" data-course="<?= $pcid ?>" data-name="<?= h($full) ?>"
-                                aria-label="Hiq modulin <?= h($s['plan_course_name']) ?>" title="Hiq modulin">
+                                aria-label="Hiq kursin <?= h($s['plan_course_name']) ?>" title="Hiq kursin">
                           <i class="bi bi-x-lg" aria-hidden="true"></i>
                         </button>
                       <?php endif; ?>
                     </span>
                   <?php else: ?>
-                    <span class="visually-hidden">Pa modul ende.</span>
+                    <span class="visually-hidden">Pa kurs ende.</span>
                     <div class="inline-action">
                       <select class="form-select form-select-sm" data-role="plan-select" data-student="<?= $sid ?>"
-                              <?= $EDIT_MODE ? '' : 'disabled' ?> aria-label="Zgjidh modulin për <?= h($full) ?>">
-                        <option value="">Zgjidh modulin</option>
+                              <?= $EDIT_MODE ? '' : 'disabled' ?> aria-label="Zgjidh kursin për <?= h($full) ?>">
+                        <option value="">Zgjidh kursin</option>
                         <?php foreach ($courses as $c): ?>
                           <option value="<?= (int)$c['id'] ?>"><?= h((string)$c['name']) ?></option>
                         <?php endforeach; ?>
@@ -554,8 +558,8 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
 
                 <td class="nowrap">
                   <?php if ($rowGroups === []): ?>
-                    <span class="text-muted small">Nuk ka grup për këtë modul.</span>
-                    <a class="small" href="<?= h($createHref) ?>">Krijo një</a>
+                    <span class="text-muted small">Nuk ka grup për këtë kurs.</span>
+                    <a class="small" href="<?= h($createHref . '&course_id=' . $pcid) ?>">Krijo një</a>
                   <?php else: ?>
                     <div class="inline-action">
                       <select class="form-select form-select-sm" data-role="group-select" data-student="<?= $sid ?>"
@@ -652,24 +656,24 @@ document.querySelectorAll('[data-role="assign-btn"]').forEach(btn=>{
   });
 });
 
-/* Zgjidh modulin për një kursant pa modul */
+/* Zgjidh kursin për një kursant pa kurs */
 document.querySelectorAll('[data-role="plan-btn"]').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     if (!EDIT_MODE) return;
     const sid = parseInt(btn.dataset.student,10);
     const sel = document.querySelector(`select[data-role="plan-select"][data-student="${sid}"]`);
     const cid = sel?.value ? parseInt(sel.value,10) : 0;
-    if (!cid){ notify('warning','Zgjidh modulin së pari.'); sel?.focus(); return; }
+    if (!cid){ notify('warning','Zgjidh kursin së pari.'); sel?.focus(); return; }
     busy(btn, true);
     try{
       const json = await post({action:'set_student_plan', student_id:sid, course_id:cid});
-      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Moduli nuk u ruajt.'); return; }
+      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Kursi nuk u ruajt.'); return; }
       location.reload();
     }catch(e){ busy(btn, false); notify('danger', e.message || 'Lidhja dështoi. Provo sërish.'); }
   });
 });
 
-/* Hiq modulin e zgjedhur */
+/* Hiq kursin e zgjedhur */
 document.querySelectorAll('[data-role="plan-remove"]').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     if (!EDIT_MODE) return;
@@ -677,15 +681,15 @@ document.querySelectorAll('[data-role="plan-remove"]').forEach(btn=>{
     const cid = parseInt(btn.dataset.course,10);
     const who = btn.dataset.name || 'këtij kursanti';
     const ok = await window.qtaConfirm({
-      title: 'Të hiqet moduli?',
-      message: `Moduli i zgjedhur për ${who} do të hiqet. Kursanti mbetet në listë dhe mund të marrë një modul tjetër.`,
-      confirm: 'Po, hiqe modulin', danger: true
+      title: 'Të hiqet kursi?',
+      message: `Kursi i zgjedhur për ${who} do të hiqet. Kursanti mbetet në listë dhe mund të marrë një kurs tjetër.`,
+      confirm: 'Po, hiqe kursin', danger: true
     });
     if (!ok) return;
     busy(btn, true);
     try{
       const json = await post({action:'remove_student_plan', student_id:sid, course_id:cid});
-      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Moduli nuk u hoq.'); return; }
+      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Kursi nuk u hoq.'); return; }
       location.reload();
     }catch(e){ busy(btn, false); notify('danger', e.message || 'Lidhja dështoi. Provo sërish.'); }
   });

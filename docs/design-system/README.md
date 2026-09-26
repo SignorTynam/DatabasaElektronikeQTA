@@ -37,6 +37,8 @@ QTA adapts those principles to a certification registry. We do not claim that th
 
 - THEMELI.md — the implemented system (read first).
 - PROGRESS.md — progress ledger, defects fixed, security fixes, open items.
+- ../domain/COURSES-AND-SCHEDULES.md — courses → modules → topics, scheduled groups,
+  scheduling rules, legacy isolation, historical policy (with `db/migrations/README.md`).
 - SUPER-PORTAL-PROMPT.md — the execution prompt that drove the implementation.
 - FOUNDATIONS.md — design DNA, layout, palette, typography, spacing, radii, motion.
 - COMPONENTS.md — shell and reusable component contracts.

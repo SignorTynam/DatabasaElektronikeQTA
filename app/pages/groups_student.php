@@ -34,7 +34,7 @@ $meStud = $S0->fetch();
 $personId = $meStud ? (int)$meStud['person_id'] : 0;
 
 /* ------------------------------
-   Modulet (të gjitha regjistrimet e personit)
+   Kurset (të gjitha regjistrimet e personit)
 ------------------------------- */
 $groups = [];
 $planned = [];
@@ -55,7 +55,7 @@ if ($personId > 0) {
   $G->execute([':pid' => $personId]);
   $groups = $G->fetchAll(PDO::FETCH_ASSOC);
 
-  /* Module të zgjedhura që presin grup */
+  /* Kurse të zgjedhura që presin grup */
   $P = $pdo->prepare("
     SELECT c.code AS course_code, c.name AS course_name, c.hours, s.nr_amze
     FROM student_course_plans scp
@@ -76,7 +76,7 @@ $NAV_ACTIVE = 'student_groups';
 $HELP_TOPIC = 'student_groups';
 require __DIR__ . '/inc/navbar3.php';
 
-$pageTitle = 'Modulet e mia';
+$pageTitle = 'Kurset e mia';
 require __DIR__ . '/../shared/app_head.php';
 ?>
 
@@ -84,8 +84,8 @@ require __DIR__ . '/../shared/app_head.php';
 
   <header class="page-head">
     <div class="page-head-main">
-      <h1 class="page-title">Modulet e mia</h1>
-      <p class="page-lead">Çdo modul ku je regjistruar: datat e mësimit, provimi dhe pikët.</p>
+      <h1 class="page-title">Kurset e mia</h1>
+      <p class="page-lead">Çdo kurs ku je regjistruar: datat e mësimit, provimi dhe pikët.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -95,7 +95,7 @@ require __DIR__ . '/../shared/app_head.php';
   <?php if ($groups): ?>
     <div class="stats mb-4" aria-label="Përmbledhje">
       <div class="stat">
-        <span class="stat-label">Module</span>
+        <span class="stat-label">Kurse</span>
         <span class="stat-value"><?= count($groups) + count($planned) ?></span>
       </div>
       <div class="stat">
@@ -140,11 +140,11 @@ require __DIR__ . '/../shared/app_head.php';
     <?php if ($passed): ?>
       <div class="notice is-sunken mt-4">
         <i class="bi bi-qr-code" aria-hidden="true"></i>
-        <span>Modulet e tua mund t'i verifikojë kushdo me kodin tënd QR — e gjen te <a href="dashboard_student.php">Kreu</a>.</span>
+        <span>Kurset e tua mund t'i verifikojë kushdo me kodin tënd QR — e gjen te <a href="dashboard_student.php">Kreu</a>.</span>
       </div>
     <?php endif; ?>
   <?php else: ?>
-    <?= qta_empty('Ende pa module', 'Kur QTA të regjistrojë në një modul, ai shfaqet këtu me datat dhe pikët.', 'bi-journal', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
+    <?= qta_empty('Ende pa kurse', 'Kur QTA të regjistrojë në një kurs, ai shfaqet këtu me datat dhe pikët.', 'bi-journal', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
   <?php endif; ?>
 </main>
 

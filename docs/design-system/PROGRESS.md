@@ -16,6 +16,7 @@ Execution prompt: `SUPER-PORTAL-PROMPT.md`. Implemented system: `THEMELI.md`.
 | 8 | Error pages 400/401/403/404/500 | Done |
 | 9 | Cleanup (legacy CSS, dead endpoints, old download modals) after reference scans | Done |
 | 10 | QA: lint, automated DOM audit, real Apache check, manual flows | Done |
+| 11 | Domain change: "Modul" becomes **Kurs**, with ordered **Modulet** and **Temat**; new **Grupet** with a lesson schedule (`lesson_groups.php`, `lesson_group.php`, `course.php`); every earlier group stays in **Grupet e mëparshme** unchanged. Migration `db/migrations/2026-09-26-…`, reference `docs/domain/COURSES-AND-SCHEDULES.md`, tests in `tests/` | Done |
 
 ## Pages
 
@@ -53,6 +54,11 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | D2 | Groups / modules | Group details and a module's groups opened as show/hide rows; now dialogs over the page, documents inside the group dialog |
 | D3 | Everywhere | "Kaloi / Nuk kaloi" (pass at ≥ 50) shown although the system records only points; now points only |
 | D4 | Verification | Public result showed extra personal data ("Të dhëna shtesë"); now name, masked personal number and modules only; QR photo reader library did not load |
+| K1 | Courses (database) | `course_groups → courses` was `ON DELETE CASCADE`: a course deleted outside the app took its groups, exam dates and points with it; now `RESTRICT` (migration) |
+| K2 | Search | Group results for staff pointed to `groups.php?q=<course code>`, not to the group itself; now each group opens directly in its own area |
+| K3 | History | Course-plan changes showed "(nuk ekziston më)" for plans that still exist |
+| K4 | Dialogs | Dialogs opened from code (not `data-bs-toggle`) left focus on the page body when closed; focus now returns to the button that opened them |
+| K5 | Procesverbal | Printed the course's current hours; a scheduled group now prints the hours of the course copy it follows |
 
 ## Security fixes
 
@@ -63,6 +69,8 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | S3 | History printed the change subject without escaping (stored XSS via a name) → escaped |
 | S4 | Agency and staff-account endpoints ignored the edit lock → enforced server-side |
 | S5 | New/reset passwords: minimum raised to 8 (agencies had none, profile had 6) |
+| S6 | `students_without_groups.php` JSON writes ignored the edit lock → enforced server-side |
+| S7 | `.htaccess` now also blocks `tests/` (the runner is CLI-only as well) |
 
 ## Open items and recommendations
 
@@ -82,3 +90,10 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
    integrity hashes or self-host.
 8. `course_groups.exam_date` is unused legacy data; per-trainee exam dates live in
    `course_group_students.exam_date`.
+9. **Run the migration** `db/migrations/2026-09-26-kurset-modulet-temat-orari.sql` on the
+   production database before deploying phase 11 (backup first; see `db/migrations/README.md`).
+   The new pages need its tables.
+10. Scheduled groups: limitations and possible next steps are listed in
+    `docs/domain/COURSES-AND-SCHEDULES.md` §12 (whole hours only, no weekday patterns or
+    holiday calendar, member edits after creation capped at 10, schedule not shown to
+    agencies and trainees).

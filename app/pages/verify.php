@@ -89,7 +89,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $chk->execute([':sid'=>$sid, ':t'=>$token]);
   if (!$chk->fetchColumn()) return ['valid'=>false, 'reason'=>'Token i pavlefshëm ose nuk përputhet me këtë student.'];
 
-  /* Verifikimi publik kthen vetëm emrin, numrin personal të maskuar dhe modulet:
+  /* Verifikimi publik kthen vetëm emrin, numrin personal të maskuar dhe kurset:
      pa agjenci, arsim, pikë apo statistika. */
   $sql = "
     SELECT
@@ -125,7 +125,7 @@ function verify_student(PDO $pdo, int $sid, string $token): array {
   $qList->execute([':sid1'=>$sid, ':sid2'=>$sid]);
   $coursesList = $qList->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-  // Modulet & grupet (vetëm AMZË + Moduli)
+  // Kurset & grupet (vetëm AMZË + Kursi)
   $qEnr = $pdo->prepare("
     SELECT * FROM (
       SELECT

@@ -79,10 +79,19 @@ function to_iso_date(?string $v): ?string {
 }
 
 /* Lexo grupin (start/end/completed) */
-$ginfo = $pdo->prepare("SELECT start_date, end_date, is_completed FROM course_groups WHERE id=:gid");
+$ginfo = $pdo->prepare("SELECT start_date, end_date, is_completed, model FROM course_groups WHERE id=:gid");
 $ginfo->execute([':gid'=>$group_id]);
 $G = $ginfo->fetch(PDO::FETCH_ASSOC);
 if (!$G) { echo json_encode(['ok'=>false,'error'=>'Grupi nuk u gjet.']); exit; }
+
+/* Grupi me orar mësimi: fillimi dhe mbarimi dalin nga orari (lesson_group_update.php),
+   nuk shkruhen me dorë. Provimet, pikët dhe mbyllja ndryshohen këtu si te çdo grup. */
+$dateField = in_array($action, ['update_group_start', 'update_group_end'], true)
+  || ($action === 'update_cell' && in_array((string)($data['field'] ?? ''), ['start_date', 'end_date'], true));
+if (($G['model'] ?? 'legacy') === 'scheduled' && $dateField) {
+  http_response_code(400);
+  echo json_encode(['ok'=>false,'error'=>'Datat e këtij grupi i llogarit orari i mësimit. Ndryshoji te faqja e grupit: "Ndrysho fillimin ose orët në ditë" ose një ditë e veçantë.']); exit;
+}
 
 $completed = (int)($G['is_completed'] ?? 0) === 1;
 $forced = !empty($data['force']);

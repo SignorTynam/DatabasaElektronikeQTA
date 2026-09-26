@@ -42,9 +42,13 @@ if (!$isApp) {
 
 $glossary = [
   'Kursant'            => 'Personi që ndjek një trajnim në QTA.',
-  'Nr. i amzës (AMZË)' => 'Numri i regjistrimit të një kursanti në një modul. Një person mund të ketë disa, një për çdo modul.',
-  'Modul'              => 'Trajnimi për një zanat ose temë, p.sh. "Saldator me hark elektrik", me orët e veta.',
-  'Grup'               => 'Deri në 10 kursantë që ndjekin të njëjtin modul në të njëjtat data.',
+  'Nr. i amzës (AMZË)' => 'Numri i regjistrimit të një kursanti në një kurs. Një person mund të ketë disa, një për çdo kurs.',
+  'Kurs'               => 'Trajnimi për një zanat ose temë, p.sh. "Saldator me hark elektrik", me orët e veta. Ndahet në module.',
+  'Modul'              => 'Një pjesë e kursit me orët e veta, p.sh. "Word — 10 orë" te kursi "Microsoft Office". Ndahet në tema.',
+  'Temë'               => 'Një mësim brenda modulit, me orët e veta. Temat zhvillohen me radhë, ditë pas dite.',
+  'Grup'               => 'Deri në 10 kursantë që ndjekin të njëjtin kurs në të njëjtat data.',
+  'Orari i mësimit'    => 'Ndarja e orëve të kursit nëpër ditë: çdo ditë cilat tema zhvillohen dhe sa orë. Data e mbarimit del prej tij.',
+  'Grupet e mëparshme' => 'Grupet e krijuara para orarit të mësimit. Mbeten siç ishin, pa orar ditë pas dite.',
   'Provimi dhe pikët'  => 'Çdo kursant ka datën e vet të provimit dhe pikët e veta, nga 0 deri në 100.',
   'Grup i mbyllur'     => 'Grup me provime të përfunduara. Ndryshimet pas mbylljes kërkojnë konfirmim, sepse dokumentet mund të jenë lëshuar.',
   'Agjenci'            => 'Kompania që dërgon punonjësit e saj në trajnim. Hyn me NIPT dhe sheh vetëm punonjësit e vet.',

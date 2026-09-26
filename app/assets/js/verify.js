@@ -96,14 +96,14 @@
       '</tr>';
     }).join('');
 
-    /* Verifikimi publik tregon vetëm personin dhe modulet — asgjë tjetër. */
+    /* Verifikimi publik tregon vetëm personin dhe kurset — asgjë tjetër. */
     result.innerHTML =
       '<p class="result-person">' + esc(full) + '</p>' +
       '<p class="result-id">' + idLine + '</p>' +
-      '<h3 class="section-title mb-2">Modulet në regjistër</h3>' +
+      '<h3 class="section-title mb-2">Kurset në regjistër</h3>' +
       (rows
-        ? '<div class="table-responsive"><table class="table"><thead><tr><th scope="col">Moduli</th><th scope="col">Nr. i amzës</th><th scope="col">Gjendja</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-        : '<p class="text-muted">Nuk ka ende module të regjistruara.</p>') +
+        ? '<div class="table-responsive"><table class="table"><thead><tr><th scope="col">Kursi</th><th scope="col">Nr. i amzës</th><th scope="col">Gjendja</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        : '<p class="text-muted">Nuk ka ende kurse të regjistruara.</p>') +
       actionsHtml(true);
   }
 

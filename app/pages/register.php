@@ -137,7 +137,7 @@ $list = $pdo->prepare("
     ) AS planned_course_name,
 
     /* grupi i fundit */
-    lastg.group_id,
+    lastg.group_id, cg.model AS group_model,
     cg.start_date, cg.end_date,
     cgs.exam_date AS exam_date,        -- EXAM PER-STUDENT
     cgs.final_score
@@ -179,7 +179,7 @@ else require __DIR__ . '/inc/navbar.php';
   <header class="page-head">
     <div class="page-head-main">
       <h1 class="page-title">Regjistri i plotë</h1>
-      <p class="page-lead">Çdo rresht është një regjistrim: kursanti, moduli, datat e grupit, provimi dhe pikët. Me ndryshimet e hapura, datat dhe pikët ndryshohen direkt në tabelë.</p>
+      <p class="page-lead">Çdo rresht është një regjistrim: kursanti, kursi, datat e grupit, provimi dhe pikët. Me ndryshimet e hapura, datat dhe pikët ndryshohen direkt në tabelë; datat e grupeve me orar i llogarit orari.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -222,7 +222,7 @@ else require __DIR__ . '/inc/navbar.php';
 
     <?php
       $tfTarget = '#registerTable';
-      $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, modul…';
+      $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, kurs…';
       $tfChips = [['label' => 'Përfunduar', 'match' => 'përfunduar'], ['label' => 'Presin pikët', 'match' => 'pret pikët'], ['label' => 'Në mësim', 'match' => 'në mësim']];
       $tfNoun = 'regjistrime';
       require __DIR__ . '/../shared/partials/table_filter.php';
@@ -234,7 +234,7 @@ else require __DIR__ . '/inc/navbar.php';
           <tr>
             <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
             <th scope="col" class="col-medium" data-sort="text">Kursanti</th>
-            <th scope="col" class="col-wide" data-sort="text">Moduli</th>
+            <th scope="col" class="col-wide" data-sort="text">Kursi</th>
             <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
             <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
             <th scope="col" class="nowrap" data-sort="date">Provimi</th>
@@ -250,6 +250,7 @@ else require __DIR__ . '/inc/navbar.php';
           $sid = (int)$r['student_id'];
           $gid = $r['group_id'] !== null ? (int)$r['group_id'] : 0;
           $full = qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? '');
+          $scheduledGroup = $gid > 0 && ($r['group_model'] ?? 'legacy') === 'scheduled';
           if (!empty($r['group_id'])) {
             $moduleLabel = trim((string)($r['course_name'] ?? '')) ?: '—';
           } else {
@@ -265,13 +266,24 @@ else require __DIR__ . '/inc/navbar.php';
               <a class="person-name" href="student_card.php?sid=<?= $sid ?>"><?= h($full !== '' ? $full : '—') ?></a>
               <span class="cell-sub code"><?= h((string)($r['personal_number'] ?? '—')) ?></span>
             </td>
-            <td class="col-wide"><?= h($moduleLabel) ?><?= empty($r['group_id']) && $moduleLabel !== '—' ? ' <span class="cell-sub">i planifikuar, pa grup</span>' : '' ?></td>
+            <td class="col-wide"><?= h($moduleLabel) ?><?= empty($r['group_id']) && $moduleLabel !== '—' ? ' <span class="cell-sub">i planifikuar, pa grup</span>' : '' ?>
+              <?php if ($scheduledGroup): ?><span class="cell-sub"><a href="lesson_group.php?id=<?= $gid ?>">Grupi #<?= $gid ?></a> · me orar mësimi</span><?php endif; ?>
+            </td>
+            <?php if ($scheduledGroup): /* Datat i llogarit orari: nuk ndryshohen këtu. */ ?>
+              <td class="nowrap" data-field="start_date" title="E llogarit orari i mësimit — ndryshohet te faqja e grupit">
+                <span class="editable" contenteditable="false"><?= h(qta_date($r['start_date'])) ?></span>
+              </td>
+              <td class="nowrap" data-field="end_date" title="E llogarit orari i mësimit — ndryshohet te faqja e grupit">
+                <span class="editable" contenteditable="false"><?= h(qta_date($r['end_date'])) ?></span>
+              </td>
+            <?php else: ?>
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="start_date" title="Data e fillimit të grupit (dd.mm.vvvv)">
               <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['start_date'])) ?></span>
             </td>
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="end_date" title="Data e mbarimit, jo para fillimit (dd.mm.vvvv)">
               <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['end_date'])) ?></span>
             </td>
+            <?php endif; ?>
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date" title="Data e provimit, jo para mbarimit të grupit (dd.mm.vvvv)">
               <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['exam_date'])) ?></span>
             </td>

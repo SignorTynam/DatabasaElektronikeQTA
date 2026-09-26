@@ -129,7 +129,7 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
     <div class="page-head-main">
       <span class="eyebrow"><?= h((string)($AGENCY['company_name'] ?: 'Agjencia')) ?></span>
       <h1 class="page-title">Grupet</h1>
-      <p class="page-lead">Grupet ku janë punonjësit tuaj: moduli, datat dhe pikët e secilit. Hap një grup për të parë punonjësit.</p>
+      <p class="page-lead">Grupet ku janë punonjësit tuaj: kursi, datat dhe pikët e secilit. Hap një grup për të parë punonjësit.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -145,9 +145,9 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
       </div>
     </div>
     <div class="filter-field">
-      <label class="form-label" for="gaC">Moduli</label>
+      <label class="form-label" for="gaC">Kursi</label>
       <select class="form-select" id="gaC" name="course_id">
-        <option value="">Të gjitha modulet</option>
+        <option value="">Të gjitha kurset</option>
         <?php foreach ($courses as $c): ?>
           <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
         <?php endforeach; ?>
@@ -169,7 +169,7 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
         <table class="table" id="agencyGroupsTable">
           <thead>
             <tr>
-              <th scope="col" class="col-wide">Moduli</th>
+              <th scope="col" class="col-wide">Kursi</th>
               <th scope="col" class="nowrap">Datat</th>
               <th scope="col" class="nowrap num-col">Punonjës</th>
               <th scope="col">Gjendja</th>
@@ -200,7 +200,7 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
       </div>
     <?php else: ?>
       <?= $hasFilters
-        ? qta_empty('Asnjë grup nuk përputhet', 'Provo një modul tjetër ose pastro kërkimin.', 'bi-search', '<a class="btn btn-secondary" href="groups_agjencia.php">Pastro kërkimin</a>')
+        ? qta_empty('Asnjë grup nuk përputhet', 'Provo një kurs tjetër ose pastro kërkimin.', 'bi-search', '<a class="btn btn-secondary" href="groups_agjencia.php">Pastro kërkimin</a>')
         : qta_empty('Punonjësit tuaj nuk janë ende në grupe', 'Kur QTA i cakton në një grup, grupi shfaqet këtu me datat e mësimit dhe provimit.', 'bi-collection') ?>
     <?php endif; ?>
   </section>
@@ -209,7 +209,7 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
     <section class="section" aria-labelledby="gaNoGroup">
       <div class="section-head">
         <h2 class="section-title" id="gaNoGroup">Presin një grup <span class="count"><?= count($noGroup) ?></span></h2>
-        <span class="section-meta">QTA i cakton në grupin e radhës të modulit të tyre.</span>
+        <span class="section-meta">QTA i cakton në grupin e radhës të kursit të tyre.</span>
       </div>
       <div class="table-responsive">
         <table class="table">

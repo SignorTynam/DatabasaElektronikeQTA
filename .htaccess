@@ -10,12 +10,12 @@ ErrorDocument 500 /DatabasaElektronike/500.html
 RewriteEngine On
 RewriteBase /DatabasaElektronike/
 
-# Internal files are never served directly: database scripts, docs, git and
+# Internal files are never served directly: database scripts, docs, tests, git and
 # composer metadata, notes, shared PHP includes. THE_REQUEST is the client's
 # original request, so internal rewrites to app/pages/*.php are not affected;
 # REDIRECT_STATUS is empty only on the first pass, so the 403 page itself loads.
 RewriteCond %{ENV:REDIRECT_STATUS} ^$
-RewriteCond %{THE_REQUEST} \s/+DatabasaElektronike/+(db|docs|vendor|\.git|\.github|\.claude|app/shared|app/pages/inc|app/actions/inc|app/exports/inc|app/exports/vendor)(/|\?|\s) [NC,OR]
+RewriteCond %{THE_REQUEST} \s/+DatabasaElektronike/+(db|docs|tests|vendor|\.git|\.github|\.claude|app/shared|app/pages/inc|app/actions/inc|app/exports/inc|app/exports/vendor)(/|\?|\s) [NC,OR]
 RewriteCond %{THE_REQUEST} \s/+DatabasaElektronike/+(composer\.(json|lock)|[^/?\s]+\.(md|sql|log|lock|dist))(\?|\s) [NC]
 RewriteRule ^ - [F,L]
 

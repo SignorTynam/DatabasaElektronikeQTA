@@ -313,7 +313,7 @@ try {
         }
 
         $statement = $pdo->prepare("
-            SELECT cg.id, cg.start_date, cg.end_date, cg.is_completed, cg.created_at,
+            SELECT cg.id, cg.start_date, cg.end_date, cg.is_completed, cg.created_at, cg.model,
                    c.code, c.name,
                    (SELECT COUNT(*) FROM course_group_students x WHERE x.group_id = cg.id) AS members
             FROM course_groups cg
@@ -345,9 +345,11 @@ try {
                 'title' => (string)$row['name'] . ' · #' . (int)$row['id'],
                 'code' => (string)$row['code'],
                 'meta' => trim(search_date((string)$row['start_date']) . ' → ' . search_date((string)$row['end_date'])
-                    . ' · ' . $members . ' kursantë'),
-                'href' => ($role === 'agjencia' ? 'groups_agjencia.php' : 'groups.php')
-                    . '?q=' . urlencode((string)$row['code']),
+                    . ' · ' . $members . ' kursantë' . (($row['model'] ?? '') === 'scheduled' ? ' · me orar' : ' · pa orar')),
+                /* Grupi hapet te faqja e vet: me orar ose i mëparshëm. */
+                'href' => $role === 'agjencia'
+                    ? 'groups_agjencia.php?q=' . urlencode((string)$row['code'])
+                    : ((($row['model'] ?? '') === 'scheduled') ? 'lesson_group.php?id=' . (int)$row['id'] : 'groups.php?group=' . (int)$row['id']),
                 'icon' => 'bi-collection',
                 'status' => $members === 0 ? 'ungrouped' : ($isClosed ? 'closed' : 'active'),
                 'status_label' => $members === 0 ? 'Bosh' : ($isClosed ? 'I mbyllur' : 'Aktiv'),
@@ -356,10 +358,10 @@ try {
         $addGroup('group', 'Grupe', $items);
     }
 
-    /* Modulet ----------------------------------------------------------- */
+    /* Kurset (dhe modulet e temat e tyre) ------------------------------- */
     if ($want('course')) {
         $scope = '';
-        $params = [':c_name' => $pattern, ':c_code' => $pattern];
+        $params = [':c_name' => $pattern, ':c_code' => $pattern, ':c_module' => $pattern, ':c_topic' => $pattern];
         if ($periodDays) $scope .= " AND c.created_at >= DATE_SUB(NOW(), INTERVAL {$periodDays} DAY)";
         $scope .= match ($status) {
             'active' => ' AND EXISTS (SELECT 1 FROM course_groups cg_active WHERE cg_active.course_id = c.id AND cg_active.is_completed = 0)',
@@ -383,9 +385,12 @@ try {
         $statement = $pdo->prepare("
             SELECT c.id, c.code, c.name, c.hours, c.created_at,
                    (SELECT COUNT(*) FROM course_groups g WHERE g.course_id = c.id) AS group_count,
-                   (SELECT COUNT(*) FROM course_groups g WHERE g.course_id = c.id AND g.is_completed = 0) AS open_groups
+                   (SELECT COUNT(*) FROM course_groups g WHERE g.course_id = c.id AND g.is_completed = 0) AS open_groups,
+                   (SELECT COUNT(*) FROM course_modules m WHERE m.course_id = c.id) AS module_count
             FROM courses c
-            WHERE (c.name LIKE :c_name OR c.code LIKE :c_code)
+            WHERE (c.name LIKE :c_name OR c.code LIKE :c_code
+                   OR EXISTS (SELECT 1 FROM course_modules m WHERE m.course_id = c.id AND m.title LIKE :c_module)
+                   OR EXISTS (SELECT 1 FROM course_topics t JOIN course_modules m ON m.id = t.module_id WHERE m.course_id = c.id AND t.title LIKE :c_topic))
             {$scope}
             ORDER BY {$courseOrder}
             LIMIT :lim
@@ -399,14 +404,14 @@ try {
             $items[] = [
                 'title' => (string)$row['name'],
                 'code' => (string)$row['code'],
-                'meta' => (int)$row['hours'] . ' orë · ' . $groupCount . ' grupe',
-                'href' => 'courses.php?q=' . urlencode((string)$row['code']),
+                'meta' => (int)$row['hours'] . ' orë · ' . ((int)$row['module_count'] ? (int)$row['module_count'] . ' module' : 'pa module') . ' · ' . $groupCount . ' grupe',
+                'href' => 'course.php?id=' . (int)$row['id'],
                 'icon' => 'bi-journal-text',
                 'status' => $groupCount === 0 ? 'ungrouped' : ($openGroups > 0 ? 'active' : 'closed'),
                 'status_label' => $groupCount === 0 ? 'Pa grup' : ($openGroups > 0 ? 'Aktiv' : 'I mbyllur'),
             ];
         }
-        $addGroup('course', 'Module', $items);
+        $addGroup('course', 'Kurse', $items);
     }
 
     /* Agjencitë --------------------------------------------------------- */
@@ -556,7 +561,9 @@ try {
 
         $tableLabels = [
             'students' => 'Kursantë', 'persons' => 'Persona', 'course_groups' => 'Grupe',
-            'course_group_students' => 'Anëtarësi grupi', 'courses' => 'Module',
+            'course_group_students' => 'Anëtarësi grupi', 'courses' => 'Kurse',
+            'course_modules' => 'Module', 'course_topics' => 'Tema', 'group_schedules' => 'Orare grupesh',
+            'group_day_rules' => 'Ditë të veçanta', 'student_course_plans' => 'Kurse të zgjedhura',
             'agencies' => 'Agjenci', 'agency_students' => 'Punonjës agjencie', 'users' => 'Përdorues',
         ];
         $actionLabels = ['INSERT' => 'Shtim', 'UPDATE' => 'Ndryshim', 'DELETE' => 'Fshirje'];

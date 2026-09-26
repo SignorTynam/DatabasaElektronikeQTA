@@ -27,7 +27,7 @@ require_once __DIR__ . '/public_ui.php';
         <ul>
           <li><a href="index.php">Kreu</a></li>
           <li><a href="verify.php">Verifiko certifikatë</a></li>
-          <li><a href="index.php#modulet">Modulet</a></li>
+          <li><a href="index.php#kurset">Kurset</a></li>
           <li><a href="index.php#si-funksionon">Si funksionon</a></li>
         </ul>
       </div>

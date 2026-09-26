@@ -247,7 +247,7 @@
     var noun = box.getAttribute('data-tfilter-noun') || 'rreshta';
 
     /* Teksti i dukshëm i rreshtit. Opsionet e listave rënëse nuk llogariten
-       (përndryshe çdo rresht me listë grupesh do të përputhej me çdo modul);
+       (përndryshe çdo rresht me listë grupesh do të përputhej me çdo kurs);
        merret vetëm vlera e zgjedhur. Llogaritet sa herë, se teksti ndryshon. */
     function textOf(unit) {
       var out = '';
@@ -560,6 +560,17 @@
     }
   });
 
+  /* Datat: <input data-dmy> formatohet si dd.mm.vvvv ndërsa shkruhet. */
+  document.addEventListener('input', function (event) {
+    var el = event.target;
+    if (!el || !el.matches || !el.matches('input[data-dmy]')) return;
+    var digits = el.value.replace(/\D/g, '').slice(0, 8);
+    var out = digits.slice(0, 2);
+    if (digits.length > 2) out += '.' + digits.slice(2, 4);
+    if (digits.length > 4) out += '.' + digits.slice(4, 8);
+    if (el.value !== out) el.value = out;
+  });
+
   document.addEventListener('submit', function (event) {
     var form = event.target;
     if (!form || !form.matches || !form.matches('form[data-loading]') || event.defaultPrevented) return;
@@ -672,6 +683,27 @@
       showModal(origin);
     });
 
+    /* Dialog i hapur nga kodi me butonin si relatedTarget: kur mbyllet pa u
+       ruajtur, fokusi kthehet te butoni që e hapi, si te data-bs-toggle.
+       Nëse faqja e ka çuar fokusin gjetiu (p.sh. te rreshti i ri), nuk preket. */
+    document.addEventListener('show.bs.modal', function (ev) {
+      var t = ev.relatedTarget;
+      ev.target._qtaOpener = t && t.focus && t.closest && !t.closest('.modal') ? t : null;
+    });
+    document.addEventListener('hidden.bs.modal', function (ev) {
+      var el = ev.target;
+      var opener = el._qtaOpener;
+      el._qtaOpener = null;
+      if (!opener) return;
+      setTimeout(function () {
+        var active = document.activeElement;
+        if (document.querySelector('.modal.show')) return;
+        if (active && active !== document.body && !el.contains(active)) return;
+        if (!document.contains(opener) || !opener.getClientRects().length) return;
+        try { opener.focus({ preventScroll: true }); } catch (e) { /* mbetet ku është */ }
+      }, 30);
+    });
+
     window.qtaReopenAfterReload = function (el) {
       var host = el && el.closest ? el.closest('.modal[data-return-to]') : null;
       if (!host) return;
@@ -720,14 +752,14 @@
           '<div class="pal-head">' +
             '<i class="bi bi-search" aria-hidden="true"></i>' +
             '<input type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palResults" ' +
-                   'aria-autocomplete="list" placeholder="Shkruaj emër, AMZË, telefon, grup ose modul…" aria-label="Kërko në regjistër">' +
+                   'aria-autocomplete="list" placeholder="Shkruaj emër, AMZË, telefon, grup ose kurs…" aria-label="Kërko në regjistër">' +
             '<button class="pal-close" type="button" aria-label="Mbyll kërkimin">Esc</button>' +
           '</div>' +
           '<div class="pal-types" role="group" aria-label="Kërko vetëm te">' +
             '<button class="pal-type is-on" type="button" data-type="" aria-pressed="true">Të gjitha</button>' +
             '<button class="pal-type" type="button" data-type="student" aria-pressed="false">Kursantë</button>' +
             '<button class="pal-type" type="button" data-type="group" aria-pressed="false">Grupe</button>' +
-            '<button class="pal-type" type="button" data-type="course" aria-pressed="false">Module</button>' +
+            '<button class="pal-type" type="button" data-type="course" aria-pressed="false">Kurse</button>' +
             '<button class="pal-type" type="button" data-type="agency" aria-pressed="false">Agjenci</button>' +
             '<button class="pal-type" type="button" data-type="user" aria-pressed="false">Llogari</button>' +
             '<button class="pal-type" type="button" data-type="audit" aria-pressed="false">Historik</button>' +
@@ -846,8 +878,8 @@
 
     function contextType() {
       var page = (window.location.pathname.split('/').pop() || '').toLowerCase();
-      if (/^groups/.test(page)) return 'group';
-      if (page === 'courses.php') return 'course';
+      if (/^groups|^lesson_group/.test(page)) return 'group';
+      if (page === 'courses.php' || page === 'course.php') return 'course';
       if (page === 'agencies.php') return 'agency';
       if (page === 'users.php' || page === 'editors.php') return 'user';
       if (/^logs/.test(page)) return 'audit';
@@ -931,7 +963,7 @@
       input.removeAttribute('aria-activedescendant');
       if (!items.length) {
         body.innerHTML = '<div class="pal-welcome"><i class="bi bi-search" aria-hidden="true"></i>' +
-          '<b>Kërko në të gjithë regjistrin</b><span>Shkruaj të paktën dy shkronja: emër, atësi, numër amze, telefon, kod moduli ose numër grupi.</span></div>';
+          '<b>Kërko në të gjithë regjistrin</b><span>Shkruaj të paktën dy shkronja: emër, atësi, numër amze, telefon, kod ose emër kursi (edhe një modul ose temë), numër grupi.</span></div>';
         return;
       }
       body.innerHTML = '<div class="pal-recent"><span class="pal-recent-label">Kërkimet e fundit</span>' +

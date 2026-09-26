@@ -15,12 +15,12 @@ return [
   'start' => [
     'title' => 'Hapat e parë',
     'roles' => ['administrator', 'editor', 'agjencia', 'student'],
-    'intro' => 'Regjistri QTA mban kualifikimet profesionale të punonjësve: kush u regjistrua, në cilin modul, në cilin grup, kur dha provimin dhe sa pikë mori.',
+    'intro' => 'Regjistri QTA mban kualifikimet profesionale të punonjësve: kush u regjistrua, në cilin kurs, në cilin grup, kur dha provimin dhe sa pikë mori.',
     'steps' => [
       ['Hyr me rolin tënd', 'Stafi hyn me email, agjencitë me NIPT, kursantët me numrin personal.'],
       ['Nis nga "Kreu"', 'Aty sheh çfarë pret për ty sot dhe veprimet më të shpeshta.'],
       ['Përdor menunë majtas', 'Çdo seksion ka një emër të qartë. Në telefon menuja hapet me butonin ☰ lart majtas.'],
-      ['Kërko kudo', 'Shtyp "Kërko…" ose Ctrl + K për të gjetur një kursant, grup ose modul.'],
+      ['Kërko kudo', 'Shtyp "Kërko…" ose Ctrl + K për të gjetur një kursant, grup ose kurs.'],
     ],
     'tips' => [
       'Në çdo faqe ka një buton "Si funksionon?" me udhëzime të shkurtra për atë faqe.',
@@ -77,10 +77,10 @@ return [
   'dashboard_student' => [
     'title' => 'Faqja ime',
     'roles' => ['student'],
-    'intro' => 'Këtu sheh modulet ku je regjistruar, datat, provimet dhe pikët e tua.',
+    'intro' => 'Këtu sheh kurset ku je regjistruar, datat, provimet dhe pikët e tua.',
     'steps' => [
       ['Shiko provimin e radhës', 'Nëse ke një provim të caktuar, data shfaqet në krye.'],
-      ['Shiko modulet', 'Çdo modul tregon nëse është në vazhdim, kur është provimi dhe pikët që more.'],
+      ['Shiko kurset', 'Çdo kurs tregon nëse është në vazhdim, kur është provimi dhe pikët që more.'],
       ['Trego kodin QR', 'Kodi yt QR i tregon inspektorit që certifikatat e tua janë të vërteta. Shtyp "Shfaq më të madh" për ta treguar nga telefoni.'],
     ],
     'tips' => [
@@ -109,10 +109,10 @@ return [
   'student_card' => [
     'title' => 'Kartela e kursantit',
     'roles' => ['administrator', 'editor', 'agjencia'],
-    'intro' => 'Kartela bashkon gjithçka për një person: të dhënat personale, çdo modul me datat dhe pikët, provimet e ardhshme dhe kodin QR të verifikimit.',
+    'intro' => 'Kartela bashkon gjithçka për një person: të dhënat personale, çdo kurs me datat dhe pikët, provimet e ardhshme dhe kodin QR të verifikimit.',
     'steps' => [
       ['Gjej personin', 'Kërko me emër, numër personal ose numër amze dhe shtyp "Hap kartelën".'],
-      ['Lexo kartelën', 'Në krye janë shifrat; poshtë çdo modul me gjendjen ("Në mësim", "Pret pikët", "64 pikë" …).'],
+      ['Lexo kartelën', 'Në krye janë shifrat; poshtë çdo kurs me gjendjen ("Në mësim", "Pret pikët", "64 pikë" …).'],
       ['Ndrysho të dhënat', 'Stafi, me "Lejo ndryshimet", klikon një vlerë te "Të dhënat personale", e ndryshon dhe del nga fusha. Esc e kthen vlerën.'],
       ['Kodi QR', 'Hap faqen e verifikimit, shkarko kodin si PNG për printim ose kopjo lidhjen. Nëse mungon, shtyp "Krijo kodin QR".'],
     ],
@@ -124,25 +124,25 @@ return [
   'students_without_groups' => [
     'title' => 'Kursantët pa grup',
     'roles' => $staff,
-    'intro' => 'Kursantët që janë regjistruar por ende nuk janë caktuar në një grup. Këtu u zgjedh modulin dhe i cakton në grupe.',
+    'intro' => 'Kursantët që janë regjistruar por ende nuk janë caktuar në një grup. Këtu u zgjedh kursin dhe i cakton në grupe.',
     'steps' => [
-      ['Zgjidh modulin', 'Për kursantët "Pa modul", zgjidh modulin te lista dhe shtyp "Ruaj".'],
+      ['Zgjidh kursin', 'Për kursantët "Pa kurs", zgjidh kursin te lista dhe shtyp "Ruaj".'],
       ['Cakto në grup', 'Zgjidh grupin — lista tregon datat dhe vendet e zëna, p.sh. 6/10 — dhe shtyp "Cakto".'],
       ['Disa njëherësh', 'Shëno kutitë majtas; poshtë shfaqet një shirit. Zgjidh grupin dhe shtyp "Cakto të zgjedhurit".'],
     ],
     'tips' => [
       'Një grup mban deri në 10 kursantë. Ata që nuk nxënë mbeten në listë — caktoji në një grup tjetër.',
-      'Nëse një modul nuk ka grup, krijoje te "Grupet" me "Krijo grup".',
+      'Nëse një kurs nuk ka grup, krijoje te "Grupet" me "Krijo grup". Grupet me orar shënohen "(me orar)" në listë.',
     ],
   ],
 
   /* ----------------------------------------------------- Grupet, regjistri */
   'groups' => [
-    'title' => 'Grupet',
+    'title' => 'Grupet e mëparshme',
     'roles' => $staff,
-    'intro' => 'Çdo grup ndjek një modul në data të caktuara. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet e grupit.',
+    'intro' => 'Grupet e krijuara para orarit të mësimit. Mbeten siç ishin: çdo grup ndjek një kurs në data të caktuara, pa orar ditë pas dite. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet. Grupet e reja krijohen te "Grupet".',
     'steps' => [
-      ['Hap një grup', 'Kliko emrin e modulit: grupi hapet në një dritare me kursantët, provimet, pikët dhe dokumentet.'],
+      ['Hap një grup', 'Kliko emrin e kursit: grupi hapet në një dritare me kursantët, provimet, pikët dhe dokumentet.'],
       ['Cakto datat', 'Me ndryshimet e hapura, kliko datën e fillimit ose të mbarimit në tabelë, ose datën e provimit brenda grupit, dhe shkruaj dd.mm.vvvv.'],
       ['Shëno pikët', 'Kliko pikët dhe shkruaj një numër nga 0 deri në 100.'],
       ['Ndrysho kursantët', 'Brenda grupit shtyp "Ndrysho kursantët" dhe shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10, grupi ndahet vetë — të tregohet si para se të ruhet.'],
@@ -158,27 +158,82 @@ return [
   'register' => [
     'title' => 'Regjistri i plotë',
     'roles' => $staff,
-    'intro' => 'Çdo rresht është një regjistrim: personi, moduli, datat e grupit, provimi dhe pikët. Është pamja më e plotë e regjistrit.',
+    'intro' => 'Çdo rresht është një regjistrim: personi, kursi, datat e grupit, provimi dhe pikët. Është pamja më e plotë e regjistrit.',
     'steps' => [
       ['Filtro', 'Kërko me emër, numër personal ose nis nga një numër amze.'],
       ['Ndrysho', 'Me "Lejo ndryshimet" mund të ndryshosh datat e provimit dhe pikët direkt në tabelë. Kolona "Gjendja" përditësohet vetë.'],
       ['Shkarko', 'Përdor "Shkarko" për ta marrë listën në Excel, PDF ose Word.'],
     ],
-    'tips' => [],
+    'tips' => [
+      'Te grupet me orar mësimi, datat e fillimit dhe të mbarimit i llogarit orari: ndryshohen te faqja e grupit, jo këtu.',
+      'Regjistri i plotë është lista e regjistrimeve. Orari ditë pas dite i një grupi (temat e çdo dite) është te faqja e grupit, te "Grupet".',
+    ],
   ],
 
   'courses' => [
-    'title' => 'Modulet',
+    'title' => 'Kurset',
     'roles' => $staff,
-    'intro' => 'Modulet janë zanatet dhe trajnimet që ofron QTA, me kodin dhe numrin e orëve.',
+    'intro' => 'Kurset janë zanatet dhe trajnimet që ofron QTA, me kodin dhe numrin e orëve. Çdo kurs ndahet në module (p.sh. Word, Excel) dhe çdo modul në tema.',
     'steps' => [
-      ['Shto një modul', 'Shtyp "Shto modul": emri, një kod i shkurtër (p.sh. SLD-04) dhe orët e mësimit.'],
-      ['Ndrysho', 'Me ndryshimet e hapura kliko kodin, emrin ose orët dhe shkruaj vlerën e re.'],
-      ['Shiko grupet e modulit', 'Kliko "N grupe": grupet hapen në një dritare. "Zhvendos grupin" korrigjon një grup të vendosur gabim; kliko një grup për ta hapur.'],
+      ['Shto një kurs', 'Shtyp "Shto kurs": emri, një kod i shkurtër (p.sh. SLD-04) dhe orët e mësimit. Pastaj hapet kursi që t\'i shtosh modulet.'],
+      ['Ndërto modulet dhe temat', 'Kliko emrin e kursit. Shto modulet me radhë dhe temat e secilit modul, me orët e tyre.'],
+      ['Shiko gatishmërinë', 'Kolona "Modulet dhe temat" tregon "Gati" kur orët e moduleve mblidhen në orët e kursit dhe orët e temave në orët e çdo moduli. Vetëm një kurs "Gati" përdoret për grupe me orar.'],
+      ['Shiko grupet e kursit', 'Kliko "N grupe": grupet hapen në një dritare. Kliko një grup për ta hapur.'],
     ],
     'tips' => [
-      'Një modul që ka grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët.',
-      'Kodi i modulit shfaqet në certifikata dhe në dokumente — mbaje të qëndrueshëm.',
+      'Një kurs që ka grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët.',
+      'Kodi i kursit shfaqet në certifikata dhe në dokumente — mbaje të qëndrueshëm.',
+    ],
+  ],
+
+  'course' => [
+    'title' => 'Modulet dhe temat e kursit',
+    'roles' => $staff,
+    'intro' => 'Një kurs ndahet në module dhe çdo modul në tema, me radhë. Grupet me orar i zhvillojnë pikërisht në këtë radhë, ditë pas dite.',
+    'steps' => [
+      ['Shto modulet', 'Shtyp "Shto modul": emri, orët dhe vendi në radhë. P.sh. Microsoft Office 50 orë = Word 10 + Excel 10 + PowerPoint 10 + Access 10 + Outlook 10.'],
+      ['Shto temat', 'Poshtë çdo moduli shkruaj emrin e temës dhe orët, pastaj shtyp "Shto temën" (ose Enter). Fusha mbetet gati për temën tjetër.'],
+      ['Rendit', 'Butonat me shigjetë lëvizin një modul ose një temë një vend lart ose poshtë. Për një vend të largët, përdor "Ndrysho" dhe zgjidh "Vendi në radhë".'],
+      ['Kontrollo orët', 'Lart shfaqet sa orë kanë modulet nga orët e kursit. Çdo problem thuhet me fjalë, disa me një buton rregullimi, p.sh. "Vendos orët e modulit në 10".'],
+    ],
+    'tips' => [
+      'Orët janë orë mësimi të plota: 1, 2, 3 …',
+      'Grupet që ekzistojnë kanë kopjen e tyre të moduleve dhe temave: ndryshimet këtu vlejnë për grupet e reja.',
+      'Një kurs që nuk është "Gati" mund të ruhet dhe të plotësohet më vonë, por nuk mund të përdoret për grup me orar.',
+    ],
+  ],
+
+  'lesson_groups' => [
+    'title' => 'Grupet',
+    'roles' => $staff,
+    'intro' => 'Çdo grup ndjek një kurs me orar mësimi ditë pas dite. Zgjedh kursin, datën e fillimit dhe orët në ditë; data e mbarimit llogaritet vetë.',
+    'steps' => [
+      ['Krijo grup', 'Shtyp "Krijo grup", zgjidh kursin (vetëm kurset "Gati"), datën e fillimit dhe orët e mësimit në ditë. Poshtë del menjëherë kur mbaron mësimi.'],
+      ['Shto kursantët', 'Shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10 kursantë krijohen disa grupe të barabarta me të njëjtin orar.'],
+      ['Hap një grup', 'Kliko emrin e kursit: hapet orari ditë pas dite, kursantët me provimet dhe pikët, dhe dokumentet.'],
+    ],
+    'tips' => [
+      'Të dielat nuk kanë mësim, përveç kur shënohen si ditë mësimi te grupi.',
+      'Grupet e krijuara para orarit të mësimit janë te "Grupet e mëparshme" dhe mbeten siç ishin.',
+    ],
+  ],
+
+  'lesson_group' => [
+    'title' => 'Orari i mësimit',
+    'roles' => $staff,
+    'intro' => 'Orari ndan orët e kursit nëpër ditë, në radhën e moduleve dhe të temave. Një temë mund të vazhdojë në ditën tjetër dhe një modul i ri mund të fillojë në mes të ditës.',
+    'steps' => [
+      ['Lexo orarin', 'Te "Ditë pas dite" çdo datë tregon temat dhe orët. "ora 1 nga 2" do të thotë që tema vazhdon në ditën tjetër të mësimit.'],
+      ['Ndrysho një ditë', 'Me ndryshimet e hapura shtyp "Ndrysho ditën": orë të tjera, pa mësim (p.sh. festë), ose mësim të dielën. Orari rillogaritet vetë dhe data e mbarimit përditësohet.'],
+      ['Ndrysho fillimin ose orët në ditë', 'Te "Orari në shkurt" shtyp "Ndrysho fillimin ose orët në ditë". Para ruajtjes të tregohet kur do të mbarojë mësimi.'],
+      ['Provimet dhe pikët', 'Te "Kursantët dhe provimet" kliko datën e provimit ose pikët. Provimi nuk mund të jetë para mbarimit të mësimit.'],
+      ['Mbyll grupin', 'Kur provimet dhe pikët janë të plota, shtyp "Mbylle grupin". Pas kësaj çdo ndryshim kërkon konfirmim.'],
+    ],
+    'tips' => [
+      'Dita e fundit ka vetëm orët që mbeten — nuk mbushet deri në orarin e plotë.',
+      'Një ndryshim që prek ditë që kanë kaluar kërkon konfirmim, sepse ato ditë janë zhvilluar tashmë.',
+      'Grupi ka kopjen e vet të temave. Nëse kursi ndryshon para se të nisë grupi, mund të marrësh temat e reja me "Merr temat e reja".',
+      '"Printo orarin" printon orarin ditë pas dite.',
     ],
   ],
 
@@ -255,10 +310,10 @@ return [
   'agency_students' => [
     'title' => 'Punonjësit tanë',
     'roles' => ['agjencia'],
-    'intro' => 'Lista e punonjësve të agjencisë suaj që janë regjistruar në QTA, me modulin e fundit, provimin dhe pikët.',
+    'intro' => 'Lista e punonjësve të agjencisë suaj që janë regjistruar në QTA, me kursin e fundit, provimin dhe pikët.',
     'steps' => [
       ['Kërko', 'Shkruaj emrin, numrin personal ose numrin e amzës.'],
-      ['Hap kartelën', 'Kliko emrin për të parë të gjitha modulet e punonjësit.'],
+      ['Hap kartelën', 'Kliko emrin për të parë të gjitha kurset e punonjësit.'],
       ['Shkarko listën', 'Përdor "Shkarko" për ta marrë në Excel, PDF ose Word.'],
     ],
     'tips' => [
@@ -271,7 +326,7 @@ return [
     'roles' => ['agjencia'],
     'intro' => 'Grupet ku janë caktuar punonjësit tuaj, me datat e trajnimit, provimet dhe pikët.',
     'steps' => [
-      ['Hap një grup', 'Kliko emrin e modulit: grupi hapet në një dritare me punonjësit dhe pikët e secilit.'],
+      ['Hap një grup', 'Kliko emrin e kursit: grupi hapet në një dritare me punonjësit dhe pikët e secilit.'],
       ['Shiko kush pret', 'Poshtë, "Presin një grup" tregon punonjësit që QTA do t\'i caktojë së shpejti.'],
     ],
     'tips' => [],
@@ -279,15 +334,15 @@ return [
 
   /* ------------------------------------------------------------- Kursanti */
   'student_groups' => [
-    'title' => 'Modulet e mia',
+    'title' => 'Kurset e mia',
     'roles' => ['student'],
-    'intro' => 'Të gjitha modulet ku je regjistruar, me datat, provimin dhe rezultatin.',
+    'intro' => 'Të gjitha kurset ku je regjistruar, me datat, provimin dhe rezultatin.',
     'steps' => [
       ['Lexo gjendjen', '"Në mësim", "Provimi pas 3 ditësh", "Pret pikët" ose pikët që more, p.sh. "64 pikë".'],
-      ['Moduli pa grup', '"Pret grupin" do të thotë që QTA do të të caktojë në grupin e radhës.'],
+      ['Kursi pa grup', '"Pret grupin" do të thotë që QTA do të të caktojë në grupin e radhës.'],
     ],
     'tips' => [
-      'Kushdo që skanon kodin tënd QR sheh modulet e tua në regjistër.',
+      'Kushdo që skanon kodin tënd QR sheh kurset e tua në regjistër.',
     ],
   ],
 

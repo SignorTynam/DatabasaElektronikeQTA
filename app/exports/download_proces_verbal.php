@@ -168,6 +168,18 @@ $startIso   = (string)($group['start_date'] ?? '');
 $endIso     = (string)($group['end_date'] ?? '');
 
 $hours = ($courseId > 0) ? getCourseHours($pdo, $courseId) : '';
+/* Grupi me orar mësimi: orët janë ato të kopjes së kursit që ndoqi grupi,
+   jo orët e sotme të kursit (kursi mund të ndryshojë më vonë). */
+try {
+  $gsHours = $pdo->prepare('SELECT gs.course_hours FROM group_schedules gs JOIN course_groups cg ON cg.id = gs.group_id WHERE gs.group_id = ? AND cg.model = \'scheduled\'');
+  $gsHours->execute([$groupId]);
+  $snapshotHours = $gsHours->fetchColumn();
+  if ($snapshotHours !== false && $snapshotHours !== null) {
+    $hours = (string)(int)$snapshotHours;
+  }
+} catch (Throwable $e) {
+  /* Baza pa tabelat e orarit (para migrimit): mbeten orët e kursit. */
+}
 
 /* ===== Studentët e grupit (për tabelën) ===== */
 $st = $pdo->prepare("

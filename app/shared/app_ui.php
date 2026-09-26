@@ -70,6 +70,9 @@ if (!function_exists('qta_app_active_key')) {
       'student_card.php'            => 'student_card',
       'register.php'                => 'register_full',
       'groups.php'                  => 'register_groups',
+      'lesson_groups.php'           => 'lesson_groups',
+      'lesson_group.php'            => 'lesson_groups',
+      'course.php'                  => 'courses',
       'students_without_groups.php' => 'students_without_groups',
       'courses.php'                 => 'courses',
       'logs.php'                    => 'logs',
@@ -107,9 +110,10 @@ if (!function_exists('qta_app_menu')) {
     $training = [
       'label' => 'Grupet dhe provimet',
       'children' => [
-        ['key' => 'register_groups', 'label' => 'Grupet',            'href' => 'groups.php',   'icon' => 'bi-collection'],
-        ['key' => 'register_full',   'label' => 'Regjistri i plotë', 'href' => 'register.php', 'icon' => 'bi-journal-text'],
-        ['key' => 'courses',         'label' => 'Modulet',           'href' => 'courses.php',  'icon' => 'bi-book'],
+        ['key' => 'lesson_groups',   'label' => 'Grupet',             'href' => 'lesson_groups.php', 'icon' => 'bi-calendar-week'],
+        ['key' => 'register_groups', 'label' => 'Grupet e mëparshme', 'href' => 'groups.php',        'icon' => 'bi-archive'],
+        ['key' => 'register_full',   'label' => 'Regjistri i plotë',  'href' => 'register.php',      'icon' => 'bi-journal-text'],
+        ['key' => 'courses',         'label' => 'Kurset',             'href' => 'courses.php',       'icon' => 'bi-book'],
       ],
     ];
 
@@ -150,7 +154,7 @@ if (!function_exists('qta_app_menu')) {
 
       'student' => [
         ['key' => 'dashboard',      'label' => 'Kreu',          'href' => 'dashboard_student.php', 'icon' => 'bi-house-door'],
-        ['key' => 'student_groups', 'label' => 'Modulet e mia', 'href' => 'groups_student.php',    'icon' => 'bi-patch-check'],
+        ['key' => 'student_groups', 'label' => 'Kurset e mia',  'href' => 'groups_student.php',    'icon' => 'bi-patch-check'],
       ],
 
       default => [],

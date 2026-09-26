@@ -23,7 +23,7 @@ try {
   /* mbaj zerot */
 }
 
-/* ===== Modulet që certifikohen ===== */
+/* ===== Kurset që certifikohen ===== */
 $modules = [];
 try {
   $modules = $pdo->query("
@@ -66,7 +66,7 @@ require_once __DIR__ . '/navbarMain.php';
 
         <ul class="figures" aria-label="Regjistri në shifra">
           <li><b><?= number_format((int)$figures['registered'], 0, ',', '.') ?></b><span>regjistrime</span></li>
-          <li><b><?= number_format((int)$figures['modules'], 0, ',', '.') ?></b><span>module</span></li>
+          <li><b><?= number_format((int)$figures['modules'], 0, ',', '.') ?></b><span>kurse</span></li>
           <li><b><?= number_format((int)$figures['passed'], 0, ',', '.') ?></b><span>provime të dhëna</span></li>
         </ul>
       </div>
@@ -99,18 +99,18 @@ require_once __DIR__ . '/navbarMain.php';
       </div>
       <ol class="steps-grid">
         <li><h3>Regjistrimi</h3><p>Punonjësi regjistrohet vetë ose nga kompania që e dërgon. Merr një numër amze.</p></li>
-        <li><h3>Trajnimi në grup</h3><p>Caktohet në një grup të modulit, me datë fillimi dhe mbarimi.</p></li>
+        <li><h3>Trajnimi në grup</h3><p>Caktohet në një grup të kursit, me orar mësimi dhe datë fillimi e mbarimi.</p></li>
         <li><h3>Provimi</h3><p>Në fund jepet provimi dhe pikët shënohen në regjistër.</p></li>
         <li><h3>Certifikata</h3><p>Certifikata lëshohet me kod unik dhe QR, që kontrollohet publikisht.</p></li>
       </ol>
     </div>
   </section>
 
-  <section class="band" id="modulet" aria-labelledby="modTitle">
+  <section class="band" id="kurset" aria-labelledby="modTitle">
     <div class="wrap">
       <div class="band-head">
-        <h2 id="modTitle">Modulet që certifikojmë</h2>
-        <p><?= count($modules) ?> module në zanatet e ndërtimit dhe në sigurinë në punë.</p>
+        <h2 id="modTitle">Kurset që certifikojmë</h2>
+        <p><?= count($modules) ?> kurse në zanatet e ndërtimit dhe në sigurinë në punë.</p>
       </div>
       <?php if ($modules): ?>
         <ul class="module-grid">
@@ -125,7 +125,7 @@ require_once __DIR__ . '/navbarMain.php';
           <?php endforeach; ?>
         </ul>
       <?php else: ?>
-        <?= qta_empty('Lista e moduleve nuk u ngarkua', 'Provo ta rifreskosh faqen. Nëse vazhdon, na kontakto.', 'bi-book') ?>
+        <?= qta_empty('Lista e kurseve nuk u ngarkua', 'Provo ta rifreskosh faqen. Nëse vazhdon, na kontakto.', 'bi-book') ?>
       <?php endif; ?>
     </div>
   </section>
@@ -140,7 +140,7 @@ require_once __DIR__ . '/navbarMain.php';
         <div class="audience">
           <span class="audience-icon"><i class="bi bi-person-badge" aria-hidden="true"></i></span>
           <h3>Kursanti</h3>
-          <p>Sheh modulet e veta, datat e provimit, pikët dhe kodin QR të certifikatave.</p>
+          <p>Sheh kurset e veta, datat e provimit, pikët dhe kodin QR të certifikatave.</p>
           <a href="selectProfile.php?role=student">Hyr si kursant</a>
         </div>
         <div class="audience">

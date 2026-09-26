@@ -42,7 +42,7 @@ require_once __DIR__ . '/navbarMain.php';
     </p>
     <ul class="figures" aria-label="Regjistri në shifra">
       <li><b><?= number_format((int)$figures['registered'], 0, ',', '.') ?></b><span>regjistrime</span></li>
-      <li><b><?= number_format((int)$figures['modules'], 0, ',', '.') ?></b><span>module</span></li>
+      <li><b><?= number_format((int)$figures['modules'], 0, ',', '.') ?></b><span>kurse</span></li>
       <li><b><?= number_format((int)$figures['groups'], 0, ',', '.') ?></b><span>grupe trajnimi</span></li>
     </ul>
   </section>

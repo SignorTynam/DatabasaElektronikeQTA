@@ -29,10 +29,14 @@ $tableLabels = [
   'persons'               => 'Person',
   'students'              => 'Kursant',
   'agencies'              => 'Agjenci',
-  'courses'               => 'Modul',
+  'courses'               => 'Kurs',
+  'course_modules'        => 'Modul',
+  'course_topics'         => 'Temë',
   'course_groups'         => 'Grup',
   'course_group_students' => 'Kursant në grup',
-  'student_course_plans'  => 'Modul i zgjedhur',
+  'group_schedules'       => 'Orari i grupit',
+  'group_day_rules'       => 'Ditë e veçantë',
+  'student_course_plans'  => 'Kurs i zgjedhur',
   'education_levels'      => 'Nivel arsimi',
   'genders'               => 'Gjini',
   'agency_students'       => 'Punonjës agjencie',
@@ -43,14 +47,20 @@ $columnLabels = [
                  'birth_date' => 'Datëlindja', 'birth_place' => 'Vendlindja', 'phone' => 'Telefoni', 'gender_id' => 'Gjinia'],
   'students' => ['person_id' => 'Personi', 'user_id' => 'Llogaria', 'nr_amze' => 'Nr. i amzës', 'education_level_id' => 'Arsimi', 'created_at' => 'Krijuar më'],
   'agencies' => ['user_id' => 'Llogaria', 'nip_t' => 'NIPT', 'company_name' => 'Emri i kompanisë', 'address' => 'Adresa', 'phone' => 'Telefoni'],
-  'courses'  => ['code' => 'Kodi', 'name' => 'Emri i modulit', 'hours' => 'Orë mësimi', 'created_at' => 'Krijuar më'],
-  'course_groups' => ['course_id' => 'Moduli', 'start_date' => 'Fillimi', 'end_date' => 'Mbarimi', 'is_completed' => 'Grupi i mbyllur', 'created_at' => 'Krijuar më'],
+  'courses'  => ['code' => 'Kodi', 'name' => 'Emri i kursit', 'hours' => 'Orë mësimi', 'created_at' => 'Krijuar më'],
+  'course_modules' => ['course_id' => 'Kursi', 'title' => 'Emri i modulit', 'hours' => 'Orë', 'position' => 'Vendi në radhë'],
+  'course_topics'  => ['module_id' => 'Moduli', 'title' => 'Tema', 'hours' => 'Orë', 'position' => 'Vendi në modul'],
+  'course_groups' => ['course_id' => 'Kursi', 'model' => 'Lloji i grupit', 'start_date' => 'Fillimi', 'end_date' => 'Mbarimi', 'is_completed' => 'Grupi i mbyllur', 'created_at' => 'Krijuar më'],
   'course_group_students' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'final_score' => 'Pikët', 'exam_date' => 'Data e provimit'],
-  'student_course_plans'  => ['student_id' => 'Kursanti', 'course_id' => 'Moduli', 'status' => 'Gjendja', 'group_id' => 'Grupi', 'selected_by' => 'Zgjodhi'],
+  'group_schedules' => ['group_id' => 'Grupi', 'daily_hours' => 'Orë në ditë', 'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'curriculum_taken_at' => 'Temat u kopjuan më'],
+  'group_day_rules' => ['group_id' => 'Grupi', 'rule_date' => 'Data', 'hours' => 'Mësimi atë ditë', 'note' => 'Shënim'],
+  'student_course_plans'  => ['student_id' => 'Kursanti', 'course_id' => 'Kursi', 'status' => 'Gjendja', 'group_id' => 'Grupi', 'selected_by' => 'Zgjodhi'],
 ];
 $tableIcons = [
   'users' => 'bi-person-badge', 'persons' => 'bi-person', 'students' => 'bi-mortarboard', 'agencies' => 'bi-building',
-  'courses' => 'bi-book', 'course_groups' => 'bi-collection', 'course_group_students' => 'bi-people', 'student_course_plans' => 'bi-journal-check',
+  'courses' => 'bi-book', 'course_modules' => 'bi-collection', 'course_topics' => 'bi-list-ol', 'course_groups' => 'bi-collection',
+  'course_group_students' => 'bi-people', 'group_schedules' => 'bi-calendar-week', 'group_day_rules' => 'bi-calendar-event',
+  'student_course_plans' => 'bi-journal-check',
 ];
 
 /* ================================================= Kërkime me memorie */
@@ -69,6 +79,11 @@ function qta_log_lookup(PDO $pdo, string $what, $id): ?string {
     'student' => "SELECT CONCAT(TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,''))),' (amza ',s.nr_amze,')') FROM students s LEFT JOIN persons p ON p.id=s.person_id WHERE s.id=?",
     'agency'  => "SELECT COALESCE(NULLIF(company_name,''), CONCAT('Agjencia #',id)) FROM agencies WHERE id=?",
     'group'   => "SELECT CONCAT('Grupi #',cg.id,' · ',c.name) FROM course_groups cg JOIN courses c ON c.id=cg.course_id WHERE cg.id=?",
+    'module'  => "SELECT CONCAT(m.title,' (',c.name,')') FROM course_modules m JOIN courses c ON c.id=m.course_id WHERE m.id=?",
+    'topic'   => "SELECT CONCAT(t.title,' (',m.title,')') FROM course_topics t JOIN course_modules m ON m.id=t.module_id WHERE t.id=?",
+    'plan'    => "SELECT CONCAT(TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,''))),' (amza ',s.nr_amze,') · ',c.name)
+                  FROM student_course_plans scp JOIN students s ON s.id=scp.student_id LEFT JOIN persons p ON p.id=s.person_id
+                  JOIN courses c ON c.id=scp.course_id WHERE scp.id=?",
   ][$what] ?? null;
   if ($sql === null) return null;
   try {
@@ -83,13 +98,24 @@ function qta_log_lookup(PDO $pdo, string $what, $id): ?string {
 }
 
 /** Vlera e një fushe me fjalë (tekst i thjeshtë, pa HTML). */
-function qta_log_value(PDO $pdo, string $col, ?string $val): string {
+function qta_log_value(PDO $pdo, string $col, ?string $val, string $table = ''): string {
   if ($val === null || $val === '') return '—';
+  /* Ditët e veçanta: 'default' = orari i zakonshëm (p.sh. një e diel me mësim), 0 = pa mësim. */
+  if ($table === 'group_day_rules' && $col === 'hours') {
+    if ($val === 'default') return 'Orari i zakonshëm';
+    return (int)$val === 0 ? 'Pa mësim' : ((int)$val . ' orë');
+  }
   switch ($col) {
-    case 'birth_date': case 'start_date': case 'end_date': case 'exam_date':
+    case 'birth_date': case 'start_date': case 'end_date': case 'exam_date': case 'rule_date':
       return qta_date(substr($val, 0, 10), $val);
-    case 'created_at':
+    case 'created_at': case 'curriculum_taken_at':
       return qta_datetime($val, $val);
+    case 'model':        return $val === 'scheduled' ? 'Me orar mësimi' : 'Pa orar (i mëparshëm)';
+    case 'daily_hours':  return (int)$val . ' orë në ditë';
+    case 'course_hours': return (int)$val . ' orë';
+    case 'teaching_days': return (int)$val . ' ditë';
+    case 'position':     return 'vendi ' . (int)$val;
+    case 'module_id':    return qta_log_lookup($pdo, 'module', $val) ?? ('Modul #' . (int)$val);
     case 'is_completed':
       return in_array(strtolower(trim($val)), ['1', 'true', 't', 'yes', 'y', 'on'], true) ? 'Po, i mbyllur' : 'Jo, i hapur';
     case 'hours':       return rtrim(rtrim($val, '0'), '.') . ' orë';
@@ -98,7 +124,7 @@ function qta_log_value(PDO $pdo, string $col, ?string $val): string {
     case 'role_id':     return qta_log_lookup($pdo, 'role', $val) ?? ('Rol #' . (int)$val);
     case 'gender_id':   return qta_log_lookup($pdo, 'gender', $val) ?? ('Gjini #' . (int)$val);
     case 'education_level_id': return qta_log_lookup($pdo, 'edu', $val) ?? ('Nivel #' . (int)$val);
-    case 'course_id':   return qta_log_lookup($pdo, 'course', $val) ?? ('Modul #' . (int)$val);
+    case 'course_id':   return qta_log_lookup($pdo, 'course', $val) ?? ('Kurs #' . (int)$val);
     case 'user_id': case 'selected_by': return qta_log_lookup($pdo, 'user', $val) ?? ('Llogaria #' . (int)$val);
     case 'person_id':   return qta_log_lookup($pdo, 'person', $val) ?? ('Person #' . (int)$val);
     case 'student_id':  return qta_log_lookup($pdo, 'student', $val) ?? ('Kursant #' . (int)$val);
@@ -123,9 +149,15 @@ function qta_log_subject(PDO $pdo, string $table, array $pk, array $tableLabels,
       case 'students': return $v('nr_amze') !== '' ? 'amza ' . $v('nr_amze') : null;
       case 'agencies': return $v('company_name') ?: ($v('nip_t') ?: null);
       case 'courses':  return $v('name') ?: ($v('code') ?: null);
+      case 'course_modules':
+        $c = $v('course_id') !== '' ? qta_log_lookup($pdo, 'course', $v('course_id')) : null;
+        return $v('title') !== '' ? $v('title') . ($c ? ' (' . $c . ')' : '') : null;
+      case 'course_topics':
+        $m = $v('module_id') !== '' ? qta_log_lookup($pdo, 'module', $v('module_id')) : null;
+        return $v('title') !== '' ? $v('title') . ($m ? ' — moduli ' . $m : '') : null;
       case 'course_groups':
         $c = $v('course_id') !== '' ? qta_log_lookup($pdo, 'course', $v('course_id')) : null;
-        return $c ? ('grupi i modulit ' . $c) : null;
+        return $c ? ('grupi i kursit ' . $c) : null;
       case 'student_course_plans':
         $s = $v('student_id') !== '' ? qta_log_lookup($pdo, 'student', $v('student_id')) : null;
         $c = $v('course_id') !== '' ? qta_log_lookup($pdo, 'course', $v('course_id')) : null;
@@ -139,7 +171,17 @@ function qta_log_subject(PDO $pdo, string $table, array $pk, array $tableLabels,
     case 'students': $name = qta_log_lookup($pdo, 'student', $id); break;
     case 'agencies': $name = qta_log_lookup($pdo, 'agency', $id); break;
     case 'courses':  $name = qta_log_lookup($pdo, 'course', $id); break;
+    case 'course_modules': $name = qta_log_lookup($pdo, 'module', $id); break;
+    case 'course_topics':  $name = qta_log_lookup($pdo, 'topic', $id); break;
+    case 'student_course_plans': $name = qta_log_lookup($pdo, 'plan', $id); break;
     case 'course_groups': $name = qta_log_lookup($pdo, 'group', $id); break;
+    case 'group_schedules':
+      $gid = (int)($pk['group_id'] ?? 0);
+      return $label . ': ' . (qta_log_lookup($pdo, 'group', $gid) ?? ('Grupi #' . $gid . ' (nuk ekziston më)'));
+    case 'group_day_rules':
+      $gid = (int)($pk['group_id'] ?? 0);
+      $day = isset($pk['rule_date']) ? qta_date(substr((string)$pk['rule_date'], 0, 10)) : '';
+      return $label . ': ' . $day . ' · ' . (qta_log_lookup($pdo, 'group', $gid) ?? ('Grupi #' . $gid));
     case 'course_group_students':
       $gid = (int)($pk['group_id'] ?? 0); $sid = (int)($pk['student_id'] ?? 0);
       $s = qta_log_lookup($pdo, 'student', $sid) ?? ('Kursant #' . $sid);
@@ -232,8 +274,8 @@ $changesFor = static function (array $ev, array $diffs) use ($pdo, $columnLabels
     if ($ev['action'] === 'DELETE' && ($f['old_value'] === null || $f['old_value'] === '')) continue;
     $out[] = [
       'label' => $translated[$col] ?? ucfirst(str_replace('_', ' ', $col)),
-      'old'   => qta_log_value($pdo, $col, $f['old_value']),
-      'new'   => qta_log_value($pdo, $col, $f['new_value']),
+      'old'   => qta_log_value($pdo, $col, $f['old_value'], (string)$ev['table_name']),
+      'new'   => qta_log_value($pdo, $col, $f['new_value'], (string)$ev['table_name']),
     ];
   }
   return $out;

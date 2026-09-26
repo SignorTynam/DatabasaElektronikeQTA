@@ -34,7 +34,7 @@ if ($isOpen) {
   $openText = 'Jemi të mbyllur · hapemi të hënën në 09:00';
 }
 
-$topics = ['Module dhe data', 'Regjistrim', 'Hyrja në portal', 'Certifikatë', 'Tjetër'];
+$topics = ['Kurse dhe data', 'Regjistrim', 'Hyrja në portal', 'Certifikatë', 'Tjetër'];
 
 $NAV_ACTIVE = 'contact';
 $pageTitle = 'Kontakt — Regjistri QTA';
@@ -112,10 +112,10 @@ require_once __DIR__ . '/navbarMain.php';
           </div>
         </details>
         <details class="faq">
-          <summary><span>Si regjistrohem në një modul?</span><i class="bi bi-plus-lg faq-icon" aria-hidden="true"></i></summary>
+          <summary><span>Si regjistrohem në një kurs?</span><i class="bi bi-plus-lg faq-icon" aria-hidden="true"></i></summary>
           <div class="faq-body">
-            <p>Punonjësit regjistrohen zakonisht përmes kompanisë (agjencisë) ku punojnë. Mund të vini edhe vetë në zyrë ose të na telefononi. Modulet dhe orët i gjeni në kryefaqe.</p>
-            <a class="btn btn-secondary btn-sm" href="index.php#modulet"><i class="bi bi-journal-text" aria-hidden="true"></i>Shiko modulet</a>
+            <p>Punonjësit regjistrohen zakonisht përmes kompanisë (agjencisë) ku punojnë. Mund të vini edhe vetë në zyrë ose të na telefononi. Kurset dhe orët i gjeni në kryefaqe.</p>
+            <a class="btn btn-secondary btn-sm" href="index.php#kurset"><i class="bi bi-journal-text" aria-hidden="true"></i>Shiko kurset</a>
           </div>
         </details>
         <details class="faq">
@@ -172,7 +172,7 @@ require_once __DIR__ . '/navbarMain.php';
         <div class="col-12">
           <label class="form-label" for="message">Mesazhi</label>
           <textarea class="form-control" id="message" name="message" rows="5" required
-                    placeholder="P.sh. Jemi 6 punonjës dhe na duhet moduli &quot;Punime në lartësi&quot; në tetor."></textarea>
+                    placeholder="P.sh. Jemi 6 punonjës dhe na duhet kursi &quot;Punime në lartësi&quot; në tetor."></textarea>
           <p class="invalid-feedback">Shkruani mesazhin.</p>
         </div>
 

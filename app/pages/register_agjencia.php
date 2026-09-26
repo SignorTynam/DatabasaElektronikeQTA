@@ -126,7 +126,7 @@ $company = (string)($AGENCY['company_name'] ?: 'Agjencia');
     <div class="page-head-main">
       <span class="eyebrow"><?= h($company) ?></span>
       <h1 class="page-title">Punonjësit tanë</h1>
-      <p class="page-lead">Punonjësit tuaj që janë regjistruar në QTA, me modulin e fundit, provimin dhe pikët.</p>
+      <p class="page-lead">Punonjësit tuaj që janë regjistruar në QTA, me kursin e fundit, provimin dhe pikët.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -169,7 +169,7 @@ $company = (string)($AGENCY['company_name'] ?: 'Agjencia');
             <tr>
               <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
               <th scope="col" data-sort="text">Punonjësi</th>
-              <th scope="col" class="col-wide" data-sort="text">Moduli i fundit</th>
+              <th scope="col" class="col-wide" data-sort="text">Kursi i fundit</th>
               <th scope="col" class="nowrap" data-sort="date">Provimi</th>
               <th scope="col" data-sort="text">Gjendja</th>
               <th scope="col" class="nowrap num-col" data-sort="num">Mosha</th>

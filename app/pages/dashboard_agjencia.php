@@ -204,7 +204,7 @@ require __DIR__ . '/inc/navbar2.php';
             <table class="table" data-sortable>
               <thead>
                 <tr>
-                  <th scope="col" data-sort="text">Moduli</th>
+                  <th scope="col" data-sort="text">Kursi</th>
                   <th scope="col" data-sort="date">Trajnimi</th>
                   <th scope="col" class="num-col" data-sort="num">Punonjës</th>
                   <th scope="col" data-sort="none">Gjendja</th>
@@ -285,7 +285,7 @@ require __DIR__ . '/inc/navbar2.php';
               </a>
             <?php endforeach; ?>
           </div>
-          <p class="text-muted small mt-2 mb-0">Stafi i QTA-së i cakton punonjësit në grupin e radhës të modulit.</p>
+          <p class="text-muted small mt-2 mb-0">Stafi i QTA-së i cakton punonjësit në grupin e radhës të kursit.</p>
         <?php else: ?>
           <?= qta_empty('Të gjithë janë në grupe', 'Asnjë punonjës nuk pret caktimin.', 'bi-check2-circle', '', 'is-success is-compact') ?>
         <?php endif; ?>

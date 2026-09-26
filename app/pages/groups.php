@@ -35,6 +35,23 @@ if (isset($_GET['edit'])) {
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 
 /* ------------------------------
+   Grupet me orar mësimi (model 'scheduled') kanë faqen e tyre.
+   Këtu shfaqen dhe ndryshohen vetëm grupet e mëparshme, pa orar.
+------------------------------- */
+if (isset($_GET['group']) && ctype_digit((string)$_GET['group'])) {
+  $mq = $pdo->prepare("SELECT model FROM course_groups WHERE id = ?");
+  $mq->execute([(int)$_GET['group']]);
+  if ($mq->fetchColumn() === 'scheduled') { header('Location: lesson_group.php?id=' . (int)$_GET['group']); exit; }
+}
+function qta_assert_legacy_group(PDO $pdo, int $gid): void {
+  $mq = $pdo->prepare("SELECT model FROM course_groups WHERE id = ?");
+  $mq->execute([$gid]);
+  if ($mq->fetchColumn() === 'scheduled') {
+    throw new RuntimeException('Grupi #' . $gid . ' ka orar mësimi dhe menaxhohet te "Grupet". Hape atje për kursantët, datat dhe orarin.');
+  }
+}
+
+/* ------------------------------
    CSRF
 ------------------------------- */
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
@@ -124,7 +141,7 @@ function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, in
    POST: create/edit/update/delete
    (me politika të reja:
     - kur shtojmë studentë në grup => FSHIJMË çdo 'planned' për ta
-    - ndalim që personi ta ndjekë të njëjtin modul dy herë)
+    - ndalim që personi ta ndjekë të njëjtin kurs dy herë)
 ========================= */
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $action = $_POST['action'] ?? '';
@@ -148,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $is_completed = isset($_POST['is_completed']) && $_POST['is_completed'] == '1' ? 1 : 0;
 
       if ($course_id <= 0) {
-        throw new RuntimeException('Zgjidh një modul.');
+        throw new RuntimeException('Zgjidh një kurs.');
       }
       if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) {
         throw new RuntimeException('Shkruaje datën e fillimit si dd.mm.vvvv, p.sh. 05.03.2026.');
@@ -284,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $hitPN
           );
           throw new RuntimeException(
-            'Disa persona e kanë ndjekur tashmë këtë modul (sipas numrit personal): ' . implode(', ', $items)
+            'Disa persona e kanë ndjekur tashmë këtë kurs (sipas numrit personal): ' . implode(', ', $items)
           );
         }
       }
@@ -412,14 +429,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   }
 
 
-  /* ===== Ndrysho modulin e grupit ===== */
+  /* ===== Ndrysho kursin e grupit ===== */
   if ($action==='update_group_course') {
     $group_id  = (int)($_POST['group_id'] ?? 0);
     $course_id = (int)($_POST['course_id'] ?? 0);
     $force     = (int)($_POST['force'] ?? 0);
 
     try {
-      if ($group_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh një modul për grupin.');
+      if ($group_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh një kurs për grupin.');
+      qta_assert_legacy_group($pdo, $group_id);
 
       $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
@@ -428,7 +446,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
       $q = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
       $q->execute([':id'=>$course_id]);
-      if (!$q->fetchColumn()) throw new RuntimeException('Moduli i zgjedhur nuk ekziston.');
+      if (!$q->fetchColumn()) throw new RuntimeException('Kursi i zgjedhur nuk ekziston.');
 
       // Mbledh anëtarët aktualë
       $members = $pdo->prepare("SELECT student_id FROM course_group_students WHERE group_id=:g");
@@ -464,7 +482,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           $hitPN = $confPN->fetchAll(PDO::FETCH_ASSOC);
           if ($hitPN) {
             $items = array_map(fn($r)=> ($r['nr_amze'] ?: $r['personal_number']).' ('.$r['course_name'].')', $hitPN);
-            throw new RuntimeException('Moduli nuk u ndryshua: disa persona e kanë ndjekur tashmë modulin e ri: '.implode(', ', $items));
+            throw new RuntimeException('Kursi nuk u ndryshua: disa persona e kanë ndjekur tashmë kursin e ri: '.implode(', ', $items));
           }
         }
       }
@@ -479,7 +497,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         'actor_user_id'=>$_SESSION['user_id'] ?? null
       ]);
 
-      $_SESSION['flash_ok'] = 'Moduli i grupit u ndryshua.';
+      $_SESSION['flash_ok'] = 'Kursi i grupit u ndryshua.';
     } catch (Throwable $e) {
       $_SESSION['flash_err'] = $e->getMessage();
     }
@@ -496,6 +514,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if ($group_id <= 0) {
         throw new RuntimeException('Grupi nuk u gjet.');
       }
+      qta_assert_legacy_group($pdo, $group_id);
 
       // Marrim të dhënat bazë të grupit (për kopjim në grupet e reja)
       $gRow = $pdo->prepare("
@@ -665,7 +684,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
               $hitPN
             );
             throw new RuntimeException(
-              'Disa persona e kanë ndjekur tashmë këtë modul (sipas numrit personal): ' . implode(', ', $items)
+              'Disa persona e kanë ndjekur tashmë këtë kurs (sipas numrit personal): ' . implode(', ', $items)
             );
           }
         }
@@ -902,6 +921,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
     try {
       if ($group_id<=0) throw new RuntimeException('Grupi nuk u gjet.');
+      qta_assert_legacy_group($pdo, $group_id);
 
       $gRow = $pdo->prepare("SELECT is_completed FROM course_groups WHERE id=:g");
       $gRow->execute([':g'=>$group_id]);
@@ -943,7 +963,7 @@ $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(P
 
 /* Query: rreshta (grup + student) */
 $params = [];
-$w = ["1=1"];
+$w = ["cg.model = 'legacy'"];
 if ($q !== '') {
   /* Grupet ku është kursanti i kërkuar — me të gjithë kursantët e tyre,
      që dritarja e grupit të tregojë grupin e plotë. */
@@ -1028,6 +1048,7 @@ $groupInfo = $pdo->query("
     cg.id,
     cg.is_completed
   FROM course_groups cg
+  WHERE cg.model = 'legacy'
   ORDER BY cg.id ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -1057,7 +1078,7 @@ $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1'])
 $hasFilters = ($q !== '' || $courseFilter !== '');
 $today = date('Y-m-d');
 
-$pageTitle = 'Grupet';
+$pageTitle = 'Grupet e mëparshme';
 require __DIR__ . '/../shared/app_head.php';
 
 /* Grupimi i rreshtave: një grup me kursantët e vet, renditur sipas amzës së parë */
@@ -1144,8 +1165,8 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
 
   <header class="page-head">
     <div class="page-head-main">
-      <h1 class="page-title">Grupet</h1>
-      <p class="page-lead">Çdo grup ndjek një modul në data të caktuara, me deri në 10 kursantë. Hap një grup për provimet, pikët dhe dokumentet.</p>
+      <h1 class="page-title">Grupet e mëparshme</h1>
+      <p class="page-lead">Grupet e krijuara para orarit të mësimit, pa orar ditë pas dite. Mbeten siç ishin: kursantët, datat, provimet, pikët dhe dokumentet ndryshohen si më parë. Grupet e reja janë te <a href="lesson_groups.php">Grupet</a>.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -1154,11 +1175,11 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
         <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>Raporti për QKL
       </button>
       <?php if ($EDIT_MODE): ?>
-        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#createGroupModal">
-          <i class="bi bi-plus-lg" aria-hidden="true"></i>Krijo grup
+        <button class="btn btn-secondary" type="button" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+          <i class="bi bi-plus-lg" aria-hidden="true"></i>Shto grup pa orar
         </button>
       <?php else: ?>
-        <a class="btn btn-primary" href="<?= h($createHref) ?>"><i class="bi bi-plus-lg" aria-hidden="true"></i>Krijo grup</a>
+        <a class="btn btn-secondary" href="<?= h($createHref) ?>"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto grup pa orar</a>
       <?php endif; ?>
     </div>
   </header>
@@ -1172,9 +1193,9 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       </div>
     </div>
     <div class="filter-field">
-      <label class="form-label" for="fCourse">Moduli</label>
+      <label class="form-label" for="fCourse">Kursi</label>
       <select class="form-select" id="fCourse" name="course_id">
-        <option value="">Të gjitha modulet</option>
+        <option value="">Të gjitha kurset</option>
         <?php foreach ($courses as $c): ?>
           <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h($c['name']) ?></option>
         <?php endforeach; ?>
@@ -1212,7 +1233,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
     <?php if ($groups): ?>
       <?php
         $tfTarget = '#groupsTable';
-        $tfPlaceholder = 'Filtro — modul, amzë ose datë';
+        $tfPlaceholder = 'Filtro — kurs, amzë ose datë';
         $tfChips = [['label' => 'Të mbyllura', 'match' => 'I mbyllur'], ['label' => 'Në mësim', 'match' => 'Në mësim'], ['label' => 'Presin mbylljen', 'match' => 'Pret mbylljen']];
         $tfNoun = 'grupe';
         require __DIR__ . '/../shared/partials/table_filter.php';
@@ -1221,7 +1242,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
         <table class="table" id="groupsTable" data-sortable>
           <thead>
             <tr>
-              <th scope="col" class="col-medium" data-sort="text">Moduli</th>
+              <th scope="col" class="col-medium" data-sort="text">Kursi</th>
               <th scope="col" class="nowrap" data-sort="text">Nr. i amzës</th>
               <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
               <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
@@ -1282,7 +1303,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                       <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= (int)$gid ?>"><i class="bi bi-people" aria-hidden="true"></i>Kursantët e grupit</button></li>
-                      <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho modulin</button></li>
+                      <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= (int)$gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho kursin</button></li>
                       <li><hr class="dropdown-divider"></li>
                       <li><button class="dropdown-item text-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= (int)$gid ?>"><i class="bi bi-trash" aria-hidden="true"></i>Fshi grupin</button></li>
                     </ul>
@@ -1296,10 +1317,10 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       </div>
     <?php else: ?>
       <?= qta_empty(
-            $hasFilters ? 'Asnjë grup nuk përputhet' : 'Ende nuk ka grupe',
-            $hasFilters ? 'Provo një modul tjetër ose pastro kërkimin.' : 'Krijo grupin e parë dhe shto numrat e amzës së kursantëve.',
-            'bi-collection',
-            $hasFilters ? '<a class="btn btn-secondary" href="groups.php">Pastro kërkimin</a>' : '<a class="btn btn-primary" href="' . h($createHref) . '">Krijo grup</a>'
+            $hasFilters ? 'Asnjë grup nuk përputhet' : 'Nuk ka grupe të mëparshme',
+            $hasFilters ? 'Provo një kurs tjetër ose pastro kërkimin.' : 'Grupet e reja krijohen te "Grupet", me orar mësimi ditë pas dite.',
+            'bi-archive',
+            $hasFilters ? '<a class="btn btn-secondary" href="groups.php">Pastro kërkimin</a>' : '<a class="btn btn-primary" href="lesson_groups.php">Te grupet</a>'
           ) ?>
     <?php endif; ?>
   </section>
@@ -1406,7 +1427,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
         <div class="modal-footer">
           <?php if ($EDIT_MODE): ?>
             <div class="modal-footer-start">
-              <button type="button" class="btn btn-ghost" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= $gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho modulin</button>
+              <button type="button" class="btn btn-ghost" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= $gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho kursin</button>
               <button type="button" class="btn btn-ghost btn-ghost-danger" data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= $gid ?>"><i class="bi bi-trash" aria-hidden="true"></i>Fshi grupin</button>
             </div>
           <?php endif; ?>
@@ -1442,7 +1463,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
           </div>
           <ul class="text-muted small mt-3 mb-0 ps-3">
             <li>Më shumë se 10 kursantë? Grupi ndahet vetë në grupe të barabarta (para ruajtjes të tregohet si).</li>
-            <li>Një person nuk mund ta ndjekë dy herë të njëjtin modul.</li>
+            <li>Një person nuk mund ta ndjekë dy herë të njëjtin kurs.</li>
             <li>Një numër amze që nuk ekziston krijon një kursant të ri pa të dhëna, për t'u plotësuar më vonë.</li>
           </ul>
         </div>
@@ -1454,7 +1475,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
     </div>
   </div>
 
-  <!-- Dialog: moduli i grupit #<?= (int)$gid ?> -->
+  <!-- Dialog: kursi i grupit #<?= (int)$gid ?> -->
   <div class="modal fade" id="editCourseModal_<?= (int)$gid ?>" tabindex="-1" aria-labelledby="ecTitle_<?= (int)$gid ?>" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <form class="modal-content" method="post" action="groups.php" data-group-form>
@@ -1465,22 +1486,22 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
         <div class="modal-header">
           <div>
             <span class="eyebrow mb-0">Grupi #<?= (int)$gid ?></span>
-            <h2 class="modal-title" id="ecTitle_<?= (int)$gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho modulin</h2>
+            <h2 class="modal-title" id="ecTitle_<?= (int)$gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho kursin</h2>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
         </div>
         <div class="modal-body">
-          <label class="form-label" for="ecCourse_<?= (int)$gid ?>">Moduli i grupit</label>
+          <label class="form-label" for="ecCourse_<?= (int)$gid ?>">Kursi i grupit</label>
           <select id="ecCourse_<?= (int)$gid ?>" name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
             <?php foreach ($courses as $c): ?>
               <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id'] === (int)$h0['course_id']) ? 'selected' : '' ?>><?= h($c['name']) ?></option>
             <?php endforeach; ?>
           </select>
-          <p class="form-text">Përdore vetëm për të korrigjuar një gabim — të gjithë kursantët e grupit zhvendosen te moduli i ri, me datat dhe pikët e tyre.</p>
+          <p class="form-text">Përdore vetëm për të korrigjuar një gabim — të gjithë kursantët e grupit zhvendosen te kursi i ri, me datat dhe pikët e tyre.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-          <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj modulin</button>
+          <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj kursin</button>
         </div>
       </form>
     </div>
@@ -1518,15 +1539,19 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_group">
       <div class="modal-header">
-        <h2 class="modal-title" id="createGroupTitle"><i class="bi bi-plus-lg" aria-hidden="true"></i>Krijo një grup</h2>
+        <h2 class="modal-title" id="createGroupTitle"><i class="bi bi-plus-lg" aria-hidden="true"></i>Shto një grup pa orar</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
+        <div class="notice is-sunken mb-3">
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          <span><b>Grupet e reja krijohen te <a href="lesson_groups.php?edit=1&amp;create=1">Grupet</a></b>, me orar mësimi ditë pas dite. Këtu shto vetëm një grup pa orar, p.sh. një grup të mbajtur më parë.</span>
+        </div>
         <div class="row g-3">
           <div class="col-md-6">
-            <label class="form-label" for="cgCourse">Moduli <span class="req" aria-hidden="true">*</span></label>
+            <label class="form-label" for="cgCourse">Kursi <span class="req" aria-hidden="true">*</span></label>
             <select id="cgCourse" name="course_id" class="form-select" required <?= $EDIT_MODE ? '' : 'disabled' ?>>
-              <option value="">— Zgjidh modulin —</option>
+              <option value="">— Zgjidh kursin —</option>
               <?php foreach ($courses as $c): ?>
                 <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
               <?php endforeach; ?>
@@ -1557,7 +1582,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-check-lg" aria-hidden="true"></i>Krijo grupin</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>><i class="bi bi-check-lg" aria-hidden="true"></i>Shto grupin</button>
       </div>
     </form>
   </div>
@@ -1878,7 +1903,7 @@ document.querySelectorAll('.toggle-completed').forEach(sw=>{
 });
 
 /* ===== groups.php?group=12 hap direkt dritaren e grupit #12
-   (p.sh. nga faqja e moduleve ose nga kartela e kursantit). ===== */
+   (p.sh. nga faqja e kurseve ose nga kartela e kursantit). ===== */
 document.addEventListener('DOMContentLoaded', ()=>{
   let url;
   try { url = new URL(window.location.href); } catch(e) { return; }
@@ -2011,7 +2036,7 @@ document.querySelector('[data-create-group-form]')?.addEventListener('submit', (
   });
 });
 
-/* Formularët e një grupi ekzistues (kursantët, moduli, fshirja) */
+/* Formularët e një grupi ekzistues (kursantët, kursi, fshirja) */
 document.querySelectorAll('form[data-group-form]').forEach(form => {
   form.addEventListener('submit', async (e)=>{
     if (!EDIT_MODE) return;
