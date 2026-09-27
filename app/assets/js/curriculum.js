@@ -88,6 +88,15 @@
     return document.activeElement === el;
   }
 
+  /* Moduli ose tema që sapo u zhvendos a u ndryshua theksohet shkurt (components.css, .is-flash). */
+  function flash(el) {
+    if (!el) return;
+    el.classList.remove('is-flash');
+    void el.offsetWidth;
+    el.classList.add('is-flash');
+    el.addEventListener('animationend', function () { el.classList.remove('is-flash'); }, { once: true });
+  }
+
   function applyFocus(f) {
     if (!f) return;
     var heading = document.getElementById('curModulesTitle');
@@ -98,6 +107,7 @@
     var sel = f.kind === 'module' ? '[data-module="' + f.id + '"]' : '[data-topic="' + f.id + '"]';
     var box = root.querySelector(sel);
     if (!box) { if (heading) { heading.setAttribute('tabindex', '-1'); focusEl(heading); } return; }
+    if (f.target !== 'quick') flash(box);
     if (f.target === 'quick') {
       var q = box.querySelector('form[data-cur-add-topic] input[name="title"]');
       if (focusEl(q)) return;

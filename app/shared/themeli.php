@@ -237,10 +237,15 @@ if (!function_exists('qta_absolute_url')) {
 }
 
 if (!function_exists('qta_help_button')) {
-  /** Butoni "Si funksionon?" që hap panelin e ndihmës së faqes. */
-  function qta_help_button(string $label = 'Si funksionon?'): string {
-    return '<button class="btn btn-ghost" type="button" data-bs-toggle="offcanvas" data-bs-target="#helpPanel" aria-controls="helpPanel">'
-      . '<i class="bi bi-question-circle" aria-hidden="true"></i><span>' . h($label) . '</span></button>';
+  /**
+   * Butoni i ndihmës së faqes: vetëm një pikëpyetje (40×40), që nuk zë vend te
+   * koka e faqes. Emri "Si funksionon kjo faqe?" është te aria-label dhe te
+   * këshilla (data-tip). Hap panelin anësor të udhëzimeve (help.php).
+   */
+  function qta_help_button(string $label = 'Si funksionon kjo faqe?'): string {
+    return '<button class="btn btn-help btn-icon" type="button" data-bs-toggle="offcanvas" data-bs-target="#helpPanel" aria-controls="helpPanel"'
+      . ' aria-label="' . h($label) . '" data-tip="' . h($label) . '">'
+      . '<i class="bi bi-question-lg" aria-hidden="true"></i></button>';
   }
 }
 

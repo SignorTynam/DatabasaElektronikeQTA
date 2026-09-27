@@ -161,7 +161,6 @@ require __DIR__ . '/inc/navbar3.php';
     <div class="page-head-main">
       <span class="eyebrow"><?= h(ucfirst(qta_today_label())) ?></span>
       <h1 class="page-title"><?= h(qta_greeting()) ?><?= $firstName !== '' ? ', ' . h($firstName) : '' ?></h1>
-      <p class="page-lead">Këtu sheh kurset ku je regjistruar, provimet dhe pikët e tua.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -271,7 +270,7 @@ require __DIR__ . '/inc/navbar3.php';
         </div>
         <div class="notice mt-3">
           <i class="bi bi-info-circle" aria-hidden="true"></i>
-          <span>Diçka nuk është e saktë? <a href="contact.php">Na shkruaj</a> dhe e ndreqim ne. Ti nuk mund t'i ndryshosh vetë këto të dhëna.</span>
+          <span>Diçka nuk është e saktë? <a href="contact.php">Na shkruaj</a> dhe e ndreqim ne.</span>
         </div>
       </section>
     </div>

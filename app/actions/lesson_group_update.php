@@ -92,7 +92,7 @@ try {
     case 'delete': {
       qta_json_require_edit_mode();
       $r = qta_lg_delete($pdo, $groupId, ['force' => $force]);
-      $_SESSION['flash_ok'] = 'Grupi #' . $groupId . ' u fshi.' . ($r['members'] ? ' Kursantët e tij janë tani te "Kursantët pa grup".' : '');
+      $_SESSION['flash_ok'] = 'Grupi #' . $groupId . ' u fshi.' . ($r['members'] ? ' Kursantët e tij janë tani pa grup, te "Kursantët".' : '');
       qta_json_out(['ok' => true, 'redirect' => 'lesson_groups.php']);
     }
 

@@ -15,6 +15,7 @@ require_once __DIR__ . '/../themeli.php';
   <script>
     (function () {
       var d = document.documentElement, mode = 'system', rail = false;
+      d.classList.add('js');
       try {
         mode = localStorage.getItem('qta_theme') || 'system';
         rail = localStorage.getItem('qta_sidebar') === 'collapsed';
@@ -25,6 +26,11 @@ require_once __DIR__ . '/../themeli.php';
       d.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
       d.setAttribute('data-theme-mode', mode);
       if (rail) d.setAttribute('data-sidebar', 'rail');
+      /* Kalimi mes faqeve (shell.css) mund të anashkalohet (skedë e fshehur, klik i
+         shpejtë): kjo nuk është gabim, prandaj nuk shkruhet në konsolë. */
+      var quiet = function (e) { if (e.viewTransition) e.viewTransition.ready.catch(function () {}); };
+      window.addEventListener('pageswap', quiet);
+      window.addEventListener('pagereveal', quiet);
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">

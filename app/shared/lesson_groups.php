@@ -65,7 +65,7 @@ if (!function_exists('qta_lg_find')) {
       throw new QtaUserError('Grupi nuk u gjet. Ndoshta u fshi — rifresko faqen.');
     }
     if ($g['model'] !== 'scheduled' || $g['daily_hours'] === null) {
-      throw new QtaUserError('Grupi #' . $groupId . ' është një grup i mëparshëm, pa orar mësimi. Ai menaxhohet te "Grupet e mëparshme" dhe nuk merr orar.', ['code' => 'legacy_group']);
+      throw new QtaUserError('Grupi #' . $groupId . ' është një grup i mëparshëm, pa orar mësimi. Ai menaxhohet te "Regjistri i vjetër i kurseve profesionale" dhe nuk merr orar.', ['code' => 'legacy_group']);
     }
     return $g;
   }
@@ -276,7 +276,7 @@ if (!function_exists('qta_lg_preview_new')) {
     if (!$check['ready']) {
       throw new QtaUserError('Kursi "' . $course['name'] . '" nuk është ende gati për grupe me orar. ' . $check['issues'][0]['text']
         . ($check['issues'] && count($check['issues']) > 1 ? ' (dhe ' . (count($check['issues']) - 1) . ' të tjera)' : '')
-        . ' Plotësoje te "Kurset".', ['code' => 'course_not_ready', 'course_id' => $course['id']]);
+        . ' Plotësoje te "Katalogu i kurseve".', ['code' => 'course_not_ready', 'course_id' => $course['id']]);
     }
     return $check;
   }
@@ -619,7 +619,7 @@ if (!function_exists('qta_lg_set_members')) {
       if (!$force) {
         throw new QtaConfirmNeeded('Të fshihet Grupi #' . $groupId . '?',
           'Fshihen orari dhe ditët e veçanta të grupit' . ($members ? ', si dhe datat e provimit dhe pikët e ' . qta_plural_word($members, 'kursantit', 'kursantëve') . ' në këtë grup' : '')
-          . '. Kursantët nuk fshihen — ata kthehen te "Kursantët pa grup". Kjo nuk mund të kthehet mbrapsht.',
+          . '. Kursantët nuk fshihen — ata mbeten te "Kursantët", pa grup. Kjo nuk mund të kthehet mbrapsht.',
           'Po, fshije grupin');
       }
       foreach (['group_schedule_slots', 'group_schedule_days', 'group_schedule_topics', 'group_day_rules', 'group_schedules'] as $table) {

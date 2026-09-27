@@ -73,6 +73,8 @@ Use sentence case. Avoid tracked all-caps labels. Keep prose line length general
 - Respect prefers-reduced-motion.
 - Never require hover.
 - Do not auto-animate every section on page load.
+- Lists: one `partials/list_toolbar.php` per list, fed by the dataset helper (`students_list.php`, `group_list.php`, `agency_list.php`) that its export uses too. Never add a second filter bar, a "Kërko" button or client-side filtering of the visible rows (THEMELI.md §5a).
+- Motion only through `--dur-1/2/3` and `--ease` (THEMELI.md §5b).
 
 ## Accessibility floor
 
@@ -99,7 +101,7 @@ The role navbars (`app/shared/inc/navbar*.php` and the `app/pages/inc/navbar*.ph
 If browser automation is available:
 - start/load the local app;
 - capture desktop and mobile screenshots;
-- check console errors;
+- check console errors; inline page scripts run before the deferred `app.js`, so call its globals (`qtaEditable`, `qtaLive`) inside `DOMContentLoaded` or an event handler;
 - verify interactive elements;
 - exercise navigation, command search, one dialog, one form, one table, and theme switch;
 - compare light and dark;

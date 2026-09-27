@@ -100,7 +100,7 @@ if (!function_exists('qta_sched_validate_inputs')) {
   function qta_sched_validate_inputs(array $topics, string $start, int $defaultHours, array $rules): int
   {
     if (!$topics) {
-      throw new QtaUserError('Kursi nuk ka tema, prandaj orari nuk mund të ndërtohet. Shto modulet dhe temat te "Kurset".');
+      throw new QtaUserError('Kursi nuk ka tema, prandaj orari nuk mund të ndërtohet. Shto modulet dhe temat te "Katalogu i kurseve".');
     }
     $total = 0;
     $prevSeq = 0;
@@ -111,7 +111,7 @@ if (!function_exists('qta_sched_validate_inputs')) {
         throw new QtaUserError('Një temë ka orë të pavlefshme. Çdo temë duhet të ketë të paktën 1 orë.');
       }
       if (!is_int($seq) || $seq <= $prevSeq) {
-        throw new QtaUserError('Radha e temave nuk është e qartë. Rregullo radhën e temave te "Kurset".');
+        throw new QtaUserError('Radha e temave nuk është e qartë. Rregullo radhën e temave te "Katalogu i kurseve".');
       }
       $prevSeq = $seq;
       $total += $h;

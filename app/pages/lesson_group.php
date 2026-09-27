@@ -109,16 +109,16 @@ $statusHtml = static function (array $g) use ($today): string {
 <?php if (!$g): ?>
   <header class="page-head">
     <div class="page-head-main">
-      <ol class="crumbs"><li><a href="lesson_groups.php">Grupet</a></li></ol>
+      <ol class="crumbs"><li><a href="lesson_groups.php">Regjistri i kurseve profesionale</a></li></ol>
       <h1 class="page-title">Grupi nuk u gjet</h1>
       <p class="page-lead">Ky grup nuk ekziston më ose adresa është e gabuar.</p>
     </div>
   </header>
-  <?= qta_empty('Grupi nuk u gjet', 'Ndoshta u fshi. Kthehu te lista e grupeve.', 'bi-calendar-x', '<a class="btn btn-secondary" href="lesson_groups.php">Te grupet</a>') ?>
+  <?= qta_empty('Grupi nuk u gjet', 'Ndoshta u fshi. Kthehu te regjistri i kurseve profesionale.', 'bi-calendar-x', '<a class="btn btn-secondary" href="lesson_groups.php">Te regjistri</a>') ?>
 <?php else: ?>
   <header class="page-head">
     <div class="page-head-main">
-      <ol class="crumbs"><li><a href="lesson_groups.php">Grupet</a></li><li aria-current="page">Grupi #<?= $gid ?></li></ol>
+      <ol class="crumbs"><li><a href="lesson_groups.php">Regjistri i kurseve profesionale</a></li><li aria-current="page">Grupi #<?= $gid ?></li></ol>
       <h1 class="page-title"><?= h((string)$g['course_name']) ?></h1>
       <p class="page-lead lg-lead">
         <span>Grupi #<?= $gid ?></span>
@@ -394,7 +394,7 @@ $statusHtml = static function (array $g) use ($today): string {
             <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar, ose pikët për t'i shkruar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon. Provimi nuk mund të jetë para <?= h(qta_date((string)$g['end_date'])) ?>.</p>
           <?php endif; ?>
         <?php else: ?>
-          <?= qta_empty('Grupi nuk ka ende kursantë', $EDIT_MODE ? 'Shto kursantët me numrat e amzës te "Ndrysho kursantët", ose caktoji te "Kursantët pa grup".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
+          <?= qta_empty('Grupi nuk ka ende kursantë', $EDIT_MODE ? 'Shto kursantët me numrat e amzës te "Ndrysho kursantët", ose caktoji te "Kursantët", me çipin "Pa grup".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
         <?php endif; ?>
       </section>
     </div>

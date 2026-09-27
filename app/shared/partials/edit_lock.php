@@ -32,7 +32,7 @@ $lockUrl  = $lockPage . ($lockQs ? ('?' . http_build_query($lockQs)) : '');
     <span><?= $EDIT_MODE ? 'Çdo ndryshim ruhet menjëherë.' : 'Të dhënat janë të mbrojtura.' ?></span>
   </span>
   <?php if ($lockCanEdit): ?>
-    <a class="btn btn-sm btn-secondary" href="<?= h($lockUrl) ?>">
+    <a class="btn btn-sm btn-secondary" href="<?= h($lockUrl) ?>" data-edit-toggle="<?= $EDIT_MODE ? '0' : '1' ?>">
       <?= $EDIT_MODE ? 'Mbyll ndryshimet' : 'Lejo ndryshimet' ?>
     </a>
   <?php else: ?>

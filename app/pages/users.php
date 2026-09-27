@@ -204,21 +204,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ------------------------------
-   Filtrim (vetëm admin) + paginim
+   Kërkimi (emri, email-i; çdo fjalë diku) + faqosja
 ------------------------------- */
-$q      = trim($_GET['q'] ?? '');
-$page   = max(1, (int)($_GET['page'] ?? 1));
+require_once __DIR__ . '/../shared/list_filter.php';
+$q      = qta_search_q($_GET['q'] ?? '');
 $limit  = 20;
-$offset = ($page - 1) * $limit;
 
-$where   = ["r.id = :adminRole"];
-$params  = [':adminRole' => $adminRoleId];
-
-if ($q !== '') {
-    $where[] = "(u.full_name LIKE :kw1 OR u.email LIKE :kw2)";
-    $kw = '%'.$q.'%';
-    $params[':kw1'] = $kw;
-    $params[':kw2'] = $kw;
+$where   = ["r.id = :staffRole"];
+$params  = [':staffRole' => $adminRoleId];
+$tokens  = qta_search_tokens($q);
+if ($tokens) {
+    $where[] = qta_search_sql($tokens, ['u.full_name', 'u.email'], $params, 'uq');
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
@@ -231,6 +227,8 @@ $countStmt = $pdo->prepare("
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
+$page   = min(max(1, (int)($_GET['page'] ?? 1)), $totalPages);
+$offset = ($page - 1) * $limit;
 
 $listStmt = $pdo->prepare("
     SELECT u.id, u.full_name, u.email, u.created_at
@@ -252,13 +250,12 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 $SA = [
   'page'     => 'users.php',
   'title'    => 'Administratorët',
-  'lead'     => 'Llogaritë me qasje të plotë në regjistër. Shto vetëm persona që drejtojnë punën në QTA.',
+  'lead'     => 'Llogaritë me qasje të plotë në regjistër.',
   'one'      => 'administrator',
   'many'     => 'administratorë',
   'create'   => 'create_admin',
   'endpoint' => 'user_inline.php',
   'nav'      => 'users_admins',
   'help'     => 'users',
-  'can'      => ['regjistron dhe ndryshon kursantë, grupe e provime', 'menaxhon agjencitë', 'shton administratorë dhe editorë', 'sheh historikun e plotë të ndryshimeve'],
 ];
 require __DIR__ . '/../shared/partials/staff_accounts.php';

@@ -527,7 +527,7 @@ $flashErr  = flash('err');
                     <td>
                       <?= qta_status('Pret grup', 'warning', 'bi-hourglass-split') ?>
                       <?php if ($CAN_EDIT): ?>
-                        <a class="small ms-1" href="students_without_groups.php?q=<?= rawurlencode((string)$pl['nr_amze']) ?>">Cakto në grup</a>
+                        <a class="small ms-1" href="students.php?status=no_group&amp;q=<?= rawurlencode((string)$pl['nr_amze']) ?>">Cakto në grup</a>
                       <?php endif; ?>
                     </td>
                   </tr>
@@ -536,7 +536,7 @@ $flashErr  = flash('err');
             </table>
           </div>
         <?php else: ?>
-          <?= qta_empty('Ende pa kurse', 'Ky person nuk ka asnjë kurs të zgjedhur dhe nuk është në asnjë grup.', 'bi-journal', $CAN_EDIT ? '<a class="btn btn-secondary" href="students_without_groups.php">Te kursantët pa grup</a>' : '', 'is-compact') ?>
+          <?= qta_empty('Ende pa kurse', 'Ky person nuk ka asnjë kurs të zgjedhur dhe nuk është në asnjë grup.', 'bi-journal', $CAN_EDIT ? '<a class="btn btn-secondary" href="students.php?status=no_group">Cakto në grup</a>' : '', 'is-compact') ?>
         <?php endif; ?>
       </section>
 
@@ -685,7 +685,7 @@ $flashErr  = flash('err');
             <?php endforeach; ?>
           </ul>
         <?php else: ?>
-          <?= qta_empty('Asnjë provim i caktuar', 'Datat e provimit vendosen te "Grupet" ose "Regjistri i plotë".', 'bi-calendar', '', 'is-compact') ?>
+          <?= qta_empty('Asnjë provim i caktuar', 'Datat e provimit vendosen te grupi, te regjistri i kurseve profesionale.', 'bi-calendar', '', 'is-compact') ?>
         <?php endif; ?>
       </section>
     </aside>

@@ -98,7 +98,7 @@ body.app { min-height: 100vh; }
   gap: .75rem;
   width: 100%;
   min-height: 2.5rem;
-  padding: 0 .75rem;
+  padding: .4rem .75rem;
   border: 0;
   border-radius: var(--r-md);
   background: transparent;
@@ -126,8 +126,12 @@ body.app { min-height: 100vh; }
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: var(--action);
+  animation: qta-nav-mark var(--dur-3) var(--ease);
 }
-.nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes qta-nav-mark { from { transform: scaleY(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+.nav-item:active { background: var(--surface-hover); }
+/* Emrat e gjatë ("Regjistri i vjetër i kurseve profesionale") kalojnë në dy rreshta, pa u prerë. */
+.nav-label { min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 
 .sidebar-foot {
   display: grid;
@@ -299,6 +303,32 @@ body.app { min-height: 100vh; }
   .sidebar-rail-toggle { display: none; }
   .nav-item { min-height: var(--touch-min); }
 }
+
+/* ------------------------------------------------ Kalimi mes faqeve */
+/* View Transitions mes faqeve të së njëjtës origjinë: faqja e vjetër zbehet
+   shpejt, hapësira e punës e re hyn me 6px. Menuja anësore dhe shiriti i sipërm
+   mbeten në vend. Shfletuesit pa mbështetje lundrojnë si zakonisht; me
+   prefers-reduced-motion nuk ka kalim fare. Nuk është SPA: çdo faqe ngarkohet
+   plotësisht, formularët dhe "prapa/përpara" punojnë si më parë. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+.sidebar { view-transition-name: qta-sidebar; }
+.topbar  { view-transition-name: qta-topbar; }
+.app-main { view-transition-name: qta-main; }
+::view-transition-group(qta-sidebar),
+::view-transition-group(qta-topbar),
+::view-transition-old(qta-sidebar),
+::view-transition-new(qta-sidebar),
+::view-transition-old(qta-topbar),
+::view-transition-new(qta-topbar) { animation: none; }
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: var(--dur-1); }
+::view-transition-group(qta-main) { animation-duration: var(--dur-3); animation-timing-function: var(--ease); }
+::view-transition-old(qta-main) { animation: qta-vt-out var(--dur-1) var(--ease) both; }
+::view-transition-new(qta-main) { animation: qta-vt-in var(--dur-3) var(--ease) both; }
+@keyframes qta-vt-out { to { opacity: 0; } }
+@keyframes qta-vt-in  { from { opacity: 0; transform: translateY(6px); } }
 
 /* ------------------------------------------------------------------ Print */
 @media print {

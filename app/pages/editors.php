@@ -196,44 +196,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ------------------------------
-   Filtrim + paginim (vetëm editor)
+   Kërkimi (emri, email-i; çdo fjalë diku) + faqosja
 ------------------------------- */
-$q      = trim($_GET['q'] ?? '');
-$page   = max(1, (int)($_GET['page'] ?? 1));
+require_once __DIR__ . '/../shared/list_filter.php';
+$q      = qta_search_q($_GET['q'] ?? '');
 $limit  = 20;
-$offset = ($page - 1) * $limit;
 
-$where   = ["r.id = :editorRole"];
-$params  = [':editorRole' => $editorRoleId];
-
-if ($q !== '') {
-  $where[] = "(u.full_name LIKE :kw1 OR u.email LIKE :kw2)";
-  $kw = '%'.$q.'%';
-  $params[':kw1'] = $kw;
-  $params[':kw2'] = $kw;
+$where   = ["r.id = :staffRole"];
+$params  = [':staffRole' => $editorRoleId];
+$tokens  = qta_search_tokens($q);
+if ($tokens) {
+    $where[] = qta_search_sql($tokens, ['u.full_name', 'u.email'], $params, 'uq');
 }
 $whereSql = 'WHERE '.implode(' AND ', $where);
 
 $countStmt = $pdo->prepare("
-  SELECT COUNT(*)
-  FROM users u
-  JOIN roles r ON r.id = u.role_id
-  $whereSql
+    SELECT COUNT(*)
+    FROM users u
+    JOIN roles r ON r.id = u.role_id
+    $whereSql
 ");
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($total / $limit));
+$page   = min(max(1, (int)($_GET['page'] ?? 1)), $totalPages);
+$offset = ($page - 1) * $limit;
 
 $listStmt = $pdo->prepare("
-  SELECT u.id, u.full_name, u.email, u.created_at
-  FROM users u
-  JOIN roles r ON r.id = u.role_id
-  $whereSql
-  ORDER BY u.created_at DESC
-  LIMIT :lim OFFSET :off
+    SELECT u.id, u.full_name, u.email, u.created_at
+    FROM users u
+    JOIN roles r ON r.id = u.role_id
+    $whereSql
+    ORDER BY u.created_at DESC
+    LIMIT :lim OFFSET :off
 ");
 foreach ($params as $k => $v) {
-  $listStmt->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO::PARAM_STR);
+    $listStmt->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO::PARAM_STR);
 }
 $listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
 $listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
@@ -243,13 +241,12 @@ $users = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 $SA = [
   'page'     => 'editors.php',
   'title'    => 'Editorët',
-  'lead'     => 'Kolegët që mbajnë regjistrin çdo ditë: regjistrojnë kursantë, krijojnë grupe dhe vendosin datat e pikët e provimeve.',
+  'lead'     => 'Kolegët që regjistrojnë kursantë, krijojnë grupe dhe shënojnë provimet.',
   'one'      => 'editor',
   'many'     => 'editorë',
   'create'   => 'create_editor',
   'endpoint' => 'editors_inline.php',
   'nav'      => 'users_editors',
   'help'     => 'editors',
-  'can'      => ['regjistron dhe ndryshon kursantë, grupe e provime', 'menaxhon agjencitë', 'sheh historikun e ndryshimeve të veta', 'nuk shton dot llogari stafi'],
 ];
 require __DIR__ . '/../shared/partials/staff_accounts.php';

@@ -40,11 +40,7 @@ if (!$COMPANY) { header('Location: selectProfile.php'); exit; }
 require_once __DIR__ . '/../shared/themeli.php';
 $cid = (int)$COMPANY['id'];
 
-/* ====== Shifrat e agjencisë ====== */
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM agency_students WHERE agency_id=:cid");
-$stmt->execute([':cid'=>$cid]);
-$studentsTotal = (int)$stmt->fetchColumn();
-
+/* Sa punonjës presin caktimin në grup (numri i vetëm që tregohet). */
 $stmt = $pdo->prepare("
   SELECT COUNT(*)
   FROM agency_students a
@@ -53,26 +49,6 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([':cid'=>$cid]);
 $noGroupCnt = (int)$stmt->fetchColumn();
-
-$stmt = $pdo->prepare("
-  SELECT COUNT(DISTINCT cgs.student_id)
-  FROM course_group_students cgs
-  JOIN agency_students a ON a.student_id = cgs.student_id
-  JOIN course_groups cg ON cg.id=cgs.group_id
-  WHERE a.agency_id=:cid
-    AND CURDATE() BETWEEN cg.start_date AND cg.end_date
-");
-$stmt->execute([':cid'=>$cid]);
-$activeStudentsToday = (int)$stmt->fetchColumn();
-
-$stmt = $pdo->prepare("
-  SELECT COUNT(*)
-  FROM course_group_students cgs
-  JOIN agency_students a ON a.student_id = cgs.student_id
-  WHERE a.agency_id = :cid AND cgs.final_score IS NOT NULL
-");
-$stmt->execute([':cid'=>$cid]);
-$passedCnt = (int)$stmt->fetchColumn();
 
 /* Ngjarjet e 30 ditëve të ardhshme: grupe që nisin dhe provime të punonjësve */
 $stmt = $pdo->prepare("
@@ -101,7 +77,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([':cid1'=>$cid, ':cid2'=>$cid]);
 $upcoming = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* Grupet ku agjencia ka punonjës (6 më të fundit) */
+/* Grupet ku agjencia ka punonjës (5 më të fundit) */
 $stmt = $pdo->prepare("
   SELECT cg.id, c.code AS course_code, c.name AS course_name,
          cg.start_date, cg.end_date, cg.is_completed,
@@ -113,7 +89,7 @@ $stmt = $pdo->prepare("
   WHERE a.agency_id = :cid
   GROUP BY cg.id
   ORDER BY cg.start_date DESC, cg.id DESC
-  LIMIT 6
+  LIMIT 5
 ");
 $stmt->execute([':cid'=>$cid]);
 $groupsCap = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -127,7 +103,7 @@ $stmt = $pdo->prepare("
   WHERE a.agency_id = :cid
     AND NOT EXISTS (SELECT 1 FROM course_group_students x WHERE x.student_id = s.id)
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-  LIMIT 6
+  LIMIT 5
 ");
 $stmt->execute([':cid'=>$cid]);
 $noGroupList = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -150,7 +126,6 @@ require __DIR__ . '/inc/navbar2.php';
     <div class="page-head-main">
       <span class="eyebrow"><?= h(ucfirst(qta_today_label())) ?><?= $agencyNipt !== '' ? ' · NIPT ' . h($agencyNipt) : '' ?></span>
       <h1 class="page-title"><?= h(qta_greeting()) ?><?= $agencyName !== '' ? ', ' . h($agencyName) : '' ?></h1>
-      <p class="page-lead">Këtu shihni ku janë punonjësit tuaj: kush pret grupin, kush është në mësim dhe provimet e ardhshme.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
@@ -160,84 +135,8 @@ require __DIR__ . '/inc/navbar2.php';
     </div>
   </header>
 
-  <form class="section d-flex flex-column flex-sm-row gap-2" method="get" action="register_agjencia.php" role="search" aria-label="Gjej një punonjës">
-    <label class="visually-hidden" for="agSearch">Gjej një punonjës</label>
-    <div class="search-field is-lg flex-grow-1">
-      <i class="bi bi-search" aria-hidden="true"></i>
-      <input class="form-control" id="agSearch" type="search" name="q"
-             placeholder="Gjej një punonjës — emri, numri personal ose numri i amzës" autocomplete="off">
-    </div>
-    <button class="btn btn-secondary btn-lg" type="submit">Kërko</button>
-  </form>
-
-  <section class="section" aria-label="Punonjësit në shifra">
-    <div class="stats">
-      <a class="stat" href="register_agjencia.php">
-        <span class="stat-label">Punonjës të regjistruar</span>
-        <span class="stat-value"><?= number_format($studentsTotal, 0, ',', '.') ?></span>
-      </a>
-      <div class="stat">
-        <span class="stat-label">Në mësim sot</span>
-        <span class="stat-value"><?= number_format($activeStudentsToday, 0, ',', '.') ?></span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">Presin grupin</span>
-        <span class="stat-value"><?= number_format($noGroupCnt, 0, ',', '.') ?></span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">Provime me pikë</span>
-        <span class="stat-value"><?= number_format($passedCnt, 0, ',', '.') ?></span>
-      </div>
-    </div>
-  </section>
-
   <div class="row g-4 g-xl-5">
     <div class="col-12 col-xl-7">
-      <section class="section" aria-labelledby="agGroups">
-        <div class="section-head">
-          <h2 class="section-title" id="agGroups">Grupet ku keni punonjës</h2>
-          <a class="section-link" href="groups_agjencia.php">Të gjitha grupet <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-        </div>
-
-        <?php if ($groupsCap): ?>
-          <div class="table-responsive">
-            <table class="table" data-sortable>
-              <thead>
-                <tr>
-                  <th scope="col" data-sort="text">Kursi</th>
-                  <th scope="col" data-sort="date">Trajnimi</th>
-                  <th scope="col" class="num-col" data-sort="num">Punonjës</th>
-                  <th scope="col" data-sort="none">Gjendja</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php foreach ($groupsCap as $g):
-                  $start = (string)$g['start_date']; $end = (string)$g['end_date'];
-                  if ((int)$g['is_completed'] === 1)      { $st = qta_status('Përfunduar', 'success'); }
-                  elseif ($start > $today)               { $st = qta_status('Nis ' . qta_when_label($start), 'info', 'bi-calendar-event'); }
-                  elseif ($end >= $today)                { $st = qta_status('Në mësim', 'accent', 'bi-easel'); }
-                  else                                   { $st = qta_status('Pret provimet', 'warning'); }
-                ?>
-                  <tr>
-                    <td>
-                      <span class="person-name"><?= h((string)$g['course_name']) ?></span>
-                      <span class="cell-sub"><?= h((string)$g['course_code']) ?></span>
-                    </td>
-                    <td class="nowrap" data-sort-value="<?= h(qta_date($start)) ?>"><?= h(qta_date($start)) ?> – <?= h(qta_date($end)) ?></td>
-                    <td class="num-col"><?= (int)$g['cnt_company'] ?></td>
-                    <td><?= $st ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        <?php else: ?>
-          <?= qta_empty('Ende pa grupe', 'Kur QTA të caktojë punonjësit tuaj në grupe, ato shfaqen këtu.', 'bi-collection') ?>
-        <?php endif; ?>
-      </section>
-    </div>
-
-    <div class="col-12 col-xl-5">
       <section class="section" aria-labelledby="upTitle">
         <div class="section-head">
           <h2 class="section-title" id="upTitle">30 ditët e ardhshme</h2>
@@ -268,24 +167,70 @@ require __DIR__ . '/inc/navbar2.php';
         <?php endif; ?>
       </section>
 
+      <section class="section" aria-labelledby="agGroups">
+        <div class="section-head">
+          <h2 class="section-title" id="agGroups">Grupet e fundit</h2>
+          <a class="section-link" href="groups_agjencia.php">Të gjitha grupet <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        </div>
+
+        <?php if ($groupsCap): ?>
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th scope="col">Kursi</th>
+                  <th scope="col">Trajnimi</th>
+                  <th scope="col" class="num-col">Punonjës</th>
+                  <th scope="col">Gjendja</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($groupsCap as $g):
+                  $start = (string)$g['start_date']; $end = (string)$g['end_date'];
+                  if ((int)$g['is_completed'] === 1)      { $st = qta_status('Përfunduar', 'success'); }
+                  elseif ($start > $today)               { $st = qta_status('Nis ' . qta_when_label($start), 'info', 'bi-calendar-event'); }
+                  elseif ($end >= $today)                { $st = qta_status('Në mësim', 'accent', 'bi-easel'); }
+                  else                                   { $st = qta_status('Në provime', 'warning'); }
+                ?>
+                  <tr>
+                    <td>
+                      <span class="person-name"><?= h((string)$g['course_name']) ?></span>
+                      <span class="cell-sub"><?= h((string)$g['course_code']) ?></span>
+                    </td>
+                    <td class="nowrap"><?= h(qta_date($start)) ?> – <?= h(qta_date($end)) ?></td>
+                    <td class="num-col"><?= (int)$g['cnt_company'] ?></td>
+                    <td><?= $st ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php else: ?>
+          <?= qta_empty('Ende pa grupe', 'Kur QTA të caktojë punonjësit tuaj në grupe, ato shfaqen këtu.', 'bi-collection', '', 'is-compact') ?>
+        <?php endif; ?>
+      </section>
+    </div>
+
+    <div class="col-12 col-xl-5">
       <section class="section" aria-labelledby="waitTitle">
         <div class="section-head">
-          <h2 class="section-title" id="waitTitle">Presin caktimin në grup</h2>
-          <?php if ($noGroupCnt > 0): ?><span class="section-meta"><?= h(qta_plural($noGroupCnt, 'punonjës', 'punonjës')) ?></span><?php endif; ?>
+          <h2 class="section-title" id="waitTitle">Presin caktimin në grup <?php if ($noGroupCnt > 0): ?><span class="count"><?= (int)$noGroupCnt ?></span><?php endif; ?></h2>
+          <?php if ($noGroupCnt > count($noGroupList)): ?>
+            <a class="section-link" href="register_agjencia.php?status=no_group">Të gjithë <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+          <?php endif; ?>
         </div>
         <?php if ($noGroupList): ?>
           <div class="tasks">
             <?php foreach ($noGroupList as $s): ?>
-              <a class="task is-neutral" href="register_agjencia.php?q=<?= urlencode((string)$s['nr_amze']) ?>">
+              <a class="task is-neutral" href="student_card.php?sid=<?= (int)$s['id'] ?>">
                 <span class="task-body">
                   <span class="task-title"><?= h(qta_full_name($s['first_name'] ?? '', null, $s['last_name'] ?? '') ?: '—') ?></span>
-                  <span class="task-text">Nr. i amzës <span class="code"><?= h((string)$s['nr_amze']) ?></span> · ende pa grup</span>
+                  <span class="task-text">Nr. i amzës <span class="code"><?= h((string)$s['nr_amze']) ?></span></span>
                 </span>
                 <i class="bi bi-chevron-right text-muted" aria-hidden="true"></i>
               </a>
             <?php endforeach; ?>
           </div>
-          <p class="text-muted small mt-2 mb-0">Stafi i QTA-së i cakton punonjësit në grupin e radhës të kursit.</p>
         <?php else: ?>
           <?= qta_empty('Të gjithë janë në grupe', 'Asnjë punonjës nuk pret caktimin.', 'bi-check2-circle', '', 'is-success is-compact') ?>
         <?php endif; ?>

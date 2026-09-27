@@ -210,31 +210,33 @@ $validDate = static function ($v): ?string {
   }
   return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : null;
 };
+require_once __DIR__ . '/list_filter.php';
 $action  = isset($_GET['action']) && in_array($_GET['action'], ['INSERT', 'UPDATE', 'DELETE'], true) ? $_GET['action'] : null;
-$table   = isset($_GET['table']) && is_string($_GET['table']) && $_GET['table'] !== '' ? $_GET['table'] : null;
-$q       = isset($_GET['q']) && is_string($_GET['q']) && trim($_GET['q']) !== '' ? trim($_GET['q']) : null;
+$table   = isset($_GET['table']) && is_string($_GET['table']) && preg_match('/^[a-z_]{1,64}$/', $_GET['table']) ? $_GET['table'] : null;
+$q       = qta_search_q($_GET['q'] ?? '');
+$q       = $q !== '' ? $q : null;
 $from    = $validDate($_GET['from'] ?? null);
 $to      = $validDate($_GET['to'] ?? null);
 $who_id  = (!$LOG_MINE && isset($_GET['who']) && is_string($_GET['who']) && ctype_digit($_GET['who'])) ? (int)$_GET['who'] : null;
-$page    = max(1, (int)($_GET['page'] ?? 1));
 $perPage = min(100, max(10, (int)($_GET['per'] ?? 25)));
-$offset  = ($page - 1) * $perPage;
 
+/* Kushtet pa "Çfarë ndodhi": baza e numrave mbi çipat (U shtuan / U ndryshuan / U fshinë). */
 $where = [];
 $params = [];
 if ($LOG_MINE) { $where[] = "ae.user_id = :me"; $params[':me'] = (int)$LOG['scope_user']; }
-if ($action)   { $where[] = "ae.action = :action"; $params[':action'] = $action; }
 if ($table)    { $where[] = "ae.table_name = :table"; $params[':table'] = $table; }
 if ($who_id)   { $where[] = "ae.user_id = :who"; $params[':who'] = $who_id; }
 if ($from)     { $where[] = "ae.happened_at >= :from"; $params[':from'] = $from . ' 00:00:00'; }
 if ($to)       { $where[] = "ae.happened_at <= :to";   $params[':to']   = $to . ' 23:59:59'; }
-/* Kërkimi shikon edhe brenda vlerave të ndryshuara (p.sh. emri i një kursanti). */
-if ($q) {
-  $where[] = $LOG_MINE
-    ? "(ae.row_pk LIKE :q OR ae.old_data LIKE :q OR ae.new_data LIKE :q)"
-    : "(u.full_name LIKE :q OR u.email LIKE :q OR ae.row_pk LIKE :q OR ae.old_data LIKE :q OR ae.new_data LIKE :q)";
-  $params[':q'] = '%' . $q . '%';
+/* Kërkimi me fjalë shikon edhe brenda vlerave të ndryshuara (p.sh. emri i vjetër i një kursanti). */
+if ($q !== null) {
+  $where[] = qta_search_sql(qta_search_tokens($q),
+    $LOG_MINE ? ['ae.row_pk', 'ae.old_data', 'ae.new_data'] : ['u.full_name', 'u.email', 'ae.row_pk', 'ae.old_data', 'ae.new_data'],
+    $params, 'lq');
 }
+$baseWhereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+$baseParams = $params;
+if ($action) { $where[] = "ae.action = :action"; $params[':action'] = $action; }
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 $bindAll = static function (PDOStatement $st) use ($params): void { foreach ($params as $k => $v) $st->bindValue($k, $v); };
 
@@ -348,6 +350,8 @@ $bindAll($cntSt);
 $cntSt->execute();
 $total = (int)$cntSt->fetchColumn();
 $pages = max(1, (int)ceil($total / $perPage));
+$page = min(max(1, (int)($_GET['page'] ?? 1)), $pages);
+$offset = ($page - 1) * $perPage;
 
 $st = $pdo->prepare($selectSql . " LIMIT " . (int)$perPage . " OFFSET " . (int)$offset);
 $bindAll($st);
@@ -355,9 +359,10 @@ $st->execute();
 $events = $st->fetchAll(PDO::FETCH_ASSOC);
 $fields = $loadFields(array_column($events, 'id'));
 
+/* Numrat mbi çipat: me të gjithë filtrat përveç "Çfarë ndodhi". */
 $stats = ['INSERT' => 0, 'UPDATE' => 0, 'DELETE' => 0];
-$stc = $pdo->prepare("SELECT ae.action, COUNT(*) c $fromSql GROUP BY ae.action");
-$bindAll($stc);
+$stc = $pdo->prepare("SELECT ae.action, COUNT(*) c FROM audit_events ae LEFT JOIN users u ON u.id = ae.user_id $baseWhereSql GROUP BY ae.action");
+foreach ($baseParams as $k => $v) $stc->bindValue($k, $v);
 $stc->execute();
 while ($r = $stc->fetch(PDO::FETCH_ASSOC)) { $stats[$r['action']] = (int)$r['c']; }
 
@@ -370,29 +375,50 @@ require __DIR__ . '/app_head.php';
 
 $self = $LOG['page'];
 $today = date('Y-m-d');
-$presets = [
-  'Sot'          => ['from' => $today, 'to' => $today],
-  '7 ditët e fundit'  => ['from' => date('Y-m-d', strtotime('-6 days')), 'to' => $today],
-  '30 ditët e fundit' => ['from' => date('Y-m-d', strtotime('-29 days')), 'to' => $today],
-];
-$whoName = null;
-if ($who_id) {
-  foreach ($actors as $a) { if ((int)$a['id'] === $who_id) { $whoName = (string)$a['nm']; break; } }
-  $whoName = $whoName ?? ('Llogaria #' . $who_id);
-}
-$activeFilters = array_filter([
-  'action' => $action ? ($actionWord[$action] ?? $action) : null,
-  'table'  => $table ? ($tableLabels[$table] ?? $table) : null,
-  'who'    => $whoName,
-  'from'   => $from ? 'nga ' . qta_date($from) : null,
-  'to'     => $to ? 'deri ' . qta_date($to) : null,
-  'q'      => $q ? '"' . $q . '"' : null,
+$listState = array_filter([
+  'q' => $q, 'action' => $action, 'table' => $table, 'who' => $who_id ? (string)$who_id : null,
+  'from' => $from, 'to' => $to, 'per' => isset($_GET['per']) ? (string)$perPage : null,
 ]);
-$csvUrl = $self . '?' . http_build_query(array_merge(array_diff_key($_GET, ['page' => 1]), ['export' => 'csv']));
+$csvUrl = $self . '?' . http_build_query($listState + ['export' => 'csv']);
 $verbs = $LOG_MINE
   ? ['INSERT' => 'shtove', 'UPDATE' => 'ndryshove', 'DELETE' => 'fshive']
   : ['INSERT' => 'shtoi', 'UPDATE' => 'ndryshoi', 'DELETE' => 'fshiu'];
 $kinds = ['INSERT' => ['is-add', 'bi-plus-lg'], 'UPDATE' => ['is-edit', 'bi-pencil'], 'DELETE' => ['is-del', 'bi-trash']];
+$hasFilters = (bool)array_diff_key($listState, ['per' => 1]);
+
+$tableOptions = [];
+foreach ($tables as $t) $tableOptions[(string)$t] = $tableLabels[$t] ?? ucfirst(str_replace('_', ' ', (string)$t));
+$more = [['name' => 'table', 'label' => 'Ku', 'value' => (string)$table, 'options' => $tableOptions, 'empty' => 'Kudo', 'chip' => 'Ku: %s']];
+if (!$LOG_MINE) {
+  $actorOptions = [];
+  foreach ($actors as $a) $actorOptions[(string)$a['id']] = (string)$a['nm'];
+  $more[] = ['name' => 'who', 'label' => 'Kush', 'value' => $who_id ? (string)$who_id : '', 'options' => $actorOptions, 'empty' => 'Kushdo', 'chip' => 'Kush: %s'];
+}
+$more[] = ['name' => 'from', 'label' => 'Nga data', 'type' => 'date', 'value' => (string)$from, 'chip' => 'Nga %s', 'attrs' => 'data-dmy-max="today"'];
+$more[] = ['name' => 'to', 'label' => 'Deri më', 'type' => 'date', 'value' => (string)$to, 'chip' => 'Deri %s', 'attrs' => 'data-dmy-min="#lfMore' . (count($more) - 1) . '" data-dmy-max="today"'];
+$dmy = static fn(string $iso): string => qta_date($iso);
+$LF = [
+  'action'      => $self,
+  'label'       => 'Kërko në historik',
+  'placeholder' => 'Emër, nr. i amzës, datë ose një vlerë e vjetër',
+  'q'           => (string)$q,
+  'target'      => 'logResults',
+  'status'      => (string)$action,
+  'chip_param'  => 'action',
+  'chips'       => [
+    ['value' => '',       'label' => 'Të gjitha',   'count' => array_sum($stats)],
+    ['value' => 'INSERT', 'label' => 'U shtuan',    'count' => $stats['INSERT']],
+    ['value' => 'UPDATE', 'label' => 'U ndryshuan', 'count' => $stats['UPDATE']],
+    ['value' => 'DELETE', 'label' => 'U fshinë',    'count' => $stats['DELETE']],
+  ],
+  'chips_label' => 'Çfarë ndodhi',
+  'more'        => $more,
+  'presets'     => [
+    ['label' => 'Sot',               'set' => ['from' => $dmy($today), 'to' => $dmy($today)]],
+    ['label' => '7 ditët e fundit',  'set' => ['from' => $dmy(date('Y-m-d', strtotime('-6 days'))), 'to' => $dmy($today)]],
+    ['label' => '30 ditët e fundit', 'set' => ['from' => $dmy(date('Y-m-d', strtotime('-29 days'))), 'to' => $dmy($today)]],
+  ],
+];
 ?>
 
 <main class="app-main" id="main" tabindex="-1">
@@ -404,108 +430,30 @@ $kinds = ['INSERT' => ['is-add', 'bi-plus-lg'], 'UPDATE' => ['is-edit', 'bi-penc
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
-      <?php if ($total > 0): ?>
-        <a class="btn btn-secondary" href="<?= h($csvUrl) ?>"><i class="bi bi-download" aria-hidden="true"></i>Shkarko listën (Excel)</a>
-      <?php endif; ?>
     </div>
   </header>
 
-  <div class="stats mb-4" aria-label="Përmbledhje sipas filtrave">
-    <div class="stat">
-      <span class="stat-label">Veprime gjithsej</span>
-      <span class="stat-value"><?= number_format($total, 0, ',', '.') ?></span>
-      <span class="stat-note"><?= $activeFilters ? 'sipas filtrave' : 'që nga fillimi' ?></span>
+  <section class="section" aria-labelledby="logTitle">
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="logTitle" tabindex="-1" data-live-focus>
+        <?= $hasFilters ? 'Veprimet që përputhen' : 'Të gjitha veprimet' ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
+      </h2>
+      <?php if ($total > 0): ?>
+        <div class="list-actions">
+          <a class="btn btn-secondary" href="<?= h($csvUrl) ?>"><i class="bi bi-download" aria-hidden="true"></i>Shkarko (Excel)</a>
+        </div>
+      <?php endif; ?>
     </div>
-    <div class="stat">
-      <span class="stat-label"><span class="log-dot is-add" aria-hidden="true"></span>U shtuan</span>
-      <span class="stat-value"><?= number_format($stats['INSERT'], 0, ',', '.') ?></span>
-    </div>
-    <div class="stat">
-      <span class="stat-label"><span class="log-dot is-edit" aria-hidden="true"></span>U ndryshuan</span>
-      <span class="stat-value"><?= number_format($stats['UPDATE'], 0, ',', '.') ?></span>
-    </div>
-    <div class="stat">
-      <span class="stat-label"><span class="log-dot is-del" aria-hidden="true"></span>U fshinë</span>
-      <span class="stat-value"><?= number_format($stats['DELETE'], 0, ',', '.') ?></span>
-    </div>
-  </div>
 
-  <form class="filters" method="get" action="<?= h($self) ?>" role="search" aria-label="Filtro historikun">
-    <div class="filter-field is-grow">
-      <label class="form-label" for="lq">Kërko</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="lq" type="search" name="q" value="<?= h((string)$q) ?>" placeholder="Emër kursanti, nr. i amzës, datë…" aria-describedby="lqHelp">
-      </div>
-      <span class="form-text mt-0" id="lqHelp">Kërkon edhe te vlerat e vjetra, p.sh. një emër që është ndryshuar.</span>
-    </div>
-    <div class="filter-field">
-      <label class="form-label" for="laction">Çfarë ndodhi</label>
-      <select class="form-select" id="laction" name="action">
-        <option value="">Çdo veprim</option>
-        <?php foreach ($actionWord as $code => $label): ?>
-          <option value="<?= h($code) ?>"<?= $action === $code ? ' selected' : '' ?>><?= h($label) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <div class="filter-field">
-      <label class="form-label" for="ltable">Ku</label>
-      <select class="form-select" id="ltable" name="table">
-        <option value="">Kudo</option>
-        <?php foreach ($tables as $t): ?>
-          <option value="<?= h((string)$t) ?>"<?= $table === $t ? ' selected' : '' ?>><?= h($tableLabels[$t] ?? ucfirst(str_replace('_', ' ', (string)$t))) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <?php if (!$LOG_MINE): ?>
-      <div class="filter-field">
-        <label class="form-label" for="lwho">Kush</label>
-        <select class="form-select" id="lwho" name="who">
-          <option value="">Kushdo</option>
-          <?php foreach ($actors as $a): ?>
-            <option value="<?= (int)$a['id'] ?>"<?= $who_id === (int)$a['id'] ? ' selected' : '' ?>><?= h((string)$a['nm']) ?> (<?= number_format((int)$a['n'], 0, ',', '.') ?>)</option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-    <?php endif; ?>
-    <div class="filter-field">
-      <label class="form-label" for="lfrom">Nga data</label>
-      <input class="form-control" type="text" id="lfrom" name="from" value="<?= h(qta_date($from, '')) ?>" inputmode="numeric" placeholder="dd.mm.vvvv" data-dmy data-dmy-max="today">
-    </div>
-    <div class="filter-field">
-      <label class="form-label" for="lto">Deri më</label>
-      <input class="form-control" type="text" id="lto" name="to" value="<?= h(qta_date($to, '')) ?>" inputmode="numeric" placeholder="dd.mm.vvvv" data-dmy data-dmy-min="#lfrom" data-dmy-max="today">
-    </div>
-    <div class="filter-actions">
-      <?php if ($activeFilters): ?><a class="btn btn-ghost" href="<?= h($self) ?>">Pastro filtrat</a><?php endif; ?>
-      <button class="btn btn-primary" type="submit"><i class="bi bi-funnel" aria-hidden="true"></i>Shfaq</button>
-    </div>
-  </form>
+    <?php require __DIR__ . '/partials/list_toolbar.php'; ?>
 
-  <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
-    <span class="text-muted small">Periudha:</span>
-    <?php foreach ($presets as $lbl => $rng):
-      $pq = array_merge(array_diff_key($_GET, ['page' => 1, 'export' => 1]), $rng);
-      $isOn = ($from === $rng['from'] && $to === $rng['to']); ?>
-      <a class="chip<?= $isOn ? ' is-on' : '' ?>" href="<?= h($self . '?' . http_build_query($pq)) ?>" <?= $isOn ? 'aria-current="true"' : '' ?>><?= h($lbl) ?></a>
-    <?php endforeach; ?>
-    <?php if ($activeFilters): ?>
-      <span class="text-muted small ms-2">Po shikon:</span>
-      <?php foreach ($activeFilters as $key => $label):
-        $drop = array_diff_key($_GET, [$key => 1, 'page' => 1, 'export' => 1]); ?>
-        <a class="chip is-on" href="<?= h($self . ($drop ? '?' . http_build_query($drop) : '')) ?>" title="Hiq këtë filtër">
-          <?= h((string)$label) ?><i class="bi bi-x" aria-hidden="true"></i><span class="visually-hidden">(hiq)</span>
-        </a>
-      <?php endforeach; ?>
-    <?php endif; ?>
-  </div>
-
+    <div id="logResults" data-live-region="results" data-live-announce="<?= h(qta_plural($total, 'veprim', 'veprime')) ?>">
   <?php if (!$events): ?>
     <?= qta_empty(
-          $activeFilters ? 'Asnjë veprim nuk përputhet' : 'Ende pa veprime',
-          $activeFilters ? 'Hiq një filtër ose zgjero periudhën.' : 'Kur dikush shton, ndryshon ose fshin të dhëna, veprimi shfaqet këtu.',
-          'bi-clock-history',
-          $activeFilters ? '<a class="btn btn-secondary" href="' . h($self) . '">Pastro filtrat</a>' : ''
+          $hasFilters ? 'Asnjë veprim nuk përputhet' : 'Ende pa veprime',
+          $hasFilters ? 'Hiq një filtër ose zgjero periudhën.' : 'Kur dikush shton, ndryshon ose fshin të dhëna, veprimi shfaqet këtu.',
+          'bi-clock-history'
         ) ?>
   <?php else: ?>
     <?php
@@ -515,10 +463,10 @@ $kinds = ['INSERT' => ['is-add', 'bi-plus-lg'], 'UPDATE' => ['is-edit', 'bi-penc
     <?php foreach ($byDay as $day => $rows):
       $dts = strtotime($day); ?>
       <section class="log-day" aria-label="<?= h(qta_date($day)) ?>">
-        <h2 class="log-day-title">
+        <h3 class="log-day-title">
           <span><?= $day === $today ? 'Sot' : ($day === date('Y-m-d', strtotime('-1 day')) ? 'Dje' : h(ucfirst(qta_weekday((int)date('N', $dts))))) ?>, <?= h(qta_date($day)) ?></span>
           <span class="log-day-count"><?= h(qta_plural(count($rows), 'veprim', 'veprime')) ?></span>
-        </h2>
+        </h3>
         <ol class="log-list">
           <?php foreach ($rows as $ev):
             $eid = (int)$ev['id'];
@@ -578,16 +526,10 @@ $kinds = ['INSERT' => ['is-add', 'bi-plus-lg'], 'UPDATE' => ['is-edit', 'bi-penc
       </section>
     <?php endforeach; ?>
 
-    <?php if ($pages > 1):
-      $pBase = $self . '?' . http_build_query(array_diff_key($_GET, ['page' => 1, 'export' => 1]));
-      $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
-      <nav class="pager mt-4" aria-label="Faqet e historikut">
-        <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më të rejat</a>
-        <span class="text-muted small">Faqja <?= $page ?> nga <?= $pages ?></span>
-        <a class="btn btn-secondary btn-sm<?= $page >= $pages ? ' disabled' : '' ?>" href="<?= h($pLink(min($pages, $page + 1))) ?>" <?= $page >= $pages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më të vjetrat<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
-      </nav>
-    <?php endif; ?>
+    <?= qta_list_pager($self, $listState, $page, $pages, qta_plural($total, 'veprim', 'veprime')) ?>
   <?php endif; ?>
+    </div>
+  </section>
 </main>
 
 <?php require __DIR__ . '/app_scripts.php'; ?>

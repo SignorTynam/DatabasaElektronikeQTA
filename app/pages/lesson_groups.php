@@ -81,27 +81,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 }
 
 /* ------------------------------
-   Filtrat
+   Lista: kërkimi (kursi, grupi, kursantët, datat), gjendja (çipat) dhe kursi.
+   Serveri filtron; faqja e rifreskon listën pa ringarkim (app.js).
 ------------------------------- */
-$q = trim((string)($_GET['q'] ?? ''));
-$courseFilter = trim((string)($_GET['course_id'] ?? ''));
-$courseFilterId = ($courseFilter !== '' && ctype_digit($courseFilter)) ? (int)$courseFilter : 0;
+require_once __DIR__ . '/../shared/group_list.php';
+$F = qta_group_filters($_GET);
+$status = $F['status'];
+$counts = qta_group_counts($pdo, 'scheduled', $F);
+$courseFilterId = $F['course_id'] !== '' ? (int)$F['course_id'] : 0;
+$hasFilters = ($F['q'] !== '' || $courseFilterId > 0);
 
 $params = [];
-$w = ["cg.model = 'scheduled'"];
-if ($q !== '') {
-  $w[] = "cg.id IN (
-            SELECT cgs2.group_id FROM course_group_students cgs2
-            JOIN students s2 ON s2.id = cgs2.student_id
-            LEFT JOIN persons p2 ON p2.id = s2.person_id
-            WHERE s2.nr_amze LIKE :kw OR p2.personal_number LIKE :kw2 OR p2.first_name LIKE :kw3
-               OR p2.father_name LIKE :kw4 OR p2.last_name LIKE :kw5)";
-  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) $params[$k] = '%' . $q . '%';
-}
-if ($courseFilterId > 0) {
-  $w[] = 'cg.course_id = :cf';
-  $params[':cf'] = $courseFilterId;
-}
+$w = array_merge(["cg.model = 'scheduled'"], qta_group_where($F, $params));
 $st = $pdo->prepare("
   SELECT cg.id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
          c.name AS course_name, c.code AS course_code,
@@ -148,8 +139,6 @@ $courses = $pdo->query('SELECT id, code, name, hours FROM courses ORDER BY name'
 $summaries = qta_course_summaries($pdo);
 $readyCount = 0;
 foreach ($courses as $c) if (!empty($summaries[(int)$c['id']]['ready'])) $readyCount++;
-$notReadyCount = count($courses) - $readyCount;
-$legacyCount = (int)$pdo->query("SELECT COUNT(*) FROM course_groups WHERE model = 'legacy'")->fetchColumn();
 
 /* Formulari i krijimit pas një gabimi */
 $createForm = $_SESSION['lg_create_form'] ?? null;
@@ -165,9 +154,8 @@ $HELP_TOPIC = 'lesson_groups';
 if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
 else require __DIR__ . '/inc/navbar4.php';
 
-$hasFilters = ($q !== '' || $courseFilterId > 0);
 $createHref = 'lesson_groups.php?' . http_build_query(array_filter(['edit' => '1', 'create' => '1', 'course_id' => $courseFilterId ?: null]));
-$pageTitle = 'Grupet';
+$pageTitle = 'Regjistri i kurseve profesionale';
 $pageScripts = [qta_asset('app/assets/js/lesson-groups.js')];
 require __DIR__ . '/../shared/app_head.php';
 
@@ -181,14 +169,35 @@ $scoredLabel = static function (int $scored, int $total): string {
   if ($scored === 0) return 'ende pa pikë';
   return $scored === $total ? 'të gjithë me pikë' : $scored . ' me pikë';
 };
+
+$stateTitles = ['' => 'Të gjitha grupet', 'active' => 'Grupet në mësim', 'upcoming' => 'Grupet që nisin së shpejti',
+                'awaiting_close' => 'Grupet që presin mbylljen', 'closed' => 'Grupet e mbyllura'];
+$total = (int)($counts[$status] ?? 0);
+$chips = [];
+foreach (['' => 'Të gjitha', 'active' => 'Në mësim', 'upcoming' => 'Nisin së shpejti', 'awaiting_close' => 'Presin mbylljen', 'closed' => 'Të mbyllura'] as $v => $label) {
+  $chips[] = ['value' => (string)$v, 'label' => $label, 'count' => $counts[$v] ?? 0];
+}
+$LF = [
+  'action'      => 'lesson_groups.php',
+  'label'       => 'Kërko në regjistrin e kurseve profesionale',
+  'placeholder' => 'Kurs, nr. i grupit, kursant, nr. i amzës ose datë',
+  'q'           => $F['q'],
+  'target'      => 'lgResults',
+  'status'      => $status,
+  'chips'       => $chips,
+  'chips_label' => 'Gjendja e grupeve',
+  'more'        => [
+    ['name' => 'course_id', 'label' => 'Kursi', 'value' => $F['course_id'], 'options' => qta_course_options($pdo), 'empty' => 'Çdo kurs'],
+  ],
+];
 ?>
 
 <main class="app-main is-wide" id="main" tabindex="-1">
 
   <header class="page-head">
     <div class="page-head-main">
-      <h1 class="page-title">Grupet</h1>
-      <p class="page-lead">Çdo grup ndjek një kurs me orar mësimi ditë pas dite. Data e mbarimit llogaritet vetë nga orët e kursit, orët në ditë dhe ditët pa mësim.</p>
+      <h1 class="page-title">Regjistri i kurseve profesionale</h1>
+      <p class="page-lead">Kurset profesionale me orar, kursantë, provime dhe dokumente.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -206,70 +215,23 @@ $scoredLabel = static function (int $scored, int $total): string {
     </div>
   </header>
 
-  <form class="filters" method="get" action="lesson_groups.php" role="search" aria-label="Kërko grupe">
-    <div class="filter-field is-grow">
-      <label class="form-label" for="lgQ">Kërko një kursant</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="lgQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
-      </div>
-    </div>
-    <div class="filter-field">
-      <label class="form-label" for="lgCourse">Kursi</label>
-      <select class="form-select" id="lgCourse" name="course_id">
-        <option value="">Të gjitha kurset</option>
-        <?php foreach ($courses as $c): ?>
-          <option value="<?= (int)$c['id'] ?>" <?= $courseFilterId === (int)$c['id'] ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <div class="filter-actions">
-      <?php if ($hasFilters): ?>
-        <a class="btn btn-ghost" href="lesson_groups.php"><i class="bi bi-x-lg" aria-hidden="true"></i>Pastro kërkimin</a>
-      <?php endif; ?>
-      <button class="btn btn-secondary" type="submit"><i class="bi bi-search" aria-hidden="true"></i>Kërko</button>
-    </div>
-  </form>
-
-  <?php if ($legacyCount > 0): ?>
-    <div class="notice mb-3">
-      <i class="bi bi-archive" aria-hidden="true"></i>
-      <span><b>Grupet e krijuara para orarit të mësimit</b> (<?= h(qta_plural($legacyCount, 'grup', 'grupe')) ?>) janë te
-        <a href="groups.php">Grupet e mëparshme</a>. Ato mbeten siç ishin, pa orar ditë pas dite.</span>
-    </div>
-  <?php endif; ?>
-  <?php if ($notReadyCount > 0): ?>
-    <div class="notice mb-3">
-      <i class="bi bi-diagram-3" aria-hidden="true"></i>
-      <span><b><?= h(qta_plural($notReadyCount, 'kurs nuk është', 'kurse nuk janë')) ?> ende gati për grupe me orar</b>, sepse u mungojnë modulet ose temat me orët e plota.
-        <a href="courses.php">Plotëso kurset</a>.</span>
-    </div>
-  <?php endif; ?>
-
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-
   <section class="section" aria-labelledby="lgTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="lgTitle">
-        <?= $hasFilters ? 'Grupet që përputhen' : 'Të gjitha grupet' ?>
-        <span class="count"><?= number_format(count($groups), 0, ',', '.') ?></span>
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="lgTitle" tabindex="-1" data-live-focus>
+        <?= h($stateTitles[$status] ?? 'Të gjitha grupet') ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
       </h2>
-      <?php if ($groups): ?><span class="section-meta">Hap një grup për orarin, kursantët, provimet dhe dokumentet.</span><?php endif; ?>
     </div>
 
+    <?php require __DIR__ . '/../shared/partials/list_toolbar.php'; ?>
+
+    <div id="lgResults" data-live-region="results" data-live-announce="<?= h(qta_plural($total, 'grup', 'grupe')) ?>">
     <?php if ($groups): ?>
-      <?php
-        $tfTarget = '#lessonGroupsTable';
-        $tfPlaceholder = 'Filtro — kurs, amzë ose datë';
-        $tfChips = [['label' => 'Në mësim', 'match' => 'Në mësim'], ['label' => 'Nisin së shpejti', 'match' => 'Nis '], ['label' => 'Presin mbylljen', 'match' => 'Pret mbylljen'], ['label' => 'Të mbyllura', 'match' => 'I mbyllur']];
-        $tfNoun = 'grupe';
-        require __DIR__ . '/../shared/partials/table_filter.php';
-      ?>
       <div class="table-responsive">
         <table class="table" id="lessonGroupsTable" data-sortable>
           <thead>
             <tr>
-              <th scope="col" class="col-medium" data-sort="text">Kursi</th>
+              <th scope="col" class="col-wide" data-sort="text">Kursi</th>
               <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
               <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
               <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
@@ -286,7 +248,7 @@ $scoredLabel = static function (int $scored, int $total): string {
               $tl = $todayLessons[$gid] ?? null;
             ?>
               <tr>
-                <td class="col-medium">
+                <td class="col-wide">
                   <a class="row-open" href="lesson_group.php?id=<?= $gid ?>">
                     <span>
                       <span class="person-name"><?= h((string)$g['course_name']) ?></span>
@@ -317,16 +279,19 @@ $scoredLabel = static function (int $scored, int $total): string {
           </tbody>
         </table>
       </div>
+    <?php elseif ($hasFilters): ?>
+      <?= qta_empty('Asnjë grup nuk përputhet', 'Provo një kurs tjetër, një numër amze ose hiq një filtër.', 'bi-search') ?>
+    <?php elseif ($status !== ''): ?>
+      <?= qta_empty('Asnjë grup me këtë gjendje', 'Zgjidh "Të gjitha" për të parë çdo grup.', 'bi-calendar-week', '', 'is-compact') ?>
     <?php else: ?>
-      <?= $hasFilters
-        ? qta_empty('Asnjë grup nuk përputhet', 'Provo një kurs tjetër ose pastro kërkimin.', 'bi-search', '<a class="btn btn-secondary" href="lesson_groups.php">Pastro kërkimin</a>')
-        : qta_empty('Ende pa grupe me orar',
+      <?= qta_empty('Ende pa grupe me orar',
             $readyCount > 0
               ? 'Krijo grupin e parë: zgjidh kursin, datën e fillimit dhe orët në ditë — orari ndërtohet vetë.'
-              : 'Së pari plotëso një kurs me module dhe tema te "Kurset"; pastaj krijo grupin.',
+              : 'Së pari plotëso një kurs me module dhe tema te "Katalogu i kurseve"; pastaj krijo grupin.',
             'bi-calendar-week',
-            $readyCount > 0 ? '<a class="btn btn-primary" href="' . h($createHref) . '">Krijo grup</a>' : '<a class="btn btn-primary" href="courses.php">Te kurset</a>') ?>
+            $readyCount > 0 ? '<a class="btn btn-primary" href="' . h($createHref) . '">Krijo grup</a>' : '<a class="btn btn-primary" href="courses.php">Te katalogu i kurseve</a>') ?>
     <?php endif; ?>
+    </div>
   </section>
 </main>
 
@@ -364,7 +329,7 @@ $scoredLabel = static function (int $scored, int $total): string {
                 </option>
               <?php endforeach; ?>
             </select>
-            <div class="form-text" id="lgcCourseHelp">Kurset "jo gati" nuk kanë ende module dhe tema me orët e plota. <a href="courses.php">Plotësoji te Kurset</a>.</div>
+            <div class="form-text" id="lgcCourseHelp">Kurset "jo gati" nuk kanë ende module dhe tema me orët e plota. <a href="courses.php">Plotësoji te Katalogu i kurseve</a>.</div>
           </div>
           <div class="col-sm-6">
             <label class="form-label" for="lgcStart">Data e fillimit <span class="req" aria-hidden="true">*</span></label>

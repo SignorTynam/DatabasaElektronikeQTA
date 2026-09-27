@@ -27,7 +27,6 @@ if (!$currentUser || ($currentUser['role_name'] ?? '') !== 'editor') {
 
 $NAV_ACTIVE = 'dashboard';
 $HELP_TOPIC = 'dashboard_staff';
-$DASH_ROLE  = 'editor';
 $pageTitle  = 'Kreu';
 
 require __DIR__ . '/../shared/app_head.php';

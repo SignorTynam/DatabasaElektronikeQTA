@@ -64,18 +64,18 @@ require __DIR__ . '/../shared/app_head.php';
 <?php if (!$course): ?>
   <header class="page-head">
     <div class="page-head-main">
-      <ol class="crumbs"><li><a href="courses.php">Kurset</a></li></ol>
+      <ol class="crumbs"><li><a href="courses.php">Katalogu i kurseve</a></li></ol>
       <h1 class="page-title">Kursi nuk u gjet</h1>
       <p class="page-lead">Ky kurs nuk ekziston më ose adresa është e gabuar.</p>
     </div>
   </header>
-  <?= qta_empty('Kursi nuk u gjet', 'Kthehu te lista e kurseve dhe zgjidhe sërish.', 'bi-journal-x', '<a class="btn btn-secondary" href="courses.php">Te kurset</a>') ?>
+  <?= qta_empty('Kursi nuk u gjet', 'Kthehu te katalogu i kurseve dhe zgjidhe sërish.', 'bi-journal-x', '<a class="btn btn-secondary" href="courses.php">Te katalogu i kurseve</a>') ?>
 <?php else: ?>
   <header class="page-head">
     <div class="page-head-main">
-      <ol class="crumbs"><li><a href="courses.php">Kurset</a></li><li aria-current="page"><span class="code"><?= h((string)$course['code']) ?></span></li></ol>
+      <ol class="crumbs"><li><a href="courses.php">Katalogu i kurseve</a></li><li aria-current="page"><span class="code"><?= h((string)$course['code']) ?></span></li></ol>
       <h1 class="page-title" id="courseTitle"><?= h((string)$course['name']) ?></h1>
-      <p class="page-lead">Kursi ndahet në module dhe çdo modul në tema, me radhë. Grupet me orar i zhvillojnë pikërisht në këtë radhë, ditë pas dite.</p>
+      <p class="page-lead">Modulet dhe temat me radhë; grupet me orar i zhvillojnë ditë pas dite në këtë radhë.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -111,7 +111,7 @@ require __DIR__ . '/../shared/app_head.php';
   <?php if ($check['ready']): ?>
     <div class="notice is-sunken mt-4">
       <i class="bi bi-calendar-week" aria-hidden="true"></i>
-      <span><b>Gati për grup.</b> Krijo një grup me këtë kurs te <a href="lesson_groups.php?<?= h(http_build_query(['edit' => '1', 'create' => '1', 'course_id' => $courseId])) ?>">Grupet</a>: zgjedh datën e fillimit dhe orët në ditë, orari ndërtohet vetë.</span>
+      <span><b>Gati për grup.</b> Krijo një grup me këtë kurs te <a href="lesson_groups.php?<?= h(http_build_query(['edit' => '1', 'create' => '1', 'course_id' => $courseId])) ?>">Regjistri i kurseve profesionale</a>: zgjedh datën e fillimit dhe orët në ditë, orari ndërtohet vetë.</span>
     </div>
   <?php endif; ?>
 <?php endif; ?>

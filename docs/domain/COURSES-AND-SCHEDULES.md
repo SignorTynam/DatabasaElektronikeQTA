@@ -17,11 +17,12 @@ enforces, where they are enforced, and the policies chosen where the product had
 | **Kurs / Kurset** | What a trainee enrols in and is certified for. Until this change the UI called it "Modul". | `courses` (table name and IDs unchanged) |
 | **Modul / Modulet** | An ordered part of a course, with its own hours. | `course_modules` |
 | **Temë / Temat** | An ordered unit of a module, with its own hours. | `course_topics` |
-| **Grupet** | Groups with a lesson schedule (the new register). | `course_groups.model = 'scheduled'` + `group_schedules` … |
-| **Grupet e mëparshme** | Every group that existed before this change, kept exactly as it was. | `course_groups.model = 'legacy'` |
+| **Regjistri i kurseve profesionale** | The register of groups with a lesson schedule (`lesson_groups.php`, until phase 14 called "Grupet"). One of its groups is a "grup me orar". | `course_groups.model = 'scheduled'` + `group_schedules` … |
+| **Regjistri i vjetër i kurseve profesionale** | Every group that existed before this change, kept exactly as it was (`groups.php`, until phase 14 called "Grupet e mëparshme"). One of its groups is still a "grup i mëparshëm". | `course_groups.model = 'legacy'` |
+| **Katalogu i kurseve** | The list of courses with their modules, topics and hours (`courses.php`, until phase 14 called "Kurset"; in the menu under Administrimi, same permissions). | `courses`, `course_modules`, `course_topics` |
 | **Orari i mësimit / Ditë pas dite** | The calculated lesson days and which topic hours fall on each day. | `group_schedule_days`, `group_schedule_slots` |
 | **Ditë e veçantë** | A date that differs from the usual pattern (other hours, no lesson, a Sunday with lessons). | `group_day_rules` |
-| **Regjistri i plotë** | The existing enrolment register (`register.php`): one row per registration. It is *not* the lesson schedule. | unchanged |
+| ~~Regjistri i plotë~~ | Removed in phase 14 (`register.php`, `register_inline_update.php`, `register_export.php`). Registrations are listed in "Të gjithë kursantët" (`students.php`, with each trainee's group); exam dates and points are edited in the group itself. | no data removed |
 
 Hours are always whole teaching hours ("orë mësimore").
 
@@ -88,15 +89,18 @@ Guarantees, from the inside out:
 |---|---|
 | Database | `trg_cg_model_guard_bu`: `model` can never change; a scheduled group's `course_id` can never change. `trg_gs_requires_scheduled_bi`: a schedule row can only exist for a `scheduled` group. |
 | Services | `qta_lg_require()` refuses legacy groups (`code = legacy_group`); `qta_assert_legacy_group()` makes the legacy actions in `groups.php` refuse scheduled groups. |
-| Endpoints | `groups_inline_update.php` and `register_inline_update.php` refuse start/end date edits on scheduled groups (their dates come from the schedule). `courses_inline_update.php` refuses moving a scheduled group to another course. |
-| Pages | `groups.php` lists only legacy groups and redirects `?group=N` of a scheduled group to `lesson_group.php?id=N`; `lesson_group.php` redirects a legacy id to `groups.php?group=N`. Search, register, trainee card, courses and dashboards link each group to its own area. |
+| Endpoints | `groups_inline_update.php` refuses start/end date edits on scheduled groups (their dates come from the schedule); `register_inline_update.php`, which did the same, was removed with "Regjistri i plotë". `courses_inline_update.php` refuses moving a scheduled group to another course. |
+| Pages | `groups.php` lists only legacy groups and redirects `?group=N` of a scheduled group to `lesson_group.php?id=N`; `lesson_group.php` redirects a legacy id to `groups.php?group=N`. Search, the trainees list, the trainee card, the catalogue and the dashboards link each group to its own area. |
 
 There is **no conversion** between the two kinds. A legacy group is never given a schedule,
 inferred topics or recalculated dates.
 
-New groups are created in "Grupet". "Grupet e mëparshme" opens with a banner that says so
-and links to the create dialog there; its own "Shto grup të mëparshëm" stays only for
-recording a group held earlier, without a schedule.
+New groups are created in "Regjistri i kurseve profesionale". "Regjistri i vjetër i kurseve
+profesionale" shows one compact notice: "Ky regjistër ruan kurset profesionale të mëparshme.
+Së shpejti këto regjistrime do të konvertohen në Regjistrin e kurseve profesionale." (with a
+link). The conversion it announces is a product decision that is **not implemented**: the rule
+above still holds, and a future conversion needs its own migration, rules and tests. Its own
+"Shto grup të mëparshëm" stays only for recording a group held earlier, without a schedule.
 
 ## 4. Creating a scheduled group
 
@@ -217,7 +221,10 @@ page edits exam dates and points inline through the existing `groups_inline_upda
   edit mode server-side (previews that save nothing do not need the edit mode).
 - Agencies and trainees get no new access: they are redirected away from the new pages and
   keep their existing views (group dates, exams, points), which now say "Kurs".
-- `students_without_groups.php` now enforces the edit mode on its JSON writes as well.
+- Assigning trainees to a group and choosing their course (the former JSON writes of
+  `students_without_groups.php`, now `app/actions/student_assignment.php`) check the role,
+  the CSRF token and the edit mode server-side, and lock the group row while counting its
+  members. `students_without_groups.php` only redirects to `students.php?status=no_group`.
 
 ## 10. History (audit)
 

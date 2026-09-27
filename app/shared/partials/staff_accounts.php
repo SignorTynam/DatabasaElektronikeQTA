@@ -18,7 +18,6 @@ declare(strict_types=1);
  *     'endpoint' => 'user_inline.php',     ruajtja e emrit/email-it
  *     'nav'      => 'users_admins',
  *     'help'     => 'users',
- *     'can'      => ['…', '…'],            çfarë mund të bëjë ky rol
  *   ];
  *   $users, $total, $totalPages, $page, $q, $CSRF, $EDIT_MODE, $currentUser
  *   flash() — funksioni i faqes për mesazhet pas ringarkimit
@@ -58,40 +57,26 @@ require __DIR__ . '/../app_head.php';
     </div>
   </header>
 
-  <?php if (!empty($SA['can'])): ?>
-    <div class="notice is-sunken mb-4">
-      <i class="bi bi-info-circle" aria-hidden="true"></i>
-      <span><b>Çfarë mund të bëjë një <?= h($SA['one']) ?>:</b> <?= h(implode(' · ', $SA['can'])) ?></span>
-    </div>
-  <?php endif; ?>
-
-  <form class="filters filters-compact" method="get" action="<?= h($SA['page']) ?>" role="search" aria-label="Kërko <?= h($SA['many']) ?>">
-    <div class="filter-field is-grow">
-      <label class="visually-hidden" for="saQ">Kërko sipas emrit ose email-it</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="saQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Kërko sipas emrit ose email-it">
-      </div>
-    </div>
-    <div class="filter-actions">
-      <?php if ($q !== ''): ?><a class="btn btn-ghost" href="<?= h($SA['page']) ?>">Pastro</a><?php endif; ?>
-      <button class="btn btn-secondary" type="submit">Kërko</button>
-    </div>
-  </form>
-
-  <?php require __DIR__ . '/edit_mode_off_banner.php'; ?>
-
+  <?php
+    $LF = [
+      'action'      => $SA['page'],
+      'label'       => 'Kërko ' . $SA['many'],
+      'placeholder' => 'Emri ose email-i',
+      'q'           => $q,
+      'target'      => 'staffResults',
+    ];
+  ?>
   <section class="section" aria-labelledby="saTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="saTitle">
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="saTitle" tabindex="-1" data-live-focus>
         <?= $q !== '' ? 'Llogaritë që përputhen' : 'Të gjitha llogaritë' ?>
         <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
       </h2>
-      <?php if ($EDIT_MODE && $users): ?>
-        <span class="section-meta">Kliko emrin ose email-in për ta ndryshuar.</span>
-      <?php endif; ?>
     </div>
 
+    <?php require __DIR__ . '/list_toolbar.php'; ?>
+
+    <div id="staffResults" data-live-region="results" data-live-announce="<?= h(qta_plural((int)$total, $SA['one'], $SA['many'])) ?>">
     <?php if ($users): ?>
       <div class="table-responsive">
         <table class="table" id="staffTable" data-sortable>
@@ -137,7 +122,7 @@ require __DIR__ . '/../app_head.php';
                           <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
                           <input type="hidden" name="action" value="delete_user">
                           <input type="hidden" name="user_id" value="<?= $uid ?>">
-                          <button class="btn btn-ghost btn-sm btn-icon" type="submit" aria-label="Fshi llogarinë e <?= h($name) ?>" title="Fshi llogarinë">
+                          <button class="btn btn-ghost btn-ghost-danger btn-sm btn-icon" type="submit" aria-label="Fshi llogarinë e <?= h($name) ?>" data-tip="Fshi llogarinë">
                             <i class="bi bi-trash" aria-hidden="true"></i>
                           </button>
                         </form>
@@ -150,22 +135,14 @@ require __DIR__ . '/../app_head.php';
           </tbody>
         </table>
       </div>
-
-      <?php if ($totalPages > 1):
-        $pBase = $SA['page'] . '?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
-        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
-        <nav class="pager mt-3" aria-label="Faqet e listës">
-          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
-          <span class="text-muted small">Faqja <?= (int)$page ?> nga <?= (int)$totalPages ?></span>
-          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
-        </nav>
-      <?php endif; ?>
-
+    <?php elseif ($q !== ''): ?>
+      <?= qta_empty('Asnjë llogari nuk përputhet', 'Provo një pjesë tjetër të emrit ose email-it.', 'bi-search') ?>
     <?php else: ?>
-      <?= $q !== ''
-        ? qta_empty('Asnjë llogari nuk përputhet', 'Provo një pjesë tjetër të emrit ose email-it.', 'bi-search', '<a class="btn btn-secondary" href="' . h($SA['page']) . '">Pastro kërkimin</a>')
-        : qta_empty('Ende pa ' . $SA['many'], 'Shto llogarinë e parë për një koleg.', 'bi-person-plus', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto ' . h($SA['one']) . '</a>') ?>
+      <?= qta_empty('Ende pa ' . $SA['many'], 'Shto llogarinë e parë për një koleg.', 'bi-person-plus', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto ' . h($SA['one']) . '</a>') ?>
     <?php endif; ?>
+
+      <?= qta_list_pager($SA['page'], ['q' => $q], (int)$page, (int)$totalPages, qta_plural((int)$total, 'llogari', 'llogari')) ?>
+    </div>
   </section>
 </main>
 
@@ -269,20 +246,11 @@ require __DIR__ . '/../app_head.php';
   const clean = s => { const v = (s||'').replace(/\s+/g,' ').trim(); return v === '—' ? '' : v; };
 
   /* Emri dhe email-i ndryshohen në vend */
-  if (EDIT_ENABLED) {
-    document.querySelectorAll('#staffTable td.cell .editable[contenteditable="true"]').forEach(el => {
-      el.dataset.prev = clean(el.textContent);
-      el.addEventListener('focus', () => { el.dataset.prev = clean(el.textContent); });
-      el.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
-        if (ev.key === 'Escape') { ev.preventDefault(); el.textContent = el.dataset.prev || ''; el.blur(); }
-      });
-      el.addEventListener('paste', ev => {
-        ev.preventDefault();
-        const text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
-        document.execCommand('insertText', false, clean(text));
-      });
-      el.addEventListener('blur', async () => {
+  /* Me delegim: rreshtat e rinj pas kërkimit ose faqosjes ndryshohen njësoj.
+     app.js (defer) është gati te DOMContentLoaded. */
+  if (EDIT_ENABLED) document.addEventListener('DOMContentLoaded', () => {
+    window.qtaEditable('#staffTable td.cell .editable', async (el, prevRaw) => {
+        el.dataset.prev = clean(prevRaw);
         const cell = el.closest('td.cell');
         const field = cell.dataset.field;
         const val = clean(el.textContent);
@@ -313,9 +281,8 @@ require __DIR__ . '/../app_head.php';
           cell.classList.add('cell-err'); setTimeout(() => cell.classList.remove('cell-err'), 1200);
           notify('danger', e.message);
         }
-      });
     });
-  }
+  });
 
   /* Dy fjalëkalimet duhet të jenë njësoj */
   document.querySelectorAll('form[data-password-pair]').forEach(form => {
