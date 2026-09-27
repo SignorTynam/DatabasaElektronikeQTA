@@ -10,12 +10,17 @@ declare(strict_types=1);
  *
  *   require_once __DIR__ . '/../shared/partials/group_documents.php';
  *   echo qta_group_documents($groupId, $CSRF);
+ *   echo qta_group_documents($groupId, $CSRF, ['lesson_register' => true]); // grupet me orar
+ *
+ * "Regjistri i orëve të mësimit" del vetëm kur thirrësi e kërkon shprehimisht:
+ * ai ndërtohet nga orari i grupit, që grupet e mëparshme nuk e kanë.
  *
  * Njoftimi "Po përgatitet dokumenti" vjen nga download_generation_toast.php.
  */
 
 if (!function_exists('qta_group_documents')) {
-  function qta_group_documents(int $groupId, string $csrf): string {
+  /** @param array{lesson_register?:bool} $opts */
+  function qta_group_documents(int $groupId, string $csrf, array $opts = []): string {
     $docs = [
       [
         'action' => 'download_proces_verbal.php', 'field' => 'f', 'formats' => ['pdf', 'docx', 'xlsx'],
@@ -27,6 +32,15 @@ if (!function_exists('qta_group_documents')) {
         'icon' => 'bi-list-ol', 'title' => 'Lista emërore',
         'text' => 'Numri rendor dhe emri i plotë (emër, atësi, mbiemër) i çdo kursanti.',
       ],
+    ];
+    if (!empty($opts['lesson_register'])) {
+      $docs[] = [
+        'action' => 'download_regjistri_mesimit.php', 'field' => 'format', 'formats' => ['pdf', 'docx'],
+        'icon' => 'bi-calendar-check', 'title' => 'Regjistri i orëve të mësimit',
+        'text' => 'Regjistri i printueshëm me datat e mësimit dhe temat e moduleve.',
+      ];
+    }
+    array_push($docs,
       [
         'action' => 'download_praktika_profesionale.php', 'field' => 'format', 'formats' => ['pdf', 'doc'],
         'icon' => 'bi-tools', 'title' => 'Praktika profesionale',
@@ -36,8 +50,8 @@ if (!function_exists('qta_group_documents')) {
         'action' => 'download_rregullat_sigurimi_teknik.php', 'field' => 'format', 'formats' => ['pdf', 'doc'],
         'icon' => 'bi-shield-check', 'title' => 'Rregullat e sigurimit teknik',
         'text' => 'Rregullat e sigurisë në punë që nënshkruajnë kursantët.',
-      ],
-    ];
+      ]
+    );
     $formats = [
       'pdf'  => ['bi-file-earmark-pdf', 'PDF'],
       'doc'  => ['bi-file-earmark-word', 'Word'],

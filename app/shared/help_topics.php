@@ -236,6 +236,7 @@ return [
       'Një ndryshim që prek ditë që kanë kaluar kërkon konfirmim, sepse ato ditë janë zhvilluar tashmë.',
       'Grupi ka kopjen e vet të temave. Nëse kursi ndryshon para se të nisë grupi, mund të marrësh temat e reja me "Merr temat e reja".',
       '"Printo orarin" printon orarin ditë pas dite.',
+      '"Regjistri i orëve të mësimit" (te "Dokumentet") ka për çdo modul një faqe për prezencën dhe një faqe me datat dhe temat. Çdo orë mësimi ka kolonën dhe rreshtin e vet: një ditë me 5 orë del 5 herë. Numrat 1, 2, 3… janë radha e kursantëve te "Lista emërore".',
     ],
   ],
 

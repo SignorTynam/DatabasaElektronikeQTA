@@ -17,6 +17,7 @@ Execution prompt: `SUPER-PORTAL-PROMPT.md`. Implemented system: `THEMELI.md`.
 | 9 | Cleanup (legacy CSS, dead endpoints, old download modals) after reference scans | Done |
 | 10 | QA: lint, automated DOM audit, real Apache check, manual flows | Done |
 | 11 | Domain change: "Modul" becomes **Kurs**, with ordered **Modulet** and **Temat**; new **Grupet** with a lesson schedule (`lesson_groups.php`, `lesson_group.php`, `course.php`); every earlier group stays in **Grupet e mëparshme** unchanged. Migration `db/migrations/2026-09-26-…`, reference `docs/domain/COURSES-AND-SCHEDULES.md`, tests in `tests/` | Done |
+| 12 | Document **"Regjistri i orëve të mësimit"** (PDF + Word) for groups with a schedule: odd pages attendance grid, even pages dates and topics of the module, one column and one row per teaching hour, from the group's stored schedule and frozen topics. `app/shared/lesson_register.php`, `app/exports/download_regjistri_mesimit.php`, reference `docs/domain/COURSES-AND-SCHEDULES.md` §13 | Done |
 
 ## Pages
 

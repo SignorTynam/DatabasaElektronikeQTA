@@ -122,7 +122,7 @@ and "nothing matches".
 | Tables | `.table`, `.table-sm`, `.id-code`, `.person-name`, `.cell-sub`, `.num-col`, `.col-wide`, `.col-medium`, `.col-actions`, `.pick-col`, `.row-actions`, `.inline-action` | `data-sortable` + `th[data-sort]`; `td[data-sort-value]`. Names that open a page (`a.person-name`, `a.row-open`) are not underlined; the underline appears on hover |
 | Rows that open a dialog | `.row-open` (+ `.row-open-text`) with `data-bs-toggle="modal"` | Details open over the page, never as show/hide rows (groups, a module's groups, agency groups) |
 | Record dialog | `.modal-record`, `.modal-meta`, `.modal-section`, `.modal-section-head`, `.modal-section-title`, `.modal-footer-start` | Header = the record's key facts; sections inside; quiet actions left, "Mbyll" right. `modal-fullscreen-md-down` for tables |
-| Documents | `.doc-grid`, `.doc-card(-icon/-body/-title/-text/-actions)` via `qta_group_documents()` | One card per document, one button per format; downloads start directly (POST, new tab) |
+| Documents | `.doc-grid`, `.doc-card(-icon/-body/-title/-text/-actions)` via `qta_group_documents()` | One card per document, one button per format; downloads start directly (POST, new tab). Groups with a schedule pass `['lesson_register' => true]` for "Regjistri i orëve të mësimit" |
 | Dialog in dialog | automatic (app.js) | A dialog opened from another returns to it on cancel and reopens it after a save reload; `qtaConfirm` stacks above (`.is-stacked`) |
 | Frozen columns | `.table-freeze` | First two columns (AMZË + name) stay visible ≥768px |
 | Inline editing | `.editable[contenteditable]`, `td.cell-saving/-ok/-err`, `.is-saved/.is-failed` | Enter saves, Esc restores, empty shows "Shto…" |

@@ -406,7 +406,7 @@ $statusHtml = static function (array $g) use ($today): string {
           <span class="section-meta">Zgjidh formatin — dokumenti hapet në një skedë të re.</span>
         </div>
         <?= $members
-          ? qta_group_documents($gid, $CSRF)
+          ? qta_group_documents($gid, $CSRF, ['lesson_register' => true])
           : qta_empty('Ende pa dokumente', 'Dokumentet e grupit (procesverbali, lista emërore…) krijohen kur grupi ka kursantë.', 'bi-file-earmark-text', '', 'is-compact') ?>
       </section>
     </div>

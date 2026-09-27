@@ -246,6 +246,8 @@ database tests; they refuse `qta_db` unless `QTA_ALLOW_MAIN_DB=1`.
 | `tests/unit/schedule_engine_test.php` | calendar facts, acceptance B, C, E, module boundary inside a day, Sunday rules, 0-hour weekdays, input errors, verifier tamper detection, determinism, large totals |
 | `tests/unit/curriculum_check_test.php` | acceptance A, hour mismatches and their one-click fixes, ordering, input validation |
 | `tests/integration/lesson_groups_test.php` | legacy isolation (D), curriculum CRUD + audit, hour limits (parts never exceed the whole, dialog data, repair of older data, no history for refusals), readiness rollback, C and E through the services and stored rows, course edits after a schedule (F), past-day and closed-group confirmations, exam conflicts, members, legacy guards in services and database, concurrency lock |
+| `tests/unit/lesson_register_test.php` | lesson register (§13): numbering 1…N independent of AMZË, 1/10/40 trainees, module order and odd/even page pairs, one column and one row per teaching hour (column k = row k), a topic of X hours written X times with its date, module change inside a day, split topics, month change (29, 30, 1, 2), mid-month start, missing day 1, December → January, Sundays and days without lessons never become columns, special-day hours, more than 31 hours → page pairs with "vazhdim", topic rows always fit their page, a day longer than a page, captions, file names, determinism, text measuring |
+| `tests/integration/lesson_register_test.php` | lesson register on stored data: order = Lista emërore (numeric AMZË), one attendance column and one topic row per stored teaching hour, dates = stored lesson days, frozen titles unchanged after course edits, a saved special day appears, legacy and missing groups refused |
 
 ## 12. Known limitations
 
@@ -259,5 +261,67 @@ database tests; they refuse `qta_db` unless `QTA_ALLOW_MAIN_DB=1`.
 - Removing trainees from a group leaves their course plan in state `assigned`, as for legacy
   groups (PROGRESS.md, open item 6).
 - Agencies and trainees do not see the day-by-day schedule.
-- PDF/Word/Excel exports need `composer install`; they could not be generated in the local
-  test environment.
+- PDF/Word/Excel exports need `composer install` on the server (`vendor/` is not in git).
+  The lesson register (§13) was generated and checked locally in PDF and in Microsoft Word.
+
+## 13. Lesson register ("Regjistri i orëve të mësimit")
+
+A printable register for one **scheduled** group, in PDF (Dompdf) and Word (.docx, PHPWord),
+from "Dokumentet e grupit" on `lesson_group.php`. Legacy groups do not get it: the card is
+added only with `qta_group_documents($gid, $csrf, ['lesson_register' => true])`, and the
+endpoint refuses legacy groups (`qta_lg_require`, code `legacy_group`).
+
+| Concern | Code |
+|---|---|
+| Model (data, pagination, page pairs) — no HTML, no Word | `app/shared/lesson_register.php` (`qta_lesson_register_build`, `qta_lesson_register_model`) |
+| Drawing: PDF and DOCX from the same model | `app/exports/inc/lesson_register_documents.php` |
+| Endpoint: POST, CSRF, Administrator/Editor, `format = pdf \| docx` | `app/exports/download_regjistri_mesimit.php` |
+| Font for the PDF (Calibri metrics, SIL OFL) | `app/exports/fonts/Carlito-*.ttf` + `OFL.txt` |
+
+**Sources.** Trainees in the order of "Lista emërore"
+(`ORDER BY CAST(s.nr_amze AS UNSIGNED), s.nr_amze`): the first is Nr. 1, the second Nr. 2 …
+(never the AMZË). Modules and topics from the group's frozen copy
+(`group_schedule_topics`), dates from the stored schedule (`group_schedule_days`,
+`group_schedule_slots`, annotated by `qta_sched_annotate`) — never the live course, never a
+recalculated schedule. All reads run in one transaction.
+
+**Pages.** The unit of both pages is the **teaching hour**: a date on which the module has
+X hours appears X times — X columns on the odd page and X rows on the even page, in the same
+order (column k of the attendance page is row k of the topics page). For every module in
+`module_seq` order: an odd page with the attendance grid and an even page with the dates and
+topics. A date belongs to a module when at least one slot of that date is of that module, so a
+date where one module ends and the next begins appears in both, each with its own hours. A module
+whose hours do not fit becomes several page pairs ("Moduli 2 — vazhdim"): at most 31 hours per
+pair (31 columns = 31 rows), and the topic rows (measured with Calibri widths plus a 6 % reserve,
+so they never overflow) must fit the even page. The hours of a date are never split between
+pairs, except a single day whose topics are longer than a page. Odd pages are always attendance,
+even pages always topics, in both formats.
+
+**Attendance page (odd).** As the paper form: title row, "Nr./Dt." corner with a diagonal,
+"Muaji:" row, the "Dt." row with the day of the month (1…31, no leading zero) once for every
+teaching hour (5 hours on 1 October → "1 1 1 1 1"), 31 narrow columns and 35 rows. Rows 1…N
+carry the trainees' numbers; the other rows stay empty and unnumbered. Under "Muaji:" the month
+**number** (1 = January … 12 = December) stands over the first column of each month on the
+page — so the first date always has its month, and a new month (30 30 | 1 1 1) shows its number
+over the first "1", with a thin line where the month changes. Unused columns stay empty.
+Attendance boxes stay empty: the system stores no attendance.
+
+**Topics page (even).** "Moduli 1 — Microsoft Word" (Times New Roman Bold, like the form), then
+Data | Tema | Shënime with **one row per teaching hour**: a topic taught X hours on a date is
+written X times, each row with that date (`dd.mm.yyyy`) and the frozen topic title; a topic that
+continues on the next day gets its remaining hours there, so every topic appears exactly as many
+times as it has hours. Long titles wrap, "Shënime" stays empty, and empty rows fill the page as
+on the form.
+
+**Both formats.** A4 portrait, 2.54 cm margins, black 0.5 pt lines, no colours, a small line
+under each table ("Grupi #42 · course · Moduli 2", "Faqja 3 nga 12"). Word: one section, fixed
+table layout and exact row heights, a new page with "page break before" on the first paragraph
+of each page (no section breaks, no empty pages), the diagonal is a native cell border
+(`w:tr2bl`). PDF: Carlito (metric-compatible with Calibri) so lines break as in Word; the
+diagonal is drawn on the page; if the PDF does not have the planned page count, the download
+fails with a clear message instead of giving a register with mixed odd/even pages. When the
+font cannot be prepared, the PDF uses DejaVu Sans at a smaller size and keeps the same pages.
+
+Downloads call the export audit hook `qta_audit_event('lesson_register.download', …)` like the
+other group documents; that hook records only when `qta_audit_log()` exists (it does not exist
+in the code today, for any document).
