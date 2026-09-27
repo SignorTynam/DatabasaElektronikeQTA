@@ -395,7 +395,6 @@ function exportPdf(array $headers, array $data, string $filename): void {
       </style>
     </head>
     <body>
-      <h3>Regjistri i studentëve (students.php)</h3>
       <table>
         <thead>
           <tr>
