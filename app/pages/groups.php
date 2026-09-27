@@ -47,7 +47,7 @@ function qta_assert_legacy_group(PDO $pdo, int $gid): void {
   $mq = $pdo->prepare("SELECT model FROM course_groups WHERE id = ?");
   $mq->execute([$gid]);
   if ($mq->fetchColumn() === 'scheduled') {
-    throw new RuntimeException('Grupi #' . $gid . ' ka orar mësimi dhe menaxhohet te "Grupet". Hape atje për kursantët, datat dhe orarin.');
+    throw new RuntimeException('Grupi #' . $gid . ' ka orar mësimi dhe menaxhohet te "Regjistri i kurseve profesionale". Hape atje për kursantët, datat dhe orarin.');
   }
 }
 
@@ -943,7 +943,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         'actor_user_id'=>$_SESSION['user_id'] ?? null
       ]);
 
-      $_SESSION['flash_ok'] = 'Grupi u fshi. Kursantët e tij janë tani te "Kursantët pa grup".';
+      $_SESSION['flash_ok'] = 'Grupi u fshi. Kursantët e tij janë tani pa grup, te "Kursantët".';
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
       $_SESSION['flash_err'] = $e->getMessage();
@@ -953,40 +953,22 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 /* ------------------------------
-   Filtro/Kërko
+   Lista: kërkimi (kursi, grupi, kursantët, datat), gjendja (çipat) dhe kursi.
+   Kushtet prekin vetëm grupin: kur gjendet një kursant, grupi shfaqet i plotë.
 ------------------------------- */
-$q = trim($_GET['q'] ?? '');
-$courseFilter = trim($_GET['course_id'] ?? '');  // opsional
+require_once __DIR__ . '/../shared/group_list.php';
+$legacyStates = ['active', 'awaiting_close', 'closed'];
+$F = qta_group_filters($_GET, $legacyStates);
+$status = $F['status'];
+$q = $F['q'];
+$counts = qta_group_counts($pdo, 'legacy', $F, $legacyStates);
 
-/* Kurset për dropdown (pa kodin, vetëm emrat) */
+/* Kurset për dialogët (pa kodin, vetëm emrat) */
 $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Query: rreshta (grup + student) */
 $params = [];
-$w = ["cg.model = 'legacy'"];
-if ($q !== '') {
-  /* Grupet ku është kursanti i kërkuar — me të gjithë kursantët e tyre,
-     që dritarja e grupit të tregojë grupin e plotë. */
-  $w[] = "cg.id IN (
-          SELECT cgs2.group_id
-          FROM course_group_students cgs2
-          JOIN students s2 ON s2.id = cgs2.student_id
-          LEFT JOIN persons p2 ON p2.id = s2.person_id
-          WHERE s2.nr_amze LIKE :kw
-             OR p2.personal_number LIKE :kw2
-             OR p2.first_name LIKE :kw3
-             OR p2.father_name LIKE :kw4
-             OR p2.last_name LIKE :kw5)";
-  $params[':kw']  = '%'.$q.'%';
-  $params[':kw2'] = '%'.$q.'%';
-  $params[':kw3'] = '%'.$q.'%';
-  $params[':kw4'] = '%'.$q.'%';
-  $params[':kw5'] = '%'.$q.'%';
-}
-if ($courseFilter !== '' && ctype_digit($courseFilter)) {
-  $w[] = "cg.course_id = :cf";
-  $params[':cf'] = (int)$courseFilter;
-}
+$w = array_merge(["cg.model = 'legacy'"], qta_group_where($F, $params));
 $whereSql = 'WHERE '.implode(' AND ', $w);
 
 $sql = "
@@ -1017,30 +999,6 @@ foreach ($params as $k=>$v) $st->bindValue($k, $v, is_int($v)?PDO::PARAM_INT:PDO
 $st->execute();
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-
-/* ===== Banner metrics ===== */
-try {
-  // (1) Studentë pa asnjë grup fare
-  $countNoGroup = (int)$pdo->query("
-    SELECT COUNT(*)
-    FROM students s
-    LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
-    WHERE cgs.student_id IS NULL
-  ")->fetchColumn();
-
-  // (2) Studentë që KANË modul (plan) por NUK janë në asnjë grup
-  $countPlannedNoGroup = (int)$pdo->query("
-    SELECT COUNT(DISTINCT s.id)
-    FROM students s
-    LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
-    JOIN student_course_plans scp
-      ON scp.student_id = s.id AND scp.status = 'planned'
-    WHERE cgs.student_id IS NULL
-  ")->fetchColumn();
-} catch (Throwable $e) {
-  $countNoGroup = (int)($countNoGroup ?? 0);
-  $countPlannedNoGroup = 0;
-}
 
 /* Info për dropdown-et e Formularit 1 (pa kod, vetëm emër kursi) */
 $groupInfo = $pdo->query("
@@ -1075,10 +1033,10 @@ else require __DIR__ . '/inc/navbar4.php';
 
 $openCreate = $EDIT_MODE && isset($_GET['create']);
 $createHref = 'groups.php?' . http_build_query(['edit' => '1', 'create' => '1']);
-$hasFilters = ($q !== '' || $courseFilter !== '');
+$hasFilters = ($q !== '' || $F['course_id'] !== '');
 $today = date('Y-m-d');
 
-$pageTitle = 'Grupet e mëparshme';
+$pageTitle = 'Regjistri i vjetër i kurseve profesionale';
 require __DIR__ . '/../shared/app_head.php';
 
 /* Grupimi i rreshtave: një grup me kursantët e vet, renditur sipas amzës së parë */
@@ -1161,12 +1119,32 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
 };
 ?>
 
+<?php
+$total = (int)($counts[$status] ?? 0);
+$stateTitles = ['' => 'Të gjitha grupet', 'active' => 'Grupet në mësim', 'awaiting_close' => 'Grupet që presin mbylljen', 'closed' => 'Grupet e mbyllura'];
+$chips = [];
+foreach (['' => 'Të gjitha', 'active' => 'Në mësim', 'awaiting_close' => 'Presin mbylljen', 'closed' => 'Të mbyllura'] as $v => $label) {
+  $chips[] = ['value' => (string)$v, 'label' => $label, 'count' => $counts[$v] ?? 0];
+}
+$LF = [
+  'action'      => 'groups.php',
+  'label'       => 'Kërko në regjistrin e vjetër',
+  'placeholder' => 'Kurs, nr. i grupit, kursant, nr. i amzës ose datë',
+  'q'           => $q,
+  'target'      => 'groupsResults',
+  'status'      => $status,
+  'chips'       => $chips,
+  'chips_label' => 'Gjendja e grupeve',
+  'more'        => [
+    ['name' => 'course_id', 'label' => 'Kursi', 'value' => $F['course_id'], 'options' => qta_course_options($pdo), 'empty' => 'Çdo kurs'],
+  ],
+];
+?>
 <main class="app-main is-wide" id="main" tabindex="-1">
 
   <header class="page-head">
     <div class="page-head-main">
-      <h1 class="page-title">Grupet e mëparshme</h1>
-      <p class="page-lead">Grupet e krijuara para orarit të mësimit, pa orar ditë pas dite. Mbeten siç ishin: kursantët, datat, provimet, pikët dhe dokumentet ndryshohen si më parë.</p>
+      <h1 class="page-title">Regjistri i vjetër i kurseve profesionale</h1>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -1184,75 +1162,30 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
     </div>
   </header>
 
-  <?php /* Grupet e reja nuk krijohen këtu: ata marrin orar mësimi te "Grupet". */ ?>
-  <div class="callout is-warning mb-4" role="note" aria-labelledby="newGroupsTitle">
-    <span class="callout-icon"><i class="bi bi-signpost-split" aria-hidden="true"></i></span>
-    <div class="callout-body">
-      <span class="callout-title" id="newGroupsTitle">Grupet e reja krijohen te "Grupet"</span>
-      <span class="callout-text">Çdo grup i ri krijohet te menuja <a href="lesson_groups.php">Grupet</a>, ku merr orar mësimi ditë pas dite. Këtu shto vetëm grupe të mbajtura më parë, pa orar.</span>
-    </div>
-    <a class="btn btn-primary" href="lesson_groups.php?edit=1&amp;create=1"><i class="bi bi-calendar-plus" aria-hidden="true"></i>Krijo një grup të ri</a>
+  <?php /* Regjistër i përkohshëm: grupet e reja krijohen te "Regjistri i kurseve profesionale". */ ?>
+  <div class="notice is-sunken mb-4" role="note">
+    <i class="bi bi-archive" aria-hidden="true"></i>
+    <span>Ky regjistër ruan kurset profesionale të mëparshme. Së shpejti këto regjistrime do të konvertohen në
+      <a href="lesson_groups.php">Regjistrin e kurseve profesionale</a>.</span>
   </div>
 
-  <form class="filters" method="get" action="groups.php" role="search" aria-label="Kërko grupe">
-    <div class="filter-field is-grow">
-      <label class="form-label" for="fQ">Kërko një kursant</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="fQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
-      </div>
-    </div>
-    <div class="filter-field">
-      <label class="form-label" for="fCourse">Kursi</label>
-      <select class="form-select" id="fCourse" name="course_id">
-        <option value="">Të gjitha kurset</option>
-        <?php foreach ($courses as $c): ?>
-          <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h($c['name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <div class="filter-actions">
-      <?php if ($hasFilters): ?>
-        <a class="btn btn-ghost" href="groups.php"><i class="bi bi-x-lg" aria-hidden="true"></i>Pastro kërkimin</a>
-      <?php endif; ?>
-      <button class="btn btn-secondary" type="submit"><i class="bi bi-search" aria-hidden="true"></i>Kërko</button>
-    </div>
-  </form>
-
-  <?php if ($countNoGroup > 0): ?>
-    <div class="notice mb-4">
-      <i class="bi bi-people" aria-hidden="true"></i>
-      <span><b><?= h(qta_plural($countNoGroup, 'kursant pret', 'kursantë presin')) ?> një grup.</b>
-        <a href="students_without_groups.php">Caktoji në grup</a> ose shto numrat e tyre të amzës kur krijon një grup të ri te <a href="lesson_groups.php">Grupet</a>.</span>
-    </div>
-  <?php endif; ?>
-
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-
   <section class="section" aria-labelledby="groupsTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="groupsTitle">
-        <?= $hasFilters ? 'Grupet që përputhen' : 'Të gjitha grupet' ?>
-        <span class="count"><?= number_format(count($groups), 0, ',', '.') ?></span>
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="groupsTitle" tabindex="-1" data-live-focus>
+        <?= h($stateTitles[$status] ?? 'Të gjitha grupet') ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
       </h2>
-      <?php if ($groups): ?>
-        <span class="section-meta">Hap një grup për kursantët, provimet, pikët dhe dokumentet.</span>
-      <?php endif; ?>
     </div>
 
+    <?php require __DIR__ . '/../shared/partials/list_toolbar.php'; ?>
+
+    <div id="groupsResults" data-live-region="results" data-live-announce="<?= h(qta_plural($total, 'grup', 'grupe')) ?>">
     <?php if ($groups): ?>
-      <?php
-        $tfTarget = '#groupsTable';
-        $tfPlaceholder = 'Filtro — kurs, amzë ose datë';
-        $tfChips = [['label' => 'Të mbyllura', 'match' => 'I mbyllur'], ['label' => 'Në mësim', 'match' => 'Në mësim'], ['label' => 'Presin mbylljen', 'match' => 'Pret mbylljen']];
-        $tfNoun = 'grupe';
-        require __DIR__ . '/../shared/partials/table_filter.php';
-      ?>
       <div class="table-responsive">
         <table class="table" id="groupsTable" data-sortable>
           <thead>
             <tr>
-              <th scope="col" class="col-medium" data-sort="text">Kursi</th>
+              <th scope="col" class="col-wide" data-sort="text">Kursi</th>
               <th scope="col" class="nowrap" data-sort="text">Nr. i amzës</th>
               <th scope="col" class="nowrap" data-sort="date">Fillimi</th>
               <th scope="col" class="nowrap" data-sort="date">Mbarimi</th>
@@ -1273,7 +1206,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
             $nScored = $g['scored'];
           ?>
             <tr data-gid="<?= (int)$gid ?>">
-              <td class="col-medium">
+              <td class="col-wide">
                 <button class="row-open" type="button" data-bs-toggle="modal" data-bs-target="#groupModal_<?= (int)$gid ?>" aria-haspopup="dialog">
                   <span>
                     <span class="person-name"><?= h((string)$h0['course_name']) ?></span>
@@ -1325,18 +1258,21 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
           </tbody>
         </table>
       </div>
+    <?php elseif ($hasFilters): ?>
+      <?= qta_empty('Asnjë grup nuk përputhet', 'Provo një kurs tjetër, një numër amze ose hiq një filtër.', 'bi-search') ?>
+    <?php elseif ($status !== ''): ?>
+      <?= qta_empty('Asnjë grup me këtë gjendje', 'Zgjidh "Të gjitha" për të parë çdo grup.', 'bi-archive', '', 'is-compact') ?>
     <?php else: ?>
-      <?= qta_empty(
-            $hasFilters ? 'Asnjë grup nuk përputhet' : 'Nuk ka grupe të mëparshme',
-            $hasFilters ? 'Provo një kurs tjetër ose pastro kërkimin.' : 'Grupet e reja krijohen te "Grupet", me orar mësimi ditë pas dite.',
-            'bi-archive',
-            $hasFilters ? '<a class="btn btn-secondary" href="groups.php">Pastro kërkimin</a>' : '<a class="btn btn-primary" href="lesson_groups.php">Te grupet</a>'
-          ) ?>
+      <?= qta_empty('Nuk ka kurse të mëparshme', 'Grupet e reja krijohen te "Regjistri i kurseve profesionale", me orar mësimi.', 'bi-archive',
+            '<a class="btn btn-primary" href="lesson_groups.php">Te regjistri i kurseve profesionale</a>') ?>
     <?php endif; ?>
+    </div>
   </section>
 </main>
 
 <?php require_once __DIR__ . '/../shared/partials/group_documents.php'; ?>
+<?php /* Dritaret e grupeve i përkasin listës: rifreskohen bashkë me të. */ ?>
+<div data-live-region="dialogs">
 <?php foreach ($groups as $gid => $g):
   $gid = (int)$gid;
   $h0 = $g['header'];
@@ -1530,7 +1466,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
           <span class="confirm-icon is-danger"><i class="bi bi-trash" aria-hidden="true"></i></span>
           <h2 class="modal-title mb-2" id="dgTitle_<?= (int)$gid ?>">Të fshihet Grupi #<?= (int)$gid ?>?</h2>
           <p class="mb-2"><b><?= h((string)$h0['course_name']) ?></b> · <?= h(qta_date($h0['start_date'])) ?> – <?= h(qta_date($h0['end_date'])) ?></p>
-          <p class="text-muted mb-0">Kursantët <b>nuk fshihen</b> — ata kthehen te "Kursantët pa grup". Fshihen vetëm datat e provimit dhe pikët e ruajtura në këtë grup. Kjo nuk mund të kthehet mbrapsht.</p>
+          <p class="text-muted mb-0">Kursantët <b>nuk fshihen</b> — ata mbeten te "Kursantët", pa grup. Fshihen vetëm datat e provimit dhe pikët e ruajtura në këtë grup. Kjo nuk mund të kthehet mbrapsht.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
@@ -1540,6 +1476,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
     </div>
   </div>
 <?php endforeach; ?>
+</div>
 
 <?php require __DIR__ . '/../shared/partials/qkl_report_modal.php'; ?>
 
@@ -1556,7 +1493,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
       <div class="modal-body">
         <div class="notice is-sunken mb-3">
           <i class="bi bi-info-circle" aria-hidden="true"></i>
-          <span><b>Grupet e reja krijohen te <a href="lesson_groups.php?edit=1&amp;create=1">Grupet</a></b>, me orar mësimi ditë pas dite. Këtu shto vetëm një grup të mbajtur më parë, pa orar.</span>
+          <span>Këtu shto vetëm një kurs të mbajtur më parë, pa orar. Grupet e reja krijohen te <a href="lesson_groups.php?edit=1&amp;create=1">Regjistri i kurseve profesionale</a>.</span>
         </div>
         <div class="row g-3">
           <div class="col-md-6">
@@ -1849,20 +1786,15 @@ async function saveEditable(editable){
   }
 }
 
-document.querySelectorAll('.editable').forEach(ed=>{
-  ed.addEventListener('keydown', (e)=>{
+/* Enter ruan, Esc anulon vetëm redaktimin (nuk mbyll dritaren e grupit). Me delegim:
+   rreshtat dhe dritaret e grupeve rifreskohen kur filtrohet lista. app.js (defer)
+   është gati te DOMContentLoaded. */
+document.addEventListener('DOMContentLoaded', ()=>{
+  window.qtaEditable('.editable', (ed, prevRaw)=>{
     if (!EDIT_MODE) return;
-    if (e.key === 'Enter'){ e.preventDefault(); ed.blur(); }
-    /* Esc anulon vetëm redaktimin — nuk e mbyll dritaren e grupit. */
-    if (e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); ed.textContent = ed.dataset.prev ?? ed.textContent; ed.blur(); }
+    ed.dataset.prev = clean(prevRaw);
+    saveEditable(ed);
   });
-  ed.addEventListener('focus', ()=>{ ed.dataset.prev = clean(ed.textContent); });
-  ed.addEventListener('paste', (e)=>{
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text/plain') || '';
-    document.execCommand('insertText', false, clean(text));
-  });
-  ed.addEventListener('blur', ()=>{ if (EDIT_MODE) saveEditable(ed); });
 });
 
 /* ===== Mbyllja e grupit =====
@@ -1894,25 +1826,25 @@ document.addEventListener('click', (e)=>{
   if (sw && !sw.disabled) sw.click();
 });
 
-document.querySelectorAll('.toggle-completed').forEach(sw=>{
-  sw.addEventListener('change', async ()=>{
-    if (!EDIT_MODE){ sw.checked = !sw.checked; return; }
-    const gid = parseInt(sw.dataset.group,10)||0;
-    const want = sw.checked ? 1 : 0;
-    const ok = await ask(want
-      ? { title: 'Të mbyllet grupi?', message: 'Mbylle kur provimet dhe pikët janë të plota. Pas mbylljes, çdo ndryshim do të kërkojë konfirmim.', confirm: 'Po, mbylle', danger: false }
-      : { title: 'Të rihapet grupi?', message: 'Ky grup është i mbyllur dhe dokumentet mund të jenë lëshuar. E rihap vetëm për të korrigjuar një gabim.', confirm: 'Po, rihape', danger: true });
-    if (!ok){ sw.checked = !sw.checked; return; }
-    try{
-      await postJSON({ csrf:CSRF, action:'set_group_completed', group_id:gid, is_completed:want });
-      GROUP_COMPLETED[gid] = want;
-      paintGroupState(gid, !!want);
-      notify('success', want ? 'Grupi u mbyll.' : 'Grupi u rihap.');
-    }catch(err){
-      sw.checked = !sw.checked;
-      notify('danger', err.message || 'Gjendja e grupit nuk u ndryshua.');
-    }
-  });
+document.addEventListener('change', async (e)=>{
+  const sw = e.target.closest ? e.target.closest('.toggle-completed') : null;
+  if (!sw) return;
+  if (!EDIT_MODE){ sw.checked = !sw.checked; return; }
+  const gid = parseInt(sw.dataset.group,10)||0;
+  const want = sw.checked ? 1 : 0;
+  const ok = await ask(want
+    ? { title: 'Të mbyllet grupi?', message: 'Mbylle kur provimet dhe pikët janë të plota. Pas mbylljes, çdo ndryshim do të kërkojë konfirmim.', confirm: 'Po, mbylle', danger: false }
+    : { title: 'Të rihapet grupi?', message: 'Ky grup është i mbyllur dhe dokumentet mund të jenë lëshuar. E rihap vetëm për të korrigjuar një gabim.', confirm: 'Po, rihape', danger: true });
+  if (!ok){ sw.checked = !sw.checked; return; }
+  try{
+    await postJSON({ csrf:CSRF, action:'set_group_completed', group_id:gid, is_completed:want });
+    GROUP_COMPLETED[gid] = want;
+    paintGroupState(gid, !!want);
+    notify('success', want ? 'Grupi u mbyll.' : 'Grupi u rihap.');
+  }catch(err){
+    sw.checked = !sw.checked;
+    notify('danger', err.message || 'Gjendja e grupit nuk u ndryshua.');
+  }
 });
 
 /* ===== groups.php?group=12 hap direkt dritaren e grupit #12
@@ -2037,9 +1969,11 @@ document.querySelector('[data-create-group-form]')?.addEventListener('submit', (
   });
 });
 
-/* Formularët e një grupi ekzistues (kursantët, kursi, fshirja) */
-document.querySelectorAll('form[data-group-form]').forEach(form => {
-  form.addEventListener('submit', async (e)=>{
+/* Formularët e një grupi ekzistues (kursantët, kursi, fshirja). Me delegim, në fazën
+   e kapjes: dritaret rifreskohen me listën dhe pyetja vjen para çdo dëgjuesi tjetër. */
+document.addEventListener('submit', async (e)=>{
+    const form = e.target;
+    if (!form || !form.matches || !form.matches('form[data-group-form]')) return;
     if (!EDIT_MODE) return;
     if (form.dataset.ready === '1') { form.dataset.ready = '0'; return; }
     e.preventDefault();
@@ -2071,8 +2005,7 @@ document.querySelectorAll('form[data-group-form]').forEach(form => {
       }
     }
     submitNow(form);
-  });
-});
+}, true);
 </script>
 </body>
 </html>

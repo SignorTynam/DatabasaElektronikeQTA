@@ -4,9 +4,9 @@
    ndryshon këtu.
      1. Pamja (e çelët · sipas pajisjes · e errët)
      2. Menuja anësore dhe sirtari në celular
-     3. Kthimi në krye, ankorat, tooltip-et
-     4. Filtrimi i menjëhershëm i tabelave
-     5. Renditja e kolonave
+     3. Kthimi në krye, ankorat, këshillat (data-tip), kyçi i ndryshimeve
+     4. Listat e gjalla: kërkimi dhe filtrat pa ringarkim (form[data-live-filter])
+     5. Renditja e kolonave, përmbajtja e re (qta:content), redaktimi në vend (qtaEditable)
      6. Njoftimet (toast) dhe dialogu i konfirmimit
      7. Kopjo, shfaq fjalëkalimin, gjendja "po punon"
      8. Kërkimi në regjistër (Ctrl K)
@@ -219,94 +219,359 @@
     onScroll();
   }
 
+  /* ------------------------------------------------ Këshillat (tooltip) */
+  /* data-tip="…" te butonat me ikonë: këshilla del me mi ose me tastierë.
+     Krijohet kur duhet (me delegim), që të punojë edhe për rreshtat e rinj
+     të listave. Emri i aksesueshëm mbetet gjithnjë te aria-label. */
+  var hoverless = window.matchMedia ? window.matchMedia('(hover: none)') : null;
+  function tipInstance(el) {
+    if (!window.bootstrap || !window.bootstrap.Tooltip) return null;
+    return window.bootstrap.Tooltip.getOrCreateInstance(el, {
+      title: el.getAttribute('data-tip'),
+      placement: el.getAttribute('data-tip-placement') || 'bottom',
+      trigger: 'hover focus',
+      container: 'body'
+    });
+  }
+  ['mouseover', 'focusin'].forEach(function (type) {
+    document.addEventListener(type, function (event) {
+      var el = event.target.closest ? event.target.closest('[data-tip]') : null;
+      if (!el || el._qtaTip) return;
+      if (type === 'mouseover' && hoverless && hoverless.matches) return;
+      if (type === 'focusin' && el.matches && !el.matches(':focus-visible')) return;
+      el._qtaTip = tipInstance(el);
+      if (el._qtaTip) el._qtaTip.show();
+    });
+  });
+  function dropTips(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('[data-tip]'), function (el) {
+      if (el._qtaTip) { try { el._qtaTip.dispose(); } catch (e) { /* tashmë e hequr */ } el._qtaTip = null; }
+    });
+  }
   if (window.bootstrap && window.bootstrap.Tooltip) {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
       new window.bootstrap.Tooltip(el);
     });
   }
 
-  /* --------------------------------------- 4. Filtrimi i menjëhershëm */
-  /* Mban parasysh tabelat me trupa të shumtë (grupet), numëron sa mbeten
-     dhe pranon filtra të shpejtë me një klik. */
-  document.querySelectorAll('[data-tfilter]').forEach(function (box) {
-    var input = box.querySelector('[data-table-filter]');
-    var count = box.querySelector('[data-tfilter-count]');
-    var clear = box.querySelector('[data-tfilter-clear]');
-    var chips = box.querySelectorAll('[data-tfilter-chip]');
-    if (!input) return;
+  /* Kyçi i ndryshimeve ruan filtrat e listës që janë në adresë tani
+     (lista mund të jetë filtruar pa ringarkuar faqen). */
+  document.addEventListener('click', function (event) {
+    var a = event.target.closest ? event.target.closest('a[data-edit-toggle]') : null;
+    if (!a || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.delete('add');
+      url.searchParams.delete('create');
+      url.searchParams.set('edit', a.getAttribute('data-edit-toggle'));
+      event.preventDefault();
+      window.location.href = url.pathname + url.search + url.hash;
+    } catch (e) { /* lidhja e zakonshme */ }
+  });
 
-    var sel = input.getAttribute('data-table-filter');
-    var table = sel ? document.querySelector(sel) : document.querySelector('main table');
-    if (!table) return;
+  /* -------------------------------------------------- 4. Listat e gjalla */
+  /* Një formular form[data-live-filter] për listë (partials/list_toolbar.php).
+     Ndërsa shkruan, faqja kërkon po atë adresë me filtrat e rinj dhe zëvendëson
+     vetëm zonat [data-live-region]: kërkimi mbulon gjithë listën (serveri
+     filtron), jo vetëm rreshtat që shihen. Kërkesa e vjetër ndërpritet,
+     përgjigjet e vonuara injorohen, rezultatet e vjetra mbeten gjatë ngarkimit.
+     Adresa ndjek filtrat: rifreskimi dhe "prapa/përpara" japin të njëjtën listë.
+     Pa JavaScript formulari dërgohet si GET i zakonshëm. */
+  var reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
-    var multi = table.tBodies.length > 1;
-    var units = multi
-      ? Array.prototype.slice.call(table.tBodies)
-      : Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []);
-    var total = units.length;
-    var noun = box.getAttribute('data-tfilter-noun') || 'rreshta';
+  window.qtaLive = (function () {
+    var form = document.querySelector('form[data-live-filter]');
+    if (!form || !window.fetch || !window.DOMParser || !window.URLSearchParams || !window.FormData) return null;
 
-    /* Teksti i dukshëm i rreshtit. Opsionet e listave rënëse nuk llogariten
-       (përndryshe çdo rresht me listë grupesh do të përputhej me çdo kurs);
-       merret vetëm vlera e zgjedhur. Llogaritet sa herë, se teksti ndryshon. */
-    function textOf(unit) {
-      var out = '';
-      var walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT, {
-        acceptNode: function (n) {
-          return n.parentElement && n.parentElement.closest('select, script, template') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-        }
+    var input = form.querySelector('[data-lf-input]');
+    var clearBtn = form.querySelector('[data-lf-clear]');
+    var announceEl = form.querySelector('[data-lf-announce]');
+    var errorEl = form.querySelector('[data-lf-error]');
+    var more = form.querySelector('[data-lf-more]');
+    var moreCount = form.querySelector('[data-lf-more-count]');
+    var pagePath = new URL(form.getAttribute('action') || window.location.pathname, window.location.href).pathname;
+    var timer = null, staleTimer = null, seq = 0, controller = null;
+
+    function regions() { return Array.prototype.slice.call(document.querySelectorAll('[data-live-region]')); }
+
+    function params(extra) {
+      var usp = new URLSearchParams();
+      new FormData(form).forEach(function (value, key) {
+        var v = String(value).replace(/\s+/g, ' ').trim();
+        if (v !== '' && key !== 'page') usp.set(key, v);
       });
-      while (walker.nextNode()) out += ' ' + walker.currentNode.nodeValue;
-      Array.prototype.forEach.call(unit.querySelectorAll('select'), function (s) {
-        var o = s.options[s.selectedIndex];
-        if (o && o.value !== '') out += ' ' + o.textContent;
+      Object.keys(extra || {}).forEach(function (key) {
+        var v = extra[key];
+        if (v === '' || v == null || (key === 'page' && parseInt(v, 10) <= 1)) usp.delete(key); else usp.set(key, String(v));
       });
-      return out.replace(/\s+/g, ' ').toLowerCase();
+      return usp;
     }
 
-    function apply() {
-      var needle = input.value.trim().toLowerCase();
-      var shown = 0;
-      units.forEach(function (u) {
-        var hit = needle === '' || textOf(u).indexOf(needle) !== -1;
-        if (multi) u.style.display = hit ? '' : 'none'; else u.hidden = !hit;
-        if (hit) shown++;
-      });
-      box.classList.toggle('is-on', needle !== '');
-      if (count) {
-        count.textContent = needle === '' ? total + ' ' + noun : shown + ' nga ' + total + ' ' + noun;
-        count.classList.toggle('is-narrowed', needle !== '');
+    function urlOf(usp) {
+      var s = usp.toString();
+      return pagePath + (s ? '?' + s : '');
+    }
+
+    function syncControls() {
+      if (clearBtn && input) clearBtn.hidden = input.value === '';
+      if (more && moreCount) {
+        var n = 0;
+        Array.prototype.forEach.call(more.querySelectorAll('input[name], select[name]'), function (f) {
+          if (String(f.value).trim() !== '') n++;
+        });
+        moreCount.hidden = n === 0;
+        if (moreCount.firstChild) moreCount.firstChild.nodeValue = String(n);
       }
     }
 
-    var timer = null;
-    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(apply, 90); });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { e.stopPropagation(); input.value = ''; apply(); }
-    });
-    if (clear) clear.addEventListener('click', function () {
-      input.value = '';
-      Array.prototype.forEach.call(chips, function (c) { c.classList.remove('is-on'); c.setAttribute('aria-pressed', 'false'); });
-      apply();
-      input.focus();
-    });
-    Array.prototype.forEach.call(chips, function (chip) {
-      chip.setAttribute('aria-pressed', 'false');
-      chip.addEventListener('click', function () {
-        var on = chip.classList.contains('is-on');
-        Array.prototype.forEach.call(chips, function (c) { c.classList.remove('is-on'); c.setAttribute('aria-pressed', 'false'); });
-        if (on) {
-          input.value = '';
-        } else {
-          chip.classList.add('is-on');
-          chip.setAttribute('aria-pressed', 'true');
-          input.value = chip.getAttribute('data-tfilter-chip') || '';
-        }
-        apply();
+    function setBusy(on) {
+      form.classList.toggle('is-busy', on);
+      clearTimeout(staleTimer);
+      regions().forEach(function (r) {
+        if (on) r.setAttribute('aria-busy', 'true'); else { r.removeAttribute('aria-busy'); r.classList.remove('is-stale'); }
       });
+      /* Zbehja vetëm kur përgjigjja vonon: pa dridhje te përgjigjet e shpejta. */
+      if (on) staleTimer = setTimeout(function () {
+        regions().forEach(function (r) { if (!form.contains(r)) r.classList.add('is-stale'); });
+      }, 160);
+    }
+
+    function showError(on) {
+      if (errorEl) errorEl.hidden = !on;
+      if (on && announceEl) announceEl.textContent = 'Lista nuk u përditësua. Kontrollo lidhjen dhe provo sërish.';
+    }
+
+    function announce(text) {
+      if (!announceEl || !text) return;
+      announceEl.textContent = '';
+      setTimeout(function () { announceEl.textContent = text; }, 80);
+    }
+
+    function swap(doc, opts) {
+      var current = regions();
+      var pairs = [];
+      for (var i = 0; i < current.length; i++) {
+        var name = current[i].getAttribute('data-live-region');
+        var fresh = doc.querySelector('[data-live-region="' + name + '"]');
+        if (!fresh) return false;
+        pairs.push([current[i], fresh]);
+      }
+      if (!pairs.length) return false;
+
+      var active = document.activeElement;
+      var fromRegion = active && active !== document.body && active.closest ? active.closest('[data-live-region]') : null;
+      var focusKey = fromRegion ? active.getAttribute('data-focus-key') : null;
+
+      pairs.forEach(function (pair) {
+        var el = pair[0], fresh = pair[1];
+        dropTips(el);
+        el.innerHTML = fresh.innerHTML;
+        var said = fresh.getAttribute('data-live-announce');
+        if (said !== null) el.setAttribute('data-live-announce', said);
+        if (!form.contains(el) && !(reduceMotion && reduceMotion.matches)) {
+          el.classList.remove('is-fresh');
+          void el.offsetWidth;
+          el.classList.add('is-fresh');
+        }
+        document.dispatchEvent(new CustomEvent('qta:content', { detail: { root: el } }));
+      });
+
+      /* Fokusi nuk humbet: kthehet te i njëjti çip, ose te titulli i listës. */
+      var target = null;
+      if (focusKey) {
+        target = Array.prototype.find.call(document.querySelectorAll('[data-focus-key]'), function (el) {
+          return el.getAttribute('data-focus-key') === focusKey;
+        }) || null;
+      }
+      /* Pas një veprimi (refresh), fokusi që ra te faqja kthehet te titulli i listës. */
+      var lost = !active || active === document.body || !document.contains(active);
+      if ((fromRegion && !target) || (opts && opts.focusResults) || (opts && opts.refocus && lost)) {
+        target = target || document.querySelector('[data-live-focus]');
+      }
+      if (target) {
+        try { target.focus({ preventScroll: true }); } catch (e) { /* pa fokus */ }
+        if (opts && opts.focusResults && target.getBoundingClientRect().top < 0) {
+          target.scrollIntoView({ block: 'start', behavior: reduceMotion && reduceMotion.matches ? 'auto' : 'smooth' });
+        }
+      }
+
+      var saidEl = document.querySelector('[data-live-announce]');
+      if (saidEl) announce(saidEl.getAttribute('data-live-announce'));
+      syncControls();
+      return true;
+    }
+
+    function load(url, opts) {
+      opts = opts || {};
+      var mine = ++seq;
+      if (controller) controller.abort();
+      controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      setBusy(true);
+      fetch(url, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'text/html', 'X-QTA-Live': '1' },
+        signal: controller ? controller.signal : undefined
+      })
+        .then(function (res) {
+          /* Seanca ka mbaruar ose faqja çoi gjetiu: hap faqen e plotë. */
+          var got = new URL(res.url || url, window.location.href);
+          if (got.pathname !== pagePath) { window.location.href = got.href; return null; }
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .then(function (html) {
+          if (html == null || mine !== seq) return;
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          if (!swap(doc, opts)) { window.location.href = url; return; }
+          setBusy(false);
+          showError(false);
+        })
+        .catch(function (err) {
+          if (err && err.name === 'AbortError') return;
+          if (mine !== seq) return;
+          setBusy(false);
+          showError(true);
+        });
+    }
+
+    function go(opts) {
+      opts = opts || {};
+      clearTimeout(timer);
+      var url = urlOf(params(opts.page ? { page: opts.page } : null));
+      if (url !== window.location.pathname + window.location.search) {
+        try { window.history[opts.push ? 'pushState' : 'replaceState']({ qtaLive: true }, '', url + window.location.hash); } catch (e) { /* adresa mbetet */ }
+      }
+      load(url, opts);
+    }
+
+    /* Fushat e formularit sipas adresës (pas "prapa/përpara"). */
+    function fromUrl() {
+      var usp = new URLSearchParams(window.location.search);
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (!el.name || el.type === 'submit' || el.type === 'button') return;
+        var v = usp.get(el.name) || '';
+        if (el.hasAttribute('data-dmy') && /^\d{4}-\d{2}-\d{2}$/.test(v)) v = v.slice(8, 10) + '.' + v.slice(5, 7) + '.' + v.slice(0, 4);
+        el.value = v;
+      });
+      syncControls();
+    }
+
+    if (input) {
+      input.addEventListener('input', function () {
+        syncControls();
+        clearTimeout(timer);
+        timer = setTimeout(function () { go({ push: false }); }, 220);
+      });
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && input.value !== '') {
+          event.preventDefault();
+          event.stopPropagation();
+          input.value = '';
+          go({ push: true });
+        }
+      });
+    }
+    if (clearBtn && input) clearBtn.addEventListener('click', function () {
+      input.value = '';
+      input.focus();
+      go({ push: true });
     });
-    apply();
-  });
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      go({ push: true });
+    });
+
+    form.addEventListener('click', function (event) {
+      var t = event.target;
+      if (!t.closest) return;
+      var chip = t.closest('[data-lf-chip]');
+      if (chip) {
+        event.preventDefault();
+        var field = form.querySelector('[data-lf-status-field]');
+        if (field) field.value = chip.getAttribute('data-lf-chip');
+        /* Gjendja e re shihet menjëherë; numrat vijnë nga serveri. */
+        Array.prototype.forEach.call(form.querySelectorAll('[data-lf-chip]'), function (c) {
+          var on = c === chip;
+          c.classList.toggle('is-on', on);
+          c.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        go({ push: true });
+        return;
+      }
+      var remove = t.closest('[data-lf-remove]');
+      if (remove) {
+        event.preventDefault();
+        var f = form.elements.namedItem(remove.getAttribute('data-lf-remove'));
+        if (f) f.value = '';
+        go({ push: true });
+        return;
+      }
+      var preset = t.closest('[data-lf-preset]');
+      if (preset) {
+        event.preventDefault();
+        var set = {};
+        try { set = JSON.parse(preset.getAttribute('data-lf-preset') || '{}'); } catch (e) { set = {}; }
+        Object.keys(set).forEach(function (name) { var el = form.elements.namedItem(name); if (el) el.value = set[name]; });
+        go({ push: true });
+        return;
+      }
+      if (t.closest('[data-lf-more-reset]')) {
+        event.preventDefault();
+        if (more) Array.prototype.forEach.call(more.querySelectorAll('input[name], select[name]'), function (el) { el.value = ''; });
+        go({ push: true });
+        return;
+      }
+      if (t.closest('[data-lf-retry]')) {
+        event.preventDefault();
+        load(window.location.pathname + window.location.search, {});
+      }
+    });
+
+    /* Filtrat e rrallë vlejnë sapo ndryshojnë (edhe data e zgjedhur në kalendar). */
+    form.addEventListener('change', function (event) {
+      if (event.target === input || !event.target.name) return;
+      if (more && more.contains(event.target)) go({ push: true });
+    });
+
+    /* Faqosja brenda listës. */
+    document.addEventListener('click', function (event) {
+      var a = event.target.closest ? event.target.closest('a[data-live-page]') : null;
+      if (!a || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      go({ push: true, page: a.getAttribute('data-live-page'), focusResults: true });
+    });
+
+    /* "Filtra" mbyllet me Esc ose me klik jashtë (jo kur zgjidhet data në kalendar). */
+    if (more) {
+      document.addEventListener('click', function (event) {
+        if (!more.open || more.contains(event.target)) return;
+        if (event.target.closest && event.target.closest('.modal')) return;
+        more.open = false;
+      });
+      more.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape' || !more.open) return;
+        event.stopPropagation();
+        more.open = false;
+        var summary = more.querySelector('summary');
+        if (summary) summary.focus();
+      });
+    }
+
+    window.addEventListener('popstate', function () {
+      if (window.location.pathname !== pagePath) return;
+      fromUrl();
+      load(window.location.pathname + window.location.search, {});
+    });
+
+    syncControls();
+
+    return {
+      /* Rifresko listën me filtrat e tanishëm (p.sh. pas caktimit në grup). */
+      refresh: function () { load(window.location.pathname + window.location.search, { refocus: true }); },
+      form: form
+    };
+  })();
 
   /* ------------------------------------------------- 5. Renditja e kolonave */
   function cellKey(row, index, kind) {
@@ -345,31 +610,84 @@
     keyed.forEach(function (k) { parent.appendChild(k.node); });
   }
 
-  document.querySelectorAll('table[data-sortable]').forEach(function (table) {
-    var head = table.tHead;
-    if (!head) return;
-    Array.prototype.forEach.call(head.rows[0].cells, function (th, index) {
-      var kind = th.getAttribute('data-sort');
-      if (!kind || kind === 'none') return;
-      th.setAttribute('tabindex', '0');
-      th.setAttribute('aria-sort', 'none');
-      th.setAttribute('title', 'Rendit sipas kësaj kolone');
-      var activate = function () {
-        var asc = !th.classList.contains('is-asc');
-        Array.prototype.forEach.call(head.rows[0].cells, function (other) {
-          other.classList.remove('is-asc', 'is-desc');
-          if (other.hasAttribute('aria-sort')) other.setAttribute('aria-sort', 'none');
+  /* Tabelat e renditshme; thirret sërish për tabelat që vijnë nga lista e gjallë. */
+  function enhanceSortable(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('table[data-sortable]:not([data-sort-ready])'), function (table) {
+      var head = table.tHead;
+      if (!head) return;
+      table.setAttribute('data-sort-ready', '');
+      Array.prototype.forEach.call(head.rows[0].cells, function (th, index) {
+        var kind = th.getAttribute('data-sort');
+        if (!kind || kind === 'none') return;
+        th.setAttribute('tabindex', '0');
+        th.setAttribute('aria-sort', 'none');
+        th.setAttribute('title', 'Rendit sipas kësaj kolone');
+        var activate = function () {
+          var asc = !th.classList.contains('is-asc');
+          Array.prototype.forEach.call(head.rows[0].cells, function (other) {
+            other.classList.remove('is-asc', 'is-desc');
+            if (other.hasAttribute('aria-sort')) other.setAttribute('aria-sort', 'none');
+          });
+          th.classList.add(asc ? 'is-asc' : 'is-desc');
+          th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+          sortTable(table, index, kind, asc ? 1 : -1);
+        };
+        th.addEventListener('click', activate);
+        th.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
         });
-        th.classList.add(asc ? 'is-asc' : 'is-desc');
-        th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
-        sortTable(table, index, kind, asc ? 1 : -1);
-      };
-      th.addEventListener('click', activate);
-      th.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
       });
     });
+  }
+  enhanceSortable(document);
+
+  /* Përmbajtje e re në faqe (lista e gjallë): renditja dhe kalendari punojnë edhe atje. */
+  document.addEventListener('qta:content', function (event) {
+    var root = event.detail && event.detail.root;
+    if (!root) return;
+    enhanceSortable(root);
+    if (window.qtaDatePicker && window.qtaDatePicker.enhance) window.qtaDatePicker.enhance(root);
   });
+
+  /* Redaktimi në vend me delegim: punon edhe te rreshtat që vijnë pas filtrimit.
+     qtaEditable(selector, commit): Enter ruan, Esc kthen vlerën, ngjitja merr
+     vetëm tekst; kur fusha lë fokusin, commit(el, vlera e mëparshme) e ruan. */
+  window.qtaEditable = function (selector, commit) {
+    function target(node) {
+      var el = node && node.closest ? node.closest(selector) : null;
+      return el && el.isContentEditable ? el : null;
+    }
+    document.addEventListener('focusin', function (event) {
+      var el = target(event.target);
+      if (el) el.dataset.prev = el.textContent;
+    });
+    document.addEventListener('keydown', function (event) {
+      var el = target(event.target);
+      if (!el) return;
+      if (event.key === 'Enter') { event.preventDefault(); el.blur(); }
+      else if (event.key === 'Escape') {
+        /* Esc anulon vetëm redaktimin — nuk mbyll dialogun ku ndodhet qeliza. */
+        event.preventDefault();
+        event.stopPropagation();
+        if (el.dataset.prev != null) el.textContent = el.dataset.prev;
+        el.dataset.cancel = '1';
+        el.blur();
+      }
+    });
+    document.addEventListener('paste', function (event) {
+      var el = target(event.target);
+      if (!el) return;
+      event.preventDefault();
+      var text = (event.clipboardData || window.clipboardData).getData('text/plain') || '';
+      document.execCommand('insertText', false, text.replace(/\s+/g, ' ').trim());
+    });
+    document.addEventListener('focusout', function (event) {
+      var el = target(event.target);
+      if (!el) return;
+      if (el.dataset.cancel === '1') { delete el.dataset.cancel; return; }
+      commit(el, el.dataset.prev != null ? el.dataset.prev : el.textContent);
+    });
+  };
 
   /* ------------------------------------ 6. Njoftimet dhe konfirmimi */
   var toastTitles = { success: 'U krye', danger: 'Nuk u krye', warning: 'Kujdes', info: 'Për dijeni', primary: 'Për dijeni' };
@@ -486,6 +804,11 @@
         }
         if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
           try { returnTo.focus({ preventScroll: true }); } catch (e) { /* kontrolli s'merr dot fokus */ }
+        } else if (returnTo && !document.querySelector('.modal.show')) {
+          /* Butoni u hoq ndërkohë (p.sh. rreshti doli nga lista pas ruajtjes):
+             fokusi shkon te titulli i listës, jo në fillim të faqes. */
+          var fallback = document.querySelector('[data-live-focus]') || document.getElementById('main');
+          if (fallback) { try { fallback.focus({ preventScroll: true }); } catch (e) { /* pa fokus */ } }
         }
       });
       modal.show();

@@ -33,27 +33,55 @@ $AGENCY = $astmt->fetch(PDO::FETCH_ASSOC);
 if (!$AGENCY) { header('Location: selectProfile.php'); exit; }
 
 /* ------------------------------
-   Filtrat
+   Filtrat: kërkimi (kurs, grup, punonjës, data), gjendja (çipat) dhe kursi
 --------------------------------*/
-$q            = trim((string)($_GET['q'] ?? ''));
-$courseFilter = trim((string)($_GET['course_id'] ?? ''));
+require_once __DIR__ . '/../shared/group_list.php';
+$gaStates = ['upcoming', 'active', 'awaiting_close', 'closed'];
+$F = qta_group_filters($_GET, $gaStates);
+$q = $F['q'];
+$status = $F['status'];
+$courseFilter = $F['course_id'];
 
-$courses = $pdo->query("SELECT id, code, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
-
-$params = [':agid' => (int)$AGENCY['id']];
+/* Kushtet e rreshtave (grup + punonjës i kësaj agjencie). */
+$baseParams = [':agid' => (int)$AGENCY['id']];
 $w = ["asg.agency_id = :agid"];
-if ($q !== '') {
-  $w[] = "(s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2 OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
-  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) { $params[$k] = '%' . $q . '%'; }
+$tokens = qta_search_tokens($q);
+if ($tokens) {
+  $w[] = qta_search_sql($tokens, [
+    's.nr_amze', 'p.personal_number', 'p.first_name', 'p.father_name', 'p.last_name',
+    "CONCAT_WS(' ', p.first_name, p.father_name, p.last_name)",
+    'c.name', 'c.code', "DATE_FORMAT(cg.start_date, '%d.%m.%Y')", "DATE_FORMAT(cg.end_date, '%d.%m.%Y')",
+  ], $baseParams, 'gaq', ['ids' => ['cg.id']]);
 }
-if ($courseFilter !== '' && ctype_digit($courseFilter)) {
+if ($courseFilter !== '') {
   $w[] = "cg.course_id = :cf";
-  $params[':cf'] = (int)$courseFilter;
+  $baseParams[':cf'] = (int)$courseFilter;
 }
-$whereSql = 'WHERE ' . implode(' AND ', $w);
+$rowsFrom = "
+  FROM course_groups cg
+  JOIN courses c ON c.id = cg.course_id
+  JOIN course_group_students cgs ON cgs.group_id = cg.id
+  JOIN students s ON s.id = cgs.student_id
+  LEFT JOIN persons p ON p.id = s.person_id
+  JOIN agency_students asg ON asg.student_id = s.id
+";
+
+/* Sa grupe ka çdo çip (grupe të ndryshme, jo rreshta). */
+$cSql = 'SELECT COUNT(DISTINCT cg.id) AS all_n';
+foreach ($gaStates as $sKey) {
+  $cSql .= ', COUNT(DISTINCT CASE WHEN ' . qta_group_state_sql($sKey) . ' THEN cg.id END) AS ' . $sKey;
+}
+$cst = $pdo->prepare($cSql . $rowsFrom . ' WHERE ' . implode(' AND ', $w));
+$cst->execute($baseParams);
+$cRow = $cst->fetch(PDO::FETCH_ASSOC) ?: [];
+$counts = ['' => (int)($cRow['all_n'] ?? 0)];
+foreach ($gaStates as $sKey) $counts[$sKey] = (int)($cRow[$sKey] ?? 0);
 
 /* Grupet ku ka punonjës të kësaj agjencie (vetëm ata punonjës shfaqen) */
-$sql = "
+$params = $baseParams;
+$wList = $w;
+if ($status !== '') $wList[] = qta_group_state_sql($status);
+$st = $pdo->prepare("
   SELECT
     cg.id AS group_id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
     c.code AS course_code, c.name AS course_name, c.hours,
@@ -61,16 +89,10 @@ $sql = "
     p.first_name, p.father_name, p.last_name, p.personal_number,
     COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
     cgs.final_score
-  FROM course_groups cg
-  JOIN courses c ON c.id = cg.course_id
-  JOIN course_group_students cgs ON cgs.group_id = cg.id
-  JOIN students s ON s.id = cgs.student_id
-  LEFT JOIN persons p ON p.id = s.person_id
-  JOIN agency_students asg ON asg.student_id = s.id
-  $whereSql
+  $rowsFrom
+  WHERE " . implode(' AND ', $wList) . "
   ORDER BY cg.start_date DESC, cg.id DESC, CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-";
-$st = $pdo->prepare($sql);
+");
 foreach ($params as $k => $v) $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
 $st->execute();
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -84,27 +106,30 @@ foreach ($rows as $r) {
   $groups[$gid]['students'][] = $r;
 }
 
-/* Punonjës pa grup */
-$params2 = [':agid' => (int)$AGENCY['id']];
-$w2 = ["asg.agency_id = :agid"];
-if ($q !== '') {
-  $w2[] = "(s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2 OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
-  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) { $params2[$k] = '%' . $q . '%'; }
+/* Punonjës pa grup (vetëm te "Të gjitha", pa kurs të zgjedhur) */
+$noGroup = [];
+if ($status === '' && $courseFilter === '') {
+  $params2 = [':agid' => (int)$AGENCY['id']];
+  $w2 = ["asg.agency_id = :agid"];
+  if ($tokens) {
+    $w2[] = qta_search_sql($tokens, ['s.nr_amze', 'p.personal_number', 'p.first_name', 'p.father_name', 'p.last_name',
+      "CONCAT_WS(' ', p.first_name, p.father_name, p.last_name)"], $params2, 'gan');
+  }
+  $ng = $pdo->prepare("
+    SELECT s.id AS student_id, s.nr_amze, p.first_name, p.father_name, p.last_name, p.personal_number
+    FROM students s
+    LEFT JOIN persons p ON p.id = s.person_id
+    JOIN agency_students asg ON asg.student_id = s.id
+    LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
+    WHERE " . implode(' AND ', $w2) . "
+    GROUP BY s.id
+    HAVING COUNT(cgs.group_id) = 0
+    ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
+  ");
+  foreach ($params2 as $k => $v) $ng->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+  $ng->execute();
+  $noGroup = $ng->fetchAll(PDO::FETCH_ASSOC);
 }
-$ng = $pdo->prepare("
-  SELECT s.id AS student_id, s.nr_amze, p.first_name, p.father_name, p.last_name, p.personal_number
-  FROM students s
-  LEFT JOIN persons p ON p.id = s.person_id
-  JOIN agency_students asg ON asg.student_id = s.id
-  LEFT JOIN course_group_students cgs ON cgs.student_id = s.id
-  WHERE " . implode(' AND ', $w2) . "
-  GROUP BY s.id
-  HAVING COUNT(cgs.group_id) = 0
-  ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-");
-foreach ($params2 as $k => $v) $ng->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-$ng->execute();
-$noGroup = ($courseFilter === '') ? $ng->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $today = date('Y-m-d');
 $groupState = static function (array $g) use ($today): string {
@@ -121,6 +146,26 @@ require __DIR__ . '/inc/navbar2.php';
 $pageTitle = 'Grupet';
 require __DIR__ . '/../shared/app_head.php';
 $hasFilters = ($q !== '' || $courseFilter !== '');
+$total = $counts[$status] ?? 0;
+$stateTitles = ['' => 'Të gjitha grupet', 'upcoming' => 'Grupet që nisin së shpejti', 'active' => 'Grupet në mësim',
+                'awaiting_close' => 'Grupet në provime', 'closed' => 'Grupet e përfunduara'];
+$chips = [];
+foreach (['' => 'Të gjitha', 'upcoming' => 'Nisin së shpejti', 'active' => 'Në mësim', 'awaiting_close' => 'Në provime', 'closed' => 'Përfunduar'] as $v => $label) {
+  $chips[] = ['value' => (string)$v, 'label' => $label, 'count' => $counts[$v] ?? 0];
+}
+$LF = [
+  'action'      => 'groups_agjencia.php',
+  'label'       => 'Kërko grupe',
+  'placeholder' => 'Kursi, nr. i grupit, punonjësi ose nr. i amzës',
+  'q'           => $q,
+  'target'      => 'gaResults',
+  'status'      => $status,
+  'chips'       => $chips,
+  'chips_label' => 'Gjendja e grupeve',
+  'more'        => [
+    ['name' => 'course_id', 'label' => 'Kursi', 'value' => $courseFilter, 'options' => qta_course_options($pdo), 'empty' => 'Çdo kurs'],
+  ],
+];
 ?>
 
 <main class="app-main" id="main" tabindex="-1">
@@ -129,41 +174,22 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
     <div class="page-head-main">
       <span class="eyebrow"><?= h((string)($AGENCY['company_name'] ?: 'Agjencia')) ?></span>
       <h1 class="page-title">Grupet</h1>
-      <p class="page-lead">Grupet ku janë punonjësit tuaj: kursi, datat dhe pikët e secilit. Hap një grup për të parë punonjësit.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
     </div>
   </header>
 
-  <form class="filters" method="get" action="groups_agjencia.php" role="search" aria-label="Kërko grupe">
-    <div class="filter-field is-grow">
-      <label class="form-label" for="gaQ">Kërko një punonjës</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="gaQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
-      </div>
-    </div>
-    <div class="filter-field">
-      <label class="form-label" for="gaC">Kursi</label>
-      <select class="form-select" id="gaC" name="course_id">
-        <option value="">Të gjitha kurset</option>
-        <?php foreach ($courses as $c): ?>
-          <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <div class="filter-actions">
-      <?php if ($hasFilters): ?><a class="btn btn-ghost" href="groups_agjencia.php">Pastro</a><?php endif; ?>
-      <button class="btn btn-secondary" type="submit">Kërko</button>
-    </div>
-  </form>
-
   <section class="section" aria-labelledby="gaTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="gaTitle"><?= $hasFilters ? 'Grupet që përputhen' : 'Grupet' ?> <span class="count"><?= count($groups) ?></span></h2>
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="gaTitle" tabindex="-1" data-live-focus>
+        <?= h($stateTitles[$status] ?? 'Të gjitha grupet') ?> <span class="count"><?= (int)$total ?></span>
+      </h2>
     </div>
 
+    <?php require __DIR__ . '/../shared/partials/list_toolbar.php'; ?>
+
+    <div id="gaResults" data-live-region="results" data-live-announce="<?= h(qta_plural((int)$total, 'grup', 'grupe')) ?>">
     <?php if ($groups): ?>
       <div class="table-responsive">
         <table class="table" id="agencyGroupsTable">
@@ -198,45 +224,49 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
           </tbody>
         </table>
       </div>
+    <?php elseif ($hasFilters): ?>
+      <?= qta_empty('Asnjë grup nuk përputhet', 'Provo një kurs tjetër, një emër ose hiq një filtër.', 'bi-search') ?>
+    <?php elseif ($status !== ''): ?>
+      <?= qta_empty('Asnjë grup me këtë gjendje', 'Zgjidh "Të gjitha" për të parë çdo grup.', 'bi-collection', '', 'is-compact') ?>
     <?php else: ?>
-      <?= $hasFilters
-        ? qta_empty('Asnjë grup nuk përputhet', 'Provo një kurs tjetër ose pastro kërkimin.', 'bi-search', '<a class="btn btn-secondary" href="groups_agjencia.php">Pastro kërkimin</a>')
-        : qta_empty('Punonjësit tuaj nuk janë ende në grupe', 'Kur QTA i cakton në një grup, grupi shfaqet këtu me datat e mësimit dhe provimit.', 'bi-collection') ?>
+      <?= qta_empty('Punonjësit tuaj nuk janë ende në grupe', 'Kur QTA i cakton në një grup, grupi shfaqet këtu me datat e mësimit dhe provimit.', 'bi-collection') ?>
     <?php endif; ?>
-  </section>
 
-  <?php if ($noGroup): ?>
-    <section class="section" aria-labelledby="gaNoGroup">
-      <div class="section-head">
-        <h2 class="section-title" id="gaNoGroup">Presin një grup <span class="count"><?= count($noGroup) ?></span></h2>
-        <span class="section-meta">QTA i cakton në grupin e radhës të kursit të tyre.</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table">
-          <thead>
-            <tr>
-              <th scope="col" class="nowrap">Nr. i amzës</th>
-              <th scope="col">Punonjësi</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($noGroup as $s):
-              $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? ''); ?>
+    <?php if ($noGroup): ?>
+      <section class="section mt-5" aria-labelledby="gaNoGroup">
+        <div class="section-head">
+          <h3 class="section-title" id="gaNoGroup">Presin një grup <span class="count"><?= count($noGroup) ?></span></h3>
+        </div>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
               <tr>
-                <td class="nowrap"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
-                <td>
-                  <a class="person-name" href="student_card.php?sid=<?= (int)$s['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
-                  <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
-                </td>
+                <th scope="col" class="nowrap">Nr. i amzës</th>
+                <th scope="col">Punonjësi</th>
               </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  <?php endif; ?>
+            </thead>
+            <tbody>
+              <?php foreach ($noGroup as $s):
+                $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? ''); ?>
+                <tr>
+                  <td class="nowrap"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
+                  <td>
+                    <a class="person-name" href="student_card.php?sid=<?= (int)$s['student_id'] ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
+                    <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <?php endif; ?>
+    </div>
+  </section>
 </main>
 
+<?php /* Dritaret e grupeve i përkasin listës: rifreskohen bashkë me të. */ ?>
+<div data-live-region="dialogs">
 <?php foreach ($groups as $gid => $g):
   $gid = (int)$gid;
   $hd = $g['header']; ?>
@@ -296,6 +326,7 @@ $hasFilters = ($q !== '' || $courseFilter !== '');
     </div>
   </div>
 <?php endforeach; ?>
+</div>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 </body>

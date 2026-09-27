@@ -30,7 +30,7 @@ $LOG = [
   'nav'        => 'logs',
   'navbar'     => 'navbar.php',
   'title'      => 'Historiku i ndryshimeve',
-  'lead'       => 'Çdo shtim, ndryshim ose fshirje në regjistër: kush e bëri, kur dhe çfarë ndryshoi. Përdore për të gjetur një gabim ose për të kontrolluar punën.',
+  'lead'       => 'Kush shtoi, ndryshoi ose fshiu të dhëna, kur dhe çfarë ndryshoi.',
   'csv'        => 'historiku',
 ];
 require __DIR__ . '/../shared/activity_log.php';

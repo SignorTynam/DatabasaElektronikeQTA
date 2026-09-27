@@ -109,69 +109,15 @@ $f          = strtolower(trim($request['f'] ?? 'xlsx'));  // xlsx|pdf|docx
 require_once __DIR__ . '/inc/export_requirements.php';
 $missingMsg = qta_export_requirements_message('students_export', $f === 'docx' ? ['zip'] : []);
 if ($missingMsg !== null) { qta_fail(500, $missingMsg); }
-$q          = trim($request['q'] ?? '');
-$edu        = trim($request['edu'] ?? '');
-$incomplete = isset($request['incomplete']) && $request['incomplete'] === '1';
-
 /* ===============================
-   Filtrat – njësoj si students.php
+   Filtrat – të njëjtat si lista në students.php (app/shared/students_list.php):
+   kërkimi me fjalë në të gjitha fushat, gjendja (çipi), arsimi dhe kursi.
+   Adresat e vjetra (?incomplete=1) pranohen.
    =============================== */
-$where  = array();
-$params = array();
-
-/* Kërkimi i përgjithshëm (q) */
-if ($q !== '') {
-    $where[] = "(
-        p.first_name      LIKE :kw1 OR
-        p.father_name     LIKE :kw2 OR
-        p.last_name       LIKE :kw3 OR
-        s.nr_amze         LIKE :kw4 OR
-        p.personal_number LIKE :kw5 OR
-        p.phone           LIKE :kw6 OR
-        p.birth_place     LIKE :kw7
-    )";
-    $kw = '%'.$q.'%';
-    $params[':kw1'] = $kw;
-    $params[':kw2'] = $kw;
-    $params[':kw3'] = $kw;
-    $params[':kw4'] = $kw;
-    $params[':kw5'] = $kw;
-    $params[':kw6'] = $kw;
-    $params[':kw7'] = $kw;
-}
-
-/* Filtër arsimi (edu) */
-if ($edu !== '') {
-    if (ctype_digit($edu)) {
-        $where[] = "s.education_level_id = :eduid";
-        $params[':eduid'] = (int)$edu;
-    } else {
-        $where[] = "el.code = :educode";
-        $params[':educode'] = $edu;
-    }
-}
-
-/*
- * Filtro vetëm studentët që kanë TË PAKTËN një fushë bosh
- * (TEL injorohet qëllimisht) – si në students.php
- */
-if ($incomplete) {
-    $where[] = "(
-        p.personal_number IS NULL OR p.personal_number = '' OR
-        p.first_name      IS NULL OR p.first_name      = '' OR
-        p.father_name     IS NULL OR p.father_name     = '' OR
-        p.last_name       IS NULL OR p.last_name       = '' OR
-        p.birth_date      IS NULL OR p.birth_date      = '0000-00-00' OR
-        p.birth_place     IS NULL OR p.birth_place     = '' OR
-        s.education_level_id IS NULL OR
-        p.gender_id       IS NULL
-    )";
-}
-
-$whereSql = '';
-if (!empty($where)) {
-    $whereSql = 'WHERE '.implode(' AND ', $where);
-}
+require_once __DIR__ . '/../shared/students_list.php';
+$filters = qta_students_filters($request);
+$params  = array();
+$whereSql = qta_students_where($filters, $params);
 
 /* Helper për datën DD-MM-YYYY */
 function fmtDate_dmy(?string $iso): string {
@@ -241,12 +187,7 @@ $sql = "
       LIMIT 1
     ) AS planned_course_name
 
-  FROM students s
-  JOIN users  u ON u.id = s.user_id
-  JOIN roles  r ON r.id = u.role_id AND r.name = 'student'
-  JOIN persons p ON p.id = s.person_id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
-  LEFT JOIN genders g           ON g.id = p.gender_id
+  " . qta_students_from_sql() . "
   $whereSql
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
 ";

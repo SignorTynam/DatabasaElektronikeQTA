@@ -38,29 +38,17 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
-   Kërkimi dhe faqet
+   Kërkimi, gjendja (çipat) dhe faqet — të njëjtat si eksporti (agency_list.php)
 --------------------------------*/
-$q      = trim((string)($_GET['q'] ?? ''));
-$page   = max(1, (int)($_GET['page'] ?? 1));
+require_once __DIR__ . '/../shared/agency_list.php';
+$F      = qta_agency_filters($_GET);
+$q      = $F['q'];
+$status = $F['status'];
 $limit  = 25;
-$offset = ($page - 1) * $limit;
-
-$params = [':agid' => (int)$AGENCY['id']];
-$whereQ = '';
-if ($q !== '') {
-  $whereQ = " AND (
-                 s.nr_amze LIKE :kw
-              OR p.personal_number LIKE :kw2
-              OR p.first_name LIKE :kw3
-              OR p.father_name LIKE :kw4
-              OR p.last_name LIKE :kw5
-            )";
-  foreach ([':kw', ':kw2', ':kw3', ':kw4', ':kw5'] as $k) { $params[$k] = '%' . $q . '%'; }
-}
 
 /* Vetëm punonjësit e kësaj agjencie; për secilin, grupi i fundit (sipas datës së fillimit).
    Data e provimit është e çdo kursanti (cgs); ajo e grupit është kolonë e vjetër. */
-$sqlBase = "
+$sqlFrom = "
   FROM agency_students asg
   JOIN students s ON s.id = asg.student_id
   LEFT JOIN persons p ON p.id = s.person_id
@@ -80,14 +68,23 @@ $sqlBase = "
   LEFT JOIN course_groups cg ON cg.id = lastg.group_id
   LEFT JOIN courses c ON c.id = cg.course_id
   WHERE asg.agency_id = :agid
-  $whereQ
 ";
 
-$count = $pdo->prepare("SELECT COUNT(*) " . $sqlBase);
-$count->execute($params);
-$total = (int)$count->fetchColumn();
+/* Sa punonjës ka çdo çip, për kërkimin e tanishëm (një pyetje). */
+$cParams = [':agid' => (int)$AGENCY['id']];
+$cWhere = qta_agency_where($F, $cParams, false);
+$cst = $pdo->prepare('SELECT COUNT(*) AS all_n, COALESCE(SUM(' . qta_agency_state_sql('no_group') . '), 0) AS no_group, COALESCE(SUM('
+  . qta_agency_state_sql('active') . '), 0) AS active ' . $sqlFrom . $cWhere);
+$cst->execute($cParams);
+$cRow = $cst->fetch(PDO::FETCH_ASSOC) ?: [];
+$counts = ['' => (int)($cRow['all_n'] ?? 0), 'no_group' => (int)($cRow['no_group'] ?? 0), 'active' => (int)($cRow['active'] ?? 0)];
+$total = $counts[$status] ?? 0;
 $totalPages = max(1, (int)ceil($total / $limit));
+$page   = min(max(1, (int)($_GET['page'] ?? 1)), $totalPages);
+$offset = ($page - 1) * $limit;
 
+$params = [':agid' => (int)$AGENCY['id']];
+$whereQ = qta_agency_where($F, $params);
 $list = $pdo->prepare("
   SELECT
     s.id AS student_id,
@@ -99,7 +96,7 @@ $list = $pdo->prepare("
     lastg.group_id, c.name AS course_name, cg.start_date, cg.end_date,
     COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
     cgs.final_score
-  " . $sqlBase . "
+  " . $sqlFrom . $whereQ . "
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
   LIMIT :lim OFFSET :off
 ");
@@ -118,6 +115,22 @@ require __DIR__ . '/inc/navbar2.php';
 $pageTitle = 'Punonjësit tanë';
 require __DIR__ . '/../shared/app_head.php';
 $company = (string)($AGENCY['company_name'] ?: 'Agjencia');
+$hasFilters = $q !== '';
+$stateTitles = ['' => 'Të gjithë punonjësit', 'no_group' => 'Punonjësit pa grup', 'active' => 'Punonjësit në mësim'];
+$LF = [
+  'action'      => 'register_agjencia.php',
+  'label'       => 'Kërko punonjës',
+  'placeholder' => 'Emri, numri personal, nr. i amzës ose kursi',
+  'q'           => $q,
+  'target'      => 'raResults',
+  'status'      => $status,
+  'chips'       => [
+    ['value' => '',         'label' => 'Të gjithë', 'count' => $counts['']],
+    ['value' => 'no_group', 'label' => 'Pa grup',   'count' => $counts['no_group']],
+    ['value' => 'active',   'label' => 'Në mësim',  'count' => $counts['active']],
+  ],
+  'chips_label' => 'Gjendja e punonjësve',
+];
 ?>
 
 <main class="app-main" id="main" tabindex="-1">
@@ -126,42 +139,34 @@ $company = (string)($AGENCY['company_name'] ?: 'Agjencia');
     <div class="page-head-main">
       <span class="eyebrow"><?= h($company) ?></span>
       <h1 class="page-title">Punonjësit tanë</h1>
-      <p class="page-lead">Punonjësit tuaj që janë regjistruar në QTA, me kursin e fundit, provimin dhe pikët.</p>
     </div>
     <div class="page-actions">
       <?= qta_help_button() ?>
-      <?php if ($total > 0):
-        $exportAction = 'register_export_agency.php';
-        $exportFields = ['q' => $q];
-        $exportTitle  = 'Shkarko listën e punonjësve si';
-        require __DIR__ . '/../shared/partials/export_menu.php';
-      endif; ?>
+      <a class="btn btn-secondary" href="groups_agjencia.php"><i class="bi bi-collection" aria-hidden="true"></i>Sipas grupeve</a>
     </div>
   </header>
 
-  <form class="filters filters-compact" method="get" action="register_agjencia.php" role="search" aria-label="Kërko punonjës">
-    <div class="filter-field is-grow">
-      <label class="visually-hidden" for="raQ">Kërko një punonjës</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="raQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
-      </div>
-    </div>
-    <div class="filter-actions">
-      <?php if ($q !== ''): ?><a class="btn btn-ghost" href="register_agjencia.php">Pastro</a><?php endif; ?>
-      <button class="btn btn-secondary" type="submit">Kërko</button>
-    </div>
-  </form>
-
   <section class="section" aria-labelledby="raTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="raTitle">
-        <?= $q !== '' ? 'Punonjësit që përputhen' : 'Të gjithë punonjësit' ?>
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="raTitle" tabindex="-1" data-live-focus>
+        <?= h($stateTitles[$status] ?? 'Të gjithë punonjësit') ?>
         <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
       </h2>
-      <a class="section-link" href="groups_agjencia.php">Shiko sipas grupeve</a>
+      <?php if ($total > 0): ?>
+        <div class="list-actions">
+          <?php
+            $exportAction = 'register_export_agency.php';
+            $exportFields = ['q' => $q, 'status' => $status];
+            $exportTitle  = 'Shkarko listën e punonjësve si';
+            require __DIR__ . '/../shared/partials/export_menu.php';
+          ?>
+        </div>
+      <?php endif; ?>
     </div>
 
+    <?php require __DIR__ . '/../shared/partials/list_toolbar.php'; ?>
+
+    <div id="raResults" data-live-region="results" data-live-announce="<?= h(qta_plural($total, 'punonjës', 'punonjës')) ?>">
     <?php if ($rows): ?>
       <div class="table-responsive">
         <table class="table" id="agencyStudentsTable" data-sortable>
@@ -200,22 +205,16 @@ $company = (string)($AGENCY['company_name'] ?: 'Agjencia');
           </tbody>
         </table>
       </div>
-
-      <?php if ($totalPages > 1):
-        $pBase = 'register_agjencia.php?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
-        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
-        <nav class="pager mt-3" aria-label="Faqet e listës">
-          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
-          <span class="text-muted small">Faqja <?= $page ?> nga <?= $totalPages ?></span>
-          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
-        </nav>
-      <?php endif; ?>
-
+    <?php elseif ($hasFilters): ?>
+      <?= qta_empty('Asnjë punonjës nuk përputhet', 'Provo një pjesë tjetër të emrit, numrin e amzës ose kursin.', 'bi-search') ?>
+    <?php elseif ($status !== ''): ?>
+      <?= qta_empty('Asnjë punonjës këtu', 'Zgjidh "Të gjithë" për të parë çdo punonjës.', 'bi-people', '', 'is-compact') ?>
     <?php else: ?>
-      <?= $q !== ''
-        ? qta_empty('Asnjë punonjës nuk përputhet', 'Provo një pjesë tjetër të emrit ose numrin e amzës.', 'bi-search', '<a class="btn btn-secondary" href="register_agjencia.php">Pastro kërkimin</a>')
-        : qta_empty('Ende pa punonjës në regjistër', 'Kur QTA regjistron punonjësit tuaj në trajnim, ata shfaqen këtu.', 'bi-people', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
+      <?= qta_empty('Ende pa punonjës në regjistër', 'Kur QTA regjistron punonjësit tuaj në trajnim, ata shfaqen këtu.', 'bi-people', '<a class="btn btn-secondary" href="contact.php">Na kontaktoni</a>') ?>
     <?php endif; ?>
+
+      <?= qta_list_pager('register_agjencia.php', ['q' => $q, 'status' => $status], $page, $totalPages, qta_plural($total, 'punonjës', 'punonjës')) ?>
+    </div>
   </section>
 </main>
 

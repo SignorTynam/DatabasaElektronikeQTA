@@ -68,12 +68,10 @@ if (!function_exists('qta_app_active_key')) {
       'agencies.php'                => 'users_agencies',
       'students.php'                => 'users_students',
       'student_card.php'            => 'student_card',
-      'register.php'                => 'register_full',
       'groups.php'                  => 'register_groups',
       'lesson_groups.php'           => 'lesson_groups',
       'lesson_group.php'            => 'lesson_groups',
       'course.php'                  => 'courses',
-      'students_without_groups.php' => 'students_without_groups',
       'courses.php'                 => 'courses',
       'logs.php'                    => 'logs',
       'logs_editor.php'             => 'logs',
@@ -98,24 +96,26 @@ if (!function_exists('qta_app_menu')) {
   function qta_app_menu(string $role): array {
     $role = strtolower($role);
 
+    /* Kursantët: lista (me çipin "Pa grup" për caktimin në grup) dhe kartela. */
     $learners = [
       'label' => 'Kursantët',
       'children' => [
-        ['key' => 'users_students',          'label' => 'Të gjithë kursantët',  'href' => 'students.php',                'icon' => 'bi-people'],
-        ['key' => 'student_card',            'label' => 'Kartela e kursantit',  'href' => 'student_card.php',            'icon' => 'bi-person-vcard'],
-        ['key' => 'students_without_groups', 'label' => 'Kursantët pa grup',    'href' => 'students_without_groups.php', 'icon' => 'bi-person-exclamation'],
+        ['key' => 'users_students', 'label' => 'Të gjithë kursantët', 'href' => 'students.php',     'icon' => 'bi-people'],
+        ['key' => 'student_card',   'label' => 'Kartela e kursantit', 'href' => 'student_card.php', 'icon' => 'bi-person-vcard'],
       ],
     ];
 
+    /* Kurset profesionale: regjistri me orar dhe ai i vjetër (pa orar). */
     $training = [
-      'label' => 'Grupet dhe provimet',
+      'label' => 'Kurset profesionale',
       'children' => [
-        ['key' => 'lesson_groups',   'label' => 'Grupet',             'href' => 'lesson_groups.php', 'icon' => 'bi-calendar-week'],
-        ['key' => 'register_groups', 'label' => 'Grupet e mëparshme', 'href' => 'groups.php',        'icon' => 'bi-archive'],
-        ['key' => 'register_full',   'label' => 'Regjistri i plotë',  'href' => 'register.php',      'icon' => 'bi-journal-text'],
-        ['key' => 'courses',         'label' => 'Kurset',             'href' => 'courses.php',       'icon' => 'bi-book'],
+        ['key' => 'lesson_groups',   'label' => 'Regjistri i kurseve profesionale',          'href' => 'lesson_groups.php', 'icon' => 'bi-calendar-week'],
+        ['key' => 'register_groups', 'label' => 'Regjistri i vjetër i kurseve profesionale', 'href' => 'groups.php',        'icon' => 'bi-archive'],
       ],
     ];
+
+    /* Katalogu i kurseve i përket administrimit; lejet nuk ndryshojnë (editori e ka si më parë). */
+    $catalog = ['key' => 'courses', 'label' => 'Katalogu i kurseve', 'href' => 'courses.php', 'icon' => 'bi-book'];
 
     return match ($role) {
       'administrator' => [
@@ -125,6 +125,7 @@ if (!function_exists('qta_app_menu')) {
         [
           'label' => 'Administrimi',
           'children' => [
+            $catalog,
             ['key' => 'users_agencies', 'label' => 'Agjencitë',               'href' => 'agencies.php', 'icon' => 'bi-building'],
             ['key' => 'users_admins',   'label' => 'Administratorët',         'href' => 'users.php',    'icon' => 'bi-shield-lock'],
             ['key' => 'users_editors',  'label' => 'Editorët',                'href' => 'editors.php',  'icon' => 'bi-pencil-square'],
@@ -138,9 +139,10 @@ if (!function_exists('qta_app_menu')) {
         $learners,
         $training,
         [
-          'label' => 'Tjetër',
+          'label' => 'Administrimi',
           'children' => [
-            ['key' => 'users_agencies', 'label' => 'Agjencitë',   'href' => 'agencies.php',    'icon' => 'bi-building'],
+            $catalog,
+            ['key' => 'users_agencies', 'label' => 'Agjencitë',    'href' => 'agencies.php',    'icon' => 'bi-building'],
             ['key' => 'logs',           'label' => 'Historiku im', 'href' => 'logs_editor.php', 'icon' => 'bi-clock-history'],
           ],
         ],

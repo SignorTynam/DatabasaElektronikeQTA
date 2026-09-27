@@ -41,8 +41,11 @@
     background-color var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease),
     color var(--dur-1) var(--ease),
-    box-shadow var(--dur-1) var(--ease);
+    box-shadow var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
+/* Shtypja shihet: butoni ngjeshet pak (jo te butonat e çaktivizuar). */
+.btn:not(:disabled):not(.disabled):active { transform: scale(.98); }
 .btn > .bi { flex: none; font-size: 1.05em; line-height: 1; }
 /* Butoni e mban vetë hapësirën e ikonës; margjinat e vjetra hiqen. */
 .btn > .bi[class*=" me-"], .btn > .bi[class*=" ms-"] { margin: 0 !important; }
@@ -211,6 +214,36 @@
 .btn-icon.btn-sm { width: var(--control-h-sm); }
 .btn-icon.btn-lg { width: var(--control-h-lg); }
 
+/* "Si funksionon kjo faqe?": një buton i vogël me pikëpyetje, i qetë por i dukshëm.
+   Emri i plotë është te aria-label dhe te këshilla që del me mi ose tastierë. */
+.btn-help {
+  --bs-btn-color: var(--text-muted);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: var(--border-control);
+  --bs-btn-hover-color: var(--text);
+  --bs-btn-hover-bg: var(--surface-hover);
+  --bs-btn-hover-border-color: var(--border-strong);
+  --bs-btn-active-color: var(--text);
+  --bs-btn-active-bg: var(--surface-hover);
+  --bs-btn-active-border-color: var(--border-strong);
+  border-radius: var(--r-full);
+}
+.btn-help > .bi { font-size: 1.15rem; }
+.btn-help[aria-expanded="true"] { border-color: var(--focus); color: var(--text); }
+
+/* Veprime të rreshtit vetëm me ikonë: fshirja mbahet larg të tjerave. */
+.row-actions > .btn-delete { margin-left: var(--sp-2); }
+.row-actions > .btn-delete::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--sp-2) * -1 + 1px);
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background: var(--border);
+}
+.row-actions > .btn { position: relative; }
+
 /* Gjendja "po punon": ruan gjerësinë dhe kontekstin. */
 .btn.is-loading { position: relative; color: transparent !important; pointer-events: none; }
 .btn.is-loading::after {
@@ -318,7 +351,7 @@ textarea.form-control { min-height: 6.5rem; resize: vertical; }
 
 /* iOS zmadhon faqen kur fusha ka tekst < 16px; e shmangim në celular. */
 @media (max-width: 767.98px) {
-  .form-control, .form-select, .tfilter-field input { font-size: 16px; }
+  .form-control, .form-select, .lf-input { font-size: 16px; }
 }
 
 /* Validimi: kufi + mesazh, pa ikona brenda fushës. */
@@ -847,6 +880,10 @@ td.cell-err { transition: box-shadow var(--dur-3) var(--ease); }
 .notice > .bi { flex: none; margin-top: .15rem; color: var(--info); }
 .notice b, .notice strong { color: var(--text); }
 .notice.is-sunken { background: var(--surface-sunken); }
+/* Diçka e pazakontë që vlen të kontrollohet (p.sh. numra amze që mungojnë). */
+.notice.is-warning { border-color: var(--warning-border); }
+.notice.is-warning > .bi { color: var(--warning); }
+.notice details > summary { color: var(--link); cursor: pointer; }
 /* Një veprim i vetëm që i përket shënimit, p.sh. "Mbylle grupin":
    <div class="notice has-action"><i …></i><span>…</span><button class="notice-action …"> */
 .notice > .notice-action { flex: none; margin: -.25rem 0 -.25rem auto; }
@@ -1143,6 +1180,8 @@ td.cell-err { transition: box-shadow var(--dur-3) var(--ease); }
   color: var(--text-muted);
   font-size: var(--fs-sm);
 }
+.pager-info { font-variant-numeric: tabular-nums; }
+.page-link { transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 
 /* ================================================= 15. Lista, progresi */
 .list-group {
@@ -1457,57 +1496,204 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   .filters .filter-actions > .btn { flex: 1 1 0; }
 }
 
-/* Filtri i menjëhershëm i tabelës (partials/table_filter.php) */
-.tfilter {
+/* ===================================== 22b. Lista: koka, kërkimi dhe çipat */
+/* Një rrugë e vetme filtrimi për çdo listë (partials/list_toolbar.php):
+     Titulli i listës  54                               [Shkarko]
+     [ Kërko………………………………………… × ]  [Filtra]
+     [Të gjithë] [Pa grup 5] [Gati për grup 3] …
+     tabela
+   Lista ndryshon ndërsa shkruan (app.js, "Listat"); zonat e rifreskuara kanë
+   data-live-region. */
+.list-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: var(--sp-2) var(--sp-3);
   margin-bottom: var(--sp-3);
 }
-.tfilter-field { position: relative; flex: 1 1 16rem; max-width: 28rem; }
-.tfilter-field > .bi {
+.list-head .section-title:focus { outline: none; }
+.list-head .section-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-xs); }
+.list-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+.lf {
+  display: grid;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.lf-submit { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
+.lf-bar { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.lf-search { position: relative; flex: 1 1 auto; min-width: 0; max-width: 44rem; }
+.lf-search > .bi-search {
   position: absolute;
   top: 50%;
-  left: .75rem;
+  left: .85rem;
   color: var(--text-subtle);
   transform: translateY(-50%);
   pointer-events: none;
+  transition: color var(--dur-1) var(--ease);
 }
-.tfilter-field input {
+.lf-search:focus-within > .bi-search { color: var(--text-muted); }
+.lf-input {
   width: 100%;
-  min-height: 2.25rem;
-  padding: .375rem 2.25rem;
+  min-height: var(--control-h);
+  padding: .5rem 2.75rem .5rem 2.4rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text);
-  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
 }
-.tfilter-field input::placeholder { color: var(--text-subtle); }
-.tfilter-field input:focus { border-color: var(--focus); box-shadow: var(--focus-ring); outline: none; }
-.tfilter-clear {
+.lf-input::placeholder { color: var(--text-subtle); opacity: 1; }
+.lf-input::-webkit-search-cancel-button,
+.lf-input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+.lf-input:hover { border-color: var(--text-muted); }
+.lf-input:focus { border-color: var(--focus); box-shadow: var(--focus-ring); outline: none; }
+.lf-clear {
   position: absolute;
   top: 50%;
-  right: .25rem;
-  display: none;
+  right: .3rem;
+  display: grid;
   place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 2rem;
+  height: 2rem;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-muted);
   transform: translateY(-50%);
+  animation: qta-fade-in var(--dur-1) var(--ease);
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
-.tfilter-clear:hover { background: var(--surface-hover); color: var(--text); }
-.tfilter.is-on .tfilter-clear { display: grid; }
-.tfilter-chips { display: flex; flex-wrap: wrap; gap: .375rem; }
-.tfilter-count { margin-left: auto; color: var(--text-muted); font-size: var(--fs-xs); }
-.tfilter-count.is-narrowed { color: var(--accent-text); font-weight: var(--fw-bold); }
+.lf-clear[hidden] { display: none; }
+.lf-clear:hover { background: var(--surface-hover); color: var(--text); }
+.lf-clear:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+/* Po ngarkohet: një vijë e hollë në fund të fushës — rezultatet e vjetra mbeten. */
+.lf-progress {
+  position: absolute;
+  right: var(--r-md);
+  bottom: 1px;
+  left: var(--r-md);
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease);
+}
+.lf-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: 2px;
+  background: var(--action);
+}
+.lf.is-busy .lf-progress { opacity: 1; }
+.lf.is-busy .lf-progress::before { animation: qta-progress 900ms var(--ease) infinite; }
+@keyframes qta-progress { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
 
-.chip,
-.tfilter-chip {
+/* "Filtra": filtrat e rrallë, pas një butoni. <details> punon edhe pa JavaScript. */
+.lf-more { position: relative; flex: none; }
+.lf-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 .875rem;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.lf-more-btn::-webkit-details-marker { display: none; }
+.lf-more-btn::marker { content: ""; }
+.lf-more-btn:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.lf-more-btn:active { transform: scale(.98); }
+.lf-more-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lf-more[open] > .lf-more-btn { border-color: var(--border-strong); background: var(--surface-hover); }
+.lf-more-btn > .bi { color: var(--text-muted); }
+.lf-more-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 .3rem;
+  border-radius: var(--r-full);
+  background: var(--action);
+  color: var(--action-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+}
+.lf-more-count[hidden] { display: none; }
+.lf-panel {
+  position: absolute;
+  top: calc(100% + .375rem);
+  right: 0;
+  z-index: calc(var(--z-sticky) + 2);
+  display: grid;
+  gap: var(--sp-3);
+  width: min(22rem, calc(100vw - 2rem));
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  animation: qta-pop var(--dur-2) var(--ease);
+  transform-origin: top right;
+}
+.lf-field { display: grid; gap: .3rem; }
+.lf-field > .form-label { margin: 0; font-size: var(--fs-xs); }
+.lf-presets { display: flex; flex-wrap: wrap; gap: .375rem; }
+.lf-panel-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); padding-top: var(--sp-1); }
+/* Me JavaScript filtrat vlejnë menjëherë: "Apliko" duhet vetëm pa të. */
+.js .lf-apply { display: none; }
+
+.lf-chips { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .5rem; min-width: 0; }
+.lf-chip-set { display: flex; flex-wrap: wrap; gap: .375rem; min-width: 0; }
+.lf-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem .5rem;
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+.lf-error[hidden] { display: none; }
+
+@media (max-width: 575.98px) {
+  .lf-more-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .lf-more-btn { padding: 0; }
+  .lf-more-btn .lf-more-count { position: absolute; top: -.35rem; right: -.35rem; }
+  /* Çipat në një rresht që rrëshqet anash: lista nis më lart. */
+  .lf-chips { flex-wrap: nowrap; margin-inline: calc(var(--sp-4) * -1); padding: 0 var(--sp-4) .125rem; overflow-x: auto; scrollbar-width: none; }
+  .lf-chips::-webkit-scrollbar { display: none; }
+  .lf-chip-set { flex-wrap: nowrap; }
+  .lf-chips .chip { flex: none; }
+}
+
+/* Zona e rezultateve: gjatë ngarkimit mbetet e dukshme dhe zbehet pak;
+   rezultatet e reja hyjnë butë. */
+[data-live-region] { transition: opacity var(--dur-2) var(--ease); }
+[data-live-region].is-stale { opacity: .55; }
+[data-live-region].is-fresh { animation: qta-fade-in var(--dur-2) var(--ease); }
+
+.chip {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
@@ -1519,18 +1705,39 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   color: var(--text);
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
+  line-height: 1.2;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+  transition:
+    background-color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
-.chip:hover,
-.tfilter-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); color: var(--text); }
+.chip:hover { border-color: var(--border-strong); background: var(--surface-hover); color: var(--text); }
+.chip:active { transform: scale(.97); }
+.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .chip.is-on,
-.chip[aria-pressed="true"],
-.tfilter-chip.is-on {
+.chip[aria-pressed="true"] {
   border-color: var(--surface-inverse);
   background: var(--surface-inverse);
   color: var(--text-inverse);
+}
+.chip-count {
+  color: var(--text-muted);
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-1) var(--ease);
+}
+.chip.is-on .chip-count,
+.chip[aria-pressed="true"] .chip-count { color: inherit; opacity: .78; }
+/* Filtër i rrallë aktiv (nga "Filtra"): shihet gjithnjë dhe hiqet me një klik. */
+.chip.is-filter { border-style: dashed; border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-text); }
+.chip.is-filter:hover { border-style: solid; background: var(--accent-soft); color: var(--accent-text); }
+.chip.is-filter > .bi { font-size: 1.05em; }
+@media (pointer: coarse) {
+  .chip { min-height: 2.5rem; padding-inline: .875rem; }
 }
 
 /* Zgjedhje e vetme mes pak mundësive (p.sh. pamja: e çelët / sipas pajisjes / e errët) */
@@ -1629,6 +1836,16 @@ body.is-editing::before {
 .quick.is-primary .quick-icon { background: var(--accent-soft); color: var(--accent-text); }
 .quick-title { display: block; font-size: var(--fs-base); font-weight: var(--fw-bold); line-height: 1.3; }
 .quick-text { display: block; margin-top: .125rem; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.4; }
+.quick > .bi-arrow-right { margin-left: auto; color: var(--text-subtle); transition: transform var(--dur-2) var(--ease), color var(--dur-2) var(--ease); }
+/* Vendet kryesore të Kreut: vetëm ikonë + emër, pa përshkrime. */
+.quick-grid.is-dense { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
+@media (min-width: 576px) { .quick-grid.is-dense { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .quick-grid.is-dense { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.quick-grid.is-dense .quick { align-items: center; min-height: 3.75rem; padding: var(--sp-3) var(--sp-4); }
+.quick-grid.is-dense .quick-icon { width: 2.25rem; height: 2.25rem; font-size: 1.05rem; }
+.quick-grid.is-dense .quick-title { font-size: var(--fs-md); }
+.quick:active { transform: scale(.99); }
+.quick { transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease); }
 
 /* ================================================================ 24b. Detyrat */
 /* "Çfarë pret për ty": numër, çfarë është, çfarë bën. */
@@ -2052,9 +2269,8 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
   border-radius: var(--r-xl);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
-  animation: themeli-pop var(--dur-2) var(--ease);
+  animation: qta-pop var(--dur-2) var(--ease);
 }
-@keyframes themeli-pop { from { opacity: 0; transform: translateY(-6px) scale(.99); } to { opacity: 1; transform: none; } }
 .pal-head {
   display: flex;
   align-items: center;
@@ -2842,3 +3058,52 @@ td:hover > .dp-cell-icon,
   .dp-grid td > span { font-size: var(--fs-sm); }
   .dp-foot { padding: .5rem .625rem; }
 }
+
+/* ============================================================== 30. Lëvizja */
+/* Lëvizja tregon një ndryshim gjendjeje — nuk zbukuron. Kohët vijnë vetëm nga
+   tokenët: --dur-1 (120ms, mikro), --dur-2 (180ms, gjendje), --dur-3 (240ms,
+   dialogë dhe panele), me --ease. Me prefers-reduced-motion bëhen 1ms (tokens.css).
+   Nuk ka animacion në ngarkimin e faqes, as lëvizje të mëdha apo kërcime.
+   Kalimi mes faqeve (View Transitions) është te shell.css. */
+@keyframes qta-pop     { from { opacity: 0; transform: translateY(-4px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes qta-pop-up  { from { opacity: 0; transform: translateY(4px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes qta-fade-in { from { opacity: .35; } to { opacity: 1; } }
+@keyframes qta-rise    { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes qta-flash   { from { box-shadow: 0 0 0 3px var(--accent-border); } to { box-shadow: 0 0 0 3px transparent; } }
+
+/* Menutë hapen afër butonit, pa kërcyer. */
+.dropdown-menu.show { animation: qta-pop var(--dur-1) var(--ease); }
+.dropdown-menu.show[data-popper-placement^="top"] { animation-name: qta-pop-up; }
+
+/* Dialogët: zbehje + 8px, jo rrëshqitja 50px e Bootstrap-it. */
+.modal.fade { transition: opacity var(--dur-2) var(--ease); }
+.modal.fade .modal-dialog { transform: translateY(8px) scale(.985); transition: transform var(--dur-3) var(--ease); }
+.modal.show .modal-dialog { transform: none; }
+.modal.modal-static .modal-dialog { transform: scale(1.01); }
+.modal-backdrop.fade { transition: opacity var(--dur-2) var(--ease); }
+
+/* Paneli i ndihmës dhe hapja e pjesëve të fshehura. */
+.offcanvas { --bs-offcanvas-transition: transform var(--dur-3) var(--ease); }
+.offcanvas-backdrop.fade { transition: opacity var(--dur-2) var(--ease); }
+.collapsing { transition: height var(--dur-3) var(--ease); }
+
+/* Skedat: vija e skedës aktive dhe përmbajtja. */
+.nav-link { transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease), border-color var(--dur-2) var(--ease); }
+.tab-content > .tab-pane.fade { transition: opacity var(--dur-2) var(--ease); }
+
+/* Rreshti i tabelës nën mi / në fokus. */
+.table > tbody > tr > * { transition: box-shadow var(--dur-1) var(--ease); }
+.table > tbody > tr:focus-within > * { --bs-table-bg-state: var(--surface-hover); }
+
+/* Njoftimet: hyjnë dhe dalin me 6px, pa u hedhur. */
+.toast.fade { transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease); }
+.toast.showing { transform: translateY(6px); }
+
+/* Shiriti i zgjedhjes del kur zgjidhet rreshti i parë. */
+.bulk-bar:not([hidden]) { animation: qta-rise var(--dur-2) var(--ease); }
+
+/* Elementi që sapo u zhvendos (p.sh. një modul "Lëviz lart") theksohet shkurt. */
+.is-flash { animation: qta-flash 900ms var(--ease); }
+
+/* Butonat e ikonave dhe kutitë e zgjedhjes. */
+.form-check-input { transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), background-position var(--dur-2) var(--ease); }

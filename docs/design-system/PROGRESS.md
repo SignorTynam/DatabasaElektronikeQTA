@@ -19,6 +19,7 @@ Execution prompt: `SUPER-PORTAL-PROMPT.md`. Implemented system: `THEMELI.md`.
 | 11 | Domain change: "Modul" becomes **Kurs**, with ordered **Modulet** and **Temat**; new **Grupet** with a lesson schedule (`lesson_groups.php`, `lesson_group.php`, `course.php`); every earlier group stays in **Grupet e mëparshme** unchanged. Migration `db/migrations/2026-09-26-…`, reference `docs/domain/COURSES-AND-SCHEDULES.md`, tests in `tests/` | Done |
 | 12 | Document **"Regjistri i orëve të mësimit"** (PDF + Word) for groups with a schedule: odd pages attendance grid, even pages dates and topics of the module, one column and one row per teaching hour, from the group's stored schedule and frozen topics. `app/shared/lesson_register.php`, `app/exports/download_regjistri_mesimit.php`, reference `docs/domain/COURSES-AND-SCHEDULES.md` §13 | Done |
 | 13 | **Calendar dialog** for every date: form fields (new groups, earlier groups, trainee, card, special day, history filter) and editable date cells (groups, register, trainees, exams). Replaces the browser's date picker in the history filter. `app/assets/js/date-picker.js`, components §29 | Done |
+| 14 | **UX refinement after the revamp.** One live search and filter system for every list (`app/shared/list_filter.php`, `partials/list_toolbar.php`, app.js "Listat"; THEMELI.md §5a): word-by-word search over the whole dataset, state chips with counts, rare filters behind "Filtra", filters in the URL. "Kursantët pa grup" merged into **Kursantët** (chips "Pa grup / Gati për grup / Pa kurs", assignment one by one or in bulk; writes in `app/actions/student_assignment.php`; the old address redirects). **"Regjistri i plotë" removed** (`register.php`, `register_inline_update.php`, `register_export.php`, `partials/table_filter.php`) after a repository-wide reference scan. Names: **Regjistri i kurseve profesionale**, **Regjistri i vjetër i kurseve profesionale**, **Katalogu i kurseve** (now under Administrimi, same permissions). Menu: Kursantët · Kurset profesionale · Administrimi. Staff home: "Çfarë pret për ty" unchanged, "Nis një punë" in the centre, "Regjistri në shifra" removed; agency home simplified. Icon-only help button, shorter page texts, motion pass and page transitions (components §30, shell.css; THEMELI.md §5b) | Done |
 
 ## Pages
 
@@ -70,6 +71,14 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | E2 | Documents (Word, PDF) | Word files and PDFs with the QTA logo failed with a PHP fatal error when the server lacked the `zip` or `gd` extension; now the user reads "serverit i mungon një pjesë e nevojshme — njofto administratorin" and the log names the extension (`app/exports/inc/export_requirements.php`). Locally both extensions were enabled in XAMPP's `php.ini` |
 | E3 | Documents | Technical failure texts ("CSRF token mismatch", "Unauthorized", "Composer autoload…", "f=xlsx\|pdf\|docx") replaced with plain Albanian |
 | E4 | History filter | "Nga data / Deri më" used the browser's date picker (yyyy-mm-dd); now the QTA calendar and `dd.mm.yyyy`, with ISO links still accepted |
+| U1 | Lists | Search compared the whole query as one string: "Arben Hoxha", "1001 Tirane" or a phone without its leading 0 found nothing, and the in-page filter (`table_filter.php`) searched only the rows of the visible page. Now word by word, on the server, over the whole list |
+| U2 | Exports | The agency export applied only the text search, not the chosen state. Trainee and agency exports now reuse the list's own filters (`students_list.php`, `agency_list.php`): the file contains exactly the rows on screen |
+| U3 | Assign to group | The 10-trainee limit was checked outside the transaction, so two assignments at the same moment (e.g. bulk from two tabs) could exceed it. The group row is now locked while checking |
+| U4 | Assign to group | Only "already in this group" was checked: a registration already in another group could be added to a second one, against the rule "one group per registration". Now refused with the group's number and course |
+| U5 | Staff home | "Kursantë pa datë provimi" opened the whole register (no filter); it now opens exactly those trainees (`students.php?status=no_exam`; the count and the list match) |
+| U6 | Layout | `body { min-width: 320px }` made pages scroll sideways at 320 px when the browser shows a classic scrollbar (reflow, WCAG 1.4.10). Removed; every page fits 310 px |
+| U7 | Messages | The missing-AMZË warning showed a blue information icon; `.notice.is-warning` |
+| U8 | Registries | The course column wrapped into three or four lines in both registries; now `col-wide` |
 
 ## Security fixes
 
@@ -98,7 +107,7 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
    document in every format opens (31 files; the lesson register is refused for earlier groups, as designed). Consider updating `dompdf/dompdf` from 2.0.0 to the
    latest 2.x or 3.x release (later versions fix published security advisories).
 6. **Deleting a group** leaves the trainees' module plans in state `assigned`, so they return to
-   "Kursantët pa grup" without their module. Pre-existing; decide the intended rule.
+   "Kursantët → Pa grup" without their course. Pre-existing; decide the intended rule.
 7. **CDN assets** (Bootstrap, icons, fonts, qrcodejs, html5-qrcode) load without SRI; add
    integrity hashes or self-host.
 8. `course_groups.exam_date` is unused legacy data; per-trainee exam dates live in
@@ -110,3 +119,11 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
     `docs/domain/COURSES-AND-SCHEDULES.md` §12 (whole hours only, no weekday patterns or
     holiday calendar, member edits after creation capped at 10, schedule not shown to
     agencies and trainees).
+11. **Trainees list on a large database** (phase 14): the list joins each trainee's latest
+    group and latest waiting course (`ROW_NUMBER()` in derived tables, MariaDB ≥ 10.2) and
+    counts every chip in one query. The joins use existing indexes (`idx_cgs_student`,
+    `uq_scp_student_course`) and the list is fast on the current data; on tens of thousands
+    of trainees, check the plan with `EXPLAIN` before assuming it scales.
+12. **Old bookmarks**: `students_without_groups.php` redirects to `students.php?status=no_group`;
+    `register.php` no longer exists (404). Tell users who bookmarked "Regjistri i plotë" to use
+    "Të gjithë kursantët" or the registries.

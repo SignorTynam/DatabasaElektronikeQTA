@@ -39,7 +39,7 @@ $LOG = [
   'nav'        => 'logs',
   'navbar'     => 'navbar4.php',
   'title'      => 'Historiku im',
-  'lead'       => 'Çdo gjë që ke shtuar, ndryshuar ose fshirë në regjistër, me vlerat para dhe pas. Të ndihmon të kujtosh ose të korrigjosh një ndryshim.',
+  'lead'       => 'Çfarë ke shtuar, ndryshuar ose fshirë, me vlerat para dhe pas.',
   'csv'        => 'historiku_im',
 ];
 require __DIR__ . '/../shared/activity_log.php';

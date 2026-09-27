@@ -134,11 +134,11 @@ try {
       if (!$g) throw new RuntimeException('Grupi nuk u gjet. Rifresko faqen.');
       /* Një grup me orar mësimi e ka orarin të ndërtuar nga temat e kursit të vet. */
       if (($g['model'] ?? 'legacy') === 'scheduled') {
-          throw new RuntimeException('Grupi #' . $group_id . ' ka orar mësimi të ndërtuar nga temat e këtij kursi, prandaj nuk kalon te një kurs tjetër. Nëse kursi është gabim, fshije grupin dhe krijoje sërish te "Grupet".');
+          throw new RuntimeException('Grupi #' . $group_id . ' ka orar mësimi të ndërtuar nga temat e këtij kursi, prandaj nuk kalon te një kurs tjetër. Nëse kursi është gabim, fshije grupin dhe krijoje sërish te "Regjistri i kurseve profesionale".');
       }
       if ((int)$g['course_id'] === $new_course_id) throw new RuntimeException('Grupi është tashmë në këtë kurs.');
 
-      /* Njësoj si te "Grupet": grupi i mbyllur ndryshohet vetëm me konfirmim */
+      /* Njësoj si te regjistrat e grupeve: grupi i mbyllur ndryshohet vetëm me konfirmim */
       if ((int)$g['is_completed'] === 1 && !$force) {
           throw new RuntimeException('Ky grup është i mbyllur. Konfirmo që do ta ndryshosh.');
       }
@@ -148,7 +148,7 @@ try {
       $cq->execute([':id'=>$new_course_id]);
       if (!$cq->fetch()) throw new RuntimeException('Kursi i zgjedhur nuk u gjet. Rifresko faqen.');
 
-      /* Njësoj si te "Grupet": askush në grup nuk duhet ta ketë ndjekur tashmë kursin e ri */
+      /* Njësoj si te regjistrat e grupeve: askush në grup nuk duhet ta ketë ndjekur tashmë kursin e ri */
       $pnStmt = $pdo->prepare("
           SELECT DISTINCT p.personal_number
           FROM course_group_students cgs

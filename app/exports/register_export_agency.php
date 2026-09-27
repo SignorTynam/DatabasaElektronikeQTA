@@ -83,7 +83,6 @@ $f = strtolower((string)($request['f'] ?? 'xlsx'));   // xlsx|pdf|docx
 require_once __DIR__ . '/inc/export_requirements.php';
 $missingMsg = qta_export_requirements_message('register_export_agency', $f === 'docx' ? ['zip'] : []);
 if ($missingMsg !== null) { qta_fail(500, $missingMsg); }
-$q = trim((string)($request['q'] ?? ''));
 
 /* Auto-load librarish (nëse ekziston vendor/) */
 $autoload = __DIR__ . '/vendor/autoload.php';
@@ -92,17 +91,10 @@ if (is_file($autoload)) { require_once $autoload; }
 /* ------------------------------
    Nxjerrja e të dhënave (vetëm për këtë agjenci)
 --------------------------------*/
+/* Kërkimi dhe gjendja — të njëjtat si lista "Punonjësit tanë" (app/shared/agency_list.php). */
+require_once __DIR__ . '/../shared/agency_list.php';
 $params = [':agid' => (int)$AGENCY['id']];
-$whereQ = '';
-if ($q !== '') {
-  $whereQ = " AND (s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2
-                   OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
-  $params[':kw']  = '%'.$q.'%';
-  $params[':kw2'] = '%'.$q.'%';
-  $params[':kw3'] = '%'.$q.'%';
-  $params[':kw4'] = '%'.$q.'%';
-  $params[':kw5'] = '%'.$q.'%';
-}
+$whereQ = qta_agency_where(qta_agency_filters($request), $params);
 
 $sql = "
   SELECT
@@ -133,6 +125,7 @@ $sql = "
   ) lastg ON lastg.student_id = s.id
   LEFT JOIN course_group_students cgs ON cgs.group_id = lastg.group_id AND cgs.student_id = s.id
   LEFT JOIN course_groups cg ON cg.id = lastg.group_id
+  LEFT JOIN courses c ON c.id = cg.course_id
   WHERE asg.agency_id = :agid
   $whereQ
   ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC

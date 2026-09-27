@@ -83,9 +83,13 @@ $navLink = static function (array $item) use ($navActive): string {
         <i class="bi bi-search" aria-hidden="true"></i>
       </button>
     <?php endif; ?>
-    <a class="btn btn-ghost btn-icon" href="ndihme.php" aria-label="Ndihmë">
-      <i class="bi bi-question-circle" aria-hidden="true"></i>
-    </a>
+    <?php /* Faqja me ndihmë të vetën ka butonin "?" në kokë (qta_help_button): këtu nuk
+             shtohet një "?" i dytë që çon gjetiu. Qendra e ndihmës mbetet në menu dhe në panel. */ ?>
+    <?php if (empty($HELP_TOPIC)): ?>
+      <a class="btn btn-ghost btn-icon" href="ndihme.php" aria-label="Ndihmë">
+        <i class="bi bi-question-circle" aria-hidden="true"></i>
+      </a>
+    <?php endif; ?>
   </div>
 </header>
 

@@ -113,6 +113,41 @@ Global search/command palette:
 - loading and empty state are explicit;
 - search never becomes an authorization boundary.
 
+The palette searches the whole registry. Searching inside one list is a separate
+component (§6a) and never changes the palette's behavior.
+
+## 6a. List toolbar (search and filters)
+
+Every list (trainees, both registries, catalogue, agencies, staff accounts, history,
+agency lists) has exactly one way to filter it. Implemented once in
+`app/shared/partials/list_toolbar.php` + `list_filter.php`; see THEMELI.md §5a.
+
+Order, top to bottom:
+
+1. list title with the result count, and the export menu on the right;
+2. one search field (no submit button) and, only when rare filters exist, a "Filtra"
+   button with a funnel icon and a count of the active ones;
+3. state chips with counts ("Të gjithë 54", "Pa grup 5", …), followed by removable chips
+   for any active rare filter;
+4. results (table or list), then the pager.
+
+Contract:
+
+- the list updates while typing (debounce 150–250 ms), Enter searches at once, Esc clears;
+- the server filters the whole dataset, never only the visible page;
+- several words: every word must match, each may match any meaningful field; accents and
+  letter case do not matter; phone numbers match by digits;
+- chips are structured states computed on the server, never text matched in the rows;
+- filters live in the URL: refresh, sharing, Back and Forward give the same list;
+- while loading the previous results stay visible, a thin progress line shows under the
+  field, the result count is announced to screen readers, focus is never lost;
+- a failed update keeps the list and offers "Provo sërish";
+- an export of a filtered list contains exactly the rows on screen;
+- without JavaScript the same form works as an ordinary GET.
+
+Do not add a second filter bar, a "Kërko" button, client-side filtering of the visible
+rows, or chips that look for symbols such as "—" in the text.
+
 ## 7. Tables
 
 QTA is data-heavy. Tables remain first-class, not converted blindly into card grids.
@@ -123,7 +158,12 @@ Desktop:
 - sticky header only where useful and never obscuring focus;
 - consistent row height;
 - sortable headers where functionality exists;
-- actions in a predictable trailing column/menu;
+- actions in a predictable trailing column/menu; row actions that repeat on every row
+  (open the card, delete) are icon-only buttons with an accessible name and a tooltip;
+- the column that carries the record's name gets the width (`col-wide`) so it does not
+  wrap into several lines;
+- long lists are paginated on the server ("Faqja 2 nga 5 · 96 kursantë"), and the pager
+  keeps the filters;
 - bulk actions appear after selection;
 - selected/editing state visible beyond color alone;
 - identifiers may use monospace.
@@ -235,6 +275,11 @@ Dashboard hierarchy by role:
 - useful metrics after actionable information.
 
 Do not create a grid of oversized KPI cards merely because numbers are available.
+
+Staff home (implemented): "Çfarë pret për ty" first (only cases with a count above zero,
+each with one link to the filtered list), then "Nis një punë" (the main destinations of
+the menu as compact tiles), then "Kjo javë" and "Të fundit në regjistër" side by side.
+No search box on the home page: Ctrl+K and the lists cover it.
 
 ## 17. Public verification
 

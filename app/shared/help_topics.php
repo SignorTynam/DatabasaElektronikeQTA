@@ -21,9 +21,10 @@ return [
       ['Nis nga "Kreu"', 'Aty sheh çfarë pret për ty sot dhe veprimet më të shpeshta.'],
       ['Përdor menunë majtas', 'Çdo seksion ka një emër të qartë. Në telefon menuja hapet me butonin ☰ lart majtas.'],
       ['Kërko kudo', 'Shtyp "Kërko…" ose Ctrl + K për të gjetur një kursant, grup ose kurs.'],
+      ['Filtro listat', 'Çdo listë ka një fushë kërkimi: lista ndryshon ndërsa shkruan, pa shtypur asnjë buton. Çipat poshtë saj (p.sh. "Pa grup") tregojnë vetëm një gjendje.'],
     ],
     'tips' => [
-      'Në çdo faqe ka një buton "Si funksionon?" me udhëzime të shkurtra për atë faqe.',
+      'Në çdo faqe, butoni me pikëpyetje (?) lart djathtas hap udhëzimet e shkurtra të asaj faqeje.',
       'Pamjen (e çelët, e errët ose sipas pajisjes) e zgjedh te "Profili im".',
     ],
   ],
@@ -49,10 +50,10 @@ return [
   'dashboard_staff' => [
     'title' => 'Kreu',
     'roles' => $staff,
-    'intro' => 'Kreu tregon punën që pret, veprimet e shpeshta dhe grupet e kësaj jave.',
+    'intro' => 'Kreu tregon punën që pret dhe të çon me një klik te vendet kryesore.',
     'steps' => [
       ['Shiko "Çfarë pret për ty"', 'Çdo rresht tregon sa raste kërkojnë vëmendje. Kliko rreshtin për t\'i zgjidhur.'],
-      ['Nis një punë', 'Butonat e mëdhenj të çojnë drejt e te regjistrimi, grupet ose kërkimi.'],
+      ['Nis një punë', 'Kartat të çojnë te caktimi në grup, krijimi i grupit, regjistri i kurseve profesionale, kursantët, kartela dhe katalogu i kurseve.'],
       ['Ndiq javën', 'Grupet që nisin ose mbarojnë së shpejti dhe provimet shfaqen me datë.'],
     ],
     'tips' => [
@@ -63,11 +64,11 @@ return [
   'dashboard_agency' => [
     'title' => 'Kreu i agjencisë',
     'roles' => ['agjencia'],
-    'intro' => 'Këtu sheh ku janë punonjësit tuaj: kush pret të caktohet në grup, cilat grupe janë në vazhdim dhe provimet e ardhshme.',
+    'intro' => 'Këtu sheh ku janë punonjësit tuaj: provimet dhe grupet e ardhshme, grupet e fundit dhe kush pret të caktohet në grup.',
     'steps' => [
-      ['Gjej një punonjës', 'Shkruaj emrin, numrin personal ose numrin e amzës te fusha e kërkimit.'],
-      ['Shiko kush pret', 'Punonjësit pa grup do të caktohen nga stafi i QTA-së në grupin e radhës.'],
-      ['Ndiq grupet', 'Tabela tregon grupet ku keni punonjës, me datat e fillimit dhe mbarimit.'],
+      ['Gjej një punonjës', 'Hap "Punonjësit tanë" dhe shkruaj emrin, numrin personal ose numrin e amzës: lista ndryshon ndërsa shkruan.'],
+      ['Shiko kush pret', 'Punonjësit pa grup do të caktohen nga stafi i QTA-së në grupin e radhës të kursit të tyre.'],
+      ['Ndiq grupet', 'Tabela tregon grupet e fundit ku keni punonjës, me datat e fillimit dhe mbarimit.'],
     ],
     'tips' => [
       'Për të verifikuar një certifikatë nuk duhet të hyni në sistem — përdorni "Verifiko certifikatë".',
@@ -93,16 +94,21 @@ return [
   'students' => [
     'title' => 'Kursantët',
     'roles' => $staff,
-    'intro' => 'Lista e të gjithë kursantëve të regjistruar. Këtu kërkon, shton dhe ndryshon të dhënat personale.',
+    'intro' => 'Të gjithë kursantët e regjistruar, në një listë. Këtu kërkon, shton, ndryshon të dhënat dhe i cakton në grupe.',
     'steps' => [
-      ['Kërko', 'Shkruaj emrin, numrin personal ose numrin e amzës dhe shtyp "Kërko".'],
+      ['Kërko', 'Shkruaj në fushën e kërkimit: lista ndryshon ndërsa shkruan, në gjithë regjistrin. Gjen emrin e plotë ("Arben Agim Hoxha"), numrin e amzës, numrin personal, telefonin, vendlindjen, arsimin ose kursin — edhe disa njëherësh, p.sh. "1001 Tirane". Esc e pastron.'],
+      ['Zgjidh një çip', '"Pa grup", "Gati për grup" (me kurs të zgjedhur), "Pa kurs", "Në grup" ose "Me të dhëna që mungojnë". Numri te çipi tregon sa kursantë janë aty. "Filtra" zgjedh arsimin ose kursin.'],
+      ['Cakto në grup', 'Zgjidh "Pa grup". Për kursantët "Pa kurs" zgjidh kursin dhe shtyp "Ruaj"; pastaj zgjidh grupin — lista tregon datat dhe vendet e zëna, p.sh. 6/10 — dhe shtyp "Cakto".'],
+      ['Disa njëherësh', 'Te "Pa grup", shëno kutitë majtas; poshtë shfaqet një shirit. Zgjidh grupin dhe shtyp "Cakto të zgjedhurit".'],
       ['Shto një kursant', 'Shtyp "Shto kursant", plotëso fushat dhe ruaj. Numri i amzës duhet të jetë unik.'],
-      ['Ndrysho të dhënat', 'Shtyp "Lejo ndryshimet". Pastaj kliko mbi vlerën në tabelë, shkruaj dhe shtyp Enter. Ndryshimi ruhet vetë.'],
-      ['Mbyll ndryshimet', 'Kur mbaron, shtyp "Mbyll ndryshimet" që të mos ndryshosh gjë pa dashje.'],
+      ['Ndrysho të dhënat', 'Shtyp "Lejo ndryshimet". Pastaj kliko mbi vlerën në tabelë, shkruaj dhe shtyp Enter. Ndryshimi ruhet vetë; Esc e kthen vlerën.'],
     ],
     'tips' => [
-      'Kutia ngjyrë jeshile pas ruajtjes do të thotë që ndryshimi u ruajt. E kuqja do të thotë që nuk u ruajt — kontrollo formatin.',
+      'Një grup mban deri në 10 kursantë. Ata që nuk nxënë mbeten pa grup — caktoji në një grup tjetër.',
+      'Nëse një kurs nuk ka grup, krijoje te "Regjistri i kurseve profesionale" me "Krijo grup".',
+      'Kutia ngjyrë jeshile pas ruajtjes do të thotë që ndryshimi u ruajt. E kuqja do të thotë që nuk u ruajt — lexo mesazhin.',
       'Kliko datëlindjen: kalendari nis nga viti, pastaj muaji dhe dita. Mund ta shkruash edhe si dd.mm.vvvv, p.sh. 05.03.1990.',
+      '"Shkarko" merr në Excel, PDF ose Word pikërisht listën që sheh, me kërkimin dhe çipin e zgjedhur.',
     ],
   ],
 
@@ -121,27 +127,13 @@ return [
     ],
   ],
 
-  'students_without_groups' => [
-    'title' => 'Kursantët pa grup',
-    'roles' => $staff,
-    'intro' => 'Kursantët që janë regjistruar por ende nuk janë caktuar në një grup. Këtu u zgjedh kursin dhe i cakton në grupe.',
-    'steps' => [
-      ['Zgjidh kursin', 'Për kursantët "Pa kurs", zgjidh kursin te lista dhe shtyp "Ruaj".'],
-      ['Cakto në grup', 'Zgjidh grupin — lista tregon datat dhe vendet e zëna, p.sh. 6/10 — dhe shtyp "Cakto".'],
-      ['Disa njëherësh', 'Shëno kutitë majtas; poshtë shfaqet një shirit. Zgjidh grupin dhe shtyp "Cakto të zgjedhurit".'],
-    ],
-    'tips' => [
-      'Një grup mban deri në 10 kursantë. Ata që nuk nxënë mbeten në listë — caktoji në një grup tjetër.',
-      'Nëse një kurs nuk ka grup, krijoje te "Grupet" me "Krijo grup". Grupet me orar shënohen "(me orar)" në listë.',
-    ],
-  ],
-
-  /* ----------------------------------------------------- Grupet, regjistri */
+  /* ----------------------------------------------- Kurset profesionale */
   'groups' => [
-    'title' => 'Grupet e mëparshme',
+    'title' => 'Regjistri i vjetër i kurseve profesionale',
     'roles' => $staff,
-    'intro' => 'Grupet e krijuara para orarit të mësimit. Mbeten siç ishin: çdo grup ndjek një kurs në data të caktuara, pa orar ditë pas dite. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet. Grupet e reja krijohen te "Grupet".',
+    'intro' => 'Kurset profesionale të mëparshme, të krijuara para orarit të mësimit: çdo grup ndjek një kurs në data të caktuara, pa orar ditë pas dite. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet. Së shpejti këto regjistrime do të konvertohen në "Regjistri i kurseve profesionale".',
     'steps' => [
+      ['Gjej një grup', 'Shkruaj kursin, numrin e grupit, emrin ose numrin e amzës së një kursanti: lista ndryshon ndërsa shkruan. Çipat tregojnë grupet "Në mësim", "Presin mbylljen" ose "Të mbyllura"; "Filtra" zgjedh kursin.'],
       ['Hap një grup', 'Kliko emrin e kursit: grupi hapet në një dritare me kursantët, provimet, pikët dhe dokumentet.'],
       ['Cakto datat', 'Me ndryshimet e hapura, kliko datën e fillimit ose të mbarimit në tabelë, ose datën e provimit brenda grupit, dhe zgjidhe në kalendar. Mund ta shkruash edhe si dd.mm.vvvv.'],
       ['Shëno pikët', 'Kliko pikët dhe shkruaj një numër nga 0 deri në 100.'],
@@ -152,36 +144,23 @@ return [
     'tips' => [
       'Një grup mban deri në 10 kursantë. Një regjistrim (nr. i amzës) mund të jetë vetëm në një grup.',
       '"Raporti për QKL" krijon raportin për një interval numrash amze.',
-      'Grupet e reja krijohen te "Grupet", me orar mësimi. "Shto grup të mëparshëm" është vetëm për grupe të mbajtura më parë.',
-    ],
-  ],
-
-  'register' => [
-    'title' => 'Regjistri i plotë',
-    'roles' => $staff,
-    'intro' => 'Çdo rresht është një regjistrim: personi, kursi, datat e grupit, provimi dhe pikët. Është pamja më e plotë e regjistrit.',
-    'steps' => [
-      ['Filtro', 'Kërko me emër, numër personal ose nis nga një numër amze.'],
-      ['Ndrysho', 'Me "Lejo ndryshimet" mund të ndryshosh datat e provimit dhe pikët direkt në tabelë. Kolona "Gjendja" përditësohet vetë.'],
-      ['Shkarko', 'Përdor "Shkarko" për ta marrë listën në Excel, PDF ose Word.'],
-    ],
-    'tips' => [
-      'Te grupet me orar mësimi, datat e fillimit dhe të mbarimit i llogarit orari: ndryshohen te faqja e grupit, jo këtu.',
-      'Regjistri i plotë është lista e regjistrimeve. Orari ditë pas dite i një grupi (temat e çdo dite) është te faqja e grupit, te "Grupet".',
+      'Grupet e reja krijohen te "Regjistri i kurseve profesionale", me orar mësimi. "Shto grup të mëparshëm" është vetëm për kurse të mbajtura më parë.',
     ],
   ],
 
   'courses' => [
-    'title' => 'Kurset',
+    'title' => 'Katalogu i kurseve',
     'roles' => $staff,
-    'intro' => 'Kurset janë zanatet dhe trajnimet që ofron QTA, me kodin dhe numrin e orëve. Çdo kurs ndahet në module (p.sh. Word, Excel) dhe çdo modul në tema.',
+    'intro' => 'Kurset që ofron QTA, me kodin dhe orët e mësimit. Çdo kurs ndahet në module (p.sh. Word, Excel) dhe çdo modul në tema. Orët e kursit dalin në certifikatë dhe në raporte.',
     'steps' => [
+      ['Gjej një kurs', 'Shkruaj kodin, emrin, orët ose një modul a temë (p.sh. "Excel"): lista ndryshon ndërsa shkruan. Çipat "Gati", "Jo gati" dhe "Pa module" tregojnë gjendjen e strukturës.'],
       ['Shto një kurs', 'Shtyp "Shto kurs": emri, një kod i shkurtër (p.sh. SLD-04) dhe orët e mësimit. Pastaj hapet kursi që t\'i shtosh modulet.'],
       ['Ndërto modulet dhe temat', 'Kliko emrin e kursit. Shto modulet me radhë dhe temat e secilit modul, me orët e tyre.'],
       ['Shiko gatishmërinë', 'Kolona "Modulet dhe temat" tregon "Gati" kur orët e moduleve mblidhen në orët e kursit dhe orët e temave në orët e çdo moduli. Vetëm një kurs "Gati" përdoret për grupe me orar.'],
       ['Shiko grupet e kursit', 'Kliko "N grupe": grupet hapen në një dritare. Kliko një grup për ta hapur.'],
     ],
     'tips' => [
+      'Me ndryshimet e hapura, kliko kodin, emrin ose orët në tabelë për t\'i ndryshuar.',
       'Një kurs që ka grupe nuk fshihet, që të mos humbasin datat e provimeve dhe pikët.',
       'Kodi i kursit shfaqet në certifikata dhe në dokumente — mbaje të qëndrueshëm.',
     ],
@@ -206,17 +185,19 @@ return [
   ],
 
   'lesson_groups' => [
-    'title' => 'Grupet',
+    'title' => 'Regjistri i kurseve profesionale',
     'roles' => $staff,
-    'intro' => 'Çdo grup ndjek një kurs me orar mësimi ditë pas dite. Zgjedh kursin, datën e fillimit dhe orët në ditë; data e mbarimit llogaritet vetë.',
+    'intro' => 'Kurset profesionale me orar mësimi ditë pas dite: kursantët, provimet, pikët dhe dokumentet. Zgjedh kursin, datën e fillimit dhe orët në ditë; data e mbarimit llogaritet vetë.',
     'steps' => [
+      ['Gjej një grup', 'Shkruaj kursin, numrin e grupit, emrin ose numrin e amzës së një kursanti, ose një datë: lista ndryshon ndërsa shkruan. Çipat tregojnë grupet "Në mësim", "Nisin së shpejti", "Presin mbylljen" dhe "Të mbyllura"; "Filtra" zgjedh kursin.'],
       ['Krijo grup', 'Shtyp "Krijo grup", zgjidh kursin (vetëm kurset "Gati"), datën e fillimit dhe orët e mësimit në ditë. Poshtë del menjëherë kur mbaron mësimi.'],
       ['Shto kursantët', 'Shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10 kursantë krijohen disa grupe të barabarta me të njëjtin orar.'],
       ['Hap një grup', 'Kliko emrin e kursit: hapet orari ditë pas dite, kursantët me provimet dhe pikët, dhe dokumentet.'],
     ],
     'tips' => [
       'Të dielat nuk kanë mësim, përveç kur shënohen si ditë mësimi te grupi.',
-      'Grupet e krijuara para orarit të mësimit janë te "Grupet e mëparshme" dhe mbeten siç ishin.',
+      'Kurset "jo gati" plotësohen te "Katalogu i kurseve".',
+      'Kurset e krijuara para orarit të mësimit janë te "Regjistri i vjetër i kurseve profesionale" dhe mbeten siç ishin.',
     ],
   ],
 
@@ -246,6 +227,7 @@ return [
     'roles' => $staff,
     'intro' => 'Agjencitë janë kompanitë që dërgojnë punonjësit e tyre për trajnim. Çdo agjenci hyn me NIPT-in e saj dhe sheh vetëm punonjësit e vet.',
     'steps' => [
+      ['Gjej një agjenci', 'Shkruaj emrin, NIPT-in, telefonin ose adresën: lista ndryshon ndërsa shkruan.'],
       ['Shto një agjenci', 'Shtyp "Shto agjenci": emri, NIPT-i (10 shenja, p.sh. L42202012A) dhe një fjalëkalim me të paktën 8 shenja.'],
       ['Lidh punonjësit', 'Kliko "N punonjës" te agjencia, shkruaj numrat e amzës dhe shtyp "Shto".'],
       ['Ndrysho', 'Me ndryshimet e hapura kliko emrin, NIPT-in, telefonin ose adresën.'],
@@ -258,7 +240,7 @@ return [
   'users' => [
     'title' => 'Administratorët',
     'roles' => ['administrator'],
-    'intro' => 'Llogaritë me qasje të plotë në sistem. Shto vetëm persona të besuar.',
+    'intro' => 'Llogaritë me qasje të plotë në sistem: regjistrojnë dhe ndryshojnë kursantë, grupe e provime, menaxhojnë agjencitë, shtojnë administratorë dhe editorë, dhe shohin historikun e plotë. Shto vetëm persona që drejtojnë punën në QTA.',
     'steps' => [
       ['Shto një administrator', 'Shtyp "Shto administrator": emri, email-i dhe një fjalëkalim me të paktën 8 shenja.'],
       ['Fjalëkalim i ri', 'Kur dikush e harron fjalëkalimin, shtyp "Fjalëkalim i ri" te rreshti i tij dhe njoftoje.'],
@@ -272,7 +254,7 @@ return [
   'editors' => [
     'title' => 'Editorët',
     'roles' => ['administrator'],
-    'intro' => 'Editorët regjistrojnë kursantë, caktojnë grupe dhe shënojnë provimet, por nuk menaxhojnë llogaritë.',
+    'intro' => 'Editorët regjistrojnë dhe ndryshojnë kursantë, krijojnë grupe, shënojnë provimet dhe menaxhojnë agjencitë. Shohin vetëm historikun e ndryshimeve të veta dhe nuk shtojnë llogari stafi.',
     'steps' => [
       ['Shto një editor', 'Shtyp "Shto editor": emri, email-i dhe fjalëkalimi.'],
       ['Fjalëkalim i ri', 'Përdore kur një editor e ka harruar fjalëkalimin.'],
@@ -286,9 +268,10 @@ return [
     'roles' => $staff,
     'intro' => 'Çdo shtim, ndryshim ose fshirje në regjistër shënohet këtu: kush e bëri, kur dhe çfarë ndryshoi.',
     'steps' => [
-      ['Filtro', 'Zgjidh "Çfarë ndodhi", "Ku", "Kush" ose një periudhë — ose kërko një emër.'],
+      ['Kërko', 'Shkruaj një emër, numër amze, datë ose vlerë: lista ndryshon ndërsa shkruan. Kërkimi gjen edhe vlerat e vjetra, p.sh. një emër që është ndryshuar.'],
+      ['Filtro', 'Çipat zgjedhin "U shtuan", "U ndryshuan" ose "U fshinë". Te "Filtra" zgjedh "Ku", "Kush" ose periudhën (Sot, 7 ose 30 ditët e fundit, ose nga një datë te tjetra).'],
       ['Lexo ndryshimin', 'Vlera e vjetër ka sfond të kuq, e reja të gjelbër: "Pikët 45 → 55".'],
-      ['Shkarko', '"Shkarko listën (Excel)" merr të gjitha veprimet që përputhen me filtrat.'],
+      ['Shkarko', '"Shkarko (Excel)" merr të gjitha veprimet që përputhen me filtrat.'],
     ],
     'tips' => [
       'Historiku nuk mund të ndryshohet — është dëshmia e punës së bërë.',
@@ -315,9 +298,9 @@ return [
     'roles' => ['agjencia'],
     'intro' => 'Lista e punonjësve të agjencisë suaj që janë regjistruar në QTA, me kursin e fundit, provimin dhe pikët.',
     'steps' => [
-      ['Kërko', 'Shkruaj emrin, numrin personal ose numrin e amzës.'],
+      ['Kërko', 'Shkruaj emrin, numrin personal, numrin e amzës ose kursin: lista ndryshon ndërsa shkruan. Çipat tregojnë punonjësit "Pa grup" ose "Në mësim".'],
       ['Hap kartelën', 'Kliko emrin për të parë të gjitha kurset e punonjësit.'],
-      ['Shkarko listën', 'Përdor "Shkarko" për ta marrë në Excel, PDF ose Word.'],
+      ['Shkarko listën', 'Përdor "Shkarko" për ta marrë në Excel, PDF ose Word — me kërkimin dhe çipin e zgjedhur.'],
     ],
     'tips' => [
       'Për të regjistruar punonjës të rinj, kontaktoni QTA-në.',
@@ -329,6 +312,7 @@ return [
     'roles' => ['agjencia'],
     'intro' => 'Grupet ku janë caktuar punonjësit tuaj, me datat e trajnimit, provimet dhe pikët.',
     'steps' => [
+      ['Gjej një grup', 'Shkruaj kursin, numrin e grupit ose emrin e një punonjësi: lista ndryshon ndërsa shkruan. Çipat tregojnë grupet që nisin së shpejti, në mësim, në provime ose të përfunduara.'],
       ['Hap një grup', 'Kliko emrin e kursit: grupi hapet në një dritare me punonjësit dhe pikët e secilit.'],
       ['Shiko kush pret', 'Poshtë, "Presin një grup" tregon punonjësit që QTA do t\'i caktojë së shpejti.'],
     ],

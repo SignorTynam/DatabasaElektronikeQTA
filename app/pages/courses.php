@@ -126,48 +126,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 require_once __DIR__ . '/../shared/themeli.php';
+require_once __DIR__ . '/../shared/list_filter.php';
 
 /* ------------------------------
-   Kërkim + Paginim
+   Katalogu: kërkimi, gjendja e strukturës (çipat) dhe faqosja.
+   Gatishmëria vjen nga qta_course_summaries() — i njëjti rregull që përdor
+   krijimi i grupit — prandaj katalogu filtrohet këtu, jo me një kopje në SQL.
 ------------------------------- */
-$q      = trim($_GET['q'] ?? '');
-$page   = max(1, (int)($_GET['page'] ?? 1));
+$courseStates = ['ready', 'not_ready', 'no_modules'];
+$q      = qta_search_q($_GET['q'] ?? '');
+$status = qta_list_choice($_GET['status'] ?? '', $courseStates);
 $limit  = 20;
-$offset = ($page - 1) * $limit;
 
-$where  = ["1=1"];
-$params = [];
+$allRows = $pdo->query("SELECT c.id AS course_id, c.code, c.name, c.hours, c.created_at FROM courses c ORDER BY c.code ASC, c.id ASC")->fetchAll(PDO::FETCH_ASSOC);
+$structureAll = qta_course_summaries($pdo);
 
-if ($q !== '') {
-    $where[] = "(c.code LIKE :kw OR c.name LIKE :kw2)";
-    $params[':kw']  = '%'.$q.'%';
-    $params[':kw2'] = '%'.$q.'%';
+/* Emrat e moduleve dhe temave, që kërkimi të gjejë edhe "Excel" te "Microsoft Office". */
+$partsText = [];
+$pdo->exec('SET SESSION group_concat_max_len = 65535');
+foreach ($pdo->query("
+    SELECT m.course_id, CONCAT_WS(' ', m.title, GROUP_CONCAT(t.title SEPARATOR ' ')) AS txt
+    FROM course_modules m LEFT JOIN course_topics t ON t.module_id = m.id
+    GROUP BY m.id, m.course_id, m.title
+")->fetchAll(PDO::FETCH_ASSOC) as $pt) {
+    $partsText[(int)$pt['course_id']] = ($partsText[(int)$pt['course_id']] ?? '') . ' ' . (string)$pt['txt'];
 }
-$whereSql = 'WHERE '.implode(' AND ', $where);
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM courses c $whereSql");
-$countStmt->execute($params);
-$total = (int)$countStmt->fetchColumn();
+$stateOf = static function (array $st): string {
+    return !empty($st['ready']) ? 'ready' : (!empty($st['has_structure']) ? 'not_ready' : 'no_modules');
+};
+$stateWords = ['ready' => 'gati', 'not_ready' => 'jo gati', 'no_modules' => 'pa module'];
+$tokens = qta_search_tokens($q);
+$counts = ['' => 0, 'ready' => 0, 'not_ready' => 0, 'no_modules' => 0];
+$matched = [];
+foreach ($allRows as $c) {
+    $cid = (int)$c['course_id'];
+    $st = $structureAll[$cid] ?? ['modules' => 0, 'topics' => 0, 'ready' => false, 'has_structure' => false];
+    $state = $stateOf($st);
+    if ($tokens) {
+        $hay = implode(' ', [
+            $c['code'], $c['name'], (int)$c['hours'] . ' orë', $stateWords[$state],
+            qta_plural((int)$st['modules'], 'modul', 'module'), qta_plural((int)$st['topics'], 'temë', 'tema'),
+            $partsText[$cid] ?? '',
+        ]);
+        if (!qta_search_hit($tokens, $hay)) continue;
+    }
+    $counts['']++;
+    $counts[$state]++;
+    if ($status === '' || $status === $state) $matched[] = $c;
+}
+$total = count($matched);
 $totalPages = max(1, (int)ceil($total / $limit));
-
-$listStmt = $pdo->prepare("
-    SELECT c.id AS course_id, c.code, c.name, c.hours, c.created_at
-    FROM courses c
-    $whereSql
-    ORDER BY c.code ASC, c.id ASC
-    LIMIT :lim OFFSET :off
-");
-foreach ($params as $k=>$v) { $listStmt->bindValue($k, $v, PDO::PARAM_STR); }
-$listStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-$listStmt->bindValue(':off', $offset, PDO::PARAM_INT);
-$listStmt->execute();
-$courses = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+$page = min(max(1, (int)($_GET['page'] ?? 1)), $totalPages);
+$courses = array_slice($matched, ($page - 1) * $limit, $limit);
+$structure = $structureAll;
 
 /* Kurse për target (select në dialogun "Zhvendos grupin") */
 $allCourses = $pdo->query("SELECT id, code, name FROM courses ORDER BY code ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
-
-/* Struktura (module, tema, gati) për kurset e faqes — një query e grupuar */
-$structure = $courses ? qta_course_summaries($pdo, array_column($courses, 'course_id')) : [];
 
 /* Grupe për kurset e faqes (summary + numer i anëtarëve) */
 $groupsByCourse = [];
@@ -223,7 +238,23 @@ $groupHref = static fn(array $g): string => ($g['model'] ?? 'legacy') === 'sched
     ? 'lesson_group.php?id=' . (int)$g['id']
     : 'groups.php?group=' . (int)$g['id'];
 
-$pageTitle = 'Kurset';
+$stateTitles = ['' => 'Të gjitha kurset', 'ready' => 'Kurset gati për grup', 'not_ready' => 'Kurset jo gati', 'no_modules' => 'Kurset pa module'];
+$chips = [];
+foreach (['' => 'Të gjitha', 'ready' => 'Gati', 'not_ready' => 'Jo gati', 'no_modules' => 'Pa module'] as $v => $label) {
+    $chips[] = ['value' => (string)$v, 'label' => $label, 'count' => $counts[$v] ?? 0];
+}
+$LF = [
+    'action'      => 'courses.php',
+    'label'       => 'Kërko në katalogun e kurseve',
+    'placeholder' => 'Kodi, emri, orët, një modul ose një temë',
+    'q'           => $q,
+    'target'      => 'coursesResults',
+    'status'      => $status,
+    'chips'       => $chips,
+    'chips_label' => 'Gjendja e strukturës',
+];
+
+$pageTitle = 'Katalogu i kurseve';
 require __DIR__ . '/../shared/app_head.php';
 ?>
 
@@ -231,8 +262,8 @@ require __DIR__ . '/../shared/app_head.php';
 
   <header class="page-head">
     <div class="page-head-main">
-      <h1 class="page-title">Kurset</h1>
-      <p class="page-lead">Katalogu i kurseve që ofron QTA. Çdo kurs ndahet në module dhe tema; orët e kursit dalin në certifikatë dhe në raporte.</p>
+      <h1 class="page-title">Katalogu i kurseve</h1>
+      <p class="page-lead">Kurset, modulet, temat dhe orët që përdoren në regjistrim dhe certifikim.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -247,35 +278,17 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
   </header>
 
-  <form class="filters filters-compact" method="get" action="courses.php" role="search" aria-label="Kërko kurse">
-    <div class="filter-field is-grow">
-      <label class="visually-hidden" for="cQ">Kërko një kurs</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="cQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Kërko sipas kodit ose emrit të kursit">
-      </div>
-    </div>
-    <div class="filter-actions">
-      <?php if ($q !== ''): ?>
-        <a class="btn btn-ghost" href="courses.php">Pastro</a>
-      <?php endif; ?>
-      <button class="btn btn-secondary" type="submit">Kërko</button>
-    </div>
-  </form>
-
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-
   <section class="section" aria-labelledby="coursesTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="coursesTitle">
-        <?= $q !== '' ? 'Kurset që përputhen' : 'Të gjitha kurset' ?>
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="coursesTitle" tabindex="-1" data-live-focus>
+        <?= h($stateTitles[$status] ?? 'Të gjitha kurset') ?>
         <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
       </h2>
-      <?php if ($courses): ?>
-        <span class="section-meta"><?= $EDIT_MODE ? 'Kliko kodin, emrin ose orët për t\'i ndryshuar; kliko "Modulet dhe temat" për strukturën.' : 'Kliko një kurs për modulet dhe temat e tij.' ?></span>
-      <?php endif; ?>
     </div>
 
+    <?php require __DIR__ . '/../shared/partials/list_toolbar.php'; ?>
+
+    <div id="coursesResults" data-live-region="results" data-live-announce="<?= h(qta_plural($total, 'kurs', 'kurse')) ?>">
     <?php if ($courses): ?>
       <div class="table-responsive">
         <table class="table" id="coursesTable" data-sortable>
@@ -284,7 +297,7 @@ require __DIR__ . '/../shared/app_head.php';
               <th scope="col" class="nowrap" data-sort="text">Kodi</th>
               <th scope="col" class="col-wide" data-sort="text">Kursi</th>
               <th scope="col" class="nowrap num-col" data-sort="num">Orë</th>
-              <th scope="col" class="nowrap" data-sort="text">Modulet dhe temat</th>
+              <th scope="col" class="nowrap" data-sort="num">Modulet dhe temat</th>
               <th scope="col" class="nowrap" data-sort="num">Grupe</th>
               <th scope="col" class="nowrap num-col" data-sort="num">Kursantë</th>
               <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
@@ -338,11 +351,11 @@ require __DIR__ . '/../shared/app_head.php';
               <td class="nowrap num-col" data-count-members><?= $members ?></td>
               <td class="col-actions">
                 <?php if ($EDIT_MODE): ?>
-                  <button type="button" class="btn btn-ghost btn-sm btn-icon" data-bs-toggle="modal" data-bs-target="#deleteCourseModal"
+                  <button type="button" class="btn btn-ghost btn-ghost-danger btn-sm btn-icon" data-bs-toggle="modal" data-bs-target="#deleteCourseModal"
                           data-course-id="<?= $cid ?>" data-course-code="<?= h((string)$c['code']) ?>" data-course-name="<?= h((string)$c['name']) ?>"
                           data-course-groups="<?= $grCount ?>" data-course-planned="<?= $plannedN ?>"
                           data-course-modules="<?= (int)$st['modules'] ?>" data-course-topics="<?= (int)$st['topics'] ?>"
-                          aria-label="Fshi kursin <?= h((string)$c['name']) ?>" title="Fshi kursin">
+                          aria-label="Fshi kursin <?= h((string)$c['name']) ?>" data-tip="Fshi kursin">
                     <i class="bi bi-trash" aria-hidden="true"></i>
                   </button>
                 <?php endif; ?>
@@ -352,24 +365,21 @@ require __DIR__ . '/../shared/app_head.php';
           </tbody>
         </table>
       </div>
-
-      <?php if ($totalPages > 1):
-        $pBase = 'courses.php?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
-        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
-        <nav class="pager mt-3" aria-label="Faqet e listës">
-          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
-          <span class="text-muted small">Faqja <?= $page ?> nga <?= $totalPages ?></span>
-          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
-        </nav>
-      <?php endif; ?>
-
+    <?php elseif ($q !== ''): ?>
+      <?= qta_empty('Asnjë kurs nuk përputhet', 'Provo një fjalë tjetër nga emri, kodi, një modul ose një temë.', 'bi-search') ?>
+    <?php elseif ($status !== ''): ?>
+      <?= qta_empty('Asnjë kurs me këtë gjendje', 'Zgjidh "Të gjitha" për të parë çdo kurs.', 'bi-journal', '', 'is-compact') ?>
     <?php else: ?>
-      <?= $q !== ''
-        ? qta_empty('Asnjë kurs nuk përputhet', 'Provo një fjalë tjetër nga emri ose kodi.', 'bi-search', '<a class="btn btn-secondary" href="courses.php">Pastro kërkimin</a>')
-        : qta_empty('Ende pa kurse', 'Shto kursin e parë që ofron QTA, p.sh. "Punime në lartësi".', 'bi-journal-plus', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto kurs</a>') ?>
+      <?= qta_empty('Ende pa kurse', 'Shto kursin e parë që ofron QTA, p.sh. "Punime në lartësi".', 'bi-journal-plus', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto kurs</a>') ?>
     <?php endif; ?>
+
+      <?= qta_list_pager('courses.php', ['q' => $q, 'status' => $status], $page, $totalPages, qta_plural($total, 'kurs', 'kurse')) ?>
+    </div>
   </section>
 </main>
+
+<?php /* Dritaret e grupeve të kurseve i përkasin listës: rifreskohen bashkë me të. */ ?>
+<div data-live-region="dialogs">
 
 <?php foreach ($courses as $c):
   $cid = (int)$c['course_id'];
@@ -434,12 +444,11 @@ require __DIR__ . '/../shared/app_head.php';
               </tbody>
             </table>
           </div>
-          <p class="form-text mt-2 mb-0">Kliko një grup për ta hapur me kursantët, pikët dhe dokumentet.</p>
         </div>
         <div class="modal-footer">
           <div class="modal-footer-start">
-            <a class="btn btn-ghost" href="lesson_groups.php?course_id=<?= $cid ?>"><i class="bi bi-calendar-week" aria-hidden="true"></i>Te "Grupet"</a>
-            <a class="btn btn-ghost" href="groups.php?course_id=<?= $cid ?>"><i class="bi bi-archive" aria-hidden="true"></i>Te "Grupet e mëparshme"</a>
+            <a class="btn btn-ghost" href="lesson_groups.php?course_id=<?= $cid ?>"><i class="bi bi-calendar-week" aria-hidden="true"></i>Te regjistri i kurseve profesionale</a>
+            <a class="btn btn-ghost" href="groups.php?course_id=<?= $cid ?>"><i class="bi bi-archive" aria-hidden="true"></i>Te regjistri i vjetër</a>
           </div>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
         </div>
@@ -447,6 +456,7 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
   </div>
 <?php endforeach; ?>
+</div>
 
 <!-- Dialog: shto kurs -->
 <div class="modal fade" id="addCourseModal" tabindex="-1" aria-labelledby="addCourseTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
@@ -611,22 +621,14 @@ async function saveInline(el){
   }
 }
 
-if (EDIT_ENABLED) {
-  document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el => {
-    el.dataset.prev = cleanText(el.textContent);
-    el.addEventListener('focus', () => { el.dataset.prev = cleanText(el.textContent); });
-    el.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
-      if (ev.key === 'Escape') { ev.preventDefault(); el.textContent = el.dataset.prev || ''; el.blur(); }
-    });
-    el.addEventListener('paste', (ev) => {
-      ev.preventDefault();
-      const text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
-      document.execCommand('insertText', false, cleanText(text));
-    });
-    el.addEventListener('blur', () => saveInline(el));
+/* Me delegim: rreshtat e rinj pas kërkimit ose faqosjes ndryshohen njësoj.
+   app.js (defer) është gati te DOMContentLoaded. */
+if (EDIT_ENABLED) document.addEventListener('DOMContentLoaded', () => {
+  window.qtaEditable('#coursesTable td.cell .editable', (el, prevRaw) => {
+    el.dataset.prev = cleanText(prevRaw);
+    saveInline(el);
   });
-}
+});
 
 /* ===== Fshirja e kursit: e bllokuar kur ka grupe ===== */
 document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', (ev) => {

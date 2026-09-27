@@ -121,22 +121,25 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   header('Location: agencies.php'); exit;
 }
 
-/* Kërkim + listim me numër studentësh */
-$q=trim($_GET['q']??''); $page=max(1,(int)($_GET['page']??1)); $limit=20; $offset=($page-1)*$limit;
+/* Kërkim + listim me numër punonjësish. Kërkimi me fjalë: emri, NIPT-i, telefoni, adresa. */
+require_once __DIR__ . '/../shared/list_filter.php';
+$q = qta_search_q($_GET['q'] ?? ''); $limit = 20;
 
-$where=["r.id=:rid"]; $params=[':rid'=>$agencyRoleId];
-if($q!==''){
-  $where[]="(a.company_name LIKE :k OR a.nip_t LIKE :k OR a.phone LIKE :k OR a.address LIKE :k)";
-  $params[':k']="%$q%";
+$where = ["r.id=:rid"]; $params = [':rid' => $agencyRoleId];
+$tokens = qta_search_tokens($q);
+if ($tokens) {
+  $where[] = qta_search_sql($tokens, ['a.company_name', 'a.nip_t', 'a.phone', 'a.address'], $params, 'aq',
+    ['digits' => [qta_phone_digits_sql('a.phone')]]);
 }
-$whereSql='WHERE '.implode(' AND ',$where);
+$whereSql = 'WHERE ' . implode(' AND ', $where);
 
 /* total */
-$cnt=$pdo->prepare("SELECT COUNT(*) FROM agencies a JOIN users u ON u.id=a.user_id JOIN roles r ON r.id=u.role_id $whereSql");
-$cnt->execute($params); $total=(int)$cnt->fetchColumn(); $totalPages=max(1,(int)ceil($total/$limit));
+$cnt = $pdo->prepare("SELECT COUNT(*) FROM agencies a JOIN users u ON u.id=a.user_id JOIN roles r ON r.id=u.role_id $whereSql");
+$cnt->execute($params); $total = (int)$cnt->fetchColumn(); $totalPages = max(1, (int)ceil($total / $limit));
+$page = min(max(1, (int)($_GET['page'] ?? 1)), $totalPages); $offset = ($page - 1) * $limit;
 
 /* list */
-$sql="
+$sql = "
 SELECT
   a.id AS agency_id, a.company_name, a.nip_t, a.phone, a.address,
   u.id AS user_id, u.created_at,
@@ -148,11 +151,11 @@ $whereSql
 ORDER BY u.created_at DESC
 LIMIT :lim OFFSET :off
 ";
-$st=$pdo->prepare($sql);
-foreach($params as $k=>$v){ $st->bindValue($k,$v,is_int($v)?PDO::PARAM_INT:PDO::PARAM_STR); }
-$st->bindValue(':lim',$limit,PDO::PARAM_INT);
-$st->bindValue(':off',$offset,PDO::PARAM_INT);
-$st->execute(); $agencies=$st->fetchAll(PDO::FETCH_ASSOC);
+$st = $pdo->prepare($sql);
+foreach ($params as $k => $v) { $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR); }
+$st->bindValue(':lim', $limit, PDO::PARAM_INT);
+$st->bindValue(':off', $offset, PDO::PARAM_INT);
+$st->execute(); $agencies = $st->fetchAll(PDO::FETCH_ASSOC);
 
 $NAV_ACTIVE = 'users_agencies';
 $HELP_TOPIC = 'agencies';
@@ -162,6 +165,13 @@ $openAdd = $EDIT_MODE && isset($_GET['add']);
 $addHref = 'agencies.php?' . http_build_query(['edit' => '1', 'add' => '1']);
 $flashOk  = flash('ok');
 $flashErr = flash('err');
+$LF = [
+  'action'      => 'agencies.php',
+  'label'       => 'Kërko agjenci',
+  'placeholder' => 'Emri, NIPT, telefoni ose adresa',
+  'q'           => $q,
+  'target'      => 'agenciesResults',
+];
 
 $pageTitle = 'Agjencitë';
 require __DIR__ . '/../shared/app_head.php';
@@ -172,7 +182,7 @@ require __DIR__ . '/../shared/app_head.php';
   <header class="page-head">
     <div class="page-head-main">
       <h1 class="page-title">Agjencitë</h1>
-      <p class="page-lead">Kompanitë që dërgojnë punonjës në trajnim. Çdo agjenci hyn në portal me NIPT dhe fjalëkalim, dhe sheh vetëm punonjësit e vet.</p>
+      <p class="page-lead">Kompanitë që dërgojnë punonjës në trajnim.</p>
     </div>
     <div class="page-actions">
       <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
@@ -187,33 +197,17 @@ require __DIR__ . '/../shared/app_head.php';
     </div>
   </header>
 
-  <form class="filters filters-compact" method="get" action="agencies.php" role="search" aria-label="Kërko agjenci">
-    <div class="filter-field is-grow">
-      <label class="visually-hidden" for="aQ">Kërko një agjenci</label>
-      <div class="search-field">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <input class="form-control" id="aQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, NIPT, telefoni ose adresa">
-      </div>
-    </div>
-    <div class="filter-actions">
-      <?php if ($q !== ''): ?><a class="btn btn-ghost" href="agencies.php">Pastro</a><?php endif; ?>
-      <button class="btn btn-secondary" type="submit">Kërko</button>
-    </div>
-  </form>
-
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-
   <section class="section" aria-labelledby="agTitle">
-    <div class="section-head">
-      <h2 class="section-title" id="agTitle">
+    <div class="list-head" data-live-region="list-head">
+      <h2 class="section-title" id="agTitle" tabindex="-1" data-live-focus>
         <?= $q !== '' ? 'Agjencitë që përputhen' : 'Të gjitha agjencitë' ?>
         <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
       </h2>
-      <?php if ($EDIT_MODE && $agencies): ?>
-        <span class="section-meta">Kliko një vlerë për ta ndryshuar.</span>
-      <?php endif; ?>
     </div>
 
+    <?php require __DIR__ . '/../shared/partials/list_toolbar.php'; ?>
+
+    <div id="agenciesResults" data-live-region="results" data-live-announce="<?= h(qta_plural($total, 'agjenci', 'agjenci')) ?>">
     <?php if ($agencies): ?>
       <div class="table-responsive">
         <table class="table" id="agenciesTable" data-sortable>
@@ -260,7 +254,7 @@ require __DIR__ . '/../shared/app_head.php';
                       <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
                       <input type="hidden" name="action" value="delete_agency">
                       <input type="hidden" name="agency_id" value="<?= $aid ?>">
-                      <button class="btn btn-ghost btn-sm btn-icon" type="submit" aria-label="Fshi agjencinë <?= h($name) ?>" title="Fshi agjencinë">
+                      <button class="btn btn-ghost btn-ghost-danger btn-sm btn-icon" type="submit" aria-label="Fshi agjencinë <?= h($name) ?>" data-tip="Fshi agjencinë">
                         <i class="bi bi-trash" aria-hidden="true"></i>
                       </button>
                     </form>
@@ -271,22 +265,14 @@ require __DIR__ . '/../shared/app_head.php';
           </tbody>
         </table>
       </div>
-
-      <?php if ($totalPages > 1):
-        $pBase = 'agencies.php?' . http_build_query(array_filter(['q' => $q !== '' ? $q : null]));
-        $pLink = static fn(int $p) => $pBase . (str_ends_with($pBase, '?') ? '' : '&') . 'page=' . $p; ?>
-        <nav class="pager mt-3" aria-label="Faqet e listës">
-          <a class="btn btn-secondary btn-sm<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= h($pLink(max(1, $page - 1))) ?>" <?= $page <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left" aria-hidden="true"></i>Më parë</a>
-          <span class="text-muted small">Faqja <?= $page ?> nga <?= $totalPages ?></span>
-          <a class="btn btn-secondary btn-sm<?= $page >= $totalPages ? ' disabled' : '' ?>" href="<?= h($pLink(min($totalPages, $page + 1))) ?>" <?= $page >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Më pas<i class="bi bi-chevron-right" aria-hidden="true"></i></a>
-        </nav>
-      <?php endif; ?>
-
+    <?php elseif ($q !== ''): ?>
+      <?= qta_empty('Asnjë agjenci nuk përputhet', 'Provo me NIPT-in ose një pjesë të emrit.', 'bi-search') ?>
     <?php else: ?>
-      <?= $q !== ''
-        ? qta_empty('Asnjë agjenci nuk përputhet', 'Provo me NIPT-in ose një pjesë të emrit.', 'bi-search', '<a class="btn btn-secondary" href="agencies.php">Pastro kërkimin</a>')
-        : qta_empty('Ende pa agjenci', 'Shto agjencinë e parë që dërgon punonjës në trajnim.', 'bi-building', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto agjenci</a>') ?>
+      <?= qta_empty('Ende pa agjenci', 'Shto agjencinë e parë që dërgon punonjës në trajnim.', 'bi-building', '<a class="btn btn-primary" href="' . h($addHref) . '">Shto agjenci</a>') ?>
     <?php endif; ?>
+
+      <?= qta_list_pager('agencies.php', ['q' => $q], $page, $totalPages, qta_plural($total, 'agjenci', 'agjenci')) ?>
+    </div>
   </section>
 </main>
 
@@ -416,20 +402,11 @@ async function postJSON(url, payload){
 }
 
 /* ===== Redaktimi në tabelë ===== */
-if (EDIT_ENABLED) {
-  document.querySelectorAll('td.cell .editable[contenteditable="true"]').forEach(el=>{
-    el.dataset.prev = cleanText(el.textContent);
-    el.addEventListener('focus', ()=>{ el.dataset.prev = cleanText(el.textContent); });
-    el.addEventListener('keydown', ev=>{
-      if (ev.key === 'Enter'){ ev.preventDefault(); el.blur(); }
-      if (ev.key === 'Escape'){ ev.preventDefault(); el.textContent = el.dataset.prev || ''; el.blur(); }
-    });
-    el.addEventListener('paste', ev=>{
-      ev.preventDefault();
-      const text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
-      document.execCommand('insertText', false, cleanText(text));
-    });
-    el.addEventListener('blur', async ()=>{
+/* Me delegim: rreshtat e rinj pas kërkimit ose faqosjes ndryshohen njësoj.
+   app.js (defer) është gati te DOMContentLoaded. */
+if (EDIT_ENABLED) document.addEventListener('DOMContentLoaded', () => {
+  window.qtaEditable('#agenciesTable td.cell .editable', async (el, prevRaw)=>{
+      el.dataset.prev = cleanText(prevRaw);
       const cell = el.closest('td.cell');
       const val = cleanText(el.textContent);
       el.textContent = val;
@@ -448,9 +425,8 @@ if (EDIT_ENABLED) {
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
         notify('danger', e.message);
       }
-    });
   });
-}
+});
 
 /* ===== Shto agjenci: kontrollo që fjalëkalimet përputhen ===== */
 (function(){
