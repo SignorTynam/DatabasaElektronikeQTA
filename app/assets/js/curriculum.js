@@ -104,7 +104,9 @@
       if (heading) { heading.setAttribute('tabindex', '-1'); focusEl(heading); }
       return;
     }
-    var sel = f.kind === 'module' ? '[data-module="' + f.id + '"]' : '[data-topic="' + f.id + '"]';
+    /* Vetë moduli ose tema: butonat "Vendos orët…" te përmbledhja lart kanë
+       gjithashtu data-module, dhe fokusi atje e çonte faqen në krye. */
+    var sel = f.kind === 'module' ? '.cur-module[data-module="' + f.id + '"]' : '.cur-topic[data-topic="' + f.id + '"]';
     var box = root.querySelector(sel);
     if (!box) { if (heading) { heading.setAttribute('tabindex', '-1'); focusEl(heading); } return; }
     if (f.target !== 'quick') flash(box);

@@ -790,6 +790,10 @@
       if (cancelBtn) cancelBtn.addEventListener('click', function () { modal.hide(); });
       modalEl.addEventListener('shown.bs.modal', function () { (cancelBtn || modalEl.querySelector('[data-qta-ok]')).focus(); });
       modalEl.addEventListener('hidden.bs.modal', function () {
+        /* Faqja e çoi vetë fokusin gjetiu ndërsa dialogu mbyllej (p.sh. te fusha
+           e temës tjetër pas fshirjes): fokusi mbetet aty, nuk kthehet mbrapsht. */
+        var kept = document.activeElement;
+        if (!kept || kept === document.body || modalEl.contains(kept)) kept = null;
         if (!answered) resolve(false);
         modal.dispose();
         modalEl.remove();
@@ -802,7 +806,12 @@
             try { below._focustrap.deactivate(); below._focustrap.activate(); } catch (e) { /* vazhdon pa kurth fokusi */ }
           }
         }
-        if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+        if (kept) {
+          /* Kurthi i dialogut poshtë mund ta ketë marrë fokusin: i kthehet elementit të zgjedhur. */
+          if (document.activeElement !== kept && document.contains(kept)) {
+            try { kept.focus({ preventScroll: true }); } catch (e) { /* mbetet ku është */ }
+          }
+        } else if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
           try { returnTo.focus({ preventScroll: true }); } catch (e) { /* kontrolli s'merr dot fokus */ }
         } else if (returnTo && !document.querySelector('.modal.show')) {
           /* Butoni u hoq ndërkohë (p.sh. rreshti doli nga lista pas ruajtjes):
