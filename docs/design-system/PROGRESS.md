@@ -65,6 +65,9 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | K8 | Group page | Opening a group at `#kursantet` showed an empty page for a moment; the tab now opens without the transition |
 | K9 | Tables | Names of trainees, courses and groups were underlined; they are now plain links (underline on hover) |
 | K10 | Earlier groups | "Grupet e mëparshme" opens with a banner: new groups are created in "Grupet" (link to the create dialog); "Shto grup të mëparshëm" is only for groups held earlier |
+| E1 | Procesverbal (Excel) | Fatal error: `setCellValueByColumnAndRow()` was removed in PhpSpreadsheet 2 (the project uses 5.0); now `setCellValue([col, row])` |
+| E2 | Documents (Word, PDF) | Word files and PDFs with the QTA logo failed with a PHP fatal error when the server lacked the `zip` or `gd` extension; now the user reads "serverit i mungon një pjesë e nevojshme — njofto administratorin" and the log names the extension (`app/exports/inc/export_requirements.php`). Locally both extensions were enabled in XAMPP's `php.ini` |
+| E3 | Documents | Technical failure texts ("CSRF token mismatch", "Unauthorized", "Composer autoload…", "f=xlsx\|pdf\|docx") replaced with plain Albanian |
 
 ## Security fixes
 
@@ -88,8 +91,10 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
    `session.cookie_secure=1` (HTTPS) and `session.use_strict_mode=1` in php.ini.
 4. **Production**: check for an `admin@qta.test` account and remove it or change its password;
    keep `display_errors=Off`.
-5. **Exports** (PDF/Word/Excel) need `composer install` on the server; they could not be run in
-   the local test environment (no `vendor/`). `.doc` downloads were verified.
+5. **Exports** (PDF/Word/Excel) need `composer install` and the PHP extensions `gd` and `zip`
+   (plus `mbstring`, `fileinfo`, `dom`, `xml`) on the server. Verified locally on 2026-09-27: every
+   document in every format opens (31 files; the lesson register is refused for earlier groups, as designed). Consider updating `dompdf/dompdf` from 2.0.0 to the
+   latest 2.x or 3.x release (later versions fix published security advisories).
 6. **Deleting a group** leaves the trainees' module plans in state `assigned`, so they return to
    "Kursantët pa grup" without their module. Pre-existing; decide the intended rule.
 7. **CDN assets** (Bootstrap, icons, fonts, qrcodejs, html5-qrcode) load without SRI; add

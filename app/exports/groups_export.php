@@ -36,7 +36,7 @@ register_shutdown_function(function () {
   if (!$err) return;
   $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
   if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
-    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provoni përsëri.');
+    qta_download_status('error', 'Dokumenti nuk u krijua. Provo sërish; nëse përsëritet, njofto administratorin.');
   }
 });
 
@@ -54,11 +54,12 @@ foreach ($autoloadCandidates as $path) {
   }
 }
 if (!$autoloadLoaded) {
-  qta_fail(500, 'Composer autoload nuk u gjet.');
+  error_log('[QTA eksport] groups_export: mungon vendor/autoload.php (composer install)');
+  qta_fail(500, 'Dokumenti nuk mund të krijohet tani, sepse në server mungojnë programet e dokumenteve. Njofto administratorin.');
 }
 
 if (!isset($_SESSION['user_id'])) {
-  qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kyçuni përsëri.');
+  qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.');
   header('Location: selectProfile.php');
   exit;
 }
@@ -74,7 +75,7 @@ $userStmt->execute([':id' => $_SESSION['user_id']]);
 $me = $userStmt->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($me['role_name'] ?? ''));
 if (!$me || !in_array($role, ['administrator', 'editor'], true)) {
-  qta_download_status('error', 'Nuk jeni i autorizuar për këtë veprim.');
+  qta_download_status('error', 'Nuk ke leje për këtë dokument.');
   header('Location: selectProfile.php');
   exit;
 }
@@ -84,26 +85,26 @@ $request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $csrfSession = $_SESSION['csrf_token'] ?? '';
 $csrfQuery = (string)($request['csrf'] ?? '');
 if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
-  qta_fail(403, 'CSRF është i pavlefshëm ose mungon.');
+  qta_fail(403, 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
 }
 
 $type = strtolower(trim((string)($request['type'] ?? '')));
 $format = strtolower(trim((string)($request['f'] ?? 'xlsx')));
 
 if ($type !== 'qkl') {
-  qta_fail(400, 'Parametri type i panjohur. Përdor type=qkl.');
+  qta_fail(400, 'Ky raport nuk njihet. Rifresko faqen dhe provo sërish.');
 }
 if (!in_array($format, ['xlsx', 'pdf'], true)) {
-  qta_fail(400, 'Format i panjohur. Për Raportin për QKL përdor vetëm f=xlsx ose f=pdf.');
+  qta_fail(400, 'Zgjidh formatin e raportit: Excel ose PDF.');
 }
 
 $amzeStart = filter_var($request['amze_start'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $amzeEnd = filter_var($request['amze_end'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$amzeStart || !$amzeEnd) {
-  qta_fail(400, 'Intervali AMZË është i pavlefshëm. AMZË fillimi dhe AMZË mbarimi duhet të jenë numra pozitivë.');
+  qta_fail(400, 'Shkruaj numrat e amzës si numra të plotë, p.sh. nga 3400 deri te 3499.');
 }
 if ($amzeStart > $amzeEnd) {
-  qta_fail(400, 'Intervali AMZË është i pavlefshëm. AMZË fillimi duhet të jetë më i vogël ose i barabartë me AMZË mbarimi.');
+  qta_fail(400, 'Numri i parë i amzës duhet të jetë më i vogël ose i njëjtë me të fundit.');
 }
 
 @ini_set('memory_limit', '512M');

@@ -37,7 +37,7 @@ register_shutdown_function(function () {
   if (!$err) return;
   $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
   if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
-    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+    qta_download_status('error', 'Dokumenti nuk u krijua. Provo sërish; nëse përsëritet, njofto administratorin.');
   }
 });
 
@@ -52,7 +52,7 @@ function qta_audit_event(string $type, array $payload): void {
 }
 
 /* Guard */
-if (!isset($_SESSION['user_id'])) { qta_fail(401, 'Unauthorized'); }
+if (!isset($_SESSION['user_id'])) { qta_fail(401, 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.'); }
 
 $u = $pdo->prepare("
   SELECT u.id, r.name AS role_name
@@ -64,22 +64,22 @@ $currentUser = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($currentUser['role_name'] ?? ''));
 
 if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
-  qta_fail(403, 'Forbidden');
+  qta_fail(403, 'Nuk ke leje për këtë dokument.');
 }
 
 /* POST only */
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-  qta_fail(405, 'Method Not Allowed');
+  qta_fail(405, 'Dokumenti shkarkohet nga butonat te "Dokumentet e grupit".');
 }
 
 /* CSRF */
 if (empty($_POST['csrf']) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)$_POST['csrf'])) {
-  qta_fail(400, 'CSRF token mismatch.');
+  qta_fail(400, 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
 }
 
 /* Input */
 $groupId = (int)($_POST['group_id'] ?? 0);
-if ($groupId <= 0) { qta_fail(400, 'group_id i pavlefshem.'); }
+if ($groupId <= 0) { qta_fail(400, 'Grupi nuk u gjet. Rifresko faqen dhe provo sërish.'); }
 
 $format = strtolower(trim((string)($_POST['format'] ?? 'doc')));
 if (!in_array($format, ['doc','pdf'], true)) $format = 'doc';
@@ -174,7 +174,8 @@ qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 if ($format === 'pdf') {
   $autoload = __DIR__ . '/vendor/autoload.php';
   if (!is_file($autoload)) {
-    qta_fail(500, 'PDF kerkon dompdf. Instalo: composer require dompdf/dompdf');
+    error_log('[QTA eksport] download_lista_emerore: mungon vendor/autoload.php (composer install)');
+    qta_fail(500, 'Dokumenti nuk mund të krijohet tani, sepse në server mungojnë programet e dokumenteve. Njofto administratorin.');
   }
   require_once $autoload;
 

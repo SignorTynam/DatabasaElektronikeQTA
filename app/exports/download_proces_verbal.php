@@ -37,7 +37,7 @@ register_shutdown_function(function () {
   if (!$err) return;
   $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
   if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
-    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+    qta_download_status('error', 'Dokumenti nuk u krijua. Provo sërish; nëse përsëritet, njofto administratorin.');
   }
 });
 
@@ -52,17 +52,18 @@ foreach ($autoloadCandidates as $p) {
   if (is_file($p)) { require_once $p; $autoloadLoaded = true; break; }
 }
 if (!$autoloadLoaded) {
-  qta_fail(500, "Composer autoload nuk u gjet. Ekzekuto: composer require phpoffice/phpspreadsheet phpoffice/phpword dompdf/dompdf");
+  error_log('[QTA eksport] download_proces_verbal: mungon vendor/autoload.php (composer install)');
+  qta_fail(500, 'Dokumenti nuk mund të krijohet tani, sepse në server mungojnë programet e dokumenteve. Njofto administratorin.');
 }
 
 /* ===== Guard: admin/editor + CSRF ===== */
-if (!isset($_SESSION['user_id'])) { qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kycuni perseri.'); header('Location: selectProfile.php'); exit; }
+if (!isset($_SESSION['user_id'])) { qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.'); header('Location: selectProfile.php'); exit; }
 
 $u = $pdo->prepare("SELECT u.id, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=:id LIMIT 1");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $me = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($me['role_name'] ?? ''));
-if (!$me || !in_array($role, ['administrator','editor'], true)) { qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.'); header('Location: selectProfile.php'); exit; }
+if (!$me || !in_array($role, ['administrator','editor'], true)) { qta_download_status('error', 'Nuk ke leje për këtë dokument.'); header('Location: selectProfile.php'); exit; }
 
 /* POST (i preferuar: tokeni nuk del në URL) ose GET për lidhjet e vjetra */
 $request     = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
@@ -74,8 +75,12 @@ if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) { qta_fail(403, 'Fa
 $groupId = (int)($request['group_id'] ?? 0);
 $fmt     = strtolower(trim((string)($request['f'] ?? 'pdf'))); // pdf|docx|xlsx
 
-if ($groupId <= 0) { qta_fail(400, 'group_id i pavlefshem.'); }
-if (!in_array($fmt, ['xlsx','pdf','docx'], true)) { qta_fail(400, 'Format i pavlefshem.'); }
+if ($groupId <= 0) { qta_fail(400, 'Grupi nuk u gjet. Rifresko faqen dhe provo sërish.'); }
+if (!in_array($fmt, ['xlsx','pdf','docx'], true)) { qta_fail(400, 'Zgjidh formatin e dokumentit: PDF, Word ose Excel.'); }
+
+require_once __DIR__ . '/inc/export_requirements.php';
+$missingMsg = qta_export_requirements_message('download_proces_verbal', ['docx' => ['zip']][$fmt] ?? []);
+if ($missingMsg !== null) { qta_fail(500, $missingMsg); }
 
 @ini_set('memory_limit','512M');
 @set_time_limit(120);
@@ -592,24 +597,16 @@ function exportXlsxProcesVerbal(array $rows, int $groupId): void {
 
   $headers = ['Nr','Amza','Emër Atësi Mbiemër','Datëlindja','Vendlindja','Datë fillimi','Datë mbarimi','Datë testimi','Vlerësimi'];
 
-  $r = 1;
-  $c = 1;
-  foreach ($headers as $h) {
-    $sheet->setCellValueByColumnAndRow($c++, $r, $h);
-  }
+  /* PhpSpreadsheet 2+ e hoqi setCellValueByColumnAndRow(); adresa jepet si [kolona, rreshti]. */
+  $sheet->fromArray($headers, null, 'A1');
   $sheet->getStyle('A1:I1')->getFont()->setBold(true);
 
   $r = 2;
   foreach ($rows as $row) {
-    $sheet->setCellValueByColumnAndRow(1, $r, $row['nr']);
-    $sheet->setCellValueByColumnAndRow(2, $r, $row['amza']);
-    $sheet->setCellValueByColumnAndRow(3, $r, $row['fullname']);
-    $sheet->setCellValueByColumnAndRow(4, $r, $row['birth']);
-    $sheet->setCellValueByColumnAndRow(5, $r, $row['birthplace']);
-    $sheet->setCellValueByColumnAndRow(6, $r, $row['start']);
-    $sheet->setCellValueByColumnAndRow(7, $r, $row['end']);
-    $sheet->setCellValueByColumnAndRow(8, $r, $row['exam']);
-    $sheet->setCellValueByColumnAndRow(9, $r, $row['final']);
+    $values = [$row['nr'], $row['amza'], $row['fullname'], $row['birth'], $row['birthplace'], $row['start'], $row['end'], $row['exam'], $row['final']];
+    foreach ($values as $i => $value) {
+      $sheet->setCellValue([$i + 1, $r], $value);
+    }
     $r++;
   }
 

@@ -91,6 +91,12 @@ if (!in_array($format, ['pdf', 'docx'], true)) {
   qta_fail(400, 'Zgjidh formatin e regjistrit: PDF ose Word.');
 }
 
+require_once __DIR__ . '/inc/export_requirements.php';
+$missingMsg = qta_export_requirements_message('download_regjistri_mesimit', $format === 'docx' ? ['zip'] : []);
+if ($missingMsg !== null) {
+  qta_fail(500, $missingMsg);
+}
+
 $autoload = __DIR__ . '/vendor/autoload.php';
 $rootAutoload = __DIR__ . '/../../vendor/autoload.php';
 if (!is_file($rootAutoload)) {
