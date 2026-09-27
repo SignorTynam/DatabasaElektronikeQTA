@@ -1284,11 +1284,11 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
               </td>
               <td class="nowrap"><span class="id-code"><?= h($minLbl . $maxLbl) ?></span></td>
               <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="start_date" title="Data e fillimit (dd.mm.vvvv)">
-                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" data-dmy data-dmy-required data-dmy-title="Data e fillimit të grupit"
                       data-field="start_date" data-group="<?= (int)$gid ?>" data-student="0"><?= h(qta_date($h0['start_date'])) ?></span>
               </td>
               <td class="nowrap cell" data-student="0" data-group="<?= (int)$gid ?>" data-field="end_date" title="Data e mbarimit (dd.mm.vvvv)">
-                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"
+                <span class="editable cell-inline" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" data-dmy data-dmy-required data-dmy-title="Data e mbarimit të grupit"
                       data-field="end_date" data-group="<?= (int)$gid ?>" data-student="0"><?= h(qta_date($h0['end_date'])) ?></span>
               </td>
               <td class="nowrap num-col" data-sort-value="<?= $nStud ?>">
@@ -1402,7 +1402,8 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
                           <?php if (!empty($r['personal_number'])): ?><span class="cell-sub code"><?= h((string)$r['personal_number']) ?></span><?php endif; ?>
                         </td>
                         <td class="cell nowrap" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= $gid ?>" data-field="exam_date" title="Jo para mbarimit të grupit (dd.mm.vvvv)">
-                          <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit"' : '' ?>><?= h(qta_date($r['exam_date'])) ?></span>
+                          <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit"' : '' ?>
+                                data-dmy data-dmy-min="<?= h((string)($h0['end_date'] ?? '')) ?>" data-dmy-title="Data e provimit — <?= h($full !== '' ? $full : (string)$r['nr_amze']) ?>"><?= h(qta_date($r['exam_date'])) ?></span>
                         </td>
                         <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët, nga 0 deri në 100">
                           <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Pikët" inputmode="decimal"' : '' ?>><?= $r['final_score'] !== null ? h(rtrim(rtrim((string)$r['final_score'], '0'), '.')) : '—' ?></span>
@@ -1416,7 +1417,7 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
                 </table>
               </div>
               <?php if ($EDIT_MODE): ?>
-                <p class="form-text mt-2 mb-0">Kliko datën e provimit ose pikët për t'i ndryshuar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon.</p>
+                <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar, ose pikët për t'i shkruar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon.</p>
               <?php endif; ?>
             <?php else: ?>
               <?= qta_empty('Grupi është bosh', $EDIT_MODE ? 'Shto kursantë me butonin "Ndrysho kursantët".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
@@ -1569,11 +1570,11 @@ $isMatch = static function (array $r) use ($qNeedle): bool {
           </div>
           <div class="col-6 col-md-3">
             <label class="form-label" for="cgStart">Fillimi <span class="req" aria-hidden="true">*</span></label>
-            <input id="cgStart" type="text" name="start_date" class="form-control dmy" required placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <input id="cgStart" type="text" name="start_date" class="form-control" data-dmy data-dmy-max="#cgEnd" required placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
           <div class="col-6 col-md-3">
             <label class="form-label" for="cgEnd">Mbarimi <span class="req" aria-hidden="true">*</span></label>
-            <input id="cgEnd" type="text" name="end_date" class="form-control dmy" required placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <input id="cgEnd" type="text" name="end_date" class="form-control" data-dmy data-dmy-min="#cgStart" required placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" <?= $EDIT_MODE ? '' : 'disabled' ?>>
           </div>
           <div class="col-12">
             <label class="form-label" for="cgAmze">Numrat e amzës së kursantëve <span class="optional">(mund t'i shtosh edhe më vonë)</span></label>
@@ -1802,6 +1803,8 @@ function refreshGroup(gid){
   document.querySelectorAll(`[data-group-dates="${gid}"]`).forEach(el => { el.textContent = isoToDmy(d.start) + ' – ' + isoToDmy(d.end); });
   document.querySelectorAll(`[data-group-status="${gid}"]`).forEach(el => { el.innerHTML = groupStatusHtml(gid); });
   document.querySelectorAll(`#groupModal_${gid} tr[data-student-row]`).forEach(r => refreshStudentStatus(r, gid));
+  /* Kalendari i provimit nuk lejon data para mbarimit të ri. */
+  document.querySelectorAll(`#groupModal_${gid} td[data-field="exam_date"] .editable[data-dmy]`).forEach(el => el.setAttribute('data-dmy-min', d.end || ''));
 }
 
 async function saveEditable(editable){
@@ -1929,18 +1932,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
     try { history.replaceState(history.state, '', url.pathname + url.search + url.hash); } catch(e) { /* adresa mbetet */ }
   }, { once: true });
   bootstrap.Modal.getOrCreateInstance(el).show();
-});
-
-/* ===== Maska e datave në formularin e krijimit ===== */
-function maskToDDMMYYYY(input){
-  const digits = String(input||'').replace(/\D/g,'').slice(0,8);
-  let out = digits.slice(0,2);
-  if (digits.length > 2) out += '.' + digits.slice(2,4);
-  if (digits.length > 4) out += '.' + digits.slice(4,8);
-  return out;
-}
-document.querySelectorAll('input.dmy').forEach(inp=>{
-  inp.addEventListener('input', ()=>{ inp.value = maskToDDMMYYYY(inp.value); });
 });
 
 /* ===== Parashikimi i ndarjes dhe konfirmimet e formularëve ===== */

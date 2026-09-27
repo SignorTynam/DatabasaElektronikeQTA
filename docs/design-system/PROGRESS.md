@@ -18,6 +18,7 @@ Execution prompt: `SUPER-PORTAL-PROMPT.md`. Implemented system: `THEMELI.md`.
 | 10 | QA: lint, automated DOM audit, real Apache check, manual flows | Done |
 | 11 | Domain change: "Modul" becomes **Kurs**, with ordered **Modulet** and **Temat**; new **Grupet** with a lesson schedule (`lesson_groups.php`, `lesson_group.php`, `course.php`); every earlier group stays in **Grupet e mëparshme** unchanged. Migration `db/migrations/2026-09-26-…`, reference `docs/domain/COURSES-AND-SCHEDULES.md`, tests in `tests/` | Done |
 | 12 | Document **"Regjistri i orëve të mësimit"** (PDF + Word) for groups with a schedule: odd pages attendance grid, even pages dates and topics of the module, one column and one row per teaching hour, from the group's stored schedule and frozen topics. `app/shared/lesson_register.php`, `app/exports/download_regjistri_mesimit.php`, reference `docs/domain/COURSES-AND-SCHEDULES.md` §13 | Done |
+| 13 | **Calendar dialog** for every date: form fields (new groups, earlier groups, trainee, card, special day, history filter) and editable date cells (groups, register, trainees, exams). Replaces the browser's date picker in the history filter. `app/assets/js/date-picker.js`, components §29 | Done |
 
 ## Pages
 
@@ -68,6 +69,7 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 | E1 | Procesverbal (Excel) | Fatal error: `setCellValueByColumnAndRow()` was removed in PhpSpreadsheet 2 (the project uses 5.0); now `setCellValue([col, row])` |
 | E2 | Documents (Word, PDF) | Word files and PDFs with the QTA logo failed with a PHP fatal error when the server lacked the `zip` or `gd` extension; now the user reads "serverit i mungon një pjesë e nevojshme — njofto administratorin" and the log names the extension (`app/exports/inc/export_requirements.php`). Locally both extensions were enabled in XAMPP's `php.ini` |
 | E3 | Documents | Technical failure texts ("CSRF token mismatch", "Unauthorized", "Composer autoload…", "f=xlsx\|pdf\|docx") replaced with plain Albanian |
+| E4 | History filter | "Nga data / Deri më" used the browser's date picker (yyyy-mm-dd); now the QTA calendar and `dd.mm.yyyy`, with ISO links still accepted |
 
 ## Security fixes
 

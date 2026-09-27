@@ -197,7 +197,19 @@ function qta_log_subject(PDO $pdo, string $table, array $pk, array $tableLabels,
 }
 
 /* ================================================================ Filtrat */
-$validDate = static fn($v) => (is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) ? $v : null;
+/* Datat vijnë si dd.mm.vvvv nga fushat (kalendari) ose vvvv-mm-dd nga lidhjet e periudhave. */
+$validDate = static function ($v): ?string {
+  if (!is_string($v)) return null;
+  $v = trim($v);
+  if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/', $v, $m)) {
+    [$d, $mo, $y] = [(int)$m[1], (int)$m[2], (int)$m[3]];
+  } elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m)) {
+    [$y, $mo, $d] = [(int)$m[1], (int)$m[2], (int)$m[3]];
+  } else {
+    return null;
+  }
+  return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : null;
+};
 $action  = isset($_GET['action']) && in_array($_GET['action'], ['INSERT', 'UPDATE', 'DELETE'], true) ? $_GET['action'] : null;
 $table   = isset($_GET['table']) && is_string($_GET['table']) && $_GET['table'] !== '' ? $_GET['table'] : null;
 $q       = isset($_GET['q']) && is_string($_GET['q']) && trim($_GET['q']) !== '' ? trim($_GET['q']) : null;
@@ -458,11 +470,11 @@ $kinds = ['INSERT' => ['is-add', 'bi-plus-lg'], 'UPDATE' => ['is-edit', 'bi-penc
     <?php endif; ?>
     <div class="filter-field">
       <label class="form-label" for="lfrom">Nga data</label>
-      <input class="form-control" type="date" id="lfrom" name="from" value="<?= h((string)$from) ?>" max="<?= h($today) ?>">
+      <input class="form-control" type="text" id="lfrom" name="from" value="<?= h(qta_date($from, '')) ?>" inputmode="numeric" placeholder="dd.mm.vvvv" data-dmy data-dmy-max="today">
     </div>
     <div class="filter-field">
       <label class="form-label" for="lto">Deri më</label>
-      <input class="form-control" type="date" id="lto" name="to" value="<?= h((string)$to) ?>" max="<?= h($today) ?>">
+      <input class="form-control" type="text" id="lto" name="to" value="<?= h(qta_date($to, '')) ?>" inputmode="numeric" placeholder="dd.mm.vvvv" data-dmy data-dmy-min="#lfrom" data-dmy-max="today">
     </div>
     <div class="filter-actions">
       <?php if ($activeFilters): ?><a class="btn btn-ghost" href="<?= h($self) ?>">Pastro filtrat</a><?php endif; ?>

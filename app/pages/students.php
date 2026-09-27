@@ -829,7 +829,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
                 <span class="editable id-code" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['personal_number'] ?: '—') ?></span>
               </td>
               <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="Formati: dd.mm.vvvv">
-                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($s['birth_date'])) ?></span>
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" data-dmy data-dmy-kind="birth" data-dmy-title="Datëlindja — <?= h($fullName ?: 'kursanti') ?>"><?= h(qta_date($s['birth_date'])) ?></span>
               </td>
               <td class="cell" data-id="<?= $sid ?>" data-field="birth_place">
                 <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['birth_place'] ?: '—') ?></span>
@@ -944,7 +944,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
           </div>
           <div class="col-md-4">
             <label class="form-label" for="bdInput">Datëlindja</label>
-            <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" aria-describedby="bdHelp">
+            <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" aria-describedby="bdHelp" data-dmy data-dmy-kind="birth">
             <p class="form-text" id="bdHelp">P.sh. 05.03.1990</p>
           </div>
           <div class="col-md-4">

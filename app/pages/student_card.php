@@ -577,7 +577,7 @@ $flashErr  = flash('err');
             <dt><label for="pdBirth" class="m-0">Datëlindja</label></dt>
             <dd>
               <?php if ($canInline): ?>
-                <input id="pdBirth" type="text" class="form-control form-control-sm dmy-input w-auto" inputmode="numeric" autocomplete="off"
+                <input id="pdBirth" type="text" class="form-control form-control-sm dmy-input w-auto" inputmode="numeric" autocomplete="off" data-dmy data-dmy-kind="birth" data-dmy-commit
                        placeholder="dd.mm.vvvv" data-type="person" data-id="<?= (int)$pid ?>" data-field="birth_date"
                        value="<?= h(qta_date($person['birth_date'] ?? null, '')) ?>">
               <?php else: ?>

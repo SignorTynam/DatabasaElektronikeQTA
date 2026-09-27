@@ -2614,3 +2614,231 @@ fieldset > legend.form-label { float: none; width: auto; margin-bottom: .5rem; f
   .tt-day { break-inside: avoid; }
   .tt-day.is-today { box-shadow: none; }
 }
+
+/* ============================================ 29. Kalendari (zgjedhja e datës) */
+/* Fusha e datës: butoni i kalendarit brenda fushës, si te fjalëkalimi.
+   Klikimi mbi fushë hap kalendarin; me tastierë fusha shkruhet si më parë. */
+.date-field { position: relative; display: block; }
+.date-field.is-auto { display: inline-block; max-width: 100%; vertical-align: middle; }
+.date-field > .form-control { padding-right: 2.75rem; cursor: pointer; }
+.date-field.is-sm > .form-control { padding-right: 2.25rem; }
+.date-field-btn {
+  position: absolute;
+  top: 50%;
+  right: .25rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.date-field-btn:hover { background: var(--surface-hover); color: var(--text); }
+.date-field-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.date-field.is-sm > .date-field-btn { right: .125rem; width: 1.75rem; height: 1.75rem; font-size: var(--fs-sm); }
+.date-field:has(> .form-control:disabled) > .date-field-btn,
+.date-field:has(> .form-control[readonly]) > .date-field-btn { display: none; }
+.date-field > .form-control:disabled,
+.date-field > .form-control[readonly] { padding-right: .75rem; cursor: default; }
+.date-field > .form-control:disabled { cursor: not-allowed; }
+
+/* Qeliza e datës në tabelë (e hapur për ndryshim): kalendari hapet me klik. */
+.editable[data-dmy][contenteditable="true"] { cursor: pointer; }
+.dp-cell-icon {
+  margin-left: .375rem;
+  color: var(--text-subtle);
+  font-size: .8em;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease);
+}
+td:hover > .dp-cell-icon,
+.editable[data-dmy]:focus + .dp-cell-icon { color: var(--accent-text); }
+
+/* Dialogu: koka mban datën (e shkruar dhe me fjalë), trupi kalendarin. */
+.dp-dialog { max-width: 22.5rem; }
+.dp-head {
+  position: relative;
+  padding: 1.125rem 1.25rem .875rem;
+  border-bottom: 1px solid var(--border);
+}
+.dp-head > .btn-close { position: absolute; top: .75rem; right: .75rem; }
+.dp-title {
+  margin: 0 0 .25rem;
+  padding-right: 2.25rem;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-snug);
+  letter-spacing: 0;
+}
+/* Data e shkruar: duket si titull, shkruhet si fushë (vija me pika = mund të ndryshohet). */
+.dp-entry {
+  display: block;
+  width: 100%;
+  max-width: 11ch;
+  margin: 0 0 0 -.3rem;
+  padding: .05rem .3rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background-color: transparent;
+  background-image: linear-gradient(90deg, var(--border-strong) 50%, transparent 0);
+  background-position: .3rem 100%;
+  background-repeat: repeat-x;
+  background-size: 6px 1px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.dp-entry::placeholder { color: var(--text-subtle); opacity: 1; }
+.dp-entry:hover { background-color: var(--surface-hover); }
+.dp-entry:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  background-color: var(--surface);
+  background-image: none;
+}
+.dp-words {
+  min-height: 1.35em;
+  margin: .3rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+.dp-words.is-error { color: var(--danger); font-weight: var(--fw-semibold); }
+
+.dp-body { padding: .625rem 1rem 1rem; }
+.dp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: .375rem;
+}
+.dp-step:disabled { visibility: hidden; }
+.dp-period {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: var(--control-h);
+  padding: 0 .75rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.dp-period:hover { background: var(--surface-hover); }
+.dp-period:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.dp-period > .bi { color: var(--text-muted); font-size: .75em; }
+.dp-period[aria-disabled="true"] { background: transparent; cursor: default; }
+.dp-period[aria-disabled="true"] > .bi { display: none; }
+
+/* Pamjet (ditët, muajt, vitet) kanë të njëjtën lartësi: dialogu nuk kërcen. */
+.dp-view { --dp-view-h: 17.5rem; min-height: var(--dp-view-h); }
+.dp-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 2px;
+  table-layout: fixed;
+}
+.dp-grid th {
+  padding: 0 0 .25rem;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-align: center;
+}
+.dp-grid td { padding: 0 1px; text-align: center; cursor: pointer; }
+.dp-grid td > span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 2.5rem;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.dp-grid td:hover > span { background: var(--surface-hover); }
+.dp-grid td.is-out > span { color: var(--text-subtle); }
+.dp-grid td.is-today > span {
+  box-shadow: inset 0 0 0 1.5px var(--accent-border);
+  color: var(--accent-text);
+  font-weight: var(--fw-bold);
+}
+.dp-grid td.is-selected > span,
+.dp-grid td.is-selected:hover > span {
+  background: var(--action);
+  box-shadow: none;
+  color: var(--action-text);
+  font-weight: var(--fw-bold);
+}
+.dp-grid td[aria-disabled="true"] { cursor: not-allowed; }
+.dp-grid td[aria-disabled="true"] > span,
+.dp-grid td[aria-disabled="true"]:hover > span {
+  background: transparent;
+  color: var(--text-subtle);
+  opacity: .4;
+}
+.dp-grid td:focus { outline: none; }
+.dp-grid td:focus-visible > span { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.dp-cells {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: .375rem;
+  height: var(--dp-view-h);
+}
+.dp-cell {
+  display: grid;
+  place-items: center;
+  min-height: var(--touch-min);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.dp-cell:hover { background: var(--surface-hover); }
+.dp-cell.is-today { border-color: var(--accent-border); color: var(--accent-text); }
+.dp-cell.is-selected,
+.dp-cell.is-selected:hover { border-color: var(--action); background: var(--action); color: var(--action-text); }
+.dp-cell[aria-disabled="true"],
+.dp-cell[aria-disabled="true"]:hover { background: transparent; color: var(--text-subtle); opacity: .4; cursor: not-allowed; }
+.dp-cell:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.dp-foot { padding: .625rem 1rem; }
+.dp-foot .modal-footer-start > [hidden] { display: none; }
+@media (max-width: 379.98px) {
+  .dp-view { --dp-view-h: 16.25rem; }
+  .dp-head { padding: 1rem 1rem .75rem; }
+  .dp-body { padding: .5rem .625rem .75rem; }
+  .dp-entry { font-size: var(--fs-xl); }
+  .dp-grid td > span { font-size: var(--fs-sm); }
+  .dp-foot { padding: .5rem .625rem; }
+}

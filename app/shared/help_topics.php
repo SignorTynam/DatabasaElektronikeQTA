@@ -40,7 +40,7 @@ return [
       ['Shtyp "Mbyll ndryshimet"', 'Kur mbaron, mbyll ndryshimet që të mos ndryshosh gjë pa dashje.'],
     ],
     'tips' => [
-      'Datat shkruhen si dd.mm.vvvv, p.sh. 05.03.2026. Pranohen edhe viza ose pjerrëta.',
+      'Kliko një datë dhe zgjidhe në kalendar, ose shkruaje si dd.mm.vvvv, p.sh. 05.03.2026. Pranohen edhe viza ose pjerrëta.',
       'Çdo ndryshim ruhet te "Historiku i ndryshimeve", me vlerën para dhe pas.',
     ],
   ],
@@ -102,7 +102,7 @@ return [
     ],
     'tips' => [
       'Kutia ngjyrë jeshile pas ruajtjes do të thotë që ndryshimi u ruajt. E kuqja do të thotë që nuk u ruajt — kontrollo formatin.',
-      'Datat shkruhen si dd.mm.vvvv, p.sh. 05.03.1990.',
+      'Kliko datëlindjen: kalendari nis nga viti, pastaj muaji dhe dita. Mund ta shkruash edhe si dd.mm.vvvv, p.sh. 05.03.1990.',
     ],
   ],
 
@@ -143,7 +143,7 @@ return [
     'intro' => 'Grupet e krijuara para orarit të mësimit. Mbeten siç ishin: çdo grup ndjek një kurs në data të caktuara, pa orar ditë pas dite. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet. Grupet e reja krijohen te "Grupet".',
     'steps' => [
       ['Hap një grup', 'Kliko emrin e kursit: grupi hapet në një dritare me kursantët, provimet, pikët dhe dokumentet.'],
-      ['Cakto datat', 'Me ndryshimet e hapura, kliko datën e fillimit ose të mbarimit në tabelë, ose datën e provimit brenda grupit, dhe shkruaj dd.mm.vvvv.'],
+      ['Cakto datat', 'Me ndryshimet e hapura, kliko datën e fillimit ose të mbarimit në tabelë, ose datën e provimit brenda grupit, dhe zgjidhe në kalendar. Mund ta shkruash edhe si dd.mm.vvvv.'],
       ['Shëno pikët', 'Kliko pikët dhe shkruaj një numër nga 0 deri në 100.'],
       ['Ndrysho kursantët', 'Brenda grupit shtyp "Ndrysho kursantët" dhe shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10, grupi ndahet vetë — të tregohet si para se të ruhet.'],
       ['Mbyll grupin', 'Kur provimet dhe pikët janë të plota, shtyp "Mbylle grupin" brenda grupit ose ndiz çelësin "Mbyllur" në tabelë. Pas kësaj çdo ndryshim kërkon konfirmim.'],
@@ -228,7 +228,7 @@ return [
       ['Lexo orarin', 'Te "Ditë pas dite" çdo datë tregon temat dhe orët. "ora 1 nga 2" do të thotë që tema vazhdon në ditën tjetër të mësimit.'],
       ['Ndrysho një ditë', 'Me ndryshimet e hapura shtyp "Ndrysho ditën": orë të tjera, pa mësim (p.sh. festë), ose mësim të dielën. Orari rillogaritet vetë dhe data e mbarimit përditësohet.'],
       ['Ndrysho fillimin ose orët në ditë', 'Te "Orari në shkurt" shtyp "Ndrysho fillimin ose orët në ditë". Para ruajtjes të tregohet kur do të mbarojë mësimi.'],
-      ['Provimet dhe pikët', 'Te "Kursantët dhe provimet" kliko datën e provimit ose pikët. Provimi nuk mund të jetë para mbarimit të mësimit.'],
+      ['Provimet dhe pikët', 'Te "Kursantët dhe provimet" kliko datën e provimit dhe zgjidhe në kalendar, ose kliko pikët dhe shkruaji. Provimi nuk mund të jetë para mbarimit të mësimit: kalendari nuk i lejon ato ditë.'],
       ['Mbyll grupin', 'Kur provimet dhe pikët janë të plota, shtyp "Mbylle grupin". Pas kësaj çdo ndryshim kërkon konfirmim.'],
     ],
     'tips' => [

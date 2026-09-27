@@ -19,7 +19,8 @@ COMPONENTS.md are the original specification; where they differ, this file wins.
    always confirmed with a sentence that explains the consequence.
 4. **Status in words**, never colour alone: "Në mësim", "Pret pikët", "64 pikë".
    The system records **points only** (0–100): there is no "kaloi / nuk kaloi" anywhere.
-5. **Dates are always `dd.mm.yyyy`**; inputs also accept `-`, `/` and ISO.
+5. **Dates are always `dd.mm.yyyy`**; inputs also accept `-`, `/` and ISO. Every date field and
+   editable date cell opens the same calendar dialog (never the browser's own date picker).
 6. **Accessible baseline**: WCAG 2.2 AA contrast, visible focus, labels on every
    control, keyboard paths for every pointer action, dialogs that trap and return focus.
 
@@ -36,6 +37,7 @@ COMPONENTS.md are the original specification; where they differ, this file wins.
 | `app/assets/js/app.js` | Theme, drawer, toasts, confirm dialog, table filter/sort, QR, copy, search palette… (§6) |
 | `app/assets/js/verify.js`, `login-ui.js`, `contact-ui.js`, `error-page.js` | Page-specific behaviour |
 | `app/assets/js/curriculum.js` | Course page: modules and topics, order, fixes (`course.php`) |
+| `app/assets/js/date-picker.js` | Calendar dialog for every `data-dmy` field or editable cell (§5 "Calendar", §6) — loaded on every panel page by `app_scripts.php` |
 | `app/assets/js/lesson-groups.js`, `lesson-group.js` | Scheduled groups: create preview; group page tabs, schedule changes, trainees, exams and points |
 | `app/shared/themeli.php` | PHP helpers for dates, names, statuses, empty states (§7) |
 | `app/shared/domain.php`, `schedule.php`, `curriculum.php`, `group_members.php`, `lesson_groups.php`, `staff_guard.php` | Domain services for courses, modules, topics and scheduled groups — see `docs/domain/COURSES-AND-SCHEDULES.md` |
@@ -141,6 +143,7 @@ and "nothing matches".
 | Course structure (27) | `.cur-summary(-head)`, `.cur-meter(-text)`, `.hours-bar(.is-full,.is-over)`, `.cur-issues`, `.cur-usage`, `.cur-modules > .cur-module(.has-issue,.is-over)` (`-head/-main/-title/-meta`), `.cur-pos`, `.cur-actions`, `.cur-topics > .cur-topic` (`-pos/-title/-hours`), `.cur-quick(-title/-hours)`, `.cur-empty` | Rendered by `qta_render_course_structure()`. Ordered lists (`ol`) carry the order; up/down arrow buttons ("Lëviz lart" / "Lëviz poshtë"), never drag-only. The hours bar is a native `<progress>` with the numbers in text next to it. Each module says "Temat: 15 nga 20 orë · mbeten 5" (or "· 80 tepër" in red for older data) |
 | Plan preview (28) | `.plan-preview(.is-ok,.is-warning,.is-error)` | Live result inside a form: end date, lesson days, what changes; `aria-live="polite"` |
 | Timetable (28) | `.timetable > .tt-day(.is-week,.is-off,.is-today)`, `.tt-date`, `.tt-main`, `.tt-head`, `.tt-title`, `.tt-hours`, `.tt-off`, `.tt-note`, `.tt-rule-note`, `.tt-module(-name)`, `.tt-flag`, `.tt-slots > .tt-slot` (`.tt-num`, `.tt-topic`, `.tt-slot-hours`, `.tt-part`), `.tt-actions` | Rendered by `qta_render_timetable()`. One `li#dita-YYYY-MM-DD` per calendar date; split topics say "ora 1 nga 2 · vazhdon në ditën tjetër"; prints as a plain list |
+| Calendar (29) | `.date-field` + `.date-field-btn` (added around `input[data-dmy]`), `.dp-cell-icon` (after an editable date cell), dialog `.dp-modal` › `.dp-head` (`.dp-title`, `.dp-entry`, `.dp-words`), `.dp-nav` (`.dp-step`, `.dp-period`), `.dp-grid` (days) / `.dp-cells` › `.dp-cell` (months, years) | Built by `date-picker.js`, never by hand. Days Monday–Sunday, today ringed, the chosen day filled, days outside the allowed range faded and not selectable; the month title zooms out to months and years (birth dates start at the years). The date can also be typed at the top. Stacks over another dialog like `qtaConfirm` |
 | Scheduled group page (28) | `.lg-lead`, `.lg-tabs` (scrolls sideways on phones), `.lg-date`, `.lg-hours-choice`, `.lg-danger`, `fieldset > legend.form-label` | Facts row under the title; tabs "Orari i mësimit / Kursantët dhe provimet / Dokumentet"; the delete zone sits last |
 
 ## 6. JavaScript API (app.js)
@@ -159,7 +162,8 @@ and "nothing matches".
 | `partials/table_filter.php` | Instant filter of visible rows (ignores dropdown options) with quick chips |
 | `[data-theme-set="light|system|dark"]` | Theme choice anywhere |
 | `[data-open-palette]`, Ctrl+K, `/` | Search palette (`app/actions/search_advanced.php`) |
-| `input[data-dmy]` | Formats a date as `dd.mm.vvvv` while typing (digits only needed) |
+| `input[data-dmy]`, `.editable[contenteditable][data-dmy]` | Calendar dialog on click, on the calendar button or with Alt+↓; typing still works (digits only needed, formatted as `dd.mm.vvvv`). Options: `data-dmy-min` / `data-dmy-max` (`yyyy-mm-dd`, `today` or `#id` of another date field), `data-dmy-kind="birth"` (up to today, starts at the years, no "Sot"), `data-dmy-title`, `data-dmy-required` (no "Pastro"), `data-dmy-commit` (field that saves on blur: the choice saves at once). A field gets `input` + `change`; an editable cell gets focus, the new text and blur, so the page saves it as if typed. In the dialog: arrows day/week, PageUp/PageDown month (+Shift year), Home/End week, Enter picks, Esc closes, digits go to the typed date |
+| `qtaDatePicker.open(el)`, `.enhance(root)`, `.parse(value)` | Open the calendar from code; enhance fields added later; `dd.mm.yyyy` → `yyyy-mm-dd` or `null` |
 | Dialogs opened from code | `Modal.show(opener)`: on close without saving, focus returns to the opener (as with `data-bs-toggle`) |
 | Hours that do not fit | JSON endpoints answer HTTP 400 `{code: 'hours_limit', dialog: {title, message, fix: {value, label} \| null}}`; the page shows `qtaConfirm` with "Vendos 10 orë" (saves the valid value) and "Ndrysho orët" (back to the field). Dialog hints say beforehand how many hours are allowed |
 | Server-driven confirmation | JSON endpoints answer HTTP 409 `{confirm: {title, message, confirm}}` (`QtaConfirmNeeded`); the page shows `qtaConfirm` and resends with `force = 1`. The same service computes `dry_run` previews, so the dialog shows the consequence before saving |

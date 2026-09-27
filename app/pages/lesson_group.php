@@ -376,7 +376,8 @@ $statusHtml = static function (array $g) use ($today): string {
                       <?php if (!empty($m['personal_number'])): ?><span class="cell-sub code"><?= h((string)$m['personal_number']) ?></span><?php endif; ?>
                     </td>
                     <td class="cell nowrap" data-student="<?= (int)$m['student_id'] ?>" data-field="exam_date" title="Jo para mbarimit të grupit (dd.mm.vvvv)">
-                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit për ' . h($full ?: (string)$m['nr_amze']) . '"' : '' ?>><?= h(qta_date($m['exam_date'])) ?></span>
+                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit për ' . h($full ?: (string)$m['nr_amze']) . '"' : '' ?>
+                            data-dmy data-dmy-min="<?= h((string)$g['end_date']) ?>" data-dmy-title="Data e provimit — <?= h($full ?: (string)$m['nr_amze']) ?>"><?= h(qta_date($m['exam_date'])) ?></span>
                     </td>
                     <td class="cell nowrap num-col" data-student="<?= (int)$m['student_id'] ?>" data-field="final_score" title="Pikët, nga 0 deri në 100">
                       <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" inputmode="decimal" aria-label="Pikët për ' . h($full ?: (string)$m['nr_amze']) . '"' : '' ?>><?= $m['final_score'] !== null ? h(rtrim(rtrim((string)$m['final_score'], '0'), '.')) : '—' ?></span>
@@ -390,7 +391,7 @@ $statusHtml = static function (array $g) use ($today): string {
             </table>
           </div>
           <?php if ($EDIT_MODE): ?>
-            <p class="form-text mt-2 mb-0">Kliko datën e provimit ose pikët për t'i ndryshuar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon. Provimi nuk mund të jetë para <?= h(qta_date((string)$g['end_date'])) ?>.</p>
+            <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar, ose pikët për t'i shkruar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon. Provimi nuk mund të jetë para <?= h(qta_date((string)$g['end_date'])) ?>.</p>
           <?php endif; ?>
         <?php else: ?>
           <?= qta_empty('Grupi nuk ka ende kursantë', $EDIT_MODE ? 'Shto kursantët me numrat e amzës te "Ndrysho kursantët", ose caktoji te "Kursantët pa grup".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>

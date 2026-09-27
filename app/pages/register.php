@@ -259,6 +259,9 @@ else require __DIR__ . '/inc/navbar.php';
           $ph = trim((string)($r['phone'] ?? ''));
           if ($ph === '—' || $ph === '-') { $ph = ''; }
           $scoreText = $r['final_score'] !== null ? rtrim(rtrim((string)$r['final_score'], '0'), '.') : '—';
+          /* Kalendari hapet vetëm për kursantët që janë në një grup. */
+          $who = h($full !== '' ? $full : (string)$r['nr_amze']);
+          $dmy = static fn(string $title, string $extra = ''): string => $gid ? ' data-dmy data-dmy-title="' . $title . ' — ' . $who . '"' . $extra : '';
         ?>
           <tr data-row data-start="<?= h((string)($r['start_date'] ?? '')) ?>" data-end="<?= h((string)($r['end_date'] ?? '')) ?>" data-has-group="<?= $gid ? '1' : '0' ?>">
             <td class="nowrap"><span class="id-code"><?= h((string)$r['nr_amze']) ?></span></td>
@@ -278,14 +281,14 @@ else require __DIR__ . '/inc/navbar.php';
               </td>
             <?php else: ?>
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="start_date" title="Data e fillimit të grupit (dd.mm.vvvv)">
-              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['start_date'])) ?></span>
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $dmy('Data e fillimit të grupit', ' data-dmy-required') ?>><?= h(qta_date($r['start_date'])) ?></span>
             </td>
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="end_date" title="Data e mbarimit, jo para fillimit (dd.mm.vvvv)">
-              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['end_date'])) ?></span>
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $dmy('Data e mbarimit të grupit', ' data-dmy-required') ?>><?= h(qta_date($r['end_date'])) ?></span>
             </td>
             <?php endif; ?>
             <td class="cell nowrap" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="exam_date" title="Data e provimit, jo para mbarimit të grupit (dd.mm.vvvv)">
-              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h(qta_date($r['exam_date'])) ?></span>
+              <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $dmy('Data e provimit', ' data-dmy-min="' . h((string)($r['end_date'] ?? '')) . '"') ?>><?= h(qta_date($r['exam_date'])) ?></span>
             </td>
             <td class="cell nowrap num-col" data-student="<?= $sid ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët 0–100">
               <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($scoreText) ?></span>
