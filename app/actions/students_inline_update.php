@@ -33,7 +33,7 @@ if (!$me || !in_array($role, ['administrator','editor'], true)) {
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 if (!$EDIT_MODE) {
     http_response_code(403);
-    echo json_encode(['ok'=>false,'error'=>'Edit Mode është OFF. Aktivizo për të bërë ndryshime.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
 }
 
 /* Lexo input (JSON ose form) */
@@ -49,7 +49,7 @@ $value      = $data['value'] ?? null;
 
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 
 /* ==============================
@@ -69,7 +69,7 @@ if ($action === 'check_amze') {
             p.personal_number,
             p.phone,
             p.birth_date,
-            DATE_FORMAT(p.birth_date, '%d-%m-%Y') AS birth_date_dmy
+            DATE_FORMAT(p.birth_date, '%d.%m.%Y') AS birth_date_dmy
         FROM students s
         JOIN persons p ON p.id = s.person_id
         WHERE s.nr_amze = :amze
@@ -263,7 +263,7 @@ if ($action === 'link_person_by_pn') {
         $pdo->commit();
 
         // kthe të dhëna për autofill
-        $birthDmy = (!empty($p['birth_date']) ? date('d-m-Y', strtotime((string)$p['birth_date'])) : '—');
+        $birthDmy = (!empty($p['birth_date']) ? date('d.m.Y', strtotime((string)$p['birth_date'])) : '—');
         echo json_encode([
             'ok'=>true,
             'person'=>[
@@ -340,7 +340,7 @@ function fmt_dMY(?string $iso): string {
     if (!$iso) return '—';
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
     $ts = strtotime($iso);
-    return $ts ? date('d-m-Y', $ts) : '—';
+    return $ts ? date('d.m.Y', $ts) : '—';
 }
 
 $dispValue = null;
@@ -405,7 +405,7 @@ try {
                             p.personal_number,
                             p.phone,
                             p.birth_date,
-                            DATE_FORMAT(p.birth_date, '%d-%m-%Y') AS birth_date_dmy
+                            DATE_FORMAT(p.birth_date, '%d.%m.%Y') AS birth_date_dmy
                             FROM persons p
                             WHERE p.personal_number = :pn AND p.id <> :pid
                             LIMIT 1

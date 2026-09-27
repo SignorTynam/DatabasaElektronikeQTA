@@ -1,0 +1,206 @@
+/* ============================================================================
+   THEMELI — Baza
+   Elementet HTML pa klasa: tipografia, lidhjet, fokusi, tabelat, kodi.
+   Ngarkohet pas Bootstrap-it dhe tokens.css.
+   ========================================================================= */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: var(--sp-6);
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  font-feature-settings: "kern" 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ------------------------------------------------------------ Titujt */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  margin: 0 0 var(--sp-3);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-snug);
+  letter-spacing: -.005em;
+  text-wrap: balance;
+}
+
+h1, .h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 1.35rem + 1.4vw, 2.25rem);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: -.018em;
+}
+h2, .h2 { font-size: var(--fs-xl); }
+h3, .h3 { font-size: var(--fs-lg); }
+h4, .h4 { font-size: var(--fs-base); }
+h5, .h5 { font-size: var(--fs-md); }
+h6, .h6 { font-size: var(--fs-sm); }
+
+p { margin: 0 0 var(--sp-4); }
+small, .small { font-size: var(--fs-xs); }
+strong, b { font-weight: var(--fw-bold); }
+
+/* ------------------------------------------------------------ Lidhjet */
+a {
+  color: var(--link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: .18em;
+}
+a:hover { color: var(--link-hover); }
+
+/* ------------------------------------------------------------- Fokusi */
+/* Fokus i dukshëm dhe i njëjtë kudo — tastiera nuk humbet kurrë. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.btn:focus-visible,
+.btn-close:focus-visible,
+.page-link:focus-visible,
+.nav-link:focus-visible,
+.dropdown-item:focus-visible,
+.form-check-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+::selection {
+  background: var(--highlight);
+  color: var(--text);
+}
+
+/* ---------------------------------------------------- Kodi dhe numrat */
+code, kbd, samp, pre { font-family: var(--font-mono); }
+code {
+  color: var(--accent-text);
+  font-size: .92em;
+  word-break: break-word;
+}
+kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: .1em .4em;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: .78em;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: none;
+}
+
+.num, .tabular { font-variant-numeric: tabular-nums; }
+.code {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+hr {
+  margin: var(--sp-6) 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  opacity: 1;
+}
+
+img, svg { vertical-align: middle; }
+img { max-width: 100%; height: auto; }
+
+mark, .mark {
+  padding: 0 .12em;
+  border-radius: 3px;
+  background: var(--highlight);
+  color: inherit;
+}
+
+/* -------------------------------------------- Tekst dytësor (Bootstrap) */
+.text-muted { color: var(--text-muted) !important; }
+.text-body-secondary { color: var(--text-muted) !important; }
+.text-subtle { color: var(--text-subtle); }
+.text-success { color: var(--success) !important; }
+.text-warning { color: var(--warning) !important; }
+.text-danger { color: var(--danger) !important; }
+.text-info, .text-primary { color: var(--link) !important; }
+.text-accent { color: var(--accent-text) !important; }
+
+/* Sfondet e bardha të Bootstrap-it ndjekin temën. */
+.bg-white, .bg-body { background-color: var(--surface) !important; }
+.bg-light, .bg-body-tertiary { background-color: var(--surface-sunken) !important; }
+
+/* ----------------------------------------------------- Utilitete të vogla */
+.nowrap { white-space: nowrap; }
+.min-w-0 { min-width: 0; }
+.prose { max-width: var(--prose-max); }
+.lead-text {
+  color: var(--text-muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+}
+.eyebrow {
+  display: inline-block;
+  margin-bottom: var(--sp-2);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+/* Lidhja "Kalo te përmbajtja" — e para që arrin tastiera. */
+.skip-link {
+  position: fixed;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  z-index: 2000;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+  transform: translateY(-150%);
+  transition: transform var(--dur-2) var(--ease);
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  color: var(--text-inverse);
+  transform: none;
+}
+
+main:focus { outline: none; }
+
+/* Shiritat e rrëshqitjes: të hollë, në tonin e sfondit. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* ---------------------------------------------------------------- Print */
+@media print {
+  .no-print,
+  .skip-link,
+  .toast-container { display: none !important; }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11pt;
+  }
+
+  a { color: #000; text-decoration: none; }
+}

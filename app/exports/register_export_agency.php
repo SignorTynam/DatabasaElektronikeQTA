@@ -33,7 +33,7 @@ register_shutdown_function(function () {
   if (!$err) return;
   $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
   if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
-    qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+    qta_download_status('error', 'Dokumenti nuk u krijua. Provo sërish; nëse përsëritet, njofto administratorin.');
   }
 });
 
@@ -41,7 +41,7 @@ register_shutdown_function(function () {
    Guard: vetëm "agjencia"
 --------------------------------*/
 if (!isset($_SESSION['user_id'])) {
-  qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kycuni perseri.');
+  qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.');
   header('Location: selectProfile.php');
   exit;
 }
@@ -53,7 +53,7 @@ $usr = $pdo->prepare("
 $usr->execute([':uid'=>$_SESSION['user_id']]);
 $me = $usr->fetch(PDO::FETCH_ASSOC);
 if (!$me || $me['role_name']!=='agjencia') {
-  qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.');
+  qta_download_status('error', 'Nuk ke leje për këtë dokument.');
   header('Location: selectProfile.php');
   exit;
 }
@@ -62,7 +62,7 @@ if (!$me || $me['role_name']!=='agjencia') {
 $ast = $pdo->prepare("SELECT id, company_name FROM agencies WHERE user_id=:uid LIMIT 1");
 $ast->execute([':uid'=>$me['id']]);
 $AGENCY = $ast->fetch(PDO::FETCH_ASSOC);
-if (!$AGENCY) { qta_fail(403, 'No agency bound to this user.'); }
+if (!$AGENCY) { qta_fail(403, 'Llogaria jote nuk është e lidhur me një agjenci. Njofto administratorin.'); }
 // CSRF token për eksport
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
 $CSRF = $_SESSION['csrf_token'];
@@ -71,15 +71,19 @@ $CSRF = $_SESSION['csrf_token'];
 /* ------------------------------
    CSRF
 --------------------------------*/
-if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_GET['csrf'] ?? ''))) {
-  qta_fail(400, 'Invalid CSRF token.');
+$request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($request['csrf'] ?? ''))) {
+  qta_fail(400, 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
 }
 
 /* ------------------------------
    Parametrat
 --------------------------------*/
-$f = strtolower((string)($_GET['f'] ?? 'xlsx'));   // xlsx|pdf|docx
-$q = trim((string)($_GET['q'] ?? ''));
+$f = strtolower((string)($request['f'] ?? 'xlsx'));   // xlsx|pdf|docx
+require_once __DIR__ . '/inc/export_requirements.php';
+$missingMsg = qta_export_requirements_message('register_export_agency', $f === 'docx' ? ['zip'] : []);
+if ($missingMsg !== null) { qta_fail(500, $missingMsg); }
+$q = trim((string)($request['q'] ?? ''));
 
 /* Auto-load librarish (nëse ekziston vendor/) */
 $autoload = __DIR__ . '/vendor/autoload.php';
@@ -91,8 +95,8 @@ if (is_file($autoload)) { require_once $autoload; }
 $params = [':agid' => (int)$AGENCY['id']];
 $whereQ = '';
 if ($q !== '') {
-  $whereQ = " AND (s.nr_amze LIKE :kw OR s.personal_number LIKE :kw2
-                   OR s.first_name LIKE :kw3 OR s.father_name LIKE :kw4 OR s.last_name LIKE :kw5)";
+  $whereQ = " AND (s.nr_amze LIKE :kw OR p.personal_number LIKE :kw2
+                   OR p.first_name LIKE :kw3 OR p.father_name LIKE :kw4 OR p.last_name LIKE :kw5)";
   $params[':kw']  = '%'.$q.'%';
   $params[':kw2'] = '%'.$q.'%';
   $params[':kw3'] = '%'.$q.'%';
@@ -104,15 +108,17 @@ $sql = "
   SELECT
     s.id AS student_id,
     s.nr_amze,
-    s.first_name, s.father_name, s.last_name,
-    s.personal_number,
-    s.birth_date, s.birth_place,
-    TIMESTAMPDIFF(YEAR, s.birth_date, CURDATE()) AS age,
+    p.first_name, p.father_name, p.last_name,
+    p.personal_number,
+    p.birth_date, p.birth_place,
+    TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
     el.code AS edu_code, el.label AS edu_label,
-    lastg.group_id, cg.start_date, cg.end_date, cg.exam_date,
+    lastg.group_id, cg.start_date, cg.end_date,
+    COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
     cgs.final_score
   FROM agency_students asg
   JOIN students s ON s.id = asg.student_id
+  LEFT JOIN persons p ON p.id = s.person_id
   JOIN users u ON u.id = s.user_id
   LEFT JOIN education_levels el ON el.id = s.education_level_id
   LEFT JOIN (
@@ -195,7 +201,7 @@ function htmlTable(array $headers, array $data, string $title): string {
       h2 { margin:0 0 10px 0; }
       .meta { color:#555; margin-bottom:12px; }
       table { border-collapse: collapse; width: 100%; }
-      th, td { border:1px solid #ddd; padding:6px 8px; vertical-align: top; }
+      th, td { border:1px solid #bdb5a4; padding:6px 8px; vertical-align: top; }
       th { background:#f1f5f9; text-align:left; }
       tr:nth-child(even) td { background:#fafafa; }
     </style>
@@ -359,5 +365,5 @@ switch ($f) {
     }
 
   default:
-    qta_fail(400, 'Format i panjohur.');
+    qta_fail(400, 'Zgjidh formatin e dokumentit: Excel, PDF ose Word.');
 }

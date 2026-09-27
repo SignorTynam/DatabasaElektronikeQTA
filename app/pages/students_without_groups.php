@@ -32,13 +32,7 @@ $CSRF = $_SESSION['csrf_token'];
 /* ------------------------------
    Helpers
 ------------------------------- */
-function h(?string $s): string { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
-function fmt_dMY(?string $iso): string {
-  if (!$iso) return '—';
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return h($iso);
-  $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
-}
+require_once __DIR__ . '/../shared/themeli.php';
 function json_response(array $payload): void {
   header('Content-Type: application/json; charset=utf-8');
   echo json_encode($payload, JSON_UNESCAPED_UNICODE);
@@ -49,14 +43,18 @@ function json_response(array $payload): void {
    AJAX (POST JSON) — e trajtojmë këtu (nuk përdorim skedar tjetër)
    Veprime:
    - assign_to_group: vendos studentin në grup, heq çdo plan "planned"
-   - set_student_plan: ndërron/ vendos modulin "planned" (upsert)
-   - remove_student_plan: heq studentin nga një modul (fshin planin 'planned')
+   - set_student_plan: ndërron/ vendos kursin "planned" (upsert)
+   - remove_student_plan: heq studentin nga një kurs (fshin planin 'planned')
 ========================================================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
   $payload = json_decode(file_get_contents('php://input'), true) ?: [];
   try {
     if (empty($payload['csrf']) || !hash_equals($_SESSION['csrf_token'], (string)$payload['csrf'])) {
-      throw new RuntimeException('CSRF token mismatch.');
+      throw new RuntimeException('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
+    }
+    /* Kyçi i ndryshimeve vlen edhe në server (jo vetëm te butonat e çaktivizuar). */
+    if (empty($_SESSION['edit_mode'])) {
+      throw new RuntimeException('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.');
     }
     $action = (string)($payload['action'] ?? '');
 
@@ -80,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
     if ($action === 'assign_to_group') {
       $student_id = (int)($payload['student_id'] ?? 0);
       $group_id   = (int)($payload['group_id']   ?? 0);
-      if ($student_id<=0 || $group_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+      if ($student_id<=0 || $group_id<=0) throw new RuntimeException('Zgjidh kursantin dhe grupin.');
 
       // Group exists and capacity <10
       $gq = $pdo->prepare("SELECT cg.course_id, cg.start_date, cg.end_date, COUNT(cgs.student_id) AS members
@@ -90,18 +88,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $gq->execute([':g'=>$group_id]);
       $g = $gq->fetch(PDO::FETCH_ASSOC);
       if (!$g) throw new RuntimeException('Grupi nuk u gjet.');
-      if ((int)$g['members'] >= 10) throw new RuntimeException('Grupi është i mbushur (10/10).');
+      if ((int)$g['members'] >= 10) throw new RuntimeException('Ky grup është plot (10 kursantë). Zgjidh një grup tjetër.');
 
       // Student not already in this group
       $exists = $pdo->prepare("SELECT 1 FROM course_group_students WHERE group_id=:g AND student_id=:s");
       $exists->execute([':g'=>$group_id, ':s'=>$student_id]);
-      if ($exists->fetchColumn()) throw new RuntimeException('Studenti është tashmë në këtë grup.');
+      if ($exists->fetchColumn()) throw new RuntimeException('Ky kursant është tashmë në këtë grup.');
 
       // Ndalim: i njëjti person nuk duhet ta ketë ndjekur më parë këtë modul
       $getPersonPN->execute([':sid'=>$student_id]);
       $pn = $getPersonPN->fetchColumn();
       if ($hasAttendedCoursePN((int)$g['course_id'], $pn)) {
-        throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul — nuk lejohet përsëritja.');
+        throw new RuntimeException('Ky person e ka ndjekur më parë këtë kurs, prandaj nuk mund ta ndjekë sërish.');
       }
 
       $pdo->beginTransaction();
@@ -114,27 +112,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $pdo->commit();
 
       // Flash për toast pas rifreskimit
-      $_SESSION['flash_ok'] = 'U vendos në grup.';
-      json_response(['ok'=>true, 'message'=>'U vendos në grup.']);
+      $_SESSION['flash_ok'] = 'Kursanti u caktua në grup.';
+      json_response(['ok'=>true, 'message'=>'Kursanti u caktua në grup.']);
     }
 
     if ($action === 'set_student_plan') {
       $student_id = (int)($payload['student_id'] ?? 0);
       $course_id  = (int)($payload['course_id']  ?? 0);
-      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh kursantin dhe kursin.');
 
       // S’lejohet plan nëse studenti është në ndonjë grup
       $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students WHERE student_id=:s LIMIT 1");
       $inGroup->execute([':s'=>$student_id]);
       if ($inGroup->fetchColumn()) {
-        throw new RuntimeException('Ky student është në një grup. Hiqe nga grupi përpara ndryshimit të modulit.');
+        throw new RuntimeException('Ky kursant është në një grup. Hiqe nga grupi para se të ndryshosh kursin.');
       }
 
       // Ndalim: i njëjti person s’mund ta ketë ndjekur (në grupe) të njëjtin modul
       $getPersonPN->execute([':sid'=>$student_id]);
       $pn = $getPersonPN->fetchColumn();
       if ($hasAttendedCoursePN($course_id, $pn)) {
-        throw new RuntimeException('Ky person e ka ndjekur më parë këtë modul — nuk lejohet plan për të njëjtin modul.');
+        throw new RuntimeException('Ky person e ka ndjekur më parë këtë kurs. Zgjidh një kurs tjetër.');
       }
 
       $pdo->beginTransaction();
@@ -157,21 +155,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $pdo->commit();
 
       // Flash për toast pas rifreskimit
-      $_SESSION['flash_ok'] = 'Moduli (plan) u përditësua.';
-      json_response(['ok'=>true, 'message'=>'Moduli (plan) u përditësua.']);
+      $_SESSION['flash_ok'] = 'Kursi u ruajt. Tani zgjidh grupin.';
+      json_response(['ok'=>true, 'message'=>'Kursi u ruajt. Tani zgjidh grupin.']);
     }
 
     /* NEW: Hiq studentin nga një modul (fshi planin e modulit) */
     if ($action === 'remove_student_plan') {
       $student_id = (int)($payload['student_id'] ?? 0);
       $course_id  = (int)($payload['course_id']  ?? 0);
-      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Të dhëna të pavlefshme.');
+      if ($student_id<=0 || $course_id<=0) throw new RuntimeException('Zgjidh kursantin dhe kursin.');
 
       // Student nuk duhet të jetë në ndonjë grup të këtij moduli
       $inGroup = $pdo->prepare("SELECT 1 FROM course_group_students cgs JOIN course_groups cg ON cg.id=cgs.group_id WHERE cgs.student_id=:s AND cg.course_id=:c LIMIT 1");
       $inGroup->execute([':s'=>$student_id, ':c'=>$course_id]);
       if ($inGroup->fetchColumn()) {
-        throw new RuntimeException('Ky student është i caktuar në një grup për këtë modul — hiqe nga grupi fillimisht.');
+        throw new RuntimeException('Ky kursant është në një grup të këtij kursi. Hiqe nga grupi së pari.');
       }
 
       // Fshi vetëm planet 'planned' për këtë modul
@@ -179,15 +177,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
       $del->execute([':s'=>$student_id, ':c'=>$course_id]);
 
       if ($del->rowCount() < 1) {
-        throw new RuntimeException('Nuk u gjet plan aktiv për këtë modul.');
+        throw new RuntimeException('Ky kursant nuk ka kurs të zgjedhur.');
       }
 
       // Flash për toast pas rifreskimit
-      $_SESSION['flash_ok'] = 'Plani i modulit u hoq.';
-      json_response(['ok'=>true, 'message'=>'Plani i modulit u hoq.']);
+      $_SESSION['flash_ok'] = 'Kursi u hoq. Zgjidh një kurs tjetër kur të jesh gati.';
+      json_response(['ok'=>true, 'message'=>'Kursi u hoq. Zgjidh një kurs tjetër kur të jesh gati.']);
     }
 
-    throw new RuntimeException('Veprim i panjohur.');
+    throw new RuntimeException('Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.');
   } catch (Throwable $e) {
     // Për gabimet NUK vendosim flash_err, sepse s’po rifreskojmë faqen në frontend.
     json_response(['ok'=>false, 'error'=>$e->getMessage()]);
@@ -198,8 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && 
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-  $e = strtolower((string)$_GET['edit']);
-  $_SESSION['edit_mode'] = ($e === 'on');
+  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
   $qs = $_GET; unset($qs['edit']);
   $url = 'students_without_groups.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
   header("Location: $url"); exit;
@@ -221,7 +218,7 @@ $groupsMeta = $pdo->query("
     cg.id,
     cg.course_id,
     c.name AS course_name,
-    cg.start_date, cg.end_date,
+    cg.start_date, cg.end_date, cg.is_completed, cg.model, cg.model,
     COUNT(cgs.student_id) AS members
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
@@ -374,431 +371,408 @@ $flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
 
 /* Navbar */
 $NAV_ACTIVE = 'students_without_groups';
+$HELP_TOPIC = 'students_without_groups';
 if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
 else require __DIR__ . '/inc/navbar4.php';
 
-/* Build toggle URL që ruan parametrat */
-$toggleUrl = 'students_without_groups.php?' . http_build_query(array_filter([
-  'q' => ($q !== '' ? $q : null),
-  'course_id' => ($courseFilter !== '' ? $courseFilter : null),
-  'edit' => ($EDIT_MODE ? 'off' : 'on'),
-]));
+$pageTitle = 'Kursantët pa grup';
+require __DIR__ . '/../shared/app_head.php';
+
+$hasFilters = ($q !== '' || $courseFilter !== '');
+
+/* Një listë e vetme: kursantët me modul të zgjedhur dhe ata pa modul. */
+$waiting = [];
+foreach (($studentsByCourse ?? []) as $cid => $bucket) {
+  foreach (($bucket['rows'] ?? []) as $r) {
+    $r['plan_course_id']   = (int)$cid;
+    $r['plan_course_name'] = (string)($bucket['course_name'] ?? '');
+    $waiting[] = $r;
+  }
+}
+foreach (($noPlanNoGroupRows ?? []) as $r) {
+  $r['plan_course_id']   = 0;
+  $r['plan_course_name'] = '';
+  $waiting[] = $r;
+}
+usort($waiting, static fn($a, $b) => ((int)$a['nr_amze'] <=> (int)$b['nr_amze']));
+
+/* Etiketa e një grupi në listat e zgjedhjes: "Grupi #7 · nis 24.09.2026 · 6/10" */
+$groupOption = static function (array $g): string {
+  $members = (int)$g['members'];
+  $label = 'Grupi #' . (int)$g['id'] . (($g['model'] ?? '') === 'scheduled' ? ' (me orar)' : '') . ' · ' . qta_date($g['start_date']) . ' – ' . qta_date($g['end_date']) . ' · ' . $members . '/10';
+  if ($members >= 10) $label .= ' · plot';
+  elseif (!empty($g['is_completed'])) $label .= ' · i mbyllur';
+  $disabled = $members >= 10 ? ' disabled' : '';
+  return '<option value="' . (int)$g['id'] . '"' . $disabled . '>' . h($label) . '</option>';
+};
+$groupOptionsByCourse = static function () use ($groupsByCourse, $groupOption): string {
+  $html = '';
+  foreach ($groupsByCourse as $list) {
+    if (!$list) continue;
+    $html .= '<optgroup label="' . h((string)$list[0]['course_name']) . '">';
+    foreach ($list as $g) $html .= $groupOption($g);
+    $html .= '</optgroup>';
+  }
+  return $html;
+};
+$allGroupOptions = $groupOptionsByCourse();
+$createHref = 'lesson_groups.php?' . http_build_query(['edit' => '1', 'create' => '1']);
 ?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-  <meta charset="UTF-8" />
-  <title>Studentë pa grupe – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-  <style>
-    body { background:#f5f7fb; padding-top:72px; }
-    .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-    .mini-table thead { background:#f1f5f9; }
-    .form-control::placeholder { color:#9ca3af; }
-    .pagination .page-link { border-radius:.5rem; }
-    .nowrap { white-space:nowrap; }
-    .btn-pill { border-radius:999px !important; }
-    .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
-    .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
-    .badge-cap { font-weight:600; }
-    .table td select.form-select { padding:.2rem .5rem; }
-    .status-banner strong { font-size:1.05rem; }
-    .status-banner .metric { display:flex; align-items:center; gap:.5rem; }
 
-    .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
-    .toast.qta-toast .toast-header{ border-bottom:0; }
-    .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
-    .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
-    .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
-    .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
+<main class="app-main" id="main" tabindex="-1">
 
-    .fab-stack{ position:fixed; right:24px; bottom:24px; display:flex; flex-direction:column-reverse; gap:12px; z-index:1040; }
-    .fab-stack .fab-btn{ align-self:flex-end; display:inline-flex; align-items:center; justify-content:center; gap:6px;
-      min-height:52px; height:52px; width:52px; padding:0 14px; border-radius:999px; box-shadow:0 12px 20px rgba(2,6,23,.15);
-      transition:width .2s ease, box-shadow .2s ease, transform .06s ease; overflow:hidden; }
-    .fab-stack .fab-btn:hover, .fab-stack .fab-btn:focus{ width:auto; box-shadow:0 16px 28px rgba(2,6,23,.22); }
-    .fab-stack .fab-btn .fab-text{ white-space:nowrap; max-width:0; opacity:0; transition:max-width .2s, opacity .15s, margin-left .2s; margin-left:0; }
-    .fab-stack .fab-btn:hover .fab-text, .fab-stack .fab-btn:focus .fab-text{ max-width:180px; opacity:1; margin-left:4px; }
-    .fab-stack .fab-btn:active{ transform:translateY(1px); }
-    @media (max-width:575.98px){ .fab-stack{ right:16px; bottom:16px; gap:10px; } .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; } }
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Kursantët pa grup</h1>
+      <p class="page-lead">Këta kursantë janë regjistruar, por ende nuk janë në asnjë grup. Zgjidh grupin për secilin — ose shëno disa dhe caktoji njëherësh.</p>
+    </div>
+    <div class="page-actions">
+      <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+    </div>
+  </header>
 
-    .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
-  </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
-
-<!-- Toast container -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
-
-<main class="container-fluid px-3 px-md-4">
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Studentë pa grupe</h2>
-    <div class="d-flex flex-wrap align-items-center page-toolbar"></div>
-  </div>
-
-  <div class="alert alert-primary status-banner d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-    <div class="metric"><i class="bi bi-people me-1"></i> Gjithsej: <strong><?= number_format($totalStudents) ?></strong></div>
-    <div class="metric"><i class="bi bi-person-dash me-1"></i> Pa grup: <strong><?= number_format($countNoGroup) ?></strong></div>
-    <div class="metric"><i class="bi bi-journal-text me-1"></i> Me modul pa grup: <strong><?= number_format($countPlannedNoGroup) ?></strong></div>
-    <div class="metric"><i class="bi bi-slash-circle me-1"></i> Pa modul & pa grup: <strong><?= number_format($countNoPlanNoGroup) ?></strong></div>
-  </div>
-
-  <div class="card mb-3">
-    <div class="card-body">
-      <form class="row g-2 align-items-end" method="get" action="students_without_groups.php">
-        <div class="col-md-9">
-          <div class="d-flex align-items-center">
-            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-            <div class="input-group flex-grow-1">
-              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-              <input type="text" name="q" value="<?= h($q) ?>" class="form-control border-0" placeholder="Kërko sipas AMZË/ID/Emri...">
-              <select name="course_id" class="form-select">
-                <option value="">— Modul —</option>
-                <?php foreach($courses as $c): ?>
-                  <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter!=='' && (int)$courseFilter===(int)$c['id'])?'selected':'' ?>>
-                    <?= h($c['name']) ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3 text-end">
-          <a class="btn btn-soft-secondary btn-pill me-1" href="students_without_groups.php"><i class="bi bi-x-circle me-1"></i>Pastro</a>
-          <button class="btn btn-primary btn-pill" type="submit"><i class="bi bi-funnel me-1"></i>Apliko</button>
-        </div>
-      </form>
+  <div class="stats mb-4" aria-label="Gjendja e pritjes">
+    <div class="stat">
+      <span class="stat-label">Presin një grup</span>
+      <span class="stat-value"><?= number_format((int)$countNoGroup, 0, ',', '.') ?></span>
+      <span class="stat-note">nga <?= number_format($totalStudents, 0, ',', '.') ?> kursantë gjithsej</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Gati për grup</span>
+      <span class="stat-value"><?= number_format((int)$countPlannedNoGroup, 0, ',', '.') ?></span>
+      <span class="stat-note">e kanë kursin të zgjedhur</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Pa kurs</span>
+      <span class="stat-value"><?= number_format((int)$countNoPlanNoGroup, 0, ',', '.') ?></span>
+      <span class="stat-note">zgjidh kursin së pari</span>
     </div>
   </div>
 
-  <!-- ====== A: Me modul (plan) por pa grup – i ndarë sipas modulit ====== -->
-  <?php if (!empty($studentsByCourse)): ?>
-    <?php foreach ($studentsByCourse as $cid => $bucket): $rows = $bucket['rows'] ?? []; $cname = $bucket['course_name'] ?? '—'; ?>
-      <div class="card mb-4">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h5 class="mb-0"><i class="bi bi-book me-2"></i><?= h($cname) ?> — studentë pa grup</h5>
-          <span class="text-muted small"><?= number_format(count($rows)) ?> student(ë)</span>
-        </div>
-        <div class="card-body">
-          <div class="table-responsive mini-table">
-            <table class="table align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th class="nowrap">AMZË</th>
-                  <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-                  <th class="nowrap">Zgjidh grup (<?= h($cname) ?>)</th>
-                  <th class="nowrap">Ndrysho / Hiq modul</th>
-                </tr>
-              </thead>
-              <tbody>
-              <?php foreach ($rows as $r): ?>
-                <?php
-                  $sid = (int)$r['student_id'];
-                  $availableGroups = $groupsByCourse[(int)$cid] ?? [];
-                ?>
-                <tr id="row_s<?= $sid ?>_c<?= (int)$cid ?>">
-                  <td class="nowrap"><?= h($r['nr_amze']) ?></td>
-                  <td>
-                    <div class="fw-semibold">
-                      <?= h(trim(($r['first_name']??'').' '.(($r['father_name']??'')?($r['father_name'].' '):'').($r['last_name']??''))) ?>
-                    </div>
-                    <div class="text-muted small"><?= h($r['personal_number'] ?? '') ?></div>
-                  </td>
-
-                  <td class="nowrap">
-                    <div class="d-flex gap-2">
-                      <select class="form-select form-select-sm" style="min-width:220px"
-                              data-role="group-select" data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <option value="">— Zgjidh grup —</option>
-                        <?php foreach($availableGroups as $g): ?>
-                          <option value="<?= (int)$g['id'] ?>" <?= $g['full'] ? 'disabled' : '' ?>>
-                            #<?= (int)$g['id'] ?> • <?= h(fmt_dMY($g['start_date']).' → '.fmt_dMY($g['end_date'])) ?>
-                            (<?= h($g['course_name']) ?>)
-                            <?= $g['full'] ? ' — [Full]' : ' — ['.(int)$g['members'].'/10]' ?>
-                          </option>
-                        <?php endforeach; ?>
-                      </select>
-                      <button class="btn btn-primary btn-sm" data-role="assign-btn"
-                              data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <i class="bi bi-plus-circle me-1"></i>Vendos
-                      </button>
-                    </div>
-                    <div class="small text-muted mt-1">
-                      Kapaciteti max 10 / grup. Nuk lejohet të ndiqet i njëjti modul dy herë (edhe sipas ID personale).
-                    </div>
-                  </td>
-
-                  <td class="nowrap">
-                    <div class="d-flex gap-2">
-                      <select class="form-select form-select-sm" style="min-width:220px"
-                              data-role="plan-select" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <?php foreach($courses as $c): ?>
-                          <option value="<?= (int)$c['id'] ?>" <?= ((int)$c['id']===(int)$cid)?'selected':'' ?>>
-                            <?= h($c['name']) ?>
-                          </option>
-                        <?php endforeach; ?>
-                      </select>
-                      <button class="btn btn-soft-secondary btn-sm" data-role="plan-btn"
-                              data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <i class="bi bi-arrow-repeat me-1"></i>Ruaj
-                      </button>
-                      <!-- NEW: Hiq planin për këtë modul -->
-                      <button class="btn btn-outline-danger btn-sm" data-role="plan-remove"
-                              data-student="<?= $sid ?>" data-course="<?= (int)$cid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                        <i class="bi bi-trash me-1"></i>Hiq
-                      </button>
-                    </div>
-                    <div class="small text-muted mt-1">Ndrysho ose hiq modulin e planifikuar të studentit.</div>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
+  <form class="filters" method="get" action="students_without_groups.php" role="search" aria-label="Kërko te kursantët pa grup">
+    <div class="filter-field is-grow">
+      <label class="form-label" for="swgQ">Kërko një kursant</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="swgQ" type="search" name="q" value="<?= h($q) ?>" placeholder="Emri, numri personal ose nr. i amzës">
       </div>
-    <?php endforeach; ?>
-  <?php else: ?>
-    <div class="card mb-4"><div class="card-body">
-      <div class="alert alert-info mb-0"><i class="bi bi-info-circle me-1"></i>Nuk ka studentë me modul pa grup sipas filtrave.</div>
-    </div></div>
-  <?php endif; ?>
-
-  <!-- ====== B: Pa modul (pa grup) ====== -->
-  <div class="card mb-4">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-      <h5 class="mb-0"><i class="bi bi-slash-circle me-2"></i>Studentë pa modul dhe pa grup</h5>
-      <span class="text-muted small"><?= number_format(count($noPlanNoGroupRows)) ?> student(ë)</span>
     </div>
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
+    <div class="filter-field">
+      <label class="form-label" for="swgC">Kursi</label>
+      <select class="form-select" id="swgC" name="course_id">
+        <option value="">Të gjitha kurset</option>
+        <?php foreach ($courses as $c): ?>
+          <option value="<?= (int)$c['id'] ?>" <?= ($courseFilter !== '' && (int)$courseFilter === (int)$c['id']) ? 'selected' : '' ?>><?= h((string)$c['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="filter-actions">
+      <?php if ($hasFilters): ?>
+        <a class="btn btn-ghost" href="students_without_groups.php"><i class="bi bi-x-lg" aria-hidden="true"></i>Pastro kërkimin</a>
+      <?php endif; ?>
+      <button class="btn btn-secondary" type="submit"><i class="bi bi-search" aria-hidden="true"></i>Kërko</button>
+    </div>
+  </form>
+
+  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
+
+  <section class="section" aria-labelledby="waitTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="waitTitle">
+        <?= $hasFilters ? 'Kursantët që përputhen' : 'Lista e pritjes' ?>
+        <span class="count"><?= number_format(count($waiting), 0, ',', '.') ?></span>
+      </h2>
+      <?php if (!$groupsMeta): ?>
+        <a class="section-link" href="<?= h($createHref) ?>">Krijo grupin e parë</a>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($waiting): ?>
+      <?php
+        $tfTarget = '#waitTable';
+        $tfPlaceholder = 'Filtro — emër, amzë ose kurs';
+        $tfChips = [['label' => 'Pa kurs', 'match' => 'Pa kurs ende'], ['label' => 'Gati për grup', 'match' => 'Me kurs']];
+        $tfNoun = 'kursantë';
+        require __DIR__ . '/../shared/partials/table_filter.php';
+      ?>
+      <div class="table-responsive">
+        <table class="table" id="waitTable" data-sortable>
+          <thead>
             <tr>
-              <th class="nowrap">AMZË</th>
-              <th>Emër Atësi Mbiemër<br><small class="text-muted">ID Personal</small></th>
-              <th class="nowrap">Vendos modul (plan)</th>
-              <th class="nowrap">Zgjidh grup (çdo modul)</th>
+              <th scope="col" class="pick-col" data-sort="none">
+                <input class="form-check-input" type="checkbox" id="pickAll" aria-label="Zgjidh të gjithë kursantët në listë" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+              </th>
+              <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
+              <th scope="col" data-sort="text">Kursanti</th>
+              <th scope="col" class="col-medium" data-sort="text">Kursi</th>
+              <th scope="col" class="nowrap" data-sort="none">Cakto në grup</th>
             </tr>
           </thead>
           <tbody>
-          <?php if ($noPlanNoGroupRows): foreach ($noPlanNoGroupRows as $s): $sid=(int)$s['student_id']; ?>
-            <tr id="row_s<?= $sid ?>_noplan">
-              <td class="nowrap"><?= h($s['nr_amze']) ?></td>
-              <td>
-                <div class="fw-semibold">
-                  <?= h(trim(($s['first_name']??'').' '.(($s['father_name']??'')?($s['father_name'].' '):'').($s['last_name']??''))) ?>
-                </div>
-                <div class="text-muted small"><?= h($s['personal_number'] ?? '') ?></div>
-              </td>
+            <?php foreach ($waiting as $s):
+              $sid  = (int)$s['student_id'];
+              $pcid = (int)$s['plan_course_id'];
+              $full = qta_full_name($s['first_name'] ?? '', $s['father_name'] ?? '', $s['last_name'] ?? '');
+              $rowGroups = $pcid > 0 ? ($groupsByCourse[$pcid] ?? []) : null;
+            ?>
+              <tr data-student="<?= $sid ?>">
+                <td class="pick-col">
+                  <input type="checkbox" class="form-check-input pick" data-student="<?= $sid ?>"
+                         aria-label="Zgjidh <?= h($full !== '' ? $full : 'kursantin ' . (string)$s['nr_amze']) ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                </td>
+                <td class="nowrap" data-sort-value="<?= (int)$s['nr_amze'] ?>"><span class="id-code"><?= h((string)$s['nr_amze']) ?></span></td>
+                <td>
+                  <a class="person-name" href="student_card.php?sid=<?= $sid ?>"><?= h($full !== '' ? $full : 'Pa emër ende') ?></a>
+                  <?php if (!empty($s['personal_number'])): ?><span class="cell-sub code"><?= h((string)$s['personal_number']) ?></span><?php endif; ?>
+                </td>
 
-              <!-- Vendos modul (plan) -->
-              <td class="nowrap">
-                <div class="d-flex gap-2">
-                  <select class="form-select form-select-sm" style="min-width:260px"
-                          data-role="plan-select" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <option value="">— Zgjidh modul —</option>
-                    <?php foreach ($courses as $c): ?>
-                      <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
-                    <?php endforeach; ?>
-                  </select>
-                  <button class="btn btn-soft-secondary btn-sm" data-role="plan-btn"
-                          data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <i class="bi bi-arrow-repeat me-1"></i>Ruaj
-                  </button>
-                </div>
-                <div class="small text-muted mt-1">
-                  Cakto modulin e planifikuar për studentin (pa grup).
-                </div>
-              </td>
+                <td class="col-medium">
+                  <?php if ($pcid > 0): ?>
+                    <span class="d-inline-flex align-items-center gap-2">
+                      <span class="visually-hidden">Me kurs:</span>
+                      <span><?= h($s['plan_course_name']) ?></span>
+                      <?php if ($EDIT_MODE): ?>
+                        <button class="btn btn-ghost btn-sm btn-icon" type="button" data-role="plan-remove"
+                                data-student="<?= $sid ?>" data-course="<?= $pcid ?>" data-name="<?= h($full) ?>"
+                                aria-label="Hiq kursin <?= h($s['plan_course_name']) ?>" title="Hiq kursin">
+                          <i class="bi bi-x-lg" aria-hidden="true"></i>
+                        </button>
+                      <?php endif; ?>
+                    </span>
+                  <?php else: ?>
+                    <span class="visually-hidden">Pa kurs ende.</span>
+                    <div class="inline-action">
+                      <select class="form-select form-select-sm" data-role="plan-select" data-student="<?= $sid ?>"
+                              <?= $EDIT_MODE ? '' : 'disabled' ?> aria-label="Zgjidh kursin për <?= h($full) ?>">
+                        <option value="">Zgjidh kursin</option>
+                        <?php foreach ($courses as $c): ?>
+                          <option value="<?= (int)$c['id'] ?>"><?= h((string)$c['name']) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                      <button class="btn btn-secondary btn-sm" type="button" data-role="plan-btn" data-student="<?= $sid ?>"
+                              <?= $EDIT_MODE ? '' : 'disabled' ?>>Ruaj</button>
+                    </div>
+                  <?php endif; ?>
+                </td>
 
-              <!-- Zgjidh grup (çdo modul) -->
-              <td class="nowrap">
-                <div class="d-flex gap-2">
-                  <select class="form-select form-select-sm" style="min-width:280px"
-                          data-role="group-select-any" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <option value="">— Zgjidh grup —</option>
-                    <?php foreach ($groupsMeta as $g): $isFull = ((int)$g['members'] >= 10); ?>
-                      <option value="<?= (int)$g['id'] ?>" <?= $isFull ? 'disabled' : '' ?>>
-                        #<?= (int)$g['id'] ?> • <?= h($g['course_name']) ?> • <?= h(fmt_dMY($g['start_date']).' → '.fmt_dMY($g['end_date'])) ?>
-                        <?= $isFull ? ' — [Full]' : ' — ['.(int)$g['members'].'/10]' ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                  <button class="btn btn-primary btn-sm" data-role="assign-btn-any" data-student="<?= $sid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <i class="bi bi-plus-circle me-1"></i>Vendos
-                  </button>
-                </div>
-              </td>
-            </tr>
-          <?php endforeach; else: ?>
-            <tr><td colspan="4" class="text-center text-muted">Asnjë student pa modul & pa grup.</td></tr>
-          <?php endif; ?>
+                <td class="nowrap">
+                  <?php if ($rowGroups === []): ?>
+                    <span class="text-muted small">Nuk ka grup për këtë kurs.</span>
+                    <a class="small" href="<?= h($createHref . '&course_id=' . $pcid) ?>">Krijo një</a>
+                  <?php else: ?>
+                    <div class="inline-action">
+                      <select class="form-select form-select-sm" data-role="group-select" data-student="<?= $sid ?>"
+                              <?= $EDIT_MODE ? '' : 'disabled' ?> aria-label="Zgjidh grupin për <?= h($full) ?>">
+                        <option value="">Zgjidh grupin</option>
+                        <?php if ($rowGroups !== null): ?>
+                          <?php foreach ($rowGroups as $g) echo $groupOption($g); ?>
+                        <?php else: ?>
+                          <?= $allGroupOptions ?>
+                        <?php endif; ?>
+                      </select>
+                      <button class="btn btn-primary btn-sm" type="button" data-role="assign-btn" data-student="<?= $sid ?>"
+                              <?= $EDIT_MODE ? '' : 'disabled' ?>>Cakto</button>
+                    </div>
+                  <?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
 
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+      <p class="text-muted small mt-2 mb-0">
+        <?= $EDIT_MODE
+          ? 'Shëno disa kursantë me kutizën majtas për t\'i caktuar të gjithë njëherësh në të njëjtin grup.'
+          : 'Për të caktuar kursantë në grupe, shtyp "Lejo ndryshimet".' ?>
+      </p>
+
+      <div class="bulk-bar" id="bulkBar" role="region" aria-label="Veprim për të zgjedhurit" hidden>
+        <span class="bulk-count"><span id="bulkN">0</span> të zgjedhur</span>
+        <label class="form-label mb-0" for="bulkGroup">Cakto në</label>
+        <select class="form-select form-select-sm w-auto mw-100" id="bulkGroup">
+          <option value="">Zgjidh grupin</option>
+          <?= $allGroupOptions ?>
+        </select>
+        <button class="btn btn-primary btn-sm" type="button" id="bulkAssign" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          <i class="bi bi-people" aria-hidden="true"></i>Cakto të zgjedhurit
+        </button>
+        <button class="btn btn-ghost btn-sm" type="button" id="bulkClear">Hiq zgjedhjen</button>
+        <span class="text-muted small" id="bulkProgress" aria-live="polite"></span>
+      </div>
+
+    <?php else: ?>
+      <?= $hasFilters
+        ? qta_empty('Asnjë kursant nuk përputhet', 'Provo një emër tjetër ose pastro kërkimin.', 'bi-search', '<a class="btn btn-secondary" href="students_without_groups.php">Pastro kërkimin</a>')
+        : qta_empty('Askush nuk pret një grup', 'Të gjithë kursantët janë caktuar në grupe. Kur regjistron kursantë të rinj, ata shfaqen këtu.', 'bi-check2-circle', '<a class="btn btn-secondary" href="groups.php">Shiko grupet</a>', 'is-success') ?>
+    <?php endif; ?>
+  </section>
 </main>
 
-<!-- FAB: Edit Mode -->
-<div class="fab-stack" role="group" aria-label="Veprime shpejta">
-  <a id="editModeFab"
-     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
-     href="<?= h($toggleUrl) ?>"
-     title="Ndrysho gjendjen e Edit Mode">
-    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
-    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-  </a>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
-/* Endpoint = kjo faqe */
+/* Veprimet i trajton vetë kjo faqe */
 const ENDPOINT = 'students_without_groups.php';
 
-/* Toast helper */
 function notify(type, text, opts={}){
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (type==='success' ? 'Sukses' : type==='danger' ? 'Gabim' : type==='warning' ? 'Kujdes' : 'Njoftim');
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+  return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null;
 }
 
-/* Assign (me modul të ditur) */
+async function post(payload){
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Accept':'application/json'},
+    body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
+  });
+  let json = null;
+  try { json = await res.json(); } catch(_) { /* bosh */ }
+  if (!json) throw new Error('Nuk mora përgjigje nga serveri. Provo sërish.');
+  return json;
+}
+
+function busy(btn, on){
+  btn.disabled = on;
+  btn.classList.toggle('is-loading', on);
+  btn.setAttribute('aria-busy', on ? 'true' : 'false');
+}
+
+/* Cakto një kursant në grup */
 document.querySelectorAll('[data-role="assign-btn"]').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     if (!EDIT_MODE) return;
     const sid = parseInt(btn.dataset.student,10);
-    const cid = parseInt(btn.dataset.course,10);
-    const sel = document.querySelector(`select[data-role="group-select"][data-student="${sid}"][data-course="${cid}"]`);
+    const sel = document.querySelector(`select[data-role="group-select"][data-student="${sid}"]`);
     const gid = parseInt(sel?.value||'0',10);
-    if (!gid){ notify('warning','Zgjidh një grup.'); return; }
-
-    btn.disabled = true;
+    if (!gid){ notify('warning','Zgjidh grupin së pari.'); sel?.focus(); return; }
+    busy(btn, true);
     try{
-      const res = await fetch(ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify({csrf:CSRF, action:'assign_to_group', student_id:sid, group_id:gid})
-      });
-      const json = await res.json();
-      btn.disabled = false;
-      if (!json.ok) { notify('danger', json.error || 'Nuk u krye veprimi.'); return; }
-      // Mos shfaq toast këtu; do shfaqet pas reload-it nga flash_ok
-      location.reload();
-    }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
+      const json = await post({action:'assign_to_group', student_id:sid, group_id:gid});
+      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Kursanti nuk u caktua.'); return; }
+      location.reload(); /* mesazhi del pas rifreskimit */
+    }catch(e){ busy(btn, false); notify('danger', e.message || 'Lidhja dështoi. Provo sërish.'); }
   });
 });
 
-/* Assign (nga çdo grup) – pa modul të caktuar */
-document.querySelectorAll('[data-role="assign-btn-any"]').forEach(btn=>{
-  btn.addEventListener('click', async ()=>{
-    if (!EDIT_MODE) return;
-    const sid = parseInt(btn.dataset.student,10);
-    const sel = document.querySelector(`select[data-role="group-select-any"][data-student="${sid}"]`);
-    const gid = parseInt(sel?.value||'0',10);
-    if (!gid){ notify('warning','Zgjidh një grup.'); return; }
-
-    btn.disabled = true;
-    try{
-      const res = await fetch(ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify({csrf:CSRF, action:'assign_to_group', student_id:sid, group_id:gid})
-      });
-      const json = await res.json();
-      btn.disabled = false;
-      if (!json.ok) { notify('danger', json.error || 'Nuk u krye veprimi.'); return; }
-      // Toast shfaqet pas reload-it nga flash_ok
-      location.reload();
-    }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
-  });
-});
-
-/* Ndrysho/ cakto modul (plan) – upsert */
+/* Zgjidh kursin për një kursant pa kurs */
 document.querySelectorAll('[data-role="plan-btn"]').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     if (!EDIT_MODE) return;
     const sid = parseInt(btn.dataset.student,10);
     const sel = document.querySelector(`select[data-role="plan-select"][data-student="${sid}"]`);
     const cid = sel?.value ? parseInt(sel.value,10) : 0;
-    if (!cid){ notify('warning','Zgjidh një modul.'); return; }
-
-    btn.disabled = true;
+    if (!cid){ notify('warning','Zgjidh kursin së pari.'); sel?.focus(); return; }
+    busy(btn, true);
     try{
-      const res = await fetch(ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify({csrf:CSRF, action:'set_student_plan', student_id:sid, course_id:cid})
-      });
-      const json = await res.json();
-      btn.disabled = false;
-      if (!json.ok) { notify('danger', json.error || 'Nuk u ruajt moduli.'); return; }
-      // Toast shfaqet pas reload-it nga flash_ok
+      const json = await post({action:'set_student_plan', student_id:sid, course_id:cid});
+      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Kursi nuk u ruajt.'); return; }
       location.reload();
-    }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
+    }catch(e){ busy(btn, false); notify('danger', e.message || 'Lidhja dështoi. Provo sërish.'); }
   });
 });
 
-/* NEW: Hiq modulin (plan) për këtë student */
+/* Hiq kursin e zgjedhur */
 document.querySelectorAll('[data-role="plan-remove"]').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     if (!EDIT_MODE) return;
     const sid = parseInt(btn.dataset.student,10);
     const cid = parseInt(btn.dataset.course,10);
-    if (!sid || !cid) { notify('danger','Të dhëna të pavlefshme.'); return; }
-    if (!confirm('Je i sigurt që dëshiron të heqësh modulin e planifikuar për këtë student?')) return;
-
-    btn.disabled = true;
+    const who = btn.dataset.name || 'këtij kursanti';
+    const ok = await window.qtaConfirm({
+      title: 'Të hiqet kursi?',
+      message: `Kursi i zgjedhur për ${who} do të hiqet. Kursanti mbetet në listë dhe mund të marrë një kurs tjetër.`,
+      confirm: 'Po, hiqe kursin', danger: true
+    });
+    if (!ok) return;
+    busy(btn, true);
     try{
-      const res = await fetch(ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify({csrf:CSRF, action:'remove_student_plan', student_id:sid, course_id:cid})
-      });
-      const json = await res.json();
-      btn.disabled = false;
-      if (!json.ok) { notify('danger', json.error || 'Nuk u hoq plani i modulit.'); return; }
-      // Toast shfaqet pas reload-it nga flash_ok
+      const json = await post({action:'remove_student_plan', student_id:sid, course_id:cid});
+      if (!json.ok) { busy(btn, false); notify('danger', json.error || 'Kursi nuk u hoq.'); return; }
       location.reload();
-    }catch(e){ btn.disabled=false; notify('danger','Gabim lidhjeje.'); }
+    }catch(e){ busy(btn, false); notify('danger', e.message || 'Lidhja dështoi. Provo sërish.'); }
   });
 });
 
-document.addEventListener('DOMContentLoaded', ()=>{ document.body.classList.add('compact'); });
 <?php if ($flash_ok): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($flash_ok) ?>));
+document.addEventListener('DOMContentLoaded',()=>notify('success', <?= json_encode($flash_ok, JSON_UNESCAPED_UNICODE) ?>));
 <?php endif; ?>
 <?php if ($flash_err): ?>
-document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($flash_err) ?>));
+document.addEventListener('DOMContentLoaded',()=>notify('danger', <?= json_encode($flash_err, JSON_UNESCAPED_UNICODE) ?>));
 <?php endif; ?>
+
+/* ===== Zgjedhja e disa kursantëve dhe caktimi njëherësh =====
+   Përdor të njëjtin veprim si caktimi një nga një. */
+(function(){
+  const bar  = document.getElementById('bulkBar');
+  const nOut = document.getElementById('bulkN');
+  const gSel = document.getElementById('bulkGroup');
+  const btn  = document.getElementById('bulkAssign');
+  const clr  = document.getElementById('bulkClear');
+  const all  = document.getElementById('pickAll');
+  const prog = document.getElementById('bulkProgress');
+  if (!bar) return;
+
+  const picks = () => Array.from(document.querySelectorAll('.pick:checked'));
+  const visibleBoxes = () => Array.from(document.querySelectorAll('.pick:not(:disabled)')).filter(cb => !cb.closest('tr').hidden);
+
+  function sync(){
+    const n = picks().length;
+    nOut.textContent = n;
+    bar.hidden = n === 0;
+    document.querySelectorAll('.pick').forEach(cb=> cb.closest('tr').classList.toggle('is-selected', cb.checked));
+    if (all) {
+      const boxes = visibleBoxes();
+      all.checked = n > 0 && boxes.every(cb => cb.checked);
+      all.indeterminate = n > 0 && !all.checked;
+    }
+  }
+
+  document.addEventListener('change', e=>{ if (e.target.classList && e.target.classList.contains('pick')) sync(); });
+  if (all) all.addEventListener('change', ()=>{ visibleBoxes().forEach(cb=>{ cb.checked = all.checked; }); sync(); });
+  if (clr) clr.addEventListener('click', ()=>{ document.querySelectorAll('.pick').forEach(cb=>{ cb.checked = false; }); sync(); all?.focus(); });
+
+  if (btn) btn.addEventListener('click', async ()=>{
+    if (!EDIT_MODE) return;
+    const gid = parseInt(gSel.value || '0', 10);
+    if (!gid){ notify('warning','Zgjidh grupin ku do t\'i caktosh.'); gSel.focus(); return; }
+    const ids = picks().map(cb => parseInt(cb.dataset.student, 10));
+    if (!ids.length) return;
+    const label = gSel.options[gSel.selectedIndex]?.textContent.trim() || 'grupin e zgjedhur';
+    const ok = await window.qtaConfirm({
+      title: `Të caktohen ${ids.length} kursantë?`,
+      message: `Do të caktohen te ${label}. Një grup mban deri në 10 kursantë — ata që nuk nxënë mbeten në listë.`,
+      confirm: 'Po, caktoji', danger: false
+    });
+    if (!ok) return;
+
+    busy(btn, true);
+    let done = 0;
+    const failed = [];
+    for (let i = 0; i < ids.length; i++){
+      prog.textContent = `Po caktoj ${i+1} nga ${ids.length}…`;
+      try{
+        const json = await post({action:'assign_to_group', student_id:ids[i], group_id:gid});
+        if (json.ok) done++; else failed.push(json.error || 'nuk u pranua');
+      }catch(e){ failed.push('lidhja dështoi'); }
+    }
+    prog.textContent = '';
+    busy(btn, false);
+
+    if (done && !failed.length){
+      notify('success', `${done} kursantë u caktuan në grup.`);
+      setTimeout(()=>location.reload(), 900);
+    } else if (done){
+      notify('warning', `${done} u caktuan, ${failed.length} jo. Arsyeja: ${failed[0]}`, {autohide:false});
+      setTimeout(()=>location.reload(), 2500);
+    } else {
+      notify('danger', 'Asnjë kursant nuk u caktua. ' + (failed[0] || ''), {autohide:false});
+    }
+  });
+
+  sync();
+})();
 </script>
 </body>
 </html>

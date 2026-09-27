@@ -36,7 +36,7 @@ register_shutdown_function(function () {
     if (!$err) return;
     $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
     if (in_array($err['type'] ?? 0, $fatalTypes, true) && !headers_sent()) {
-        qta_download_status('error', 'Dokumenti nuk u gjenerua. Ju lutem provo perseri.');
+        qta_download_status('error', 'Dokumenti nuk u krijua. Provo sërish; nëse përsëritet, njofto administratorin.');
     }
 });
 
@@ -51,12 +51,13 @@ foreach ($autoloadCandidates as $p) {
     if (is_file($p)) { require_once $p; $autoloadLoaded = true; break; }
 }
 if (!$autoloadLoaded) {
-    qta_fail(500, 'Composer autoload nuk u gjet.');
+    error_log('[QTA eksport] register_export: mungon vendor/autoload.php (composer install)');
+    qta_fail(500, 'Dokumenti nuk mund të krijohet tani, sepse në server mungojnë programet e dokumenteve. Njofto administratorin.');
 }
 
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
-  qta_download_status('error', 'Sesioni ka skaduar. Ju lutem kycuni perseri.');
+  qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.');
   header('Location: selectProfile.php');
   exit;
 }
@@ -72,22 +73,26 @@ $currentUser = $u->fetch();
 
 $role = strtolower((string)($currentUser['role_name'] ?? ''));
 if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
-  qta_download_status('error', 'Nuk jeni i autorizuar per kete veprim.');
+  qta_download_status('error', 'Nuk ke leje për këtë dokument.');
   header('Location: selectProfile.php');
   exit;
 }
 
-/* CSRF */
+/* CSRF — POST preferred so the session token never appears in the URL. */
+$request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $csrfSession = $_SESSION['csrf_token'] ?? '';
-$csrfQuery   = $_GET['csrf'] ?? '';
+$csrfQuery   = $request['csrf'] ?? '';
 if (!$csrfSession || !hash_equals($csrfSession, $csrfQuery)) {
-    qta_fail(403, 'CSRF gabim ose mungon.');
+    qta_fail(403, 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
 }
 
 /* Parametra */
-$f = strtolower(trim($_GET['f'] ?? 'xlsx'));  // xlsx|pdf|docx
-$q = trim($_GET['q'] ?? '');
-$from_amze = trim($_GET['from_amze'] ?? '');
+$f = strtolower(trim((string)($request['f'] ?? 'xlsx')));  // xlsx|pdf|docx
+require_once __DIR__ . '/inc/export_requirements.php';
+$missingMsg = qta_export_requirements_message('register_export', $f === 'docx' ? ['zip'] : []);
+if ($missingMsg !== null) { qta_fail(500, $missingMsg); }
+$q = trim((string)($request['q'] ?? ''));
+$from_amze = trim((string)($request['from_amze'] ?? ''));
 
 @ini_set('memory_limit', '-1');
 @set_time_limit(0);
@@ -249,8 +254,8 @@ function outputPdf(array $headers, array $data, string $filename): void {
         * { font-family: DejaVu Sans, sans-serif; font-size: 11px; }
         h3 { margin: 0 0 10px 0; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #999; padding: 4px 6px; }
-        th { background: #f1f3f5; }
+        th, td { border: 1px solid #bdb5a4; padding: 4px 6px; }
+        th { background: #ebe8df; }
       </style>
     </head>
     <body>
@@ -325,5 +330,5 @@ switch ($f) {
   case 'pdf' : outputPdf($headers, $data, $filename); break;
   case 'docx': outputDocx($headers, $data, $filename); break;
   default:
-    qta_fail(400, 'Format i panjohur. Perdor f=xlsx|pdf|docx');
+    qta_fail(400, 'Zgjidh formatin e dokumentit: Excel, PDF ose Word.');
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "QTA Claude-inspired UI"
+  short_description: "Apply QTA portal UI/UX design standards"
+  default_prompt: "Use $qta-claude-ui to implement or review this QTA interface against the repository design system."

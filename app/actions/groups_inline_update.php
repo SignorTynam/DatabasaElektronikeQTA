@@ -33,7 +33,7 @@ if (!$me || !in_array($role, ['administrator','editor'], true)) {
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 if (!$EDIT_MODE) {
   http_response_code(403);
-  echo json_encode(['ok'=>false,'error'=>'Edit Mode është OFF. Aktivizo për të bërë ndryshime.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
 }
 
 /* Input */
@@ -44,7 +44,7 @@ if(!is_array($data)) $data = $_POST;
 $csrf = $data['csrf'] ?? '';
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$csrf)) {
   http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 
 $action     = $data['action'] ?? '';
@@ -61,7 +61,7 @@ function fmt_dMY(?string $iso): string {
   if (!$iso) return '—';
   if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
   $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
+  return $ts ? date('d.m.Y', $ts) : '—';
 }
 function to_iso_date(?string $v): ?string {
   if ($v === null) return null;
@@ -71,18 +71,27 @@ function to_iso_date(?string $v): ?string {
     $yy=$m[1]; $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $dd=str_pad($m[3],2,'0',STR_PAD_LEFT);
     return "{$yy}-{$mm}-{$dd}";
   }
-  if (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $v, $m)) {
+  if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/', $v, $m)) {
     $dd=str_pad($m[1],2,'0',STR_PAD_LEFT); $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $yy=$m[3];
     return "{$yy}-{$mm}-{$dd}";
   }
-  throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
+  throw new RuntimeException('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.2026.');
 }
 
 /* Lexo grupin (start/end/completed) */
-$ginfo = $pdo->prepare("SELECT start_date, end_date, is_completed FROM course_groups WHERE id=:gid");
+$ginfo = $pdo->prepare("SELECT start_date, end_date, is_completed, model FROM course_groups WHERE id=:gid");
 $ginfo->execute([':gid'=>$group_id]);
 $G = $ginfo->fetch(PDO::FETCH_ASSOC);
 if (!$G) { echo json_encode(['ok'=>false,'error'=>'Grupi nuk u gjet.']); exit; }
+
+/* Grupi me orar mësimi: fillimi dhe mbarimi dalin nga orari (lesson_group_update.php),
+   nuk shkruhen me dorë. Provimet, pikët dhe mbyllja ndryshohen këtu si te çdo grup. */
+$dateField = in_array($action, ['update_group_start', 'update_group_end'], true)
+  || ($action === 'update_cell' && in_array((string)($data['field'] ?? ''), ['start_date', 'end_date'], true));
+if (($G['model'] ?? 'legacy') === 'scheduled' && $dateField) {
+  http_response_code(400);
+  echo json_encode(['ok'=>false,'error'=>'Datat e këtij grupi i llogarit orari i mësimit. Ndryshoji te faqja e grupit: "Ndrysho fillimin ose orët në ditë" ose një ditë e veçantë.']); exit;
+}
 
 $completed = (int)($G['is_completed'] ?? 0) === 1;
 $forced = !empty($data['force']);
@@ -90,7 +99,7 @@ $forced = !empty($data['force']);
 /* Nëse i përfunduar dhe s’ka 'force', kërko konfirmim (UI e bën; këtu e zbatojmë si rregull) */
 if ($completed && !$forced && $action !== 'set_group_completed') {
   http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>'Ky grup është i përfunduar. Konfirmo veprimin.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Ky grup është i mbyllur. Konfirmo që do ta ndryshosh.']); exit;
 }
 
 try {

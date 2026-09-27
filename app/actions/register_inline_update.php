@@ -34,7 +34,7 @@ if (!$me || !in_array($role, ['administrator','editor'], true)) {
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 if (!$EDIT_MODE) {
   http_response_code(403);
-  echo json_encode(['ok'=>false,'error'=>'Edit Mode është OFF. Aktivizo për të bërë ndryshime.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.']); exit;
 }
 
 /* Input */
@@ -45,7 +45,7 @@ if(!is_array($data)) $data = $_POST;
 $csrf = $data['csrf'] ?? '';
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$csrf)) {
   http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+  echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
 }
 
 $action     = $data['action'] ?? '';
@@ -62,7 +62,7 @@ function fmt_dMY(?string $iso): string {
   if (!$iso) return '—';
   if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
   $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '—';
+  return $ts ? date('d.m.Y', $ts) : '—';
 }
 /* Helper: prano dd-mm-yyyy ose yyyy-mm-dd dhe kthe në yyyy-mm-dd */
 function to_iso_date(?string $v): ?string {
@@ -73,11 +73,11 @@ function to_iso_date(?string $v): ?string {
     $yy=$m[1]; $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $dd=str_pad($m[3],2,'0',STR_PAD_LEFT);
     return "{$yy}-{$mm}-{$dd}";
   }
-  if (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $v, $m)) {
+  if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/', $v, $m)) {
     $dd=str_pad($m[1],2,'0',STR_PAD_LEFT); $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $yy=$m[3];
     return "{$yy}-{$mm}-{$dd}";
   }
-  throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
+  throw new RuntimeException('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.2026.');
 }
 
 /* Gjej grupin target (më i fundit nëse s’është dhënë) */
@@ -93,7 +93,7 @@ if ($group_id <= 0) {
   $gq->execute([':sid'=>$student_id]);
   $group_id = (int)$gq->fetchColumn();
   if (!$group_id) {
-    echo json_encode(['ok'=>false,'error'=>'Së pari caktoni një grup/modul për këtë student.']); exit;
+    echo json_encode(['ok'=>false,'error'=>'Së pari cakto kursantin në një grup.']); exit;
   }
 }
 
@@ -105,11 +105,16 @@ if (!$chk->fetchColumn()) {
 }
 
 /* Lexo datat e grupit (për validim) */
-$ginfo = $pdo->prepare("SELECT start_date, end_date FROM course_groups WHERE id=:gid");
+$ginfo = $pdo->prepare("SELECT start_date, end_date, model FROM course_groups WHERE id=:gid");
 $ginfo->execute([':gid'=>$group_id]);
 $G = $ginfo->fetch(PDO::FETCH_ASSOC);
 if(!$G){
   echo json_encode(['ok'=>false,'error'=>'Grupi nuk u gjet.']); exit;
+}
+/* Grupi me orar mësimi: datat dalin nga orari, nuk shkruhen me dorë. */
+if (($G['model'] ?? 'legacy') === 'scheduled' && in_array($action, ['update_group_start', 'update_group_end'], true)) {
+  http_response_code(400);
+  echo json_encode(['ok'=>false,'error'=>'Datat e këtij grupi i llogarit orari i mësimit. Ndryshoji te faqja e grupit, te "Grupet".']); exit;
 }
 
 try {

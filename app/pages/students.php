@@ -33,8 +33,7 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-    $e = strtolower((string)$_GET['edit']);
-    $_SESSION['edit_mode'] = ($e === 'on');
+    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
     // Heq parametër 'edit' nga URL duke bërë redirect në të njëjtën faqe pa të
     $qs = $_GET; unset($qs['edit']);
     $url = 'students.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
@@ -56,7 +55,7 @@ function require_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = $_POST['csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         if (empty($token) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
-            http_response_code(400); exit('CSRF token mismatch.');
+            http_response_code(400); exit('Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.');
         }
     }
 }
@@ -75,7 +74,7 @@ $eduLevels = $pdo->query("SELECT id, code, label FROM education_levels ORDER BY 
 $genders   = $pdo->query("SELECT id, code, label FROM genders ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (int)$g['id']; break; } }
 
-/* Kurse (modulet) për zgjedhje */
+/* Kurset për zgjedhje */
 try {
     $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
@@ -119,12 +118,6 @@ function make_initial_password(string $first_name, ?string $birth_date): string 
     if ($birth_date && preg_match('/^(\d{4})-/', $birth_date, $m)) { $year = $m[1]; }
     return ($fname === '' ? 'User' : $fname) . '.' . $year;
 }
-function fmt_dMY(?string $iso): string {
-    if (!$iso) return '—';
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return htmlspecialchars($iso, ENT_QUOTES, 'UTF-8');
-    $ts = strtotime($iso);
-    return $ts ? date('d-m-Y', $ts) : '—';
-}
 
 /* ------------------------------
    Veprime POST: Create & Delete
@@ -144,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($tok) || !hash_equals($_SESSION['csrf_token'], $tok)) {
             http_response_code(400);
             header('Content-Type: application/json; charset=UTF-8');
-            echo json_encode(['ok'=>false,'error'=>'CSRF token mismatch.']); exit;
+            echo json_encode(['ok'=>false,'error'=>'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.']); exit;
         }
     } else {
         require_csrf();
@@ -155,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         /* --------- CREATE STUDENT --------- */
         if ($action === 'create_student') {
-            if (!$EDIT_MODE) { throw new RuntimeException('Edit Mode është OFF. Aktivizo për të kryer ndryshime.'); }
+            if (!$EDIT_MODE) { throw new RuntimeException('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" dhe provo sërish.'); }
 
             $personal_number    = trim($post['personal_number'] ?? '');
             $nr_amze            = trim($post['nr_amze'] ?? '');
@@ -307,8 +300,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($dup->fetchColumn()) {
                         // Ky person ka bërë / po bën këtë modul me një AMZË tjetër
                         throw new RuntimeException(
-                            'Ky student ka tashmë një regjistrim për këtë modul (në një AMZË tjetër). '
-                            .'Ju lutem zgjidh një modul tjetër ose lëre bosh.'
+                            'Ky person ka tashmë një regjistrim për këtë kurs (me një numër tjetër amze). '
+                            .'Zgjidh një kurs tjetër ose lëre bosh.'
                         );
                     }
                 }
@@ -335,13 +328,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Content-Type: application/json; charset=UTF-8');
                 echo json_encode(['ok'=>true, 'student_id'=>$newStudentId]); exit;
             }
-            flash('ok', 'Studenti u shtua me sukses.');
+            flash('ok', 'Kursanti u shtua në regjistër.');
             header('Location: students.php'); exit;
         }
 
         /* --------- DELETE STUDENT (AMZË) --------- */
         if ($action === 'delete_student') {
-            if (!$EDIT_MODE) { throw new RuntimeException('Edit Mode është OFF. Aktivizo për të fshirë.'); }
+            if (!$EDIT_MODE) { throw new RuntimeException('Ndryshimet janë të mbyllura. Shtyp "Lejo ndryshimet" për të fshirë.'); }
 
             $student_id = (int)($post['student_id'] ?? 0);
             $also_identity = (int)($post['also_delete_identity'] ?? 0) === 1;
@@ -635,7 +628,7 @@ $listStmt = $pdo->prepare("
         ) AS group_end_date,
 
 
-        /* Moduli i planifikuar (nëse nuk ka grup) */
+        /* Kursi i planifikuar (nëse nuk ka grup) */
         (
           SELECT c.name
           FROM student_course_plans scp
@@ -681,744 +674,446 @@ $exportBase = 'students_export.php?' . http_build_query(array_filter([
     // pagen NUK e dërgojmë që eksporti të marrë gjithçka, jo vetëm faqen aktuale
 ]));
 
-?>
-<!DOCTYPE html>
-<html lang="sq">
-<head>
-    <meta charset="UTF-8" />
-    <title>Studentët – QTA <?= $role==='editor' ? 'Editor' : 'Admin' ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Bootstrap & Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 
-    <style>
-        body { background:#f5f7fb; padding-top:72px; }
-        .navbar-brand img { height:28px; }
-        .card { border:none; border-radius:1rem; box-shadow:0 10px 25px rgba(2,6,23,.06); }
-        .mini-table thead { background:#f1f5f9; }
-        .form-control::placeholder { color:#9ca3af; }
-        .pagination .page-link { border-radius:.5rem; }
-        .truncate-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-        .nowrap { white-space:nowrap; }
-        @media (max-width: 575.98px) { .navbar-text { display:none; } }
+$pageTitle  = 'Kursantët';
+$NAV_ACTIVE = 'users_students';
+$HELP_TOPIC = 'students';
+$openAdd    = $EDIT_MODE && isset($_GET['add']);
+$hasFilters = ($q !== '' || $edu !== '' || $incomplete);
+$addHref    = 'students.php?' . http_build_query(['edit' => '1', 'add' => '1']);
+$exportAction = 'students_export.php';
+$exportFields = ['q' => $q, 'edu' => $edu, 'incomplete' => $incomplete ? '1' : ''];
+require __DIR__ . '/../shared/app_head.php';
 
-        /* Inline-edit styles */
-        .editable {
-          display:inline-block; min-width:72px; padding:.35rem .5rem;
-          border-radius:.5rem; transition:box-shadow .2s, background-color .2s;
-        }
-        .editable[contenteditable="true"]:hover { background:#f8fafc; box-shadow:inset 0 0 0 1px #e5e7eb; cursor:text; }
-        .editable[contenteditable="true"]:focus { outline:0; background:#eef2ff; box-shadow:inset 0 0 0 2px #4f46e5; }
-        .editable[contenteditable="false"] { opacity:.7; cursor:default; }
-        .cell-saving { position:relative; }
-        .cell-saving::after {
-          content:''; position:absolute; right:.25rem; top:50%; width:.55rem; height:.55rem;
-          border:.15rem solid rgba(0,0,0,.2); border-top-color:rgba(0,0,0,.55); border-radius:50%;
-          animation:spin .6s linear infinite; transform:translateY(-50%);
-        }
-        @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
-        .cell-ok { animation: flashOk 1.2s ease; }
-        @keyframes flashOk { 0%{background:#ecfdf5;} 100%{background:transparent;} }
-        .cell-err { animation: flashErr 1.2s ease; }
-        @keyframes flashErr { 0%{background:#fef2f2;} 100%{background:transparent;} }
-        .inline-select { min-width: 160px; }
-
-        .editing-off .editable { color:#6b7280; cursor:not-allowed; }
-        .editing-off td.cell .inline-select:disabled { background:#f3f4f6; color:#6b7280; cursor:not-allowed; }
-        .badge-edit { letter-spacing:.2px; }
-
-        /* Soft buttons & pills */
-        .btn-pill { border-radius:999px !important; }
-        .btn-soft-primary   { background:#eef2ff; color:#1d4ed8; border:1px solid #e0e7ff; }
-        .btn-soft-primary:hover { background:#e0e7ff; color:#1d4ed8; }
-        .btn-soft-success   { background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; }
-        .btn-soft-success:hover { background:#bbf7d0; color:#14532d; }
-        .btn-soft-danger    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
-        .btn-soft-danger:hover { background:#fecaca; color:#7f1d1d; }
-        .btn-soft-secondary { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
-        .btn-soft-secondary:hover { background:#e2e8f0; color:#0f172a; }
-
-        /* FAB Stack */
-        .fab-stack{
-          position: fixed;
-          right: 24px;
-          bottom: 24px;
-          display: flex;
-          flex-direction: column-reverse;
-          gap: 12px;
-          z-index: 1040;
-        }
-        .fab-stack .fab-btn{
-          align-self: flex-end;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          min-height: 52px;
-          height: 52px;
-          width: 52px;
-          padding: 0 14px;
-          border-radius: 999px;
-          box-shadow: 0 12px 20px rgba(2,6,23,.15);
-          transition: width .2s ease, box-shadow .2s ease, transform .06s ease;
-          overflow: hidden;
-        }
-        .fab-stack .fab-btn .fab-text{
-          white-space: nowrap;
-          max-width: 0;
-          opacity: 0;
-          transition: max-width .2s ease, opacity .15s ease, margin-left .2s ease;
-          margin-left: 0;
-        }
-        .fab-stack .fab-btn:hover,
-        .fab-stack .fab-btn:focus{
-          width: auto;
-          box-shadow: 0 16px 28px rgba(2,6,23,.22);
-        }
-        .fab-stack .fab-btn:hover .fab-text,
-        .fab-stack .fab-btn:focus .fab-text{
-          max-width: 180px;
-          opacity: 1;
-          margin-left: 4px;
-        }
-        .fab-stack .fab-btn:active{ transform: translateY(1px); }
-
-        @media (max-width: 575.98px){
-          .fab-stack{ right:16px; bottom:16px; gap:10px; }
-          .fab-stack .fab-btn{ min-height:48px; height:48px; width:48px; padding:0 12px; }
-        }
-
-        .btn-fab{ display:none !important; }
-
-        .toast.qta-toast{ border:0; border-radius:.75rem; box-shadow:0 12px 20px rgba(2,6,23,.12); }
-        .toast.qta-toast .toast-header{ border-bottom:0; }
-        .toast-success .toast-header{ background:#ecfdf5; color:#065f46; }
-        .toast-danger  .toast-header{ background:#fef2f2; color:#991b1b; }
-        .toast-info    .toast-header{ background:#eff6ff; color:#1e40af; }
-        .toast-warning .toast-header{ background:#fff7ed; color:#9a3412; }
-
-        .compact .mini-table table.table > :not(caption) > * > * { padding: .35rem .5rem; }
-
-        /* Veprime column */
-        .col-actions{ width: 92px; } /* rritur pak që të zërë dy butona */
-        .btn-icon{ width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; }
-    </style>
-</head>
-<body class="<?= $EDIT_MODE ? '' : 'editing-off' ?>">
-
-<?php
-  $NAV_ACTIVE = 'students';
-  if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
-  elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
+if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
+elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
 ?>
 
-<!-- Toast container -->
-<div id="toastZone" class="toast-container position-fixed start-0 bottom-0 p-3" style="z-index:1080;"></div>
+<main class="app-main is-wide" id="main" tabindex="-1">
 
-<main class="container-fluid px-3 px-md-4">
-  <?php require __DIR__ . '/../shared/partials/edit_mode_off_banner.php'; ?>
-  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-    <h2 class="mb-0">Studentët</h2>
-    <div class="page-toolbar"></div>
-  </div>
-
-  <!-- Kërkim + filtër edukimi -->
-  <div class="card mb-3">
-    <div class="card-body">
-      <form class="row g-2 align-items-end" method="get" action="students.php">
-        <!-- Kërkimi -->
-        <div class="col-md-5">
-          <div class="d-flex align-items-center">
-            <label class="form-label mb-0 me-2" style="min-width:70px;">Kërko</label>
-            <div class="input-group flex-grow-1">
-              <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-              <input type="text" name="q" class="form-control border-0"
-                    placeholder="Emër/Atësi/Mbiemër, nr. amzës, nr. personal, tel., vendlindje..."
-                    value="<?= htmlspecialchars($q) ?>">
-            </div>
-          </div>
-        </div>
-
-        <!-- Arsimi -->
-        <div class="col-md-3">
-          <div class="d-flex align-items-center">
-            <label class="form-label mb-0 me-2" style="min-width:70px;">Arsimi</label>
-            <select name="edu" class="form-select flex-grow-1">
-              <option value="">Të gjithë</option>
-              <?php foreach ($eduLevels as $el): ?>
-                <?php $val = (string)$el['id']; ?>
-                <option value="<?= htmlspecialchars($val) ?>" <?= $edu===$val?'selected':'' ?>>
-                  <?= htmlspecialchars($el['code'].' — '.$el['label']) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-        </div>
-
-        <!-- Vetëm me të dhëna mungese -->
-        <div class="col-md-2">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox"
-                  id="onlyIncomplete"
-                  name="incomplete"
-                  value="1"
-                  <?= $incomplete ? 'checked' : '' ?>>
-            <label class="form-check-label" for="onlyIncomplete">
-              Shfaq të dhënat që mungojnë
-            </label>
-          </div>
-        </div>
-
-        <!-- Butonat -->
-        <div class="col-md-2 text-end">
-          <button class="btn btn-soft-secondary btn-pill me-1" type="button"
-                  onclick="window.location='students.php'">
-            <i class="bi bi-x-circle me-1"></i>Pastro
-          </button>
-          <button class="btn btn-primary btn-pill" type="submit">
-            <i class="bi bi-funnel me-1"></i>Apliko
-          </button>
-        </div>
-      </form>
+  <header class="page-head">
+    <div class="page-head-main">
+      <h1 class="page-title">Kursantët</h1>
+      <p class="page-lead">Të gjithë kursantët e regjistruar. Kërko, hap kartelën ose ndrysho të dhënat direkt në tabelë.</p>
     </div>
-  </div>
+    <div class="page-actions">
+      <?php require __DIR__ . '/../shared/partials/edit_lock.php'; ?>
+      <?= qta_help_button() ?>
+      <?php if ($EDIT_MODE): ?>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+          <i class="bi bi-person-plus" aria-hidden="true"></i>Shto kursant
+        </button>
+      <?php else: ?>
+        <a class="btn btn-primary" href="<?= h($addHref) ?>">
+          <i class="bi bi-person-plus" aria-hidden="true"></i>Shto kursant
+        </a>
+      <?php endif; ?>
+    </div>
+  </header>
+
+  <form class="filters" method="get" action="students.php" role="search" aria-label="Kërko kursantë">
+    <div class="filter-field is-grow">
+      <label class="form-label" for="fQ">Kërko</label>
+      <div class="search-field">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input class="form-control" id="fQ" type="search" name="q" value="<?= h($q) ?>"
+               placeholder="Emri, numri personal, nr. i amzës, telefoni ose vendlindja">
+      </div>
+    </div>
+    <div class="filter-field">
+      <label class="form-label" for="fEdu">Arsimi</label>
+      <select class="form-select" id="fEdu" name="edu">
+        <option value="">Të gjitha nivelet</option>
+        <?php foreach ($eduLevels as $el): $val = (string)$el['id']; ?>
+          <option value="<?= h($val) ?>" <?= $edu === $val ? 'selected' : '' ?>><?= h($el['label']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="filter-field filter-check">
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="onlyIncomplete" name="incomplete" value="1" <?= $incomplete ? 'checked' : '' ?>>
+        <label class="form-check-label" for="onlyIncomplete">Vetëm me të dhëna që mungojnë</label>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <?php if ($hasFilters): ?>
+        <a class="btn btn-ghost" href="students.php"><i class="bi bi-x-lg" aria-hidden="true"></i>Pastro kërkimin</a>
+      <?php endif; ?>
+      <button class="btn btn-secondary" type="submit"><i class="bi bi-search" aria-hidden="true"></i>Kërko</button>
+    </div>
+  </form>
 
   <?php if ($amzeCheck['min'] !== null && $amzeCheck['max'] !== null && $amzeCheck['missing_count'] > 0): ?>
-    <div class="alert alert-warning alert-dismissible fade show d-flex align-items-start gap-2 mb-3" role="alert">
-      <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+    <div class="alert alert-warning alert-dismissible fade show" role="status">
+      <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
       <div>
-        <div class="fw-semibold">
-          AMZË të paplota në intervalin <?= (int)$amzeCheck['min'] ?> – <?= (int)$amzeCheck['max'] ?>.
-        </div>
-        <div class="small">
-          Gjithsej mungojnë: <strong><?= (int)$amzeCheck['missing_count'] ?></strong>.
-          <?php if (!empty($amzeCheck['missing'])): ?>
-            <br>
-            Mungojnë AMZË: <?= htmlspecialchars(implode(', ', $amzeCheck['missing']), ENT_QUOTES, 'UTF-8') ?>
-            <?= $amzeCheck['truncated'] ? ' …' : '' ?>
-          <?php endif; ?>
-        </div>
+        <span class="alert-title">Mungojnë <?= (int)$amzeCheck['missing_count'] ?> numra amze midis <?= (int)$amzeCheck['min'] ?> dhe <?= (int)$amzeCheck['max'] ?></span>
+        Mund të jenë regjistrime të fshira ose numra të kapërcyer gabimisht.
+        <?php if (!empty($amzeCheck['missing'])): ?>
+          <details class="mt-1">
+            <summary>Shiko numrat që mungojnë</summary>
+            <p class="mb-0 mt-1 code"><?= h(implode(', ', $amzeCheck['missing'])) ?><?= $amzeCheck['truncated'] ? ' …' : '' ?></p>
+          </details>
+        <?php endif; ?>
       </div>
-      <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Mbyll"></button>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Mbyll njoftimin"></button>
     </div>
   <?php endif; ?>
 
-  <!-- Tabela -->
-  <div class="card">
-    <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <h5 class="mb-0 d-flex align-items-center gap-2">
-        <i class="bi bi-mortarboard"></i>
-        <span>Lista e studentëve</span>
-        <?php if ($incomplete): ?>
-          <span class="badge text-bg-warning">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            Janë shfaqur vetëm të dhënat që mungojnë
-          </span>
-        <?php endif; ?>
-      </h5>
-
-      <div class="d-flex align-items-center gap-2">
-        <span class="text-muted small me-2"><?= number_format($total) ?> rezultat(e)</span>
-
-        <div class="btn-group" role="group">
-          <a class="btn btn-soft-success btn-pill"
-             href="<?= $exportBase . '&f=xlsx' ?>">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </a>
-          <a class="btn btn-soft-danger btn-pill"
-             href="<?= $exportBase . '&f=pdf' ?>">
-            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
-          </a>
-          <a class="btn btn-soft-primary btn-pill"
-             href="<?= $exportBase . '&f=docx' ?>">
-            <i class="bi bi-file-earmark-word me-1"></i> Word
-          </a>
-        </div>
-      </div>
+  <section class="section" aria-labelledby="listTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="listTitle">
+        <?= $hasFilters ? 'Rezultatet' : 'Të gjithë kursantët' ?>
+        <span class="count"><?= number_format($total, 0, ',', '.') ?></span>
+      </h2>
+      <?php require __DIR__ . '/../shared/partials/export_menu.php'; ?>
     </div>
 
-    <div class="card-body">
-      <div class="table-responsive mini-table">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th class="nowrap">Nr. Amzës</th>
-              <th>Emër</th>
-              <th>Atësi</th>
-              <th>Mbiemër</th>
-              <th class="nowrap">Nr. Personal</th>
-              <th class="nowrap">Datëlindja</th>
-              <th>Vendlindja</th>
-              <th>Arsimi</th>
-              <th>Moduli</th>
-              <th class="nowrap">Datat e modulit</th>
-              <th class="nowrap">Gjinia</th>
-              <th>Tel.</th>
-              <th class="col-actions text-center">Veprime</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if ($students): ?>
-            <?php foreach ($students as $s):
-              $sid = (int)$s['student_id'];
-              $fullName = trim(($s['first_name'] ?: '').' '.($s['father_name'] ?: '').' '.($s['last_name'] ?: ''));
-            ?>
-              <tr id="row-<?= $sid ?>">
-                <!-- nr_amze -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="nr_amze">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['nr_amze']) ?></span>
-                </td>
-                <!-- first_name -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="first_name">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['first_name'] ?: '—') ?></span>
-                </td>
-                <!-- father_name -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="father_name">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['father_name'] ?: '—') ?></span>
-                </td>
-                <!-- last_name -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="last_name">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['last_name'] ?: '—') ?></span>
-                </td>
-                <!-- personal_number -->
-                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="personal_number">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['personal_number'] ?: '—') ?></span>
-                </td>
-                <!-- birth_date -->
-                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="DD-MM-YYYY">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars(fmt_dMY($s['birth_date'])) ?></span>
-                </td>
-                <!-- birth_place -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="birth_place">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['birth_place'] ?: '—') ?></span>
-                </td>
-                <!-- education_level_id -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="education_level_id">
-                  <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <option value="">— Zgjidh —</option>
-                    <?php foreach ($eduLevels as $el): ?>
-                      <option value="<?= (int)$el['id'] ?>" <?= ((int)$s['edu_id'] === (int)$el['id']) ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($el['code'].' — '.$el['label']) ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                </td>
-                <!-- Moduli (emri i grupit ose i modulit) -->
-                <td class="nowrap">
-                  <?php
-                    // Nëse studenti është në një grup, shfaq emrin e grupit;
-                    // përndryshe, shfaq modul nga student_course_plans
-                    $moduleName = $s['group_name'] ?: $s['planned_course_name'] ?: '—';
-                    echo htmlspecialchars($moduleName, ENT_QUOTES, 'UTF-8');
-                  ?>
-                </td>
-
-                <!-- Datat e modulit (vetëm nëse ka grup) -->
-                <td class="nowrap">
-                  <?php
-                    $datesLabel = '—';
-                    if (!empty($s['group_start_date']) || !empty($s['group_end_date'])) {
-                        $from = fmt_dMY($s['group_start_date'] ?? null);
-                        $to   = fmt_dMY($s['group_end_date'] ?? null);
-
-                        if ($from !== '—' && $to !== '—') {
-                            $datesLabel = $from . ' - ' . $to;
-                        } elseif ($from !== '—') {
-                            $datesLabel = $from;
-                        } elseif ($to !== '—') {
-                            $datesLabel = $to;
-                        }
-                    }
-                    echo htmlspecialchars($datesLabel, ENT_QUOTES, 'UTF-8');
-                  ?>
-                </td>
-
-                <!-- gender_id -->
-                <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
-                  <select class="form-select form-select-sm inline-select" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-                    <?php foreach ($genders as $g): ?>
-                      <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($g['label']) ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                </td>
-                <!-- phone -->
-                <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
-                  <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= htmlspecialchars($s['phone'] ?: '—') ?></span>
-                </td>
-                <!-- actions -->
-                <td class="text-center">
-                  <div class="d-inline-flex gap-1">
-                    <!-- FUNKSIONALITET I RI: HAP KARTELËN -->
-                    <a href="student_card.php?sid=<?= $sid ?>"
-                       class="btn btn-soft-primary btn-icon"
-                       title="Hap kartelën e studentit">
-                      <i class="bi bi-person-lines-fill"></i>
-                    </a>
-
-                    <!-- ekzistuese: fshi -->
-                    <?php if ($EDIT_MODE): ?>
-                      <button type="button"
-                              class="btn btn-soft-danger btn-icon btn-delete"
-                              title="Fshi këtë AMZË"
-                              data-sid="<?= $sid ?>"
-                              data-amze="<?= htmlspecialchars($s['nr_amze']) ?>"
-                              data-name="<?= htmlspecialchars($fullName ?: '—') ?>">
-                        <i class="bi bi-trash"></i>
-                      </button>
-                    <?php else: ?>
-                      <button type="button" class="btn btn-soft-secondary btn-icon" disabled title="Edit Mode OFF">
-                        <i class="bi bi-trash"></i>
-                      </button>
-                    <?php endif; ?>
-                  </div>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          <?php else: ?>
-            <tr><td colspan="13" class="text-center text-muted">Nuk u gjet asnjë student.</td></tr>
-          <?php endif; ?>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Paginim -->
-    <?php if ($totalPages > 1): ?>
-      <div class="card-footer bg-white">
-        <nav aria-label="Page navigation">
-          <ul class="pagination mb-0 justify-content-end">
-            <?php
-              $base = 'students.php?'.http_build_query(array_filter([
-                'q'          => $q !== '' ? $q : null,
-                'edu'        => $edu !== '' ? $edu : null,
-                'incomplete' => $incomplete ? '1' : null,
-              ]));
-              $prev = max(1, $page-1);
-              $next = min($totalPages, $page+1);
-            ?>
-            <li class="page-item <?= $page<=1?'disabled':'' ?>">
-              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=1">«</a>
-            </li>
-            <li class="page-item <?= $page<=1?'disabled':'' ?>">
-              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $prev ?>">‹</a>
-            </li>
-            <li class="page-item disabled"><span class="page-link"><?= $page ?> / <?= $totalPages ?></span></li>
-            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $next ?>">›</a>
-            </li>
-            <li class="page-item <?= $page>=$totalPages?'disabled':'' ?>">
-              <a class="page-link" href="<?= $base.(strpos($base,'?')!==false?'&':'?') ?>page=<?= $totalPages ?>">»</a>
-            </li>
-          </ul>
-        </nav>
+    <?php if ($incomplete): ?>
+      <div class="notice mb-3">
+        <i class="bi bi-funnel" aria-hidden="true"></i>
+        <span>Po shfaqen vetëm kursantët që kanë mangësi: numër personal, emër, atësi, mbiemër, datëlindje, vendlindje, arsim ose gjini.</span>
       </div>
     <?php endif; ?>
-  </div>
 
-  <div class="text-center text-muted small mt-4">
-    &copy; <?= date('Y') ?> QTA • Të gjitha të drejtat e rezervuara.
-  </div>
+    <?php
+      $tfTarget = '#studentsTable';
+      $tfPlaceholder = 'Filtro këtë faqe — emër, amzë, vendlindje, kurs…';
+      $tfChips = [['label' => 'Pa kurs', 'match' => '—']];
+      $tfNoun = 'kursantë';
+      require __DIR__ . '/../shared/partials/table_filter.php';
+    ?>
+
+    <div class="table-responsive">
+      <table class="table table-freeze" id="studentsTable" data-sortable>
+        <thead>
+          <tr>
+            <th scope="col" class="nowrap" data-sort="num">Nr. i amzës</th>
+            <th scope="col" data-sort="text">Emri</th>
+            <th scope="col" data-sort="text">Atësia</th>
+            <th scope="col" data-sort="text">Mbiemri</th>
+            <th scope="col" class="nowrap" data-sort="text">Nr. personal</th>
+            <th scope="col" class="nowrap" data-sort="date">Datëlindja</th>
+            <th scope="col" class="col-medium" data-sort="text">Vendlindja</th>
+            <th scope="col" data-sort="text">Arsimi</th>
+            <th scope="col" class="col-wide" data-sort="text">Kursi</th>
+            <th scope="col" data-sort="text">Gjinia</th>
+            <th scope="col" data-sort="text">Telefoni</th>
+            <th scope="col" class="col-actions" data-sort="none"><span class="visually-hidden">Veprime</span></th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php if ($students): ?>
+          <?php foreach ($students as $s):
+            $sid = (int)$s['student_id'];
+            $fullName = trim(($s['first_name'] ?: '').' '.($s['father_name'] ?: '').' '.($s['last_name'] ?: ''));
+            $moduleName = $s['group_name'] ?: $s['planned_course_name'] ?: '—';
+            $from = qta_date($s['group_start_date'] ?? null, '');
+            $to   = qta_date($s['group_end_date'] ?? null, '');
+            $moduleDates = trim($from . ($from !== '' && $to !== '' ? ' – ' : '') . $to);
+          ?>
+            <tr id="row-<?= $sid ?>">
+              <td class="cell" data-id="<?= $sid ?>" data-field="nr_amze">
+                <span class="editable id-code" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h((string)$s['nr_amze']) ?></span>
+              </td>
+              <td class="cell" data-id="<?= $sid ?>" data-field="first_name">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['first_name'] ?: '—') ?></span>
+              </td>
+              <td class="cell" data-id="<?= $sid ?>" data-field="father_name">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['father_name'] ?: '—') ?></span>
+              </td>
+              <td class="cell" data-id="<?= $sid ?>" data-field="last_name">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['last_name'] ?: '—') ?></span>
+              </td>
+              <td class="cell nowrap" data-id="<?= $sid ?>" data-field="personal_number">
+                <span class="editable id-code" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['personal_number'] ?: '—') ?></span>
+              </td>
+              <td class="cell nowrap" data-id="<?= $sid ?>" data-field="birth_date" title="Formati: dd.mm.vvvv">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>" data-dmy data-dmy-kind="birth" data-dmy-title="Datëlindja — <?= h($fullName ?: 'kursanti') ?>"><?= h(qta_date($s['birth_date'])) ?></span>
+              </td>
+              <td class="cell" data-id="<?= $sid ?>" data-field="birth_place">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['birth_place'] ?: '—') ?></span>
+              </td>
+              <td class="cell" data-id="<?= $sid ?>" data-field="education_level_id">
+                <select class="form-select form-select-sm inline-select" aria-label="Arsimi i <?= h($fullName ?: 'kursantit') ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                  <option value="">— Zgjidh —</option>
+                  <?php foreach ($eduLevels as $el): ?>
+                    <option value="<?= (int)$el['id'] ?>" <?= ((int)$s['edu_id'] === (int)$el['id']) ? 'selected' : '' ?>><?= h($el['label']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+              <td class="col-wide">
+                <span><?= h($moduleName) ?></span>
+                <?php if ($moduleDates !== ''): ?><span class="cell-sub"><?= h($moduleDates) ?></span><?php endif; ?>
+              </td>
+              <td class="cell" data-id="<?= $sid ?>" data-field="gender_id">
+                <select class="form-select form-select-sm inline-select" aria-label="Gjinia e <?= h($fullName ?: 'kursantit') ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                  <?php foreach ($genders as $g): ?>
+                    <option value="<?= (int)$g['id'] ?>" <?= ((int)$s['gender_id'] === (int)$g['id']) ? 'selected' : '' ?>><?= h($g['label']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+              <td class="cell nowrap" data-id="<?= $sid ?>" data-field="phone">
+                <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"><?= h($s['phone'] ?: '—') ?></span>
+              </td>
+              <td class="col-actions">
+                <span class="row-actions">
+                  <a class="btn btn-ghost btn-sm" href="student_card.php?sid=<?= $sid ?>" title="Hap kartelën e <?= h($fullName ?: 'kursantit') ?>">
+                    <i class="bi bi-person-vcard" aria-hidden="true"></i>Kartela
+                  </a>
+                  <?php if ($EDIT_MODE): ?>
+                    <button type="button" class="btn btn-ghost btn-sm btn-icon btn-delete text-danger"
+                            aria-label="Fshi regjistrimin <?= h((string)$s['nr_amze']) ?>" title="Fshi këtë regjistrim"
+                            data-sid="<?= $sid ?>" data-amze="<?= h((string)$s['nr_amze']) ?>" data-name="<?= h($fullName ?: '—') ?>">
+                      <i class="bi bi-trash" aria-hidden="true"></i>
+                    </button>
+                  <?php endif; ?>
+                </span>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <tr><td colspan="12" class="table-empty">
+            <?= $hasFilters ? 'Asnjë kursant nuk përputhet me kërkimin. Provo një emër tjetër ose shtyp "Pastro kërkimin".' : 'Ende nuk ka kursantë. Shtyp "Shto kursant" për të regjistruar të parin.' ?>
+          </td></tr>
+        <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <?php if ($totalPages > 1):
+      $base = 'students.php?' . http_build_query(array_filter([
+        'q'          => $q !== '' ? $q : null,
+        'edu'        => $edu !== '' ? $edu : null,
+        'incomplete' => $incomplete ? '1' : null,
+      ]));
+      $sep = str_contains($base, '=') ? '&' : '';
+    ?>
+      <nav class="pager" aria-label="Faqet e listës">
+        <span>Faqja <?= $page ?> nga <?= $totalPages ?> · <?= h(qta_plural($total, 'kursant', 'kursantë')) ?></span>
+        <ul class="pagination">
+          <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
+            <a class="page-link" href="<?= h($base . $sep . 'page=' . max(1, $page - 1)) ?>" aria-label="Faqja e mëparshme"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+          </li>
+          <?php for ($p = max(1, $page - 2); $p <= min($totalPages, $page + 2); $p++): ?>
+            <li class="page-item <?= $p === $page ? 'active' : '' ?>">
+              <a class="page-link" href="<?= h($base . $sep . 'page=' . $p) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            </li>
+          <?php endfor; ?>
+          <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
+            <a class="page-link" href="<?= h($base . $sep . 'page=' . min($totalPages, $page + 1)) ?>" aria-label="Faqja tjetër"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+          </li>
+        </ul>
+      </nav>
+    <?php endif; ?>
+  </section>
 </main>
 
-<!-- FAB Stack: Edit Mode + Student i ri -->
-<div class="fab-stack" role="group" aria-label="Veprime shpejta">
-  <!-- Edit Mode -->
-  <a id="editModeFab"
-     class="fab-btn btn <?= $EDIT_MODE ? 'btn-success' : 'btn-soft-secondary' ?>"
-     href="<?= htmlspecialchars($toggleUrl) ?>"
-     title="Ndrysho gjendjen e Edit Mode">
-    <i class="bi <?= $EDIT_MODE ? 'bi-unlock' : 'bi-lock' ?>"></i>
-    <span class="fab-text">Edit Mode: <?= $EDIT_MODE ? 'ON' : 'OFF' ?></span>
-  </a>
-
-  <!-- Student i ri (vetëm kur Edit Mode = ON) -->
-  <?php if ($EDIT_MODE): ?>
-  <button class="fab-btn btn btn-primary"
-          type="button"
-          data-bs-toggle="modal"
-          data-bs-target="#addStudentModal"
-          title="Shto student">
-    <i class="bi bi-plus-lg"></i>
-    <span class="fab-text">Student i ri</span>
-  </button>
-  <?php endif; ?>
-</div>
-
-<!-- MODAL: Shto Student -->
-<div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl">
-    <form class="modal-content" method="post">
-      <input type="hidden" name="csrf" value="<?= htmlspecialchars($CSRF) ?>">
+<!-- Dialog: Shto kursant -->
+<div class="modal fade" id="addStudentModal" tabindex="-1" aria-labelledby="addStudentTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <form class="modal-content" method="post" data-loading>
+      <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_student">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-person-plus me-1"></i> Shto student</h5>
+        <h2 class="modal-title" id="addStudentTitle"><i class="bi bi-person-plus" aria-hidden="true"></i>Shto një kursant</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
+        <p class="text-muted">Mjafton numri i amzës; të tjerat mund t'i plotësosh edhe më vonë. Nëse shkruan numrin personal të dikujt që ekziston, të dhënat plotësohen vetë.</p>
         <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label">Numri Personal <span class="text-muted">(opsional)</span></label>
-            <input type="text" name="personal_number" id="pnInput" class="form-control" placeholder="Opsional — për autoplotësim">
-            <div class="form-text">Nëse ekziston, të dhënat e tjera do të plotësohen automatikisht.</div>
+          <div class="col-md-6">
+            <label class="form-label" for="amzeInput">Nr. i amzës <span class="req" aria-hidden="true">*</span></label>
+            <input type="text" name="nr_amze" id="amzeInput" class="form-control input-code" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pnInput">Numri personal <span class="optional">(nëse e ke)</span></label>
+            <input type="text" name="personal_number" id="pnInput" class="form-control input-code" placeholder="p.sh. J75010110A" autocomplete="off">
           </div>
           <div class="col-md-4">
-            <label class="form-label">Nr. Amzës *</label>
-            <input type="text" name="nr_amze" class="form-control" required>
+            <label class="form-label" for="fnInput">Emri</label>
+            <input type="text" name="first_name" id="fnInput" class="form-control" autocomplete="off">
           </div>
           <div class="col-md-4">
-            <label class="form-label">Arsimi</label>
+            <label class="form-label" for="fatInput">Atësia</label>
+            <input type="text" name="father_name" id="fatInput" class="form-control" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="lnInput">Mbiemri</label>
+            <input type="text" name="last_name" id="lnInput" class="form-control" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="bdInput">Datëlindja</label>
+            <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="dd.mm.vvvv" inputmode="numeric" autocomplete="off" aria-describedby="bdHelp" data-dmy data-dmy-kind="birth">
+            <p class="form-text" id="bdHelp">P.sh. 05.03.1990</p>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="bpInput">Vendlindja</label>
+            <input type="text" name="birth_place" id="bpInput" class="form-control" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="phInput">Telefoni</label>
+            <input type="tel" name="phone" id="phInput" class="form-control" placeholder="+355 6…" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="genderSelect">Gjinia</label>
+            <select name="gender_id" id="genderSelect" class="form-select">
+              <?php foreach ($genders as $g): ?>
+                <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>><?= h($g['label']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="eduSelect">Arsimi</label>
             <select name="education_level_id" id="eduSelect" class="form-select">
               <option value="">— Zgjidh —</option>
               <?php foreach ($eduLevels as $el): ?>
-              <option value="<?= (int)$el['id'] ?>"><?= htmlspecialchars($el['code'].' — '.$el['label']) ?></option>
+                <option value="<?= (int)$el['id'] ?>"><?= h($el['label']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
-
           <div class="col-md-4">
-            <label class="form-label">Emri <span class="text-muted">(opsional)</span></label>
-            <input type="text" name="first_name" id="fnInput" class="form-control" placeholder="Opsional">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Atësia</label>
-            <input type="text" name="father_name" id="fatInput" class="form-control">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Mbiemri <span class="text-muted">(opsional)</span></label>
-            <input type="text" name="last_name" id="lnInput" class="form-control" placeholder="Opsional">
-          </div>
-
-          <div class="col-md-4">
-            <label class="form-label">Datëlindja</label>
-            <input type="text" name="birth_date" id="bdInput" class="form-control" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off">
-            <div class="form-text">Fjalëkalimi fillestar: <code>[Emri].[VitiLindjes]</code> (p.sh. <code>Ardit.1998</code>). Në mungesë vitit vendoset <code>0000</code>.</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Vendlindja</label>
-            <input type="text" name="birth_place" id="bpInput" class="form-control">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Tel.</label>
-            <input type="text" name="phone" id="phInput" class="form-control" placeholder="+355 ...">
-          </div>
-
-          <div class="col-md-4">
-            <label class="form-label">Gjinia</label>
-            <select name="gender_id" id="genderSelect" class="form-select">
-              <?php foreach ($genders as $g): ?>
-              <option value="<?= (int)$g['id'] ?>" <?= ($g['code']==='M'?'selected':'') ?>>
-                <?= htmlspecialchars($g['label']) ?>
-              </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-
-          <div class="col-md-8">
-            <label class="form-label">Moduli (opsional – vetëm plan)</label>
-            <select name="planned_course_id" class="form-select">
-              <option value="">— Zgjidh —</option>
+            <label class="form-label" for="planSelect">Kursi <span class="optional">(nëse dihet)</span></label>
+            <select name="planned_course_id" id="planSelect" class="form-select" aria-describedby="planHelp">
+              <option value="">— Më vonë —</option>
               <?php foreach ($courses as $c): ?>
-              <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+                <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
               <?php endforeach; ?>
             </select>
-            <div class="form-text">Këtu i cakton vetëm modulin; grupi vendoset më vonë.</div>
+            <p class="form-text" id="planHelp">Grupi caktohet më vonë.</p>
           </div>
         </div>
-        <div class="form-text mt-2">
-          Mund të krijosh student vetëm me <strong>Nr. Amzës</strong>. Fusha të tjera janë opsionale.
-          Krijohet/ri-përdoret <code>users</code> + <code>credentials</code> (password auto).
+        <div class="tip mt-4">
+          <i class="bi bi-key" aria-hidden="true"></i>
+          <span>Kursanti merr vetë një llogari. Fjalëkalimi i parë është <b>Emri.VitiILindjes</b>, p.sh. <span class="code">Ardit.1998</span> — jepjani kursantit.</span>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary btn-pill" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>Shto student</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+          <i class="bi bi-check-lg" aria-hidden="true"></i>Ruaj kursantin
+        </button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- MODAL: Zgjidh Modulin pas ndryshimit të AMZË-s -->
-<div class="modal fade" id="pickCourseModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+<!-- Dialog: kursi pas ndryshimit të numrit të amzës -->
+<div class="modal fade" id="pickCourseModal" tabindex="-1" aria-labelledby="pickCourseTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title"><i class="bi bi-journal-text me-1"></i> Zgjidh modulin për këtë AMZË</h6>
+        <h2 class="modal-title" id="pickCourseTitle"><i class="bi bi-book" aria-hidden="true"></i>Cili kurs është për këtë amzë?</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
+        <label class="form-label" for="pickCourseSelect">Kursi</label>
         <select id="pickCourseSelect" class="form-select">
-          <option value="">— S’dua modul tani —</option>
+          <option value="">— Nuk dua të zgjedh tani —</option>
           <?php foreach ($courses as $c): ?>
-          <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+            <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
           <?php endforeach; ?>
         </select>
-        <div class="form-text mt-2">Ky hap vetëm e planifikon modulin; grupi caktohet më vonë.</div>
+        <p class="form-text">Kursi vetëm planifikohet; grupi caktohet më vonë.</p>
       </div>
       <div class="modal-footer">
-        <button type="button" id="btnSkipCourse" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Më vonë</button>
-        <button type="button" id="btnSaveCourse" class="btn btn-primary btn-pill">Ruaj</button>
+        <button type="button" id="btnSkipCourse" class="btn btn-secondary" data-bs-dismiss="modal">Më vonë</button>
+        <button type="button" id="btnSaveCourse" class="btn btn-primary">Ruaj</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- MODAL: Fshij AMZË + të dhënat e lidhura -->
-<div class="modal fade" id="deleteStudentModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+<!-- Dialog: fshirja e regjistrimit -->
+<div class="modal fade" id="deleteStudentModal" tabindex="-1" aria-labelledby="deleteStudentTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title text-danger"><i class="bi bi-trash me-1"></i> Fshi studentin</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-2">Je i sigurt që dëshiron të fshish këtë regjistrim (AMZË)?</p>
-        <ul class="mb-3">
-          <li><strong>Emri:</strong> <span id="delName">—</span></li>
-          <li><strong>Nr. Amzës:</strong> <span id="delAmze">—</span></li>
-        </ul>
+      <div class="modal-body pt-4">
+        <span class="confirm-icon is-danger"><i class="bi bi-trash" aria-hidden="true"></i></span>
+        <h2 class="modal-title mb-2" id="deleteStudentTitle">Të fshihet ky regjistrim?</h2>
+        <dl class="kv mb-3">
+          <dt>Kursanti</dt><dd id="delName">—</dd>
+          <dt>Nr. i amzës</dt><dd class="code" id="delAmze">—</dd>
+        </dl>
+        <p class="mb-2">Bashkë me të fshihen edhe kursi i zgjedhur, vendi në grup dhe kodi QR i këtij regjistrimi. <b>Kjo nuk mund të kthehet mbrapsht.</b></p>
         <div class="form-check">
           <input class="form-check-input" type="checkbox" id="delAlsoIdentity">
           <label class="form-check-label" for="delAlsoIdentity">
-            Fshi edhe identitetin (person + user) <span class="text-muted">(nëse nuk ka regjistrime të tjera)</span>
+            Fshi edhe personin dhe llogarinë e tij <span class="text-muted">(vetëm nëse nuk ka regjistrime të tjera)</span>
           </label>
         </div>
-        <div class="alert alert-warning mt-3 mb-0">
-          Ky veprim është i pakthyeshëm. Të gjitha të dhënat e lidhura (plane, anëtarësi grupesh, QR, etj.) do të fshihen nëpërmjet <em>ON DELETE CASCADE</em>.
-        </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button type="button" id="btnConfirmDelete" class="btn btn-danger btn-pill">
-          <i class="bi bi-trash me-1"></i> Fshi
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" id="btnConfirmDelete" class="btn btn-danger">
+          <i class="bi bi-trash" aria-hidden="true"></i>Po, fshije
         </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- MODAL: Numri Personal ekziston (lidhje me personin ekzistues) -->
-<div class="modal fade" id="pnExistsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+<!-- Dialog: numri personal ekziston -->
+<div class="modal fade" id="pnExistsModal" tabindex="-1" aria-labelledby="pnExistsTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title text-warning">
-          <i class="bi bi-exclamation-triangle me-1"></i> Numri Personal ekziston
-        </h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-2">
-          Numri Personal <strong id="pnExistsValue">—</strong> është i regjistruar për:
-        </p>
-
-        <div class="border rounded-3 p-2 bg-light">
-          <div><strong id="pnExistsName">—</strong></div>
-          <div class="small">
-            Datëlindja: <span id="pnExistsBD">—</span><br>
-            Tel: <span id="pnExistsPhone">—</span>
-          </div>
+      <div class="modal-body pt-4">
+        <span class="confirm-icon"><i class="bi bi-person-check" aria-hidden="true"></i></span>
+        <h2 class="modal-title mb-2" id="pnExistsTitle">Ky numër personal ekziston</h2>
+        <p>Numri personal <b class="code" id="pnExistsValue">—</b> i përket këtij personi:</p>
+        <div class="panel-sunken mb-3">
+          <b id="pnExistsName">—</b>
+          <span class="cell-sub">Datëlindja: <span id="pnExistsBD">—</span> · Tel.: <span id="pnExistsPhone">—</span></span>
         </div>
-
-        <div class="alert alert-info mt-3 mb-0">
-          Nëse zgjedh “Lidhe këtë AMZË”, ky regjistrim do të lidhet me personin ekzistues dhe fushat do të plotësohen automatikisht.
-        </div>
+        <p class="text-muted mb-0">Nëse është i njëjti person, lidhe këtë regjistrim me të. Të dhënat plotësohen vetë.</p>
       </div>
       <div class="modal-footer">
-        <button type="button" id="btnPnCancel" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button type="button" id="btnPnLink" class="btn btn-primary btn-pill">
-          <i class="bi bi-link-45deg me-1"></i> Lidhe këtë AMZË
+        <button type="button" id="btnPnCancel" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" id="btnPnLink" class="btn btn-primary">
+          <i class="bi bi-link-45deg" aria-hidden="true"></i>Po, lidhe me këtë person
         </button>
       </div>
     </div>
   </div>
 </div>
 
-
-<!-- MODAL: AMZË ekziston (konfirmim) -->
-<div class="modal fade" id="amzeExistsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+<!-- Dialog: numri i amzës ekziston -->
+<div class="modal fade" id="amzeExistsModal" tabindex="-1" aria-labelledby="amzeExistsTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title text-warning">
-          <i class="bi bi-exclamation-triangle me-1"></i> AMZË ekziston
-        </h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-2">
-          AMZË <strong id="amzeExistsValue">—</strong> ekziston tashmë dhe i takon një studenti tjetër.
-        </p>
-
-        <div class="border rounded-3 p-2 bg-light">
-          <div class="small text-muted mb-1">Studenti ekzistues:</div>
-          <div><strong id="amzeExistsName">—</strong></div>
-          <div class="small">
-            Nr. Personal: <span id="amzeExistsPN">—</span><br>
-            Datëlindja: <span id="amzeExistsBD">—</span><br>
-            Tel: <span id="amzeExistsPhone">—</span>
-          </div>
+      <div class="modal-body pt-4">
+        <span class="confirm-icon"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></span>
+        <h2 class="modal-title mb-2" id="amzeExistsTitle">Ky numër amze është i zënë</h2>
+        <p>Nr. i amzës <b class="code" id="amzeExistsValue">—</b> i përket një kursanti tjetër:</p>
+        <div class="panel-sunken mb-3">
+          <b id="amzeExistsName">—</b>
+          <span class="cell-sub">Nr. personal: <span class="code" id="amzeExistsPN">—</span> · Datëlindja: <span id="amzeExistsBD">—</span> · Tel.: <span id="amzeExistsPhone">—</span></span>
         </div>
-
-        <div class="alert alert-warning mt-3 mb-0">
-          Nëse vazhdon, duhet të punosh me studentin ekzistues (ose të bashkosh duplikatin).
-        </div>
+        <p class="text-muted mb-0">Nëse është i njëjti person i regjistruar dy herë, mund t'i bashkosh. Rreshti aktual fshihet dhe mbetet vetëm regjistrimi ekzistues.</p>
       </div>
       <div class="modal-footer">
-        <button type="button" id="btnAmzeCancel" class="btn btn-soft-secondary btn-pill" data-bs-dismiss="modal">Anulo</button>
-        <button type="button" id="btnAmzeOpenExisting" class="btn btn-soft-primary btn-pill">
-          <i class="bi bi-person-lines-fill me-1"></i> Hap studentin
+        <button type="button" id="btnAmzeCancel" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" id="btnAmzeOpenExisting" class="btn btn-secondary">
+          <i class="bi bi-person-vcard" aria-hidden="true"></i>Hap kartelën e tij
         </button>
-        <button type="button" id="btnAmzeMergeDuplicate" class="btn btn-danger btn-pill">
-          <i class="bi bi-link-45deg me-1"></i> Bashko / Hiq duplikatin
+        <button type="button" id="btnAmzeMergeDuplicate" class="btn btn-danger">
+          <i class="bi bi-intersect" aria-hidden="true"></i>Bashko dhe hiq dublikatën
         </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
 <script>
 const CSRF = <?= json_encode($CSRF) ?>;
 const ENDPOINT = 'students_inline_update.php';
 const EDIT_MODE = <?= $EDIT_MODE ? 'true' : 'false' ?>;
 
-/* Compact mode */
-document.addEventListener('DOMContentLoaded', ()=>document.body.classList.add('compact'));
-
-/* Toast helper */
+/* Njoftimet: sistemi i përbashkët (app.js) */
 function notify(type, text, opts={}) {
-  const zone = document.getElementById('toastZone');
-  const id = 't' + Date.now() + Math.random().toString(16).slice(2);
-  const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-  const icon = icons[type] || 'bell';
-  const title = opts.title ?? (
-    type==='success' ? 'Sukses' :
-    type==='danger'  ? 'Gabim'  :
-    type==='warning' ? 'Kujdes' : 'Njoftim'
-  );
-  const autohide = opts.autohide ?? true;
-  const delay = opts.delay ?? 4500;
-
-  const html = `
-    <div id="${id}" class="toast qta-toast toast-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <i class="bi bi-${icon} me-2"></i>
-        <strong class="me-auto">${title}</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Mbyll"></button>
-      </div>
-      <div class="toast-body">${text}</div>
-    </div>`;
-  zone.insertAdjacentHTML('beforeend', html);
-
-  const el = document.getElementById(id);
-  const t = new bootstrap.Toast(el, { autohide, delay });
-  el.addEventListener('hidden.bs.toast', ()=> el.remove());
-  t.show();
+  return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null;
 }
 
 /* Helpers */
@@ -1426,11 +1121,11 @@ function cleanText(s){ const v=(s||'').replace(/\s+/g,' ').trim(); return (v==='
 function normalizeDateForServer(str){
   const v=(str||'').trim();
   if (v==='' || v==='—') return '';
-  let m=v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  let m=v.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
   if (m){ const dd=m[1].padStart(2,'0'), mm=m[2].padStart(2,'0'), yy=m[3]; return `${yy}-${mm}-${dd}`; }
   m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m){ const yy=m[1], mm=m[2].padStart(2,'0'), dd=m[3].padStart(2,'0'); return `${yy}-${mm}-${dd}`; }
-  throw new Error('Formati i datës duhet të jetë DD-MM-YYYY.');
+  throw new Error('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.1990.');
 }
 
 let amzeExistsState = null;
@@ -1514,7 +1209,7 @@ async function saveInline(studentId, field, value, cell, displayEl, extra={}){
       displayEl.textContent = json.display ?? (value || '—');
     }
     cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
-    notify('success','U ruajt me sukses.');
+    notify('success','Ndryshimi u ruajt.');
   }catch(e){
     console.error(e);
     notify('danger', e.message || 'Ndodhi një gabim.');
@@ -1594,7 +1289,7 @@ document.querySelectorAll('td.cell .editable').forEach(el => {
           if (json.ok) {
             el.textContent = json.display ?? (newVal || '—');
             cell.classList.add('cell-ok'); setTimeout(()=>cell.classList.remove('cell-ok'), 800);
-            notify('success','U ruajt me sukses.');
+            notify('success','Ndryshimi u ruajt.');
             return;
           }
 
@@ -1662,7 +1357,7 @@ document.getElementById('btnPnLink')?.addEventListener('click', async ()=>{
 
     applyPersonToRow(sid, json.person, json.education_level_id);
     bootstrap.Modal.getInstance(document.getElementById('pnExistsModal'))?.hide();
-    notify('success', 'AMZË u lidh me personin ekzistues dhe fushat u plotësuan.');
+    notify('success', 'Regjistrimi u lidh me personin ekzistues.');
   }catch(e){
     notify('danger', e.message || 'Gabim gjatë lidhjes.');
   }finally{
@@ -1672,7 +1367,7 @@ document.getElementById('btnPnLink')?.addEventListener('click', async ()=>{
 
 
 /* Autoplotësim nga Numri Personal (modal i shtimit) */
-function isoToDmy(iso){ if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return ''; const [y,m,d]=iso.split('-'); return `${d}-${m}-${y}`; }
+function isoToDmy(iso){ if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return ''; const [y,m,d]=iso.split('-'); return `${d}.${m}.${y}`; }
 document.getElementById('pnInput')?.addEventListener('blur', async ()=>{
   const pn = document.getElementById('pnInput').value.trim();
   if (!pn) return;
@@ -1690,7 +1385,7 @@ document.getElementById('pnInput')?.addEventListener('blur', async ()=>{
       document.getElementById('phInput').value  = p.phone ?? '';
       const gsel = document.getElementById('genderSelect'); if (gsel && p.gender_id) gsel.value = String(p.gender_id);
       const esel = document.getElementById('eduSelect');    if (esel && json.education_level_id) esel.value = String(json.education_level_id);
-      notify('info','Të dhënat u plotësuan nga numri personal.');
+      notify('info','Personi ekziston: të dhënat u plotësuan vetë.');
     } else notify('warning','Nuk u gjet person me këtë numër personal.');
   }catch(e){ console.error(e); notify('danger','Gabim gjatë autoplotësimit.'); }
 });
@@ -1699,7 +1394,7 @@ document.getElementById('pnInput')?.addEventListener('blur', async ()=>{
 function maskToDDMMYYYY(input){
   const digits=String(input||'').replace(/\D/g,'').slice(0,8);
   const d=digits.slice(0,2), m=digits.slice(2,4), y=digits.slice(4,8);
-  let out=d; if (digits.length>2) out+='-'+m; if (digits.length>4) out+='-'+y; return out;
+  let out=d; if (digits.length>2) out+='.'+m; if (digits.length>4) out+='.'+y; return out;
 }
 function placeCaretAtEnd(el){
   const range=document.createRange(); range.selectNodeContents(el); range.collapse(false);
@@ -1727,7 +1422,7 @@ function attachDateMaskInput(inp){
 document.querySelectorAll('td.cell[data-field="birth_date"] .editable').forEach(attachDateMaskContentEditable);
 const bdInputEl = document.getElementById('bdInput'); if (bdInputEl) attachDateMaskInput(bdInputEl);
 
-/* Modal e modulit pas ndryshimit të nr_amze */
+/* Dialogu i kursit pas ndryshimit të nr_amze */
 const pickCourseSelect = document.getElementById('pickCourseSelect');
 document.getElementById('btnSaveCourse')?.addEventListener('click', ()=>{
   if (!pendingAmzeChange) return;
@@ -1823,7 +1518,7 @@ document.getElementById('btnConfirmDelete')?.addEventListener('click', async ()=
     // hiq rreshtin
     document.getElementById(`row-${deleteState.sid}`)?.remove();
     bootstrap.Modal.getInstance(document.getElementById('deleteStudentModal'))?.hide();
-    notify('success', `U fshi AMZË ${deleteState.amze}${json.deleted_person ? ' dhe identiteti' : ''}.`);
+    notify('success', `Regjistrimi ${deleteState.amze} u fshi${json.deleted_person ? ' bashkë me personin' : ''}.`);
   }catch(e){
     console.error(e);
     notify('danger', e.message || 'Gabim gjatë fshirjes.');
