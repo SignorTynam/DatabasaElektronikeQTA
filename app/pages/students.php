@@ -2,6 +2,7 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../shared/domain.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
@@ -171,12 +172,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($gender_id <= 0 && $maleId) { $gender_id = $maleId; }
 
             if ($birth_date !== '') {
-                if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $birth_date)) {
-                    [$dd,$mm,$yy] = explode('-', $birth_date);
-                    $birth_date = sprintf('%04d-%02d-%02d', (int)$yy, (int)$mm, (int)$dd);
-                } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $birth_date)) {
-                    throw new RuntimeException('Datëlindja duhet në formatin DD-MM-YYYY.');
+                $birthDateIso = qta_parse_date_input($birth_date);
+                if ($birthDateIso === null) {
+                    throw new RuntimeException('Shkruaje datëlindjen si dd.mm.vvvv, p.sh. 05.03.1990.');
                 }
+                $birth_date = $birthDateIso;
             }
 
             $pdo->beginTransaction();

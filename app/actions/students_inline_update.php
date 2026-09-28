@@ -2,6 +2,7 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../shared/domain.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -368,20 +369,9 @@ try {
         elseif ($field === 'birth_date') {
             $v = trim((string)$value);
 
-            // Prano si: yyyy-mm-dd (preferuar nga JS), ose dd-mm-yyyy (nëse vjen direkt)
-            if ($v !== '') {
-                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
-                    $iso = $v;
-                } elseif (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $v, $m)) {
-                    $dd = str_pad($m[1],2,'0',STR_PAD_LEFT);
-                    $mm = str_pad($m[2],2,'0',STR_PAD_LEFT);
-                    $yy = $m[3];
-                    $iso = "{$yy}-{$mm}-{$dd}";
-                } else {
-                    throw new RuntimeException('Formati i datës duhet të jetë DD-MM-YYYY.');
-                }
-            } else {
-                $iso = null;
+            $iso = $v === '' ? null : qta_parse_date_input($v);
+            if ($v !== '' && $iso === null) {
+                throw new RuntimeException('Shkruaje datëlindjen si dd.mm.vvvv, p.sh. 05.03.1990.');
             }
 
             $q = $pdo->prepare("UPDATE persons SET birth_date=:v WHERE id=:pid");

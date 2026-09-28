@@ -2,6 +2,7 @@
 declare(strict_types=1);
 session_start();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../shared/domain.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -70,17 +71,9 @@ try {
     if ($v===null) return null;
     $v = trim((string)$v);
     if ($v==='') return null;
-    // YYYY-MM-DD
-    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/',$v,$m)) {
-      $yy=$m[1]; $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $dd=str_pad($m[3],2,'0',STR_PAD_LEFT);
-      return "{$yy}-{$mm}-{$dd}";
-    }
-    // DD-MM-YYYY
-    if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/',$v,$m)) {
-      $dd=str_pad($m[1],2,'0',STR_PAD_LEFT); $mm=str_pad($m[2],2,'0',STR_PAD_LEFT); $yy=$m[3];
-      return "{$yy}-{$mm}-{$dd}";
-    }
-    throw new RuntimeException('Shkruaje datën si dd.mm.vvvv, p.sh. 05.03.1990.');
+    $iso = qta_parse_date_input($v);
+    if ($iso === null) throw new RuntimeException('Shkruaje datëlindjen si dd.mm.vvvv, p.sh. 05.03.1990.');
+    return $iso;
   };
 
   $fmt_display = fn(?string $iso): string =>
