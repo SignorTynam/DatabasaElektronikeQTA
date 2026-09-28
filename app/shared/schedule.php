@@ -7,15 +7,23 @@ declare(strict_types=1);
  *
  * Funksione të pastra: nuk lexojnë databazën dhe nuk varen nga ora e serverit.
  *
- * Rregullat
+ * Dy mënyra orari, të njëjtat tema dhe e njëjta ndarje e orëve:
+ *   calculated   (këtu) fillimi + orët në ditë + ditët e veçanta → mbarimi llogaritet;
+ *   fixed_range  (schedule_fixed.php) fillimi dhe mbarimi janë data historike dhe
+ *                çdo datë ka orët e veta → orari ndërtohet brenda asaj periudhe.
+ * Të dyja përdorin qta_sched_allocate() për ndarjen e temave dhe
+ * qta_sched_verify_allocation() për kontrollin e pavarur të saj.
+ *
+ * Rregullat e orarit të llogaritur
  *  - Temat vijnë në radhë: moduli 1 tema 1, tema 2, … pastaj moduli 2 …
  *  - Një ditë e zakonshme ka $defaultHours orë. E diela nuk ka mësim, përveç kur
  *    ka një rregull për atë datë. Dita e javës llogaritet nga kalendari (UTC).
- *  - Rregulli i një date: null = orari i zakonshëm, 0 = pa mësim, 1–12 = aq orë.
+ *  - Rregulli i një date: null = orari i zakonshëm, 0 = pa mësim, 1–8 = aq orë.
  *  - Një temë mund të vazhdojë në ditën tjetër të mësimit; kur një modul mbaron
  *    në mes të ditës, moduli tjetër fillon menjëherë — asnjë orë nuk humbet.
  *  - Dita e fundit ka vetëm orët që mbeten (nuk mbushet deri në orarin e plotë).
  *  - Data e fillimit duhet të jetë ditë mësimi; data e mbarimit = dita e fundit.
+ *  - Një ditë mësimi ka të shumtën 8 orë (QTA_DAY_MAX_HOURS), në çdo mënyrë.
  *
  * Formati i temave (në radhë):
  *   [['seq' => 1, 'module_seq' => 1, 'hours' => 2, (opsionale) 'module_hours',
@@ -25,7 +33,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/domain.php';
 
-const QTA_DAY_MAX_HOURS = 12;
+const QTA_DAY_MAX_HOURS = 8;
 const QTA_SCHEDULE_MAX_CALENDAR_DAYS = 3700; // ~10 vjet: mbrojtje, jo kufi pune
 
 if (!function_exists('qta_sched_is_iso_date')) {
@@ -91,13 +99,13 @@ if (!function_exists('qta_sched_is_iso_date')) {
   }
 }
 
-if (!function_exists('qta_sched_validate_inputs')) {
+if (!function_exists('qta_sched_validate_topics')) {
   /**
-   * Kontrollon hyrjet para ndërtimit. Hedh QtaUserError me mesazh të qartë.
+   * Temat e kopjes: të paktën një, secila me ≥ 1 orë, në radhë rritëse.
+   * Kthen orët e kursit (shumën e temave). E përbashkët për të dy mënyrat.
    * @param array<int,array<string,mixed>> $topics
-   * @param array<string,?int> $rules
    */
-  function qta_sched_validate_inputs(array $topics, string $start, int $defaultHours, array $rules): int
+  function qta_sched_validate_topics(array $topics): int
   {
     if (!$topics) {
       throw new QtaUserError('Kursi nuk ka tema, prandaj orari nuk mund të ndërtohet. Shto modulet dhe temat te "Katalogu i kurseve".');
@@ -116,6 +124,58 @@ if (!function_exists('qta_sched_validate_inputs')) {
       $prevSeq = $seq;
       $total += $h;
     }
+    return $total;
+  }
+
+  /**
+   * Ndan temat, në radhë, nëpër ditët e mësimit. Çdo ditë merr pikërisht orët e
+   * veta; një temë që nuk mbaron vazhdon në ditën tjetër; një modul mund të
+   * mbarojë dhe tjetri të fillojë brenda së njëjtës ditë.
+   *
+   * Thirrësi garanton që Σ orët e ditëve = Σ orët e temave dhe çdo ditë ≥ 1 orë.
+   *
+   * @param array<int,array<string,mixed>> $topics  në radhë (të kontrolluara)
+   * @param array<int,array{date:string,hours:int,capacity:int}> $teachingDays  në radhë
+   * @return array<int,array{seq:int,date:string,hours:int,capacity:int,slots:array<int,array{seq:int,topic:int,hours:int}>}>
+   */
+  function qta_sched_allocate(array $topics, array $teachingDays): array
+  {
+    $topics = array_values($topics);
+    $days = [];
+    $ti = 0;
+    $left = (int)$topics[0]['hours'];
+    $last = count($topics) - 1;
+    foreach (array_values($teachingDays) as $d) {
+      $slots = [];
+      $todo = (int)$d['hours'];
+      while ($todo > 0) {
+        if ($left === 0) {
+          if ($ti >= $last) {
+            throw new LogicException('Ditët kanë më shumë orë se temat.');
+          }
+          $ti++;
+          $left = (int)$topics[$ti]['hours'];
+        }
+        $take = min($todo, $left);
+        $slots[] = ['seq' => count($slots) + 1, 'topic' => (int)$topics[$ti]['seq'], 'hours' => $take];
+        $left -= $take;
+        $todo -= $take;
+      }
+      $days[] = ['seq' => count($days) + 1, 'date' => (string)$d['date'], 'hours' => (int)$d['hours'], 'capacity' => (int)$d['capacity'], 'slots' => $slots];
+    }
+    return $days;
+  }
+}
+
+if (!function_exists('qta_sched_validate_inputs')) {
+  /**
+   * Kontrollon hyrjet para ndërtimit. Hedh QtaUserError me mesazh të qartë.
+   * @param array<int,array<string,mixed>> $topics
+   * @param array<string,?int> $rules
+   */
+  function qta_sched_validate_inputs(array $topics, string $start, int $defaultHours, array $rules): int
+  {
+    $total = qta_sched_validate_topics($topics);
     if (!qta_sched_is_iso_date($start)) {
       throw new QtaUserError('Data e fillimit nuk është e vlefshme. Shkruaje si dd.mm.vvvv, p.sh. 01.10.2026.');
     }
@@ -154,13 +214,11 @@ if (!function_exists('qta_sched_build')) {
     $topics = array_values($topics);
     $total = qta_sched_validate_inputs($topics, $start, $defaultHours, $rules);
 
-    $days = [];
+    /* Ditët e mësimit: çdo ditë merr sa nxë, dita e fundit vetëm sa mbeten. */
+    $teaching = [];
     $remaining = $total;
-    $ti = 0;
-    $left = (int)$topics[0]['hours'];
     $date = $start;
     $steps = 0;
-
     while ($remaining > 0) {
       if (++$steps > QTA_SCHEDULE_MAX_CALENDAR_DAYS) {
         throw new QtaUserError('Orari do të zgjaste mbi 10 vjet. Kontrollo orët në ditë dhe ditët pa mësim.');
@@ -168,23 +226,12 @@ if (!function_exists('qta_sched_build')) {
       $capacity = qta_sched_day_hours($date, $defaultHours, $rules);
       if ($capacity > 0) {
         $use = min($capacity, $remaining);
-        $slots = [];
-        $todo = $use;
-        while ($todo > 0) {
-          $take = min($todo, $left);
-          $slots[] = ['seq' => count($slots) + 1, 'topic' => (int)$topics[$ti]['seq'], 'hours' => $take];
-          $left -= $take;
-          $todo -= $take;
-          $remaining -= $take;
-          if ($left === 0 && $remaining > 0) {
-            $ti++;
-            $left = (int)$topics[$ti]['hours'];
-          }
-        }
-        $days[] = ['seq' => count($days) + 1, 'date' => $date, 'hours' => $use, 'capacity' => $capacity, 'slots' => $slots];
+        $teaching[] = ['date' => $date, 'hours' => $use, 'capacity' => $capacity];
+        $remaining -= $use;
       }
       $date = qta_sched_next_day($date);
     }
+    $days = qta_sched_allocate($topics, $teaching);
 
     return [
       'start_date'  => $days[0]['date'],
@@ -195,17 +242,19 @@ if (!function_exists('qta_sched_build')) {
   }
 }
 
-if (!function_exists('qta_sched_verify')) {
+if (!function_exists('qta_sched_verify_allocation')) {
   /**
-   * Kontroll i pavarur i çdo rregulli të orarit. Kthen listën e shkeljeve
-   * (bosh = orari është i saktë). Përdoret para çdo ruajtjeje dhe në teste.
+   * Kontrolli i pavarur i ndarjes së temave, i njëjtë për të dy mënyrat: ditët
+   * në radhë dhe pa përsëritje, 1–8 orë në ditë, pjesët = orët e ditës,
+   * Σ ditë = Σ pjesë = orët e kursit, çdo temë dhe çdo modul me pikërisht orët
+   * e veta, temat në radhën e kursit, asnjë temë e panjohur. Nuk varet nga
+   * builder-i. Kthen listën e shkeljeve (bosh = e saktë).
    *
    * @param array<int,array<string,mixed>> $topics
    * @param array<string,mixed>            $plan
-   * @param array<string,?int>             $rules
    * @return string[]
    */
-  function qta_sched_verify(array $topics, array $plan, int $defaultHours, array $rules, ?string $start = null): array
+  function qta_sched_verify_allocation(array $topics, array $plan): array
   {
     $v = [];
     $topics = array_values($topics);
@@ -227,10 +276,6 @@ if (!function_exists('qta_sched_verify')) {
       }
     }
 
-    $start = $start ?? $plan['start_date'] ?? $days[0]['date'];
-    if ($days[0]['date'] !== $start) {
-      $v[] = 'dita e parë (' . $days[0]['date'] . ') nuk është data e fillimit (' . $start . ')';
-    }
     if (($plan['start_date'] ?? null) !== $days[0]['date']) {
       $v[] = 'start_date nuk përputhet me ditën e parë';
     }
@@ -244,8 +289,6 @@ if (!function_exists('qta_sched_verify')) {
     $perModule = [];
     $sequence = [];
     $prevDate = null;
-    $teachingDates = [];
-    $lastIndex = count($days) - 1;
 
     foreach ($days as $i => $day) {
       $date = (string)$day['date'];
@@ -260,18 +303,10 @@ if (!function_exists('qta_sched_verify')) {
         $v[] = 'datat nuk janë në rritje: ' . $prevDate . ' → ' . $date;
       }
       $prevDate = $date;
-      $teachingDates[$date] = true;
 
-      $cap = qta_sched_day_hours($date, $defaultHours, $rules);
       $hours = (int)$day['hours'];
-      if ($cap <= 0) {
-        $v[] = 'mësim në një ditë pa mësim: ' . $date . (qta_sched_is_sunday($date) ? ' (e diel)' : '');
-      }
-      if ($hours < 1 || $hours > $cap) {
-        $v[] = 'dita ' . $date . ' ka ' . $hours . ' orë, kufiri është ' . $cap;
-      }
-      if ($i < $lastIndex && $hours !== $cap) {
-        $v[] = 'dita ' . $date . ' nuk është e plotë (' . $hours . ' nga ' . $cap . ') edhe pse nuk është dita e fundit';
+      if ($hours < 1 || $hours > QTA_DAY_MAX_HOURS) {
+        $v[] = 'dita ' . $date . ' ka ' . $hours . ' orë, duhet 1–' . QTA_DAY_MAX_HOURS;
       }
 
       $slotSum = 0;
@@ -325,8 +360,59 @@ if (!function_exists('qta_sched_verify')) {
       $v[] = 'temat nuk ndjekin radhën e kursit';
     }
 
+    return $v;
+  }
+}
+
+if (!function_exists('qta_sched_verify')) {
+  /**
+   * Kontroll i pavarur i orarit të llogaritur: ndarja e temave
+   * (qta_sched_verify_allocation) dhe rregullat e datave — dita e parë = fillimi,
+   * asnjë ditë mbi kapacitetin e saj, asnjë e diel pa rregull, vetëm dita e fundit
+   * mund të jetë e paplotë, asnjë ditë mësimi e anashkaluar. Kthen listën e
+   * shkeljeve (bosh = orari është i saktë). Përdoret para çdo ruajtjeje dhe në teste.
+   *
+   * @param array<int,array<string,mixed>> $topics
+   * @param array<string,mixed>            $plan
+   * @param array<string,?int>             $rules
+   * @return string[]
+   */
+  function qta_sched_verify(array $topics, array $plan, int $defaultHours, array $rules, ?string $start = null): array
+  {
+    $v = qta_sched_verify_allocation($topics, $plan);
+    $days = $plan['days'] ?? [];
+    if (!$days) {
+      return $v;
+    }
+
+    $start = $start ?? $plan['start_date'] ?? $days[0]['date'];
+    if ($days[0]['date'] !== $start) {
+      $v[] = 'dita e parë (' . $days[0]['date'] . ') nuk është data e fillimit (' . $start . ')';
+    }
+
+    $teachingDates = [];
+    $lastIndex = count($days) - 1;
+    foreach ($days as $i => $day) {
+      $date = (string)$day['date'];
+      if (!qta_sched_is_iso_date($date)) {
+        continue;
+      }
+      $teachingDates[$date] = true;
+      $cap = qta_sched_day_hours($date, $defaultHours, $rules);
+      $hours = (int)$day['hours'];
+      if ($cap <= 0) {
+        $v[] = 'mësim në një ditë pa mësim: ' . $date . (qta_sched_is_sunday($date) ? ' (e diel)' : '');
+      }
+      if ($hours > $cap) {
+        $v[] = 'dita ' . $date . ' ka ' . $hours . ' orë, kufiri është ' . $cap;
+      }
+      if ($i < $lastIndex && $hours !== $cap) {
+        $v[] = 'dita ' . $date . ' nuk është e plotë (' . $hours . ' nga ' . $cap . ') edhe pse nuk është dita e fundit';
+      }
+    }
+
     /* Asnjë ditë mësimi nuk anashkalohet mes fillimit dhe mbarimit. */
-    if (qta_sched_is_iso_date($start) && isset($days[$lastIndex]['date']) && qta_sched_is_iso_date((string)$days[$lastIndex]['date'])) {
+    if (qta_sched_is_iso_date($start) && qta_sched_is_iso_date((string)$days[$lastIndex]['date'])) {
       $d = $start;
       $end = (string)$days[$lastIndex]['date'];
       $guard = 0;

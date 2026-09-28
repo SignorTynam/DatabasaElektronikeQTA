@@ -1048,6 +1048,10 @@ td.cell-err { transition: box-shadow var(--dur-3) var(--ease); }
   font-size: 1.25rem;
 }
 .confirm-icon.is-danger { background: var(--danger-soft); color: var(--danger); }
+/* Pikat e një konfirmimi: çfarë ndodh dhe çfarë mbetet njësoj (qtaConfirm({points})). */
+.confirm-points { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.confirm-points > li { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); gap: var(--sp-2); color: var(--text); }
+.confirm-points > li > .bi { margin-top: .1rem; color: var(--success); }
 
 /* ================================================ 11. Paneli anësor (ndihma) */
 .offcanvas {
@@ -2732,6 +2736,7 @@ a.task:hover { background: var(--surface-hover); color: var(--text); }
 .lg-tabs .nav-link { min-height: var(--touch-min); white-space: nowrap; }
 .lg-tabs .count { margin-left: .15rem; }
 .lg-date { font-size: var(--fs-xl); }
+.lg-lock { margin-right: .4rem; color: var(--text-muted); font-size: .6em; vertical-align: .15em; }
 .lg-hours-choice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .lg-hours-choice > .form-control { width: 5.5rem; }
 .lg-danger {
@@ -3107,3 +3112,340 @@ td:hover > .dp-cell-icon,
 
 /* Butonat e ikonave dhe kutitë e zgjedhjes. */
 .form-check-input { transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), background-position var(--dur-2) var(--ease); }
+
+/* ============================================ 31. Plani i ditëve (kalendari i orëve) */
+/* Grupet me data historike: çdo datë e periudhës me orët e saj, muaj pas muaji.
+   Vizatohet nga partials/day_plan.php dhe redaktohet me day-plan.js. Gjendja
+   thuhet gjithmonë edhe me fjalë (aria-label, legjenda), jo vetëm me ngjyrë. */
+.dplan { position: relative; }
+.dplan-months {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18.5rem), 1fr));
+  gap: var(--sp-5) var(--sp-6);
+}
+.dplan-month { min-width: 0; }
+.dplan-month-title {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+.dplan-grid {
+  width: calc(100% + 6px);
+  margin: 0 -3px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+.dplan-grid th {
+  padding: 0 0 .15rem;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-align: center;
+}
+.dplan-grid th abbr { text-decoration: none; cursor: default; }
+.dplan-pad { padding: 0; }
+.dplan-out {
+  padding: .3rem .35rem 0;
+  color: var(--text-subtle);
+  font-size: var(--fs-2xs);
+  vertical-align: top;
+}
+.dplan-day {
+  position: relative;
+  height: 3.4rem;
+  padding: .3rem .35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  vertical-align: top;
+  transition: background-color var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.dplan-num {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dplan-val {
+  display: block;
+  margin-top: .3rem;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dplan-unit { color: var(--text-muted); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
+.dplan-marks {
+  position: absolute;
+  top: .25rem;
+  right: .3rem;
+  display: flex;
+  gap: .15rem;
+  color: var(--text-muted);
+  font-size: .7rem;
+  line-height: 1;
+}
+/* Ditë mësimi: sfond i ngrohtë dhe orët me ngjyrën e theksit. */
+.dplan-day.is-on { border-color: var(--accent-border); background: var(--accent-soft); }
+.dplan-day.is-on .dplan-val { color: var(--accent-text); }
+/* Pa mësim: e qetë; të dielat pa mësim edhe më të qeta. */
+.dplan-day.is-off { background: var(--surface-sunken); }
+.dplan-day.is-off .dplan-val { color: var(--text-subtle); font-weight: var(--fw-regular); }
+.dplan-day.is-sun.is-off { border-style: dashed; background: transparent; }
+/* Fillimi dhe mbarimi historik: kornizë më e fortë + dry. */
+.dplan-day.is-bound { border-width: 2px; border-color: var(--border-strong); padding: calc(.3rem - 1px) calc(.35rem - 1px); }
+.dplan-day.is-bound.is-on { border-color: var(--accent-text); }
+/* E diel me mësim (jo kufi): kërkon kontroll. */
+.dplan-day.is-warn { border-color: var(--warning-border); background: var(--warning-soft); }
+.dplan-day.is-warn .dplan-val,
+.dplan-day.is-warn .dplan-marks { color: var(--warning); }
+/* Ndryshuar me dorë: pikë e vogël poshtë djathtas. */
+.dplan-day.is-manual::after {
+  content: "";
+  position: absolute;
+  right: .35rem;
+  bottom: .35rem;
+  width: .4rem;
+  height: .4rem;
+  border-radius: var(--r-full);
+  background: var(--accent-text);
+}
+.dplan-day.is-today { box-shadow: inset 0 0 0 2px var(--info-border); }
+.dplan.is-editable .dplan-day { cursor: pointer; }
+.dplan.is-editable .dplan-day:hover { border-color: var(--border-strong); }
+.dplan.is-editable .dplan-day.is-on:hover { border-color: var(--accent-text); }
+.dplan-day:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.dplan-day.is-selected { box-shadow: 0 0 0 2px var(--action); }
+.dplan-day.is-refused { animation: dplan-refuse 700ms var(--ease); }
+@keyframes dplan-refuse { from { box-shadow: 0 0 0 3px var(--danger-border); } to { box-shadow: 0 0 0 3px transparent; } }
+
+.dplan-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  list-style: none;
+}
+.dplan-legend li { display: inline-flex; align-items: center; gap: .4rem; }
+.dplan-legend .bi { font-size: .8rem; }
+.dplan-legend .bi.is-warn { color: var(--warning); }
+.dplan-swatch {
+  position: relative;
+  display: inline-block;
+  width: .9rem;
+  height: .9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+}
+.dplan-swatch.is-on { border-color: var(--accent-border); background: var(--accent-soft); }
+.dplan-swatch.is-off { background: var(--surface-sunken); }
+.dplan-swatch.is-manual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: .4rem;
+  height: .4rem;
+  margin: auto;
+  border-radius: var(--r-full);
+  background: var(--accent-text);
+}
+
+/* Zgjedhja e orëve të një date: afër datës; në celular, nga poshtë. */
+.dplan-editor {
+  position: absolute;
+  z-index: calc(var(--z-sticky) + 1);
+  width: 17.5rem;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  animation: qta-pop var(--dur-1) var(--ease);
+}
+.dplan-editor[hidden] { display: none; }
+.dplan-editor-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.dplan-editor-title { margin: 0; font-weight: var(--fw-bold); }
+.dplan-editor-hint { margin: .2rem 0 0; color: var(--text-muted); font-size: var(--fs-xs); }
+.dplan-opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-1); margin: var(--sp-3) 0; }
+.dplan-opt {
+  min-height: var(--touch-min);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.dplan-opt.is-none { grid-column: 1 / -1; }
+.dplan-opt:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+.dplan-opt:active:not(:disabled) { transform: scale(.97); }
+.dplan-opt[aria-checked="true"],
+.dplan-opt[aria-checked="true"]:hover { border-color: var(--action); background: var(--action); color: var(--action-text); }
+.dplan-opt:disabled { background: var(--surface-sunken); color: var(--text-subtle); cursor: not-allowed; }
+.dplan-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.dplan-editor-label { display: block; margin-bottom: .25rem; color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.dplan-editor-keys { margin: var(--sp-2) 0 0; color: var(--text-muted); font-size: var(--fs-2xs); }
+.dplan-editor.is-sheet {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-drawer);
+  width: auto;
+  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  animation-name: qta-rise;
+}
+.dplan-editor.is-sheet .dplan-editor-keys { display: none; }
+@media (max-width: 575.98px) {
+  .dplan-grid { width: calc(100% + 4px); margin: 0 -2px; border-spacing: 2px; }
+  .dplan-day { height: 2.9rem; padding: .2rem .25rem; }
+  .dplan-day.is-bound { padding: calc(.2rem - 1px) calc(.25rem - 1px); }
+  .dplan-val { margin-top: .2rem; font-size: var(--fs-md); }
+  .dplan-unit { display: none; }
+  .dplan-marks { top: .15rem; right: .2rem; font-size: .6rem; }
+  .dplan-day.is-manual::after { right: .2rem; bottom: .2rem; }
+}
+@media print {
+  .dplan-editor, .dplan-legend { display: none !important; }
+  .dplan-day { break-inside: avoid; }
+}
+
+/* ============================================ 32. Konvertimi i grupeve */
+/* group_conversion.php: kalendari majtas (zemra e faqes), gjendja djathtas;
+   në ekrane të ngushta njëra pas tjetrës. Shiriti i veprimeve qëndron poshtë. */
+.cv-layout { display: grid; align-items: start; gap: var(--sp-6); }
+.cv-main, .cv-side { min-width: 0; }
+.cv-side { display: grid; gap: var(--sp-4); }
+@media (min-width: 1100px) {
+  .cv-layout { grid-template-columns: minmax(0, 1fr) 20.5rem; }
+}
+.cv-plan .section-head { align-items: flex-start; }
+.cv-tools { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cv-intro { max-width: var(--prose-max); margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: var(--fs-sm); }
+.cv-panel-title {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+}
+/* Përmbledhja: numri i orëve është gjëja e parë që lexohet. */
+.cv-total { display: flex; align-items: baseline; gap: .35rem; margin: 0 0 var(--sp-2); line-height: 1; font-variant-numeric: tabular-nums; }
+.cv-total b { font-size: var(--fs-3xl); font-weight: var(--fw-bold); }
+.cv-total span { color: var(--text-muted); font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.cv-total b.is-bump { animation: cv-bump var(--dur-2) var(--ease); }
+@keyframes cv-bump { from { opacity: .35; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.cv-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); margin: var(--sp-3) 0 0; }
+.cv-counts dt { color: var(--text-muted); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
+.cv-counts dd { margin: 0; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.cv-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+.cv-verdict > .bi { flex: none; margin-top: .1rem; }
+.cv-verdict.is-ok { border-color: var(--success-border); background: var(--success-soft); color: var(--success); }
+.cv-verdict.is-warn { border-color: var(--warning-border); background: var(--warning-soft); color: var(--warning); }
+.cv-verdict.is-err { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger); }
+.cv-verdict.is-changed { animation: qta-fade-in var(--dur-2) var(--ease); }
+/* Kontrollet: ikonë + fjalë për çdo rregull. */
+.cv-check-list { margin: 0; padding: 0; list-style: none; }
+.cv-check {
+  display: grid;
+  grid-template-columns: 1.15rem minmax(0, 1fr);
+  gap: var(--sp-2);
+  padding: .45rem 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.cv-check:first-child { padding-top: 0; border-top: 0; }
+.cv-check > .bi { margin-top: .12rem; }
+.cv-check.is-ok > .bi { color: var(--success); }
+.cv-check.is-warn > .bi { color: var(--warning); }
+.cv-check.is-err > .bi { color: var(--danger); }
+.cv-check.is-err { font-weight: var(--fw-semibold); }
+.cv-check-fix { font-weight: var(--fw-semibold); white-space: nowrap; }
+/* Të dhënat historike: datat me dry. */
+.cv-facts .kv { grid-template-columns: minmax(6.5rem, max-content) minmax(0, 1fr); gap: var(--sp-2) var(--sp-4); }
+.cv-locked { display: flex; align-items: baseline; gap: .4rem; font-weight: var(--fw-semibold); }
+.cv-locked > .bi { color: var(--text-muted); font-size: .8rem; }
+.cv-muted { color: var(--text-muted); font-weight: var(--fw-regular); }
+.cv-note { display: flex; gap: .4rem; margin: var(--sp-3) 0 0; color: var(--text-muted); font-size: var(--fs-xs); }
+/* Modulet dhe temat që ngrihen: të mbyllura, që të mos zënë faqen. */
+.cv-curriculum { margin-top: var(--sp-6); }
+.cv-curriculum > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+  min-height: var(--touch-min);
+  cursor: pointer;
+  list-style: none;
+}
+.cv-curriculum > summary::-webkit-details-marker { display: none; }
+.cv-curriculum > summary > .bi { align-self: center; transition: transform var(--dur-2) var(--ease); }
+.cv-curriculum[open] > summary > .bi { transform: rotate(90deg); }
+.cv-curriculum > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--r-xs); }
+.cv-curriculum-title { font-weight: var(--fw-bold); }
+.cv-curriculum[open] > .cv-intro { margin-top: var(--sp-2); }
+.cv-modules { display: grid; gap: var(--sp-4); margin: 0; padding: 0; list-style: none; }
+.cv-module-name { margin: 0 0 .3rem; font-weight: var(--fw-semibold); }
+.cv-module-hours { color: var(--text-muted); font-weight: var(--fw-regular); }
+.cv-topics { display: grid; gap: .2rem; margin: 0; padding: 0; font-size: var(--fs-sm); list-style: none; }
+.cv-topics > li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: var(--sp-2); }
+.cv-topic-num, .cv-topic-hours { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cv-topic-hours { white-space: nowrap; }
+/* Shiriti i veprimeve: i njëjti tipar si shiriti i zgjedhjes. */
+.cv-bar {
+  position: sticky;
+  bottom: var(--sp-4);
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-6);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.cv-bar-status { display: flex; flex: 1 1 16rem; flex-wrap: wrap; align-items: center; gap: .15rem var(--sp-2); min-width: 0; margin: 0; font-size: var(--fs-sm); }
+.cv-bar-status > .bi { font-size: 1rem; }
+.cv-bar-status > .bi.is-ok { color: var(--success); }
+.cv-bar-status > .bi.is-warn { color: var(--warning); }
+.cv-bar-status > .bi.is-err { color: var(--danger); }
+.cv-bar-text b { font-variant-numeric: tabular-nums; }
+.cv-saved { color: var(--text-muted); font-size: var(--fs-xs); }
+.cv-saved.is-dirty { color: var(--warning); font-weight: var(--fw-semibold); }
+.cv-bar-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
+/* Shiriti zë fundin e ekranit; butoni "Kthehu në krye" do t'i mbulonte veprimet. */
+body:has(.cv-bar:not([hidden])) .back-top { display: none; }
+@media (max-width: 575.98px) {
+  .cv-bar { bottom: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
+  .cv-bar-actions { width: 100%; }
+  .cv-bar-actions > .btn { flex: 1 1 0; }
+  .cv-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media print {
+  .cv-bar, .cv-tools { display: none !important; }
+}

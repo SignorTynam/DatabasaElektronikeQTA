@@ -6,10 +6,15 @@ declare(strict_types=1);
  *
  * Një grup me orar ka:
  *   - kursin (i pandryshueshëm) dhe një kopje të ngrirë të moduleve dhe temave;
- *   - datën e fillimit, orët në ditë dhe ditët e veçanta;
- *   - orarin e ruajtur: ditët e mësimit dhe ndarjen e orëve të temave.
- * Data e mbarimit nuk shkruhet nga askush: del nga orari.
+ *   - orarin e ruajtur: ditët e mësimit dhe ndarjen e orëve të temave;
+ *   - një nga dy mënyrat e orarit (group_schedules.schedule_mode):
+ *       calculated   datën e fillimit, orët në ditë dhe ditët e veçanta; data e
+ *                    mbarimit nuk shkruhet nga askush: del nga orari;
+ *       fixed_range  grupet e konvertuara nga regjistri i vjetër: fillimi dhe
+ *                    mbarimi janë data historike që nuk ndryshojnë kurrë; plani i
+ *                    ditëve (group_fixed_days) jep orët e çdo date.
  *
+
  * Çdo veprim që shkruan:
  *   1. bllokon orarin e grupit (dy persona nuk e ndryshojnë njëkohësisht);
  *   2. kontrollon versionin që pa përdoruesi (revision);
@@ -24,6 +29,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/schedule.php';
+require_once __DIR__ . '/schedule_fixed.php';
 require_once __DIR__ . '/curriculum.php';
 require_once __DIR__ . '/group_members.php';
 require_once __DIR__ . '/themeli.php';
@@ -31,7 +37,10 @@ require_once __DIR__ . '/themeli.php';
 /* ============================================================== Leximi */
 
 if (!function_exists('qta_lg_find')) {
-  /** Grupi me kursin dhe konfigurimin e orarit. $lock bllokon orarin deri në fund të transaksionit. */
+  /**
+   * Grupi me kursin dhe konfigurimin e orarit. $lock bllokon orarin deri në fund
+   * të transaksionit. Për një grup të konvertuar jep edhe kur dhe nga kush u konvertua.
+   */
   function qta_lg_find(PDO $pdo, int $groupId, bool $lock = false): ?array
   {
     if ($lock) {
@@ -41,10 +50,13 @@ if (!function_exists('qta_lg_find')) {
     $st = $pdo->prepare('
       SELECT cg.id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed, cg.model, cg.created_at,
              c.code AS course_code, c.name AS course_name, c.hours AS live_course_hours,
-             gs.daily_hours, gs.course_hours, gs.curriculum_taken_at, gs.teaching_days, gs.revision, gs.generated_at
+             gs.schedule_mode, gs.daily_hours, gs.course_hours, gs.curriculum_taken_at, gs.teaching_days, gs.revision, gs.generated_at,
+             gc.converted_at, COALESCE(NULLIF(cu.full_name, \'\'), cu.email) AS converted_by_name
       FROM course_groups cg
       JOIN courses c ON c.id = cg.course_id
       LEFT JOIN group_schedules gs ON gs.group_id = cg.id
+      LEFT JOIN group_conversions gc ON gc.group_id = cg.id AND gc.status = \'completed\'
+      LEFT JOIN users cu ON cu.id = gc.converted_by
       WHERE cg.id = ?
     ');
     $st->execute([$groupId]);
@@ -57,6 +69,12 @@ if (!function_exists('qta_lg_find')) {
     return $g;
   }
 
+  /** A e ka grupi orarin me data historike (i konvertuar nga regjistri i vjetër)? */
+  function qta_lg_is_fixed(array $g): bool
+  {
+    return ($g['schedule_mode'] ?? null) === 'fixed_range';
+  }
+
   /** Grupi me orar, ose QtaUserError i qartë (grupi mungon ose është i mëparshëm). */
   function qta_lg_require(PDO $pdo, int $groupId, bool $lock = false): array
   {
@@ -64,7 +82,7 @@ if (!function_exists('qta_lg_find')) {
     if (!$g) {
       throw new QtaUserError('Grupi nuk u gjet. Ndoshta u fshi — rifresko faqen.');
     }
-    if ($g['model'] !== 'scheduled' || $g['daily_hours'] === null) {
+    if ($g['model'] !== 'scheduled' || $g['schedule_mode'] === null) {
       throw new QtaUserError('Grupi #' . $groupId . ' është një grup i mëparshëm, pa orar mësimi. Ai menaxhohet te "Regjistri i vjetër i kurseve profesionale" dhe nuk merr orar.', ['code' => 'legacy_group']);
     }
     return $g;
@@ -129,6 +147,28 @@ if (!function_exists('qta_lg_find')) {
       }
     }
     return array_values($days);
+  }
+
+  /**
+   * Plani i ditëve të një grupi të konvertuar: çdo datë e periudhës historike,
+   * në radhë, me orët dhe shënimin e saj.
+   * @return array<string,array{hours:int,note:?string}>
+   */
+  function qta_lg_fixed_days(PDO $pdo, int $groupId): array
+  {
+    $st = $pdo->prepare('SELECT lesson_date, hours, note FROM group_fixed_days WHERE group_id = ? ORDER BY lesson_date ASC');
+    $st->execute([$groupId]);
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+      $out[(string)$r['lesson_date']] = ['hours' => (int)$r['hours'], 'note' => $r['note'] === null || $r['note'] === '' ? null : (string)$r['note']];
+    }
+    return $out;
+  }
+
+  /** @return array<string,int> */
+  function qta_lg_fixed_hours(array $fixedDays): array
+  {
+    return array_map(static fn($d) => (int)$d['hours'], $fixedDays);
   }
 
   /** A ka ndryshuar kursi (modulet, temat, orët ose radha) pas kopjes së grupit? */
@@ -208,6 +248,64 @@ if (!function_exists('qta_lg_write_topics')) {
         array_push($vals, ...$r);
       }
       $pdo->prepare('INSERT INTO group_schedule_slots (group_id, day_seq, slot_seq, topic_seq, hours) VALUES ' . implode(',', $ph))->execute($vals);
+    }
+  }
+
+  /** Shkruan planin e plotë të ditëve të një grupi të konvertuar (çdo datë e periudhës). */
+  function qta_lg_write_fixed_days(PDO $pdo, int $groupId, array $dayHours, array $notes = []): void
+  {
+    foreach (array_chunk($dayHours, 400, true) as $chunk) {
+      $ph = [];
+      $vals = [];
+      foreach ($chunk as $date => $hours) {
+        $ph[] = '(?,?,?,?)';
+        $note = isset($notes[$date]) && $notes[$date] !== '' ? (string)$notes[$date] : null;
+        array_push($vals, $groupId, (string)$date, (int)$hours, $note);
+      }
+      $pdo->prepare('INSERT INTO group_fixed_days (group_id, lesson_date, hours, note) VALUES ' . implode(',', $ph))->execute($vals);
+    }
+  }
+
+  /**
+   * Kontrolli i fundit i një grupi me data historike: lexon sërish orarin, planin
+   * e ditëve dhe datat e grupit, dhe i verifikon me kontrollin e pavarur.
+   */
+  function qta_lg_assert_stored_fixed(PDO $pdo, int $groupId, array $topics, string $start, string $end): void
+  {
+    $stored = qta_lg_days($pdo, $groupId);
+    $dayHours = qta_lg_fixed_hours(qta_lg_fixed_days($pdo, $groupId));
+    $violations = qta_sched_verify_fixed_range($topics, [
+      'start_date' => $stored[0]['date'] ?? null,
+      'end_date' => $stored ? $stored[count($stored) - 1]['date'] : null,
+      'days' => $stored,
+    ], $start, $end, $dayHours);
+    $cg = $pdo->prepare('SELECT cg.start_date, cg.end_date, cg.model, gs.schedule_mode, gs.daily_hours, gs.course_hours, gs.teaching_days
+                         FROM course_groups cg JOIN group_schedules gs ON gs.group_id = cg.id WHERE cg.id = ?');
+    $cg->execute([$groupId]);
+    $row = $cg->fetch(PDO::FETCH_ASSOC);
+    if (!$row || $row['start_date'] !== $start || $row['end_date'] !== $end) {
+      $violations[] = 'datat historike të grupit nuk përputhen';
+    }
+    if (!$row || $row['model'] !== 'scheduled' || $row['schedule_mode'] !== 'fixed_range' || $row['daily_hours'] !== null) {
+      $violations[] = 'lloji i grupit ose i orarit nuk është i saktë';
+    }
+    $total = array_sum(array_map(static fn($t) => (int)$t['hours'], $topics));
+    if (!$row || (int)$row['course_hours'] !== $total || (int)$row['teaching_days'] !== count($stored)) {
+      $violations[] = 'koka e orarit nuk përputhet me ditët';
+    }
+    if ($violations) {
+      error_log('[QTA schedule] grupi ' . $groupId . ' (data historike): ' . implode('; ', $violations));
+      throw new QtaUserError('Orari nuk u ruajt, sepse kontrolli i fundit gjeti një mospërputhje. Asgjë nuk ndryshoi. Provo sërish; nëse përsëritet, njofto administratorin.');
+    }
+  }
+
+  /** Kontrolli i pavarur para ruajtjes së një orari me data historike. */
+  function qta_lg_verify_fixed_or_fail(array $topics, array $plan, string $start, string $end, array $dayHours): void
+  {
+    $violations = qta_sched_verify_fixed_range($topics, $plan, $start, $end, $dayHours);
+    if ($violations) {
+      error_log('[QTA schedule] verifikimi i orarit me data historike dështoi: ' . implode('; ', $violations));
+      throw new QtaUserError('Orari nuk u ruajt, sepse kontrolli i brendshëm gjeti një mospërputhje. Asgjë nuk ndryshoi. Njofto administratorin.');
     }
   }
 
@@ -314,7 +412,7 @@ if (!function_exists('qta_lg_preview_new')) {
 
       $created = [];
       $insGroup = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed, model) VALUES (?, ?, ?, 0, 'scheduled')");
-      $insSchedule = $pdo->prepare('INSERT INTO group_schedules (group_id, daily_hours, course_hours, curriculum_taken_at, teaching_days, revision, generated_at) VALUES (?, ?, ?, NOW(), ?, 1, NOW())');
+      $insSchedule = $pdo->prepare("INSERT INTO group_schedules (group_id, schedule_mode, daily_hours, course_hours, curriculum_taken_at, teaching_days, revision, generated_at) VALUES (?, 'calculated', ?, ?, NOW(), ?, 1, NOW())");
       $insMember = $pdo->prepare('INSERT INTO course_group_students (group_id, student_id) VALUES (?, ?)');
       foreach ($chunks as $chunk) {
         $insGroup->execute([$course['id'], $plan['start_date'], $plan['end_date']]);
@@ -337,10 +435,13 @@ if (!function_exists('qta_lg_change')) {
   /**
    * Ndryshon orarin e një grupi dhe e rillogarit të tërin.
    *
-   * $change:
+   * $change për orarin e llogaritur:
    *   ['type' => 'settings', 'start_date' => …, 'daily_hours' => …]
    *   ['type' => 'rule', 'date' => …, 'mode' => 'default'|'hours'|'off'|'remove', 'hours' => …, 'note' => …]
    *   ['type' => 'refresh']   — merr temat e reja të kursit (vetëm para fillimit)
+   * $change për orarin me data historike (grup i konvertuar):
+   *   ['type' => 'fixed_days', 'days' => ['2026-10-03' => 0, …], 'notes' => ['2026-10-03' => 'Festë', …]]
+   *   — korrigjon orët e disa datave brenda periudhës; fillimi dhe mbarimi nuk lëvizin.
    * $opts: revision (?int), force (bool), dry_run (bool), today ('Y-m-d')
    *
    * Me dry_run nuk ruhet asgjë: kthehet ndikimi (data e re e mbarimit, ditët që
@@ -372,6 +473,9 @@ if (!function_exists('qta_lg_change')) {
     $g = qta_lg_require($pdo, $groupId, true);
     if (isset($opts['revision']) && $opts['revision'] !== null && $opts['revision'] !== '' && (int)$opts['revision'] !== (int)$g['revision']) {
       throw new QtaUserError('Orari i këtij grupi u ndryshua nga dikush tjetër ndërkohë. Rifresko faqen që të shohësh orarin e ri, pastaj provo sërish.', ['code' => 'stale']);
+    }
+    if (qta_lg_is_fixed($g)) {
+      return qta_lg_change_fixed_in_tx($pdo, $g, $change, $opts);
     }
 
     $topics = qta_lg_topics($pdo, $groupId);
@@ -445,6 +549,8 @@ if (!function_exists('qta_lg_change')) {
         throw new QtaUserError('Temat e grupit janë njësoj si te kursi. Nuk ka asgjë për të marrë.');
       }
       $what = 'refresh';
+    } elseif ($type === 'fixed_days') {
+      throw new QtaUserError('Ky grup e llogarit orarin nga data e fillimit dhe orët në ditë. Ndrysho një ditë me "Ndrysho ditën".');
     } else {
       throw new QtaUserError('Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.');
     }
@@ -468,23 +574,7 @@ if (!function_exists('qta_lg_change')) {
         . 'Provimi nuk mund të jetë para mbarimit. Ndrysho së pari datat e provimit te "Kursantët".', ['code' => 'exam_conflict']);
     }
 
-    $confirm = null;
-    $reasons = [];
-    if ((int)$g['is_completed'] === 1) {
-      $reasons[] = 'Grupi është i mbyllur dhe dokumentet e tij mund të jenë lëshuar tashmë.';
-    }
-    if ($past) {
-      $reasons[] = 'Ky ndryshim prek ' . qta_plural_word(count($past), 'ditë mësimi që ka kaluar', 'ditë mësimi që kanë kaluar')
-        . ' (' . (count($past) === 1 ? qta_sched_day_label($past[0]) : 'nga ' . qta_date($past[0]) . ' deri ' . qta_date($past[count($past) - 1])) . '). '
-        . 'Ato ditë janë zhvilluar sipas orarit të vjetër — vazhdo vetëm nëse po korrigjon një gabim.';
-    }
-    if ($reasons) {
-      $confirm = [
-        'title' => $past ? 'Ndryshon edhe ditë që kanë kaluar' : 'Ky grup është i mbyllur',
-        'message' => implode(' ', $reasons),
-        'confirm' => $past ? 'Po, ndrysho edhe ditët e kaluara' : 'Po, ndrysho orarin',
-      ];
-    }
+    $confirm = qta_lg_change_confirm((int)$g['is_completed'] === 1, $past);
 
     $result = [
       'what' => $what,
@@ -536,6 +626,134 @@ if (!function_exists('qta_lg_change')) {
   function qta_plural_word(int $n, string $one, string $many): string
   {
     return $n . ' ' . ($n === 1 ? $one : $many);
+  }
+
+  /**
+   * Konfirmimi që kërkon një ndryshim orari: grup i mbyllur dhe/ose ditë që kanë
+   * kaluar. I njëjtë për të dy mënyrat e orarit. null = pa pyetje.
+   * @param string[] $past datat e kaluara që ndryshojnë
+   */
+  function qta_lg_change_confirm(bool $closed, array $past): ?array
+  {
+    $reasons = [];
+    if ($closed) {
+      $reasons[] = 'Grupi është i mbyllur dhe dokumentet e tij mund të jenë lëshuar tashmë.';
+    }
+    if ($past) {
+      $reasons[] = 'Ky ndryshim prek ' . qta_plural_word(count($past), 'ditë mësimi që ka kaluar', 'ditë mësimi që kanë kaluar')
+        . ' (' . (count($past) === 1 ? qta_sched_day_label($past[0]) : 'nga ' . qta_date($past[0]) . ' deri ' . qta_date($past[count($past) - 1])) . '). '
+        . 'Ato ditë janë zhvilluar sipas orarit të vjetër — vazhdo vetëm nëse po korrigjon një gabim.';
+    }
+    if (!$reasons) {
+      return null;
+    }
+    return [
+      'title' => $past ? 'Ndryshon edhe ditë që kanë kaluar' : 'Ky grup është i mbyllur',
+      'message' => implode(' ', $reasons),
+      'confirm' => $past ? 'Po, ndrysho edhe ditët e kaluara' : 'Po, ndrysho orarin',
+    ];
+  }
+
+  /**
+   * Korrigjimi i orarit të një grupi të konvertuar ('fixed_range'). Fillimi dhe
+   * mbarimi nuk lëvizin; ndryshojnë vetëm orët (dhe shënimi) i disa datave brenda
+   * periudhës. Plani i ri duhet të mbajë të gjitha rregullat (Σ = orët e kursit,
+   * ≤ 8 në ditë, kufijtë me mësim) dhe rindërtohet e verifikohet si në konvertim.
+   * Ditët e kaluara dhe grupi i mbyllur kërkojnë konfirmim, si te orari i llogaritur.
+   */
+  function qta_lg_change_fixed_in_tx(PDO $pdo, array $g, array $change, array $opts): array
+  {
+    $today = (string)($opts['today'] ?? date('Y-m-d'));
+    $force = !empty($opts['force']);
+    $dry = !empty($opts['dry_run']);
+    $groupId = (int)$g['id'];
+    $start = (string)$g['start_date'];
+    $end = (string)$g['end_date'];
+    $range = qta_sched_range_label($start, $end);
+
+    $type = (string)($change['type'] ?? '');
+    if ($type === 'settings') {
+      throw new QtaUserError('Grupi #' . $groupId . ' u konvertua nga regjistri i vjetër: fillimi dhe mbarimi (' . $range . ') janë data historike dhe nuk ndryshojnë. Për ta korrigjuar orarin, ndrysho orët e ditëve brenda kësaj periudhe.');
+    }
+    if ($type === 'rule') {
+      throw new QtaUserError('Ky grup ka plan ditësh me data historike, prandaj nuk ka "ditë të veçanta". Ndrysho orët e datës te plani i ditëve.');
+    }
+    if ($type === 'refresh') {
+      throw new QtaUserError('Grupi u konvertua nga regjistri i vjetër: modulet dhe temat e tij mbeten ato që u ruajtën në konvertim.');
+    }
+    if ($type !== 'fixed_days') {
+      throw new QtaUserError('Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.');
+    }
+
+    $current = qta_lg_fixed_days($pdo, $groupId);
+    $dayHours = qta_lg_fixed_hours($current);
+    $notes = array_map(static fn($d) => (string)($d['note'] ?? ''), $current);
+    $newHours = $dayHours;
+    $newNotes = $notes;
+    $outside = static fn(?string $iso): QtaUserError => new QtaUserError(
+      ($iso !== null ? 'Data ' . qta_sched_dmy($iso) . ' është' : 'Një datë e dërguar është') . ' jashtë periudhës historike ' . $range . '.');
+    foreach ((array)($change['days'] ?? []) as $date => $hours) {
+      $iso = qta_parse_date_input((string)$date);
+      if ($iso === null || !array_key_exists($iso, $current)) {
+        throw $outside($iso);
+      }
+      $h = qta_parse_int_input($hours, 0, QTA_DAY_MAX_HOURS);
+      if ($h === null) {
+        throw new QtaUserError('Orët e datës ' . qta_sched_dmy($iso) . ' duhet të jenë një numër i plotë nga 0 deri në ' . QTA_DAY_MAX_HOURS . '. 0 do të thotë pa mësim.');
+      }
+      $newHours[$iso] = $h;
+    }
+    foreach ((array)($change['notes'] ?? []) as $date => $note) {
+      $iso = qta_parse_date_input((string)$date);
+      if ($iso === null || !array_key_exists($iso, $current)) {
+        throw $outside($iso);
+      }
+      $newNotes[$iso] = qta_clean_text($note, 160);
+    }
+    $touched = array_values(array_filter(array_keys($current), static fn($d) => $newHours[$d] !== $dayHours[$d] || $newNotes[$d] !== $notes[$d]));
+    if (!$touched) {
+      throw new QtaUserError('Nuk ndryshove asgjë: orët e ditëve janë të njëjtat.');
+    }
+
+    $topics = qta_lg_topics($pdo, $groupId);
+    $oldDays = qta_lg_days($pdo, $groupId);
+    $plan = qta_sched_build_fixed_range($topics, $start, $end, $newHours);
+    qta_lg_verify_fixed_or_fail($topics, $plan, $start, $end, $newHours);
+
+    $changed = array_values(array_unique(array_merge(qta_sched_diff($oldDays, $plan['days']), $touched)));
+    sort($changed);
+    $past = array_values(array_filter($changed, static fn($d) => $d < $today));
+    $confirm = qta_lg_change_confirm((int)$g['is_completed'] === 1, $past);
+    $summary = qta_lg_plan_summary($plan);
+    $result = [
+      'what' => 'fixed_days',
+      'old' => ['start_date' => $start, 'end_date' => $end, 'days' => count($oldDays), 'daily_hours' => null],
+      'new' => $summary + ['daily_hours' => null],
+      'edited_dates' => $touched,
+      'changed_dates' => $changed,
+      'first_changed' => $changed[0] ?? null,
+      'past_changed' => $past,
+      'confirm' => $confirm,
+      'revision' => (int)$g['revision'],
+    ];
+    if ($dry) {
+      return $result;
+    }
+    if ($confirm && !$force) {
+      throw new QtaConfirmNeeded($confirm['title'], $confirm['message'], $confirm['confirm'], ['impact' => $result]);
+    }
+
+    $upd = $pdo->prepare('UPDATE group_fixed_days SET hours = ?, note = ? WHERE group_id = ? AND lesson_date = ?');
+    foreach ($touched as $d) {
+      $upd->execute([$newHours[$d], $newNotes[$d] === '' ? null : $newNotes[$d], $groupId, $d]);
+    }
+    qta_lg_write_plan($pdo, $groupId, $plan);
+    $pdo->prepare('UPDATE group_schedules SET teaching_days = ?, revision = revision + 1, generated_at = NOW() WHERE group_id = ?')
+        ->execute([count($plan['days']), $groupId]);
+    qta_lg_assert_stored_fixed($pdo, $groupId, $topics, $start, $end);
+
+    $result['revision'] = (int)$g['revision'] + 1;
+    return $result;
   }
 }
 
@@ -622,7 +840,8 @@ if (!function_exists('qta_lg_set_members')) {
           . '. Kursantët nuk fshihen — ata mbeten te "Kursantët", pa grup. Kjo nuk mund të kthehet mbrapsht.',
           'Po, fshije grupin');
       }
-      foreach (['group_schedule_slots', 'group_schedule_days', 'group_schedule_topics', 'group_day_rules', 'group_schedules'] as $table) {
+      /* Fshirje e shprehur (jo zinxhir), që historiku të shohë çdo pjesë që hiqet. */
+      foreach (['group_schedule_slots', 'group_schedule_days', 'group_schedule_topics', 'group_day_rules', 'group_fixed_days', 'group_schedules', 'group_conversions'] as $table) {
         $pdo->prepare("DELETE FROM $table WHERE group_id = ?")->execute([$groupId]);
       }
       $pdo->prepare('DELETE FROM course_group_students WHERE group_id = ?')->execute([$groupId]);

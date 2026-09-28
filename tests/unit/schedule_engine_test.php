@@ -165,10 +165,10 @@ t_case('Gabimet e hyrjeve', function () use ($WORD) {
   $ok = qta_sched_build($topics, '2026-10-04', 5, ['2026-10-04' => 3]);
   t_eq('2026-10-04', $ok['start_date'], 'fillimi të dielën lejohet kur e diela shënohet ditë mësimi');
   t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-10-01', 0), '0 orë në ditë refuzohet', 'nga 1 deri');
-  t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-10-01', 13), '13 orë në ditë refuzohet', 'nga 1 deri');
+  t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-10-01', 9), '9 orë në ditë refuzohet (kufiri është 8)', 'nga 1 deri');
   t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '31.02.2026', 5), 'data e pavlefshme refuzohet', 'Data e fillimit');
   t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-02-30', 5), '30 shkurt refuzohet', 'Data e fillimit');
-  t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-10-01', 5, ['2026-10-02' => 13]), 'rregull me 13 orë refuzohet', 'orë të pavlefshme');
+  t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-10-01', 5, ['2026-10-02' => 9]), 'rregull me 9 orë refuzohet', 'orë të pavlefshme');
   t_throws(QtaUserError::class, fn() => qta_sched_build($topics, '2026-10-01', 5, ['x' => 3]), 'rregull pa datë refuzohet', 'datë të pavlefshme');
   t_throws(QtaUserError::class, fn() => qta_sched_build([], '2026-10-01', 5), 'kurs pa tema refuzohet', 'nuk ka tema');
   $bad = $topics; $bad[2]['hours'] = 0;
@@ -218,7 +218,7 @@ t_case('Totale të mëdha dhe mbrojtja nga gabimet e rrumbullakimit', function (
   $mods = [];
   for ($m = 0; $m < 12; $m++) { $mods[] = [7, 3, 11, 1, 5, 2, 9]; } // 38 × 12 = 456 orë
   $topics = sched_topics($mods);
-  foreach ([1, 3, 5, 7, 12] as $daily) {
+  foreach ([1, 3, 5, 7, 8] as $daily) {
     $plan = qta_sched_build($topics, '2026-09-28', $daily, ['2026-11-01' => null, '2026-12-25' => 0]);
     t_eq([], qta_sched_verify($topics, $plan, $daily, ['2026-11-01' => null, '2026-12-25' => 0]), $daily . ' orë në ditë: rregullat mbahen');
     t_eq(456, array_sum(array_column($plan['days'], 'hours')), $daily . ' orë në ditë: totali 456');

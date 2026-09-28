@@ -10,6 +10,10 @@ declare(strict_types=1);
  * cilat orë të saj zhvillohen: "ora 1 nga 2".
  *
  *   echo qta_render_timetable($annotatedDays, $rules, $group, $edit, $today);
+ *
+ * Për një grup të konvertuar (schedule_mode 'fixed_range') $rules është plani i
+ * ditëve (data → orë, shënim): çdo ditë ka pikërisht orët e planit, pa "ditë të
+ * veçanta"; korrigjimet bëhen te kalendari i planit, jo rresht pas rreshti.
  */
 
 require_once __DIR__ . '/../themeli.php';
@@ -31,6 +35,8 @@ if (!function_exists('qta_render_timetable')) {
     $start = (string)$g['start_date'];
     $end = (string)$g['end_date'];
     $daily = (int)$g['daily_hours'];
+    $fixed = ($g['schedule_mode'] ?? 'calculated') === 'fixed_range';
+    $edit = $edit && !$fixed;
     $months = [1 => 'jan', 'shk', 'mar', 'pri', 'maj', 'qer', 'kor', 'gus', 'sht', 'tet', 'nën', 'dhj'];
 
     ob_start();
@@ -66,9 +72,11 @@ if (!function_exists('qta_render_timetable')) {
 
       $d = $byDate[$date];
       $hours = (int)$d['hours'];
-      $capacity = qta_sched_day_hours($date, $daily, array_map(static fn($r) => $r['hours'], $rules));
+      $capacity = $fixed ? $hours : qta_sched_day_hours($date, $daily, array_map(static fn($r) => $r['hours'], $rules));
       $flags = [];
-      if ($rule !== null) {
+      if ($fixed) {
+        if (qta_sched_is_sunday($date)) $flags[] = qta_status('E diel me mësim', 'info', 'bi-calendar-check');
+      } elseif ($rule !== null) {
         $flags[] = qta_sched_is_sunday($date)
           ? qta_status('E diel me mësim', 'info', 'bi-calendar-check')
           : qta_status('Ditë e veçantë', 'info', 'bi-calendar-event');

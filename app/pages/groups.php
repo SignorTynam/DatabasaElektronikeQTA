@@ -1162,11 +1162,13 @@ $LF = [
     </div>
   </header>
 
-  <?php /* Regjistër i përkohshëm: grupet e reja krijohen te "Regjistri i kurseve profesionale". */ ?>
-  <div class="notice is-sunken mb-4" role="note">
+  <?php /* Regjistër i përkohshëm: grupet e reja krijohen te "Regjistri i kurseve profesionale";
+           grupet e këtushme kalojnë atje një nga një, me konvertim. */ ?>
+  <div class="notice has-action is-sunken mb-4" role="note">
     <i class="bi bi-archive" aria-hidden="true"></i>
-    <span>Ky regjistër ruan kurset profesionale të mëparshme. Së shpejti këto regjistrime do të konvertohen në
-      <a href="lesson_groups.php">Regjistrin e kurseve profesionale</a>.</span>
+    <span>Ky regjistër ruan kurset profesionale të mëparshme. Konvertoji një nga një te
+      <a href="lesson_groups.php">Regjistri i kurseve profesionale</a>, me datat e tyre historike.</span>
+    <a class="btn btn-secondary btn-sm notice-action" href="group_conversions.php"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>Konvertimi i grupeve</a>
   </div>
 
   <section class="section" aria-labelledby="groupsTitle">
@@ -1372,12 +1374,13 @@ $LF = [
         </div>
 
         <div class="modal-footer">
-          <?php if ($EDIT_MODE): ?>
-            <div class="modal-footer-start">
+          <div class="modal-footer-start">
+            <a class="btn btn-ghost" href="group_conversion.php?id=<?= $gid ?>"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>Përgatit konvertimin</a>
+            <?php if ($EDIT_MODE): ?>
               <button type="button" class="btn btn-ghost" data-bs-toggle="modal" data-bs-target="#editCourseModal_<?= $gid ?>"><i class="bi bi-book" aria-hidden="true"></i>Ndrysho kursin</button>
               <button type="button" class="btn btn-ghost btn-ghost-danger" data-bs-toggle="modal" data-bs-target="#deleteGroupModal_<?= $gid ?>"><i class="bi bi-trash" aria-hidden="true"></i>Fshi grupin</button>
-            </div>
-          <?php endif; ?>
+            <?php endif; ?>
+          </div>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
         </div>
       </div>

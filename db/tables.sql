@@ -1242,4 +1242,5 @@ DELIMITER ;
 -- Pas kësaj skeme: db/create_audit.sql, pastaj migrimet në db/migrations/
 -- sipas radhës së datës (shih db/migrations/README.md):
 --   2026-09-26-kurset-modulet-temat-orari.sql  modulet, temat, grupet me orar
+--   2026-09-28-konvertimi-i-grupeve.sql        8 orë në ditë, konvertimi i grupeve
 -- =========================================================

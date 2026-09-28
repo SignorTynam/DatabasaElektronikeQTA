@@ -69,6 +69,8 @@ if (!function_exists('qta_app_active_key')) {
       'students.php'                => 'users_students',
       'student_card.php'            => 'student_card',
       'groups.php'                  => 'register_groups',
+      'group_conversions.php'       => 'register_groups',
+      'group_conversion.php'        => 'register_groups',
       'lesson_groups.php'           => 'lesson_groups',
       'lesson_group.php'            => 'lesson_groups',
       'course.php'                  => 'courses',

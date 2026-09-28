@@ -293,7 +293,7 @@
       ev.preventDefault();
       var c = dChange();
       if (!toIso(c.date)) { formError(dForm, 'Shkruaj datën si dd.mm.vvvv, p.sh. 11.10.2026.'); dForm.elements.date.focus(); return; }
-      if (c.mode === 'hours' && !/^\d+$/.test(String(c.hours).trim())) { formError(dForm, 'Shkruaj sa orë mësim ka kjo ditë: një numër nga 1 deri në 12.'); hoursInput.focus(); return; }
+      if (c.mode === 'hours' && !/^\d+$/.test(String(c.hours).trim())) { formError(dForm, 'Shkruaj sa orë mësim ka kjo ditë: një numër nga 1 deri në ' + hoursInput.max + '.'); hoursInput.focus(); return; }
       var btn = dForm.querySelector('button[type="submit"]');
       formError(dForm, '');
       busy(btn, true);
@@ -480,6 +480,98 @@
         toast(err.message || 'Ndryshimi nuk u ruajt.', 'danger');
       });
     });
+  }
+
+  /* ------------------------------------ Plani i ditëve (grup i konvertuar) */
+  /* Datat historike nuk lëvizin; korrigjohen vetëm orët brenda periudhës. Shiriti
+     del vetëm kur ka ndryshime të paruajtura; ruajtja kalon nga e njëjta rrugë
+     (run) si çdo ndryshim orari, me konfirmim për ditët e kaluara dhe grupin e mbyllur. */
+  var fxRoot = document.getElementById('lgPlan');
+  if (fxRoot && CFG.mode === 'fixed_range' && CFG.edit && window.QtaDayPlan) {
+    var fx = window.QtaDayPlan.mount(fxRoot);
+    var fxOriginal = fx.plan();
+    var fxOriginalNotes = {};
+    fx.serialize().forEach(function (it) { fxOriginalNotes[it.d] = it.n || ''; });
+    var fxBar = document.querySelector('[data-fx-bar]');
+    var fxText = document.querySelector('[data-fx-text]');
+    var fxIcon = document.querySelector('[data-fx-icon]');
+    var fxSave = document.querySelector('[data-fx-save]');
+    var fxCancel = document.querySelector('[data-fx-cancel]');
+    var fxUndo = document.querySelector('[data-fx-undo]');
+    var fxRebalance = document.querySelector('[data-fx-rebalance]');
+    var fxDirty = false;
+
+    var fxChanges = function () {
+      var now = fx.plan();
+      var notes = {};
+      fx.serialize().forEach(function (it) { notes[it.d] = it.n || ''; });
+      var out = { days: {}, notes: {}, count: 0 };
+      Object.keys(now).forEach(function (d) {
+        var hours = now[d] !== fxOriginal[d];
+        var note = notes[d] !== fxOriginalNotes[d];
+        if (hours) out.days[d] = now[d];
+        if (note) out.notes[d] = notes[d];
+        if (hours || note) out.count++;
+      });
+      return out;
+    };
+    var fxPaint = function () {
+      var p = fx.plan();
+      var total = 0;
+      Object.keys(p).forEach(function (d) { total += p[d]; });
+      var ch = fxChanges();
+      var H = CFG.hours;
+      var issue = p[CFG.start] < 1 ? 'Fillimi historik duhet të ketë mësim'
+        : p[CFG.end] < 1 ? 'Mbarimi historik duhet të ketë mësim'
+        : total < H ? (H - total === 1 ? 'Mungon 1 orë' : 'Mungojnë ' + (H - total) + ' orë')
+        : total > H ? (total - H === 1 ? 'Është vendosur 1 orë më shumë' : 'Janë vendosur ' + (total - H) + ' orë më shumë')
+        : '';
+      fxDirty = ch.count > 0;
+      fxBar.hidden = !fxDirty;
+      fxText.innerHTML = '<b></b> · <span></span>';
+      fxText.querySelector('b').textContent = total + ' / ' + H + ' orë';
+      fxText.querySelector('span').textContent = issue || (ch.count === 1 ? '1 ditë ndryshoi' : ch.count + ' ditë ndryshuan');
+      fxIcon.className = 'bi ' + (issue ? 'bi-x-circle-fill is-err' : 'bi-check-circle-fill is-ok');
+      fxSave.disabled = !!issue;
+      if (fxUndo) fxUndo.disabled = !fx.canUndo();
+      if (fxRebalance) fxRebalance.disabled = total === H;
+    };
+    fxRoot.addEventListener('dplan:change', fxPaint);
+    window.addEventListener('beforeunload', function (e) {
+      if (!fxDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+    fxCancel.addEventListener('click', function () {
+      fxDirty = false;
+      window.location.reload();
+    });
+    if (fxUndo) fxUndo.addEventListener('click', function () { fx.undo(); fxPaint(); });
+    if (fxRebalance) fxRebalance.addEventListener('click', function () {
+      busy(fxRebalance, true);
+      post(CFG.endpoint, { action: 'rebalance', group_id: CFG.group, plan: fx.serialize() }).then(function (json) {
+        busy(fxRebalance, false);
+        if (!json.ok) throw new Error(json.error || 'Orët nuk u rishpërndanë.');
+        var current = fx.plan();
+        var changes = {};
+        json.plan.forEach(function (it) { if (current[it.d] !== it.h) changes[it.d] = { h: it.h }; });
+        fx.apply(changes, { origin: 'auto', source: 'rebalance' });
+        toast(json.message, (json.sundays_added && json.sundays_added.length) ? 'warning' : 'success');
+        fxPaint();
+      }).catch(function (err) { busy(fxRebalance, false); toast(err.message, 'danger', { autohide: false }); });
+    });
+    fxSave.addEventListener('click', function () {
+      var ch = fxChanges();
+      busy(fxSave, true);
+      run({ action: 'change', revision: CFG.revision, change: { type: 'fixed_days', days: ch.days, notes: ch.notes } }).then(function (json) {
+        fxDirty = false;
+        reloadWith(json.message);
+      }).catch(function (err) {
+        busy(fxSave, false);
+        if (!err.cancelled) toast(err.message, 'danger', { autohide: false });
+      });
+    });
+    fxPaint();
   }
 
   if (CFG.edit) {

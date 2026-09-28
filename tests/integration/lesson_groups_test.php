@@ -65,10 +65,12 @@ $tag = substr(md5((string)microtime(true)), 0, 5);
 
 /* ============================================================== Testet */
 
-t_case('Integrimi: grupet ekzistuese janë të gjitha të mëparshme pas migrimit', function () use ($pdo, $legacyIds) {
+t_case('Integrimi: grupet e mëparshme nuk kanë orar; çdo grup me orar ka orarin e vet', function () use ($pdo, $legacyIds) {
   t_ok(count($legacyIds) > 0, 'ka grupe të mëparshme në databazë');
-  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM course_groups WHERE model <> 'legacy'"), 'asnjë grup ekzistues nuk u bë grup me orar');
-  t_eq(0, it_count($pdo, 'SELECT COUNT(*) FROM group_schedules'), 'asnjë orar i krijuar për grupet ekzistuese');
+  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM group_schedules gs JOIN course_groups cg ON cg.id = gs.group_id WHERE cg.model = 'legacy'"), 'asnjë orar për një grup të mëparshëm');
+  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM course_groups cg WHERE cg.model = 'scheduled' AND NOT EXISTS (SELECT 1 FROM group_schedules gs WHERE gs.group_id = cg.id)"), 'çdo grup me orar ka orarin e vet');
+  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM group_schedules gs WHERE gs.schedule_mode = 'fixed_range' AND NOT EXISTS (SELECT 1 FROM group_conversions gc WHERE gc.group_id = gs.group_id AND gc.status = 'completed')"),
+    'një orar me data historike ekziston vetëm pas një konvertimi të kryer');
 });
 
 t_case('Pranimi A — struktura ruhet, radha është e qartë, historiku shënohet', function () use ($pdo, $W, $tag) {

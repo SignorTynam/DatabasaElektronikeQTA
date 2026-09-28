@@ -746,9 +746,10 @@
   }
 
   /* Dialog konfirmimi i aksesueshëm — zëvendëson confirm() të shfletuesit.
-     qtaConfirm({title, message, confirm, cancel, danger, icon}) → Promise<boolean>
+     qtaConfirm({title, message, points, confirm, cancel, danger, icon}) → Promise<boolean>
      cancel: false = vetëm një buton (njoftim që kërkon vëmendje);
-     icon: p.sh. 'bi-exclamation-triangle' për një problem që duhet rregulluar. */
+     icon: p.sh. 'bi-exclamation-triangle' për një problem që duhet rregulluar;
+     points: listë e shkurtër fjalish (çfarë ndodh / çfarë mbetet), e treguar si listë. */
   window.qtaConfirm = function (opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
@@ -772,7 +773,12 @@
             '<div class="modal-body pt-4">' +
               '<span class="confirm-icon' + (danger ? ' is-danger' : '') + '"><i class="bi ' + esc(icon) + '" aria-hidden="true"></i></span>' +
               '<h2 class="modal-title mb-2" id="' + id + 'T">' + esc(opts.title || 'Je i sigurt?') + '</h2>' +
-              '<p class="text-muted mb-0" id="' + id + 'D">' + esc(opts.message || '') + '</p>' +
+              '<div id="' + id + 'D"><p class="text-muted mb-0">' + esc(opts.message || '') + '</p>' +
+              (opts.points && opts.points.length
+                ? '<ul class="confirm-points">' + opts.points.map(function (p) {
+                    return '<li><i class="bi bi-check2" aria-hidden="true"></i><span>' + esc(p) + '</span></li>';
+                  }).join('') + '</ul>'
+                : '') + '</div>' +
             '</div>' +
             '<div class="modal-footer">' +
               (single ? '' : '<button type="button" class="btn btn-secondary" data-qta-cancel>' + esc(opts.cancel || 'Anulo') + '</button>') +

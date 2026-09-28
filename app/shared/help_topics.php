@@ -131,7 +131,7 @@ return [
   'groups' => [
     'title' => 'Regjistri i vjetër i kurseve profesionale',
     'roles' => $staff,
-    'intro' => 'Kurset profesionale të mëparshme, të krijuara para orarit të mësimit: çdo grup ndjek një kurs në data të caktuara, pa orar ditë pas dite. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet. Së shpejti këto regjistrime do të konvertohen në "Regjistri i kurseve profesionale".',
+    'intro' => 'Kurset profesionale të mëparshme, të krijuara para orarit të mësimit: çdo grup ndjek një kurs në data të caktuara, pa orar ditë pas dite. Këtu sheh grupet, kursantët, provimet dhe shkarkon dokumentet. Te "Konvertimi i grupeve" çdo grup kalon te "Regjistri i kurseve profesionale", me datat e tij historike.',
     'steps' => [
       ['Gjej një grup', 'Shkruaj kursin, numrin e grupit, emrin ose numrin e amzës së një kursanti: lista ndryshon ndërsa shkruan. Çipat tregojnë grupet "Në mësim", "Presin mbylljen" ose "Të mbyllura"; "Filtra" zgjedh kursin.'],
       ['Hap një grup', 'Kliko emrin e kursit: grupi hapet në një dritare me kursantët, provimet, pikët dhe dokumentet.'],
@@ -145,6 +145,41 @@ return [
       'Një grup mban deri në 10 kursantë. Një regjistrim (nr. i amzës) mund të jetë vetëm në një grup.',
       '"Raporti për QKL" krijon raportin për një interval numrash amze.',
       'Grupet e reja krijohen te "Regjistri i kurseve profesionale", me orar mësimi. "Shto grup të mëparshëm" është vetëm për kurse të mbajtura më parë.',
+      'Për të kaluar një grup te regjistri i ri, hape dhe shtyp "Përgatit konvertimin", ose shko te "Konvertimi i grupeve".',
+    ],
+  ],
+
+  'conversions' => [
+    'title' => 'Konvertimi i grupeve',
+    'roles' => $staff,
+    'intro' => 'Grupet e regjistrit të vjetër kalojnë një nga një te "Regjistri i kurseve profesionale". Numri i grupit, kursantët, provimet dhe pikët mbeten të njëjtat; fillimi dhe mbarimi mbeten datat historike.',
+    'steps' => [
+      ['Shiko gjendjen', 'Çdo grup ka një gjendje: "Gati për përgatitje", "Draft për kontroll", "Kërkon kontroll", "Ka probleme" ose "Nuk mund të konvertohet". Çipat i filtrojnë; kërkimi gjen kursin, numrin e grupit, kursantët dhe datat.'],
+      ['Hap një grup', 'Kliko emrin e kursit ose veprimin në fund të rreshtit ("Përgatit konvertimin", "Vazhdo", "Kontrollo").'],
+      ['Rregullo problemet', '"Ka probleme" do të thotë se diçka duhet korrigjuar më parë — p.sh. kursi nuk ka ende module dhe tema, ose një kursant është në dy grupe. Brenda grupit, çdo problem ka lidhjen ku rregullohet.'],
+    ],
+    'tips' => [
+      '"Nuk mund të konvertohet" = orët e kursit nuk zënë brenda datave historike me të shumtën 8 orë në ditë.',
+      'Një grup i konvertuar del te "Regjistri i kurseve profesionale" dhe nuk shfaqet më këtu.',
+    ],
+  ],
+
+  'conversion' => [
+    'title' => 'Konvertimi i një grupi',
+    'roles' => $staff,
+    'intro' => 'Regjistri i vjetër ka fillimin, mbarimin dhe orët e kursit, por jo ditët e sakta të mësimit. Sistemi propozon si ndahen orët brenda periudhës historike; ti e kontrollon, e ndryshon ku duhet dhe e konverton.',
+    'steps' => [
+      ['Kontrollo propozimin', 'Kalendari tregon orët e çdo date. Fillimi dhe mbarimi (me dry) kanë gjithmonë mësim; të dielat përdoren vetëm kur nuk ka ditë të tjera të mjaftueshme dhe shënohen për kontroll.'],
+      ['Ndrysho një datë', 'Kliko datën dhe zgjidh "Pa mësim" ose 1–8 orë. Me tastierë: shigjetat lëvizin mes datave, shifrat 0–8 vendosin orët menjëherë, Delete e bën "pa mësim", Ctrl+Z zhbën.'],
+      ['Mbaj shumën', 'Lart djathtas (dhe në shiritin poshtë) shihet sa orë ke vendosur, p.sh. "43 / 50 orë · Mungojnë 7 orë". "Rishpërndaj automatikisht" i vendos orët që mungojnë pa prekur datat që ke ndryshuar vetë.'],
+      ['Ruaj draftin', '"Ruaj draftin" e ruan punën pa prekur grupin — mund të vazhdosh më vonë.'],
+      ['Konverto grupin', 'Kur kontrollet janë në rregull, "Konverto grupin" pyet edhe një herë, pastaj e kalon grupin te regjistri i ri me këtë orar.'],
+    ],
+    'tips' => [
+      'Një ditë ka të shumtën 8 orë mësimi.',
+      'Modulet dhe temat ruhen siç janë sot te kursi dhe mbeten historike për grupin. Nëse struktura e kursit nuk është e saktë, rregulloje te "Katalogu i kurseve" para konvertimit.',
+      'Nëse dikush tjetër ndryshon grupin, kursantët ose kursin ndërkohë, faqja të kërkon "Rifresko të dhënat" — asgjë nuk mbishkruhet në heshtje.',
+      '"Rikthe propozimin" kthen propozimin fillestar të sistemit.',
     ],
   ],
 
@@ -217,6 +252,7 @@ return [
       'Një ndryshim që prek ditë që kanë kaluar kërkon konfirmim, sepse ato ditë janë zhvilluar tashmë.',
       'Grupi ka kopjen e vet të temave. Nëse kursi ndryshon para se të nisë grupi, mund të marrësh temat e reja me "Merr temat e reja".',
       '"Printo orarin" printon orarin ditë pas dite.',
+      'Një grup "Konvertuar nga regjistri i vjetër" ka fillimin dhe mbarimin historik, që nuk ndryshojnë. Orari i tij korrigjohet te "Plani i ditëve": ndrysho orët e datave dhe ruaje kur shuma është sërish e plotë.',
       '"Regjistri i orëve të mësimit" (te "Dokumentet") ka për çdo modul një faqe për prezencën dhe një faqe me datat dhe temat. Çdo orë mësimi ka kolonën dhe rreshtin e vet: një ditë me 5 orë del 5 herë. Numrat 1, 2, 3… janë radha e kursantëve te "Lista emërore".',
     ],
   ],

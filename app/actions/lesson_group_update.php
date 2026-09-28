@@ -7,8 +7,10 @@ declare(strict_types=1);
  * Veprimet:
  *   preview_new   parashikimi i orarit për një grup të ri (pa ruajtur)
  *   change        orari: 'settings' (fillimi, orët në ditë), 'rule' (një ditë e
- *                 veçantë) ose 'refresh' (temat e reja të kursit); me dry_run
- *                 vetëm parashikon
+ *                 veçantë) ose 'refresh' (temat e reja të kursit); për një grup të
+ *                 konvertuar 'fixed_days' (orët e disa datave brenda datave
+ *                 historike); me dry_run vetëm parashikon
+ *   rebalance     grup i konvertuar: rishpërndan orët e planit të dërguar (pa ruajtur)
  *   members       kursantët e grupit (numrat e amzës, deri në 10)
  *   delete        fshirja e grupit
  *
@@ -69,6 +71,14 @@ try {
       if ($dry) {
         qta_json_out(['ok' => true, 'dry_run' => true, 'impact' => $r]);
       }
+      if ($r['what'] === 'fixed_days') {
+        $edited = count($r['edited_dates']);
+        $moved = count(array_diff($r['changed_dates'], $r['edited_dates']));
+        qta_json_out(['ok' => true, 'revision' => $r['revision'], 'impact' => $r,
+          'message' => 'Korrigjimi u ruajt: ' . ($edited === 1 ? 'ndryshoi 1 ditë' : 'ndryshuan ' . $edited . ' ditë')
+            . ($moved ? ($moved === 1 ? ', dhe temat u rindanë edhe në 1 ditë tjetër' : ', dhe temat u rindanë edhe në ' . $moved . ' ditë të tjera') : '')
+            . '. Datat historike mbeten ' . qta_sched_range_label($n['start_date'], $n['end_date']) . '.']);
+      }
       $endText = $n['end_date'] === $o['end_date']
         ? 'Mbarimi mbetet ' . lg_when($n['end_date']) . '.'
         : 'Mbaron tani ' . lg_when($n['end_date']) . '; më parë mbaronte më ' . qta_date($o['end_date']) . '.';
@@ -78,6 +88,33 @@ try {
         'refresh' => 'Grupi mori temat e reja të kursit dhe orari u rillogarit.',
       ][$r['what']] ?? 'Orari u rillogarit.';
       qta_json_out(['ok' => true, 'message' => $lead . ' ' . $endText, 'impact' => $r, 'revision' => $r['revision']]);
+    }
+
+    case 'rebalance': {
+      /* Vetëm llogaritje: asgjë nuk ruhet, prandaj nuk kërkon "Lejo ndryshimet". */
+      $g = qta_lg_require($pdo, $groupId);
+      if (!qta_lg_is_fixed($g)) {
+        throw new QtaUserError('Rishpërndarja vlen për grupet me data historike. Ky grup e llogarit orarin nga orët në ditë.');
+      }
+      $plan = [];
+      foreach ((array)($data['plan'] ?? []) as $item) {
+        $d = is_array($item) ? (string)($item['d'] ?? '') : '';
+        $h = is_array($item) ? qta_parse_int_input($item['h'] ?? null, 0, QTA_DAY_MAX_HOURS) : null;
+        if (!qta_sched_is_iso_date($d) || $h === null) {
+          throw new QtaUserError('Plani i dërguar nuk është i plotë. Rifresko faqen dhe provo sërish.');
+        }
+        $plan[$d] = $h;
+      }
+      $manual = array_values(array_map(static fn($it) => (string)$it['d'], array_filter((array)$data['plan'], static fn($it) => is_array($it) && !empty($it['m']))));
+      $rb = qta_sched_rebalance_fixed_range($plan, (int)$g['course_hours'], (string)$g['start_date'], (string)$g['end_date'], $manual);
+      $moved = abs((int)$rb['delta']);
+      $message = !$rb['changed'] ? 'Plani ka tashmë të gjitha orët: nuk ka asgjë për të rishpërndarë.'
+        : ($rb['delta'] >= 0 ? ($moved === 1 ? 'Ora që mungonte u vendos.' : 'U vendosën ' . $moved . ' orët që mungonin.')
+                             : ($moved === 1 ? 'Ora e tepërt u hoq.' : 'U hoqën ' . $moved . ' orët e tepërta.'))
+          . ($rb['sundays_added'] ? ' U përdor edhe ' . (count($rb['sundays_added']) === 1 ? '1 e diel' : count($rb['sundays_added']) . ' të diela') . ' — kontrolloje.' : '')
+          . ' Ruaje korrigjimin kur je gati.';
+      qta_json_out(['ok' => true, 'plan' => array_map(static fn($d, $h) => ['d' => $d, 'h' => $h], array_keys($rb['days']), $rb['days']),
+        'sundays_added' => $rb['sundays_added'], 'message' => $message]);
     }
 
     case 'members': {

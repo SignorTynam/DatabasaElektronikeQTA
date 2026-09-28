@@ -37,6 +37,7 @@ $CSRF = $_SESSION['csrf_token'];
 require_once __DIR__ . '/../shared/themeli.php';
 require_once __DIR__ . '/../shared/lesson_groups.php';
 require_once __DIR__ . '/../shared/partials/timetable.php';
+require_once __DIR__ . '/../shared/partials/day_plan.php';
 require_once __DIR__ . '/../shared/partials/group_documents.php';
 
 $gid = (int)($_GET['id'] ?? 0);
@@ -49,8 +50,11 @@ if ($g && $g['model'] !== 'scheduled') {
 
 $today = date('Y-m-d');
 if ($g) {
+  /* Grupi i konvertuar ka datat historike dhe planin e ditëve në vend të orëve në ditë
+     dhe ditëve të veçanta; pjesa tjetër e faqes është e njëjtë. */
+  $fixedMode = qta_lg_is_fixed($g);
   $topics = qta_lg_topics($pdo, $gid);
-  $rules = qta_lg_rules($pdo, $gid);
+  $rules = $fixedMode ? qta_lg_fixed_days($pdo, $gid) : qta_lg_rules($pdo, $gid);
   $days = qta_sched_annotate($topics, qta_lg_days($pdo, $gid));
   $windows = qta_sched_module_windows($topics, $days);
   $liveCourse = qta_course_find($pdo, (int)$g['course_id']);
@@ -94,7 +98,8 @@ if ($role === 'administrator') require __DIR__ . '/inc/navbar.php';
 else require __DIR__ . '/inc/navbar4.php';
 
 $pageTitle = $g ? 'Grupi #' . $gid . ' · ' . (string)$g['course_name'] : 'Grupi nuk u gjet';
-$pageScripts = [qta_asset('app/assets/js/lesson-group.js')];
+$pageScripts = ($g && $fixedMode) ? [qta_asset('app/assets/js/day-plan.js')] : [];
+$pageScripts[] = qta_asset('app/assets/js/lesson-group.js');
 require __DIR__ . '/../shared/app_head.php';
 
 $statusHtml = static function (array $g) use ($today): string {
@@ -123,9 +128,16 @@ $statusHtml = static function (array $g) use ($today): string {
       <p class="page-lead lg-lead">
         <span>Grupi #<?= $gid ?></span>
         <span><?= h(qta_date((string)$g['start_date'])) ?> – <?= h(qta_date((string)$g['end_date'])) ?></span>
-        <span><?= h(qta_hours_label((int)$totalHours)) ?>, <?= (int)$g['daily_hours'] ?> në ditë</span>
+        <?php if ($fixedMode): ?>
+          <span><?= h(qta_hours_label((int)$totalHours)) ?>, <?= h(qta_plural(count($days), 'ditë mësimi', 'ditë mësimi')) ?></span>
+        <?php else: ?>
+          <span><?= h(qta_hours_label((int)$totalHours)) ?>, <?= (int)$g['daily_hours'] ?> në ditë</span>
+        <?php endif; ?>
         <span><?= count($members) ?>/10 kursantë</span>
         <?= $statusHtml($g) ?>
+        <?php if ($fixedMode): ?>
+          <?= qta_status('Konvertuar nga regjistri i vjetër', 'neutral', 'bi-arrow-left-right') ?>
+        <?php endif; ?>
       </p>
     </div>
     <div class="page-actions">
@@ -153,22 +165,26 @@ $statusHtml = static function (array $g) use ($today): string {
     <div class="notice has-action is-sunken mb-3">
       <i class="bi bi-journal-arrow-down" aria-hidden="true"></i>
       <span>
-        <b>Kursi është ndryshuar pas krijimit të grupit.</b>
+        <b>Kursi është ndryshuar pas <?= $fixedMode ? 'konvertimit' : 'krijimit' ?> të grupit.</b>
         Ky grup ndjek modulet dhe temat siç ishin më <?= h(qta_datetime((string)$g['curriculum_taken_at'])) ?>.
-        <?php if ($started || $closed): ?>
+        <?php if ($fixedMode): ?>
+          Ato mbeten historike për këtë grup — ndryshimet e kursit vlejnë për grupet e reja.
+        <?php elseif ($started || $closed): ?>
           Grupi ka nisur, prandaj temat e tij nuk ndryshojnë — ndryshimet e kursit vlejnë për grupet e reja.
         <?php elseif (!$liveReady): ?>
           Kursi nuk është gati tani; kur të jetë, mund t'i marrësh temat e reja para se të nisë grupi.
         <?php endif; ?>
       </span>
-      <?php if ($EDIT_MODE && !$started && !$closed && $liveReady): ?>
+      <?php if ($EDIT_MODE && !$fixedMode && !$started && !$closed && $liveReady): ?>
         <button class="btn btn-secondary btn-sm notice-action" type="button" data-lg-refresh><i class="bi bi-arrow-repeat" aria-hidden="true"></i>Merr temat e reja</button>
       <?php endif; ?>
     </div>
   <?php endif; ?>
 
   <?php
-    $editModeBannerText = 'Për të ndryshuar orarin, ditët e veçanta, kursantët ose pikët, shtyp "Lejo ndryshimet" lart djathtas.';
+    $editModeBannerText = $fixedMode
+      ? 'Për të korrigjuar orarin, kursantët ose pikët, shtyp "Lejo ndryshimet" lart djathtas.'
+      : 'Për të ndryshuar orarin, ditët e veçanta, kursantët ose pikët, shtyp "Lejo ndryshimet" lart djathtas.';
     require __DIR__ . '/../shared/partials/edit_mode_off_banner.php';
   ?>
 
@@ -218,10 +234,36 @@ $statusHtml = static function (array $g) use ($today): string {
       <section class="section" aria-labelledby="lgSummaryTitle">
         <div class="section-head">
           <h2 class="section-title" id="lgSummaryTitle">Orari në shkurt</h2>
-          <?php if ($EDIT_MODE): ?>
+          <?php if ($fixedMode): ?>
+            <span class="section-meta">Konvertuar nga regjistri i vjetër më <?= h(qta_datetime((string)$g['converted_at'])) ?><?= !empty($g['converted_by_name']) ? ' nga ' . h((string)$g['converted_by_name']) : '' ?></span>
+          <?php elseif ($EDIT_MODE): ?>
             <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-settings><i class="bi bi-sliders" aria-hidden="true"></i>Ndrysho fillimin ose orët në ditë</button>
           <?php endif; ?>
         </div>
+        <?php if ($fixedMode): ?>
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-label">Fillon</span>
+            <span class="stat-value lg-date"><i class="bi bi-lock-fill lg-lock" aria-hidden="true"></i><?= h(qta_date((string)$g['start_date'])) ?></span>
+            <span class="stat-note"><?= h(qta_weekday(qta_sched_weekday((string)$g['start_date']))) ?> · data historike</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Mbaron</span>
+            <span class="stat-value lg-date"><i class="bi bi-lock-fill lg-lock" aria-hidden="true"></i><?= h(qta_date((string)$g['end_date'])) ?></span>
+            <span class="stat-note"><?= h(qta_weekday(qta_sched_weekday((string)$g['end_date']))) ?> · data historike</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Ditë mësimi</span>
+            <span class="stat-value"><?= count($days) ?></span>
+            <span class="stat-note"><?= h(qta_plural(count($rules) - count($days), 'ditë pa mësim', 'ditë pa mësim')) ?> në periudhë</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Orë mësimi</span>
+            <span class="stat-value"><?= (int)$totalHours ?></span>
+            <span class="stat-note">të shumtën <?= QTA_DAY_MAX_HOURS ?> në një ditë</span>
+          </div>
+        </div>
+        <?php else: ?>
         <div class="stats">
           <div class="stat">
             <span class="stat-label">Fillon</span>
@@ -244,8 +286,42 @@ $statusHtml = static function (array $g) use ($today): string {
             <span class="stat-note"><?= (int)$g['daily_hours'] ?> në një ditë të zakonshme</span>
           </div>
         </div>
+        <?php endif; ?>
       </section>
 
+      <?php if ($fixedMode): ?>
+      <section class="section" aria-labelledby="lgPlanTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="lgPlanTitle">Plani i ditëve</h2>
+          <?php if ($EDIT_MODE): ?>
+            <div class="cv-tools no-print" role="toolbar" aria-label="Veprime për planin">
+              <button class="btn btn-ghost btn-sm" type="button" data-fx-undo disabled><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>Zhbëj</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-fx-rebalance disabled><i class="bi bi-magic" aria-hidden="true"></i>Rishpërndaj automatikisht</button>
+            </div>
+          <?php endif; ?>
+        </div>
+        <p class="cv-intro">Fillimi dhe mbarimi janë data historike dhe nuk ndryshojnë.
+          <?= $EDIT_MODE
+            ? 'Për të korrigjuar orarin, kliko një datë ose shkruaj orët me shifra; ruaje kur plani ka sërish ' . h(qta_hours_label((int)$totalHours)) . '.'
+            : 'Orët e çdo date brenda periudhës; ditët pa orë nuk kanë mësim.' ?></p>
+        <?= qta_render_day_plan(qta_lg_fixed_hours($rules), (string)$g['start_date'], (string)$g['end_date'], [
+          'id' => 'lgPlan', 'editable' => $EDIT_MODE, 'today' => $today,
+          'notes' => array_filter(array_map(static fn($r) => (string)($r['note'] ?? ''), $rules), static fn($n) => $n !== ''),
+        ]) ?>
+        <?php if ($EDIT_MODE): ?>
+          <div class="cv-bar no-print" role="region" aria-label="Ruajtja e korrigjimit" data-fx-bar hidden>
+            <p class="cv-bar-status">
+              <i class="bi bi-check-circle-fill is-ok" data-fx-icon aria-hidden="true"></i>
+              <span class="cv-bar-text" data-fx-text></span>
+            </p>
+            <div class="cv-bar-actions">
+              <button class="btn btn-secondary" type="button" data-fx-cancel>Anulo ndryshimet</button>
+              <button class="btn btn-primary" type="button" data-fx-save><i class="bi bi-check-lg" aria-hidden="true"></i>Ruaj korrigjimin</button>
+            </div>
+          </div>
+        <?php endif; ?>
+      </section>
+      <?php else: ?>
       <section class="section" aria-labelledby="lgRulesTitle">
         <div class="section-head">
           <h2 class="section-title" id="lgRulesTitle">Ditët e veçanta <span class="count"><?= count($rules) ?></span></h2>
@@ -293,6 +369,7 @@ $statusHtml = static function (array $g) use ($today): string {
             <?= $EDIT_MODE ? 'Shto një të diel me mësim, një festë pa mësim ose një ditë me orë të tjera.' : '' ?></p>
         <?php endif; ?>
       </section>
+      <?php endif; ?>
 
       <section class="section" aria-labelledby="lgModulesTitle">
         <div class="section-head">
@@ -424,6 +501,7 @@ $statusHtml = static function (array $g) use ($today): string {
 </main>
 
 <?php if ($g && $EDIT_MODE): ?>
+<?php if (!$fixedMode): ?>
 <!-- Dialog: fillimi dhe orët në ditë -->
 <div class="modal fade" id="lgSettings" tabindex="-1" aria-labelledby="lgSettingsTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -519,6 +597,8 @@ $statusHtml = static function (array $g) use ($today): string {
   </div>
 </div>
 
+<?php endif; ?>
+
 <!-- Dialog: kursantët e grupit -->
 <div class="modal fade" id="lgMembers" tabindex="-1" aria-labelledby="lgMembersDialogTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -555,6 +635,7 @@ $statusHtml = static function (array $g) use ($today): string {
 <?php if ($g): ?>
 <script type="application/json" id="lgConfig"><?= json_encode([
   'csrf' => $CSRF, 'group' => $gid, 'revision' => (int)$g['revision'], 'edit' => $EDIT_MODE,
+  'mode' => $fixedMode ? 'fixed_range' : 'calculated', 'hours' => (int)$g['course_hours'],
   'daily' => (int)$g['daily_hours'], 'end' => (string)$g['end_date'], 'start' => (string)$g['start_date'],
   'closed' => $closed, 'today' => $today,
   'endpoint' => 'lesson_group_update.php', 'cellEndpoint' => 'groups_inline_update.php',

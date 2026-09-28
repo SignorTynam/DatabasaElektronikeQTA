@@ -36,6 +36,8 @@ $tableLabels = [
   'course_group_students' => 'Kursant në grup',
   'group_schedules'       => 'Orari i grupit',
   'group_day_rules'       => 'Ditë e veçantë',
+  'group_fixed_days'      => 'Dita e orarit historik',
+  'group_conversions'     => 'Konvertim nga regjistri i vjetër',
   'student_course_plans'  => 'Kurs i zgjedhur',
   'education_levels'      => 'Nivel arsimi',
   'genders'               => 'Gjini',
@@ -52,14 +54,18 @@ $columnLabels = [
   'course_topics'  => ['module_id' => 'Moduli', 'title' => 'Tema', 'hours' => 'Orë', 'position' => 'Vendi në modul'],
   'course_groups' => ['course_id' => 'Kursi', 'model' => 'Lloji i grupit', 'start_date' => 'Fillimi', 'end_date' => 'Mbarimi', 'is_completed' => 'Grupi i mbyllur', 'created_at' => 'Krijuar më'],
   'course_group_students' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'final_score' => 'Pikët', 'exam_date' => 'Data e provimit'],
-  'group_schedules' => ['group_id' => 'Grupi', 'daily_hours' => 'Orë në ditë', 'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'curriculum_taken_at' => 'Temat u kopjuan më'],
+  'group_schedules' => ['group_id' => 'Grupi', 'schedule_mode' => 'Lloji i orarit', 'daily_hours' => 'Orë në ditë', 'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'curriculum_taken_at' => 'Temat u kopjuan më'],
   'group_day_rules' => ['group_id' => 'Grupi', 'rule_date' => 'Data', 'hours' => 'Mësimi atë ditë', 'note' => 'Shënim'],
+  'group_fixed_days' => ['hours' => 'Orë mësimi', 'note' => 'Shënim'],
+  'group_conversions' => ['group_id' => 'Grupi', 'source_start_date' => 'Fillimi historik', 'source_end_date' => 'Mbarimi historik',
+                          'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'algorithm_version' => 'Propozimi automatik'],
   'student_course_plans'  => ['student_id' => 'Kursanti', 'course_id' => 'Kursi', 'status' => 'Gjendja', 'group_id' => 'Grupi', 'selected_by' => 'Zgjodhi'],
 ];
 $tableIcons = [
   'users' => 'bi-person-badge', 'persons' => 'bi-person', 'students' => 'bi-mortarboard', 'agencies' => 'bi-building',
   'courses' => 'bi-book', 'course_modules' => 'bi-collection', 'course_topics' => 'bi-list-ol', 'course_groups' => 'bi-collection',
   'course_group_students' => 'bi-people', 'group_schedules' => 'bi-calendar-week', 'group_day_rules' => 'bi-calendar-event',
+  'group_fixed_days' => 'bi-calendar3', 'group_conversions' => 'bi-arrow-left-right',
   'student_course_plans' => 'bi-journal-check',
 ];
 
@@ -111,6 +117,9 @@ function qta_log_value(PDO $pdo, string $col, ?string $val, string $table = ''):
     case 'created_at': case 'curriculum_taken_at':
       return qta_datetime($val, $val);
     case 'model':        return $val === 'scheduled' ? 'Me orar mësimi' : 'Pa orar (i mëparshëm)';
+    case 'schedule_mode': return $val === 'fixed_range' ? 'Me data historike (i konvertuar)' : 'Llogaritet nga orët në ditë';
+    case 'source_start_date': case 'source_end_date': return qta_date(substr($val, 0, 10), $val);
+    case 'algorithm_version': return 'versioni ' . $val;
     case 'daily_hours':  return (int)$val . ' orë në ditë';
     case 'course_hours': return (int)$val . ' orë';
     case 'teaching_days': return (int)$val . ' ditë';
@@ -176,8 +185,13 @@ function qta_log_subject(PDO $pdo, string $table, array $pk, array $tableLabels,
     case 'student_course_plans': $name = qta_log_lookup($pdo, 'plan', $id); break;
     case 'course_groups': $name = qta_log_lookup($pdo, 'group', $id); break;
     case 'group_schedules':
+    case 'group_conversions':
       $gid = (int)($pk['group_id'] ?? 0);
       return $label . ': ' . (qta_log_lookup($pdo, 'group', $gid) ?? ('Grupi #' . $gid . ' (nuk ekziston më)'));
+    case 'group_fixed_days':
+      $gid = (int)($pk['group_id'] ?? 0);
+      $day = isset($pk['lesson_date']) ? qta_date(substr((string)$pk['lesson_date'], 0, 10)) : '';
+      return $label . ': ' . $day . ' · ' . (qta_log_lookup($pdo, 'group', $gid) ?? ('Grupi #' . $gid));
     case 'group_day_rules':
       $gid = (int)($pk['group_id'] ?? 0);
       $day = isset($pk['rule_date']) ? qta_date(substr((string)$pk['rule_date'], 0, 10)) : '';

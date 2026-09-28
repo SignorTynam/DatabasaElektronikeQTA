@@ -233,7 +233,7 @@ t_case('Regjistri: mbi 31 data → disa çifte faqesh, me "vazhdim"', function (
 
 t_case('Regjistri: rreshtat e temave zënë gjithmonë në faqen çift', function () {
   $long = str_repeat('Përpunimi i të dhënave me formula, funksione dhe tabela të mëdha ', 4);
-  $m = lr_model(lr_topics([['Excel', array_map(static fn($i) => [$i % 2 ? $long : 'Tema ' . $i, 1], range(1, 60))]]), '2026-10-05', 12);
+  $m = lr_model(lr_topics([['Excel', array_map(static fn($i) => [$i % 2 ? $long : 'Tema ' . $i, 1], range(1, 60))]]), '2026-10-05', QTA_DAY_MAX_HOURS);
   t_ok(count(lr_pages($m, 'topics')) > 1, 'tituj të gjatë → më shumë se një çift faqesh');
   $g = qta_lr_geometry();
   foreach (lr_pages($m, 'topics') as $p) {

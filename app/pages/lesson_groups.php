@@ -96,7 +96,7 @@ $w = array_merge(["cg.model = 'scheduled'"], qta_group_where($F, $params));
 $st = $pdo->prepare("
   SELECT cg.id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
          c.name AS course_name, c.code AS course_code,
-         gs.daily_hours, gs.course_hours, gs.teaching_days,
+         gs.schedule_mode, gs.daily_hours, gs.course_hours, gs.teaching_days,
          COUNT(cgs.student_id) AS members,
          COALESCE(SUM(cgs.final_score IS NOT NULL), 0) AS scored,
          MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
@@ -261,8 +261,13 @@ $LF = [
                 <td class="nowrap"><?= h(qta_date((string)$g['start_date'])) ?></td>
                 <td class="nowrap"><?= h(qta_date((string)$g['end_date'])) ?></td>
                 <td class="nowrap" data-sort-value="<?= (int)$g['course_hours'] ?>">
-                  <?= h(qta_hours_label((int)$g['course_hours'])) ?> · <?= (int)$g['daily_hours'] ?> në ditë
-                  <span class="cell-sub"><?= h(qta_plural((int)$g['teaching_days'], 'ditë mësimi', 'ditë mësimi')) ?></span>
+                  <?php if ($g['schedule_mode'] === 'fixed_range'): ?>
+                    <?= h(qta_hours_label((int)$g['course_hours'])) ?> · data historike
+                    <span class="cell-sub"><?= h(qta_plural((int)$g['teaching_days'], 'ditë mësimi', 'ditë mësimi')) ?> · konvertuar</span>
+                  <?php else: ?>
+                    <?= h(qta_hours_label((int)$g['course_hours'])) ?> · <?= (int)$g['daily_hours'] ?> në ditë
+                    <span class="cell-sub"><?= h(qta_plural((int)$g['teaching_days'], 'ditë mësimi', 'ditë mësimi')) ?></span>
+                  <?php endif; ?>
                 </td>
                 <td class="nowrap num-col" data-sort-value="<?= $n ?>">
                   <?= $n ?><span class="text-subtle">/10</span>
