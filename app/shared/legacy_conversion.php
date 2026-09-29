@@ -718,6 +718,14 @@ if (!function_exists('qta_conv_apply')) {
 
       /* Leximi i fundit: orari, plani dhe datat historike; kursantët, provimet dhe pikët të paprekura. */
       qta_lg_assert_stored_fixed($pdo, $groupId, qta_lg_topics($pdo, $groupId), $start, $end);
+      /* Pikët e moduleve ndjekin tani kopjen e ngrirë: çdo modul me pikë duhet të jetë në të. */
+      $orphan = $pdo->prepare('SELECT COUNT(*) FROM enrollment_module_scores s WHERE s.group_id = ?
+                               AND NOT EXISTS (SELECT 1 FROM group_schedule_topics t WHERE t.group_id = s.group_id AND t.source_module_id = s.module_id)');
+      $orphan->execute([$groupId]);
+      if ((int)$orphan->fetchColumn() > 0) {
+        error_log('[QTA conversion] grupi ' . $groupId . ': pikë moduli jashtë kopjes së kursit');
+        throw new QtaUserError('Grupi nuk u konvertua, sepse disa pikë moduli nuk përputhen me modulet e kursit që do të ruhen. Asgjë nuk ndryshoi. Njofto administratorin.');
+      }
       $after = qta_conv_source($pdo, $groupId);
       $same = static fn(array $s): string => (string)json_encode([
         array_map(static fn($m) => [(int)$m['student_id'], $m['exam_date'], $m['final_score']], $s['members']),

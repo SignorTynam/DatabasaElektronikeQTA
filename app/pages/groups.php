@@ -448,6 +448,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $q->execute([':id'=>$course_id]);
       if (!$q->fetchColumn()) throw new RuntimeException('Kursi i zgjedhur nuk ekziston.');
 
+      /* Pikët e moduleve i përkasin moduleve të kursit aktual (edhe baza e refuzon). */
+      $sc = $pdo->prepare("SELECT COUNT(DISTINCT student_id) FROM enrollment_module_scores WHERE group_id = :g");
+      $sc->execute([':g'=>$group_id]);
+      if ((int)$sc->fetchColumn() > 0) {
+        throw new RuntimeException('Grupi #' . $group_id . ' ka pikë sipas moduleve të kursit të tij, prandaj kursi nuk ndryshon. Nëse kursi është gabim, hiq së pari pikët te "Vendos pikët".');
+      }
+
       // Mbledh anëtarët aktualë
       $members = $pdo->prepare("SELECT student_id FROM course_group_students WHERE group_id=:g");
       $members->execute([':g'=>$group_id]);
@@ -957,6 +964,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
    Kushtet prekin vetëm grupin: kur gjendet një kursant, grupi shfaqet i plotë.
 ------------------------------- */
 require_once __DIR__ . '/../shared/group_list.php';
+require_once __DIR__ . '/../shared/partials/results_dialog.php';
 $legacyStates = ['active', 'awaiting_close', 'closed'];
 $F = qta_group_filters($_GET, $legacyStates);
 $status = $F['status'];
@@ -1037,6 +1045,7 @@ $hasFilters = ($q !== '' || $F['course_id'] !== '');
 $today = date('Y-m-d');
 
 $pageTitle = 'Regjistri i vjetër i kurseve profesionale';
+$pageScripts = [qta_asset('app/assets/js/group-results.js')];
 require __DIR__ . '/../shared/app_head.php';
 
 /* Grupimi i rreshtave: një grup me kursantët e vet, renditur sipas amzës së parë */
@@ -1070,6 +1079,9 @@ foreach ($groups as $gid => &$g) {
 }
 unset($g);
 uasort($groups, function ($A, $B) { return ($A['min_amze'] <=> $B['min_amze']); });
+
+/* Pikët sipas moduleve: modulet e kursit të çdo grupi dhe pikët e secilit kursant (4 query për gjithë listën). */
+$resultsProgress = $groups ? qta_results_progress($pdo, array_keys($groups)) : [];
 
 /* Gjendja e grupit me fjalë */
 $groupStatus = static function (array $h) use ($today): string {
@@ -1283,6 +1295,8 @@ $LF = [
   $prefillAmze = [];
   foreach ($g['students'] as $stRow) { $prefillAmze[] = (string)((int)$stRow['nr_amze']); }
   $prefillAmzeStr = implode(', ', $prefillAmze);
+  $progress = $resultsProgress[$gid] ?? ['required' => 0, 'scored' => []];
+  $resultsLabel = 'Grupi #' . $gid . ' · ' . (string)$h0['course_name'];
 ?>
   <!-- Dritarja e grupit #<?= $gid ?>: kursantët, provimet, pikët dhe dokumentet -->
   <div class="modal fade modal-record" id="groupModal_<?= $gid ?>" tabindex="-1" aria-labelledby="gmTitle_<?= $gid ?>" aria-hidden="true" data-group-modal="<?= $gid ?>">
@@ -1310,6 +1324,7 @@ $LF = [
               <div class="d-flex flex-wrap align-items-center gap-2">
                 <?php if ($nStud): ?>
                   <span class="section-meta" data-scored-label="<?= $gid ?>"><?= h($scoredLabel($g['scored'], $nStud)) ?></span>
+                  <?= qta_results_open_button($gid, $resultsLabel, $EDIT_MODE) ?>
                 <?php endif; ?>
                 <?php if ($EDIT_MODE): ?>
                   <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editMembersModal_<?= $gid ?>"><i class="bi bi-people" aria-hidden="true"></i>Ndrysho kursantët</button>
@@ -1343,9 +1358,8 @@ $LF = [
                           <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit"' : '' ?>
                                 data-dmy data-dmy-min="<?= h((string)($h0['end_date'] ?? '')) ?>" data-dmy-title="Data e provimit — <?= h($full !== '' ? $full : (string)$r['nr_amze']) ?>"><?= h(qta_date($r['exam_date'])) ?></span>
                         </td>
-                        <td class="cell nowrap num-col" data-student="<?= (int)$r['student_id'] ?>" data-group="<?= $gid ?>" data-field="final_score" title="Pikët, nga 0 deri në 100">
-                          <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Pikët" inputmode="decimal"' : '' ?>><?= $r['final_score'] !== null ? h(rtrim(rtrim((string)$r['final_score'], '0'), '.')) : '—' ?></span>
-                        </td>
+                        <?= qta_results_cell($gid, (int)$r['student_id'], $r['final_score'], (int)($progress['scored'][(int)$r['student_id']] ?? 0), (int)$progress['required'],
+                              $full !== '' ? $full : 'amza ' . (string)$r['nr_amze'], $resultsLabel) ?>
                         <td data-status><?= qta_enrollment_status(['start_date' => $h0['start_date'], 'end_date' => $h0['end_date'], 'exam_date' => $r['exam_date'], 'final_score' => $r['final_score']], false) ?></td>
                         <td class="nowrap num-col"><?= $r['age'] !== null ? (int)$r['age'] : '—' ?></td>
                         <td class="nowrap"><?= h((string)(($r['edu_label'] ?? '') ?: '—')) ?></td>
@@ -1355,7 +1369,7 @@ $LF = [
                 </table>
               </div>
               <?php if ($EDIT_MODE): ?>
-                <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar, ose pikët për t'i shkruar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon.</p>
+                <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar. Pikët vendosen për çdo modul te "Vendos pikët"; rezultati llogaritet vetë.</p>
               <?php endif; ?>
             <?php else: ?>
               <?= qta_empty('Grupi është bosh', $EDIT_MODE ? 'Shto kursantë me butonin "Ndrysho kursantët".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
@@ -1482,6 +1496,8 @@ $LF = [
 </div>
 
 <?php require __DIR__ . '/../shared/partials/qkl_report_modal.php'; ?>
+<?php /* Pikët sipas moduleve: një dritare për të gjitha grupet, jashtë listës që rifreskohet. */ ?>
+<?= qta_results_dialog($CSRF, $EDIT_MODE, 'groups.php?edit=1&group={gid}&results={gid}') ?>
 
 <!-- Dialog: krijo grup -->
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupTitle" aria-hidden="true"<?= $openCreate ? ' data-open-on-load="create"' : '' ?>>
@@ -1654,12 +1670,6 @@ function getCellCtx(editable){
 function normalizeValueForField(field, rawValue, ctx){
   const s = clean(rawValue);
   if (s === '' || s === '—') return { value: '', display:'—' };
-  if (field === 'final_score'){
-    const num = Number(String(s).replace(',', '.'));
-    if (!Number.isFinite(num)) throw new Error('Pikët duhet të jenë numër.');
-    if (num < 0 || num > 100) throw new Error('Pikët duhet të jenë nga 0 deri në 100.');
-    return { value: num, display: String(num) };
-  }
   if (field === 'exam_date' || field === 'start_date' || field === 'end_date'){
     const iso = normalizeDateForServer(s);
     if (field === 'exam_date'){
@@ -1705,14 +1715,19 @@ function groupStatusHtml(gid){
   return statusHtml('Pret mbylljen', 'warning', 'bi-hourglass-split');
 }
 
+/* Rezultati zyrtar i rreshtit (bosh kur mungon): pikët llogariten sipas moduleve. */
+function finalOf(row){
+  return row?.querySelector('[data-final-cell]')?.getAttribute('data-final') || '';
+}
+
 function refreshStudentStatus(row, gid){
   const cell = row && row.querySelector('[data-status]');
   if (!cell) return;
-  const score = clean(row.querySelector('td[data-field="final_score"] .editable')?.textContent);
+  const score = finalOf(row);
   const exam = readIso(row.querySelector('td[data-field="exam_date"] .editable'));
   const d = groupDates(gid);
   let html;
-  if (score && score !== '—') html = statusHtml('Përfunduar', 'neutral', 'bi-check2');
+  if (score) html = statusHtml('Përfunduar', 'neutral', 'bi-check2');
   else if (exam) html = exam >= TODAY ? statusHtml('Provimi ' + whenLabel(exam), 'info', 'bi-calendar-event') : statusHtml('Pret pikët', 'warning', 'bi-hourglass-split');
   else if (d.start && d.start > TODAY) html = statusHtml('Nis ' + whenLabel(d.start), 'info', 'bi-calendar-event');
   else if (d.start && d.end && TODAY >= d.start && TODAY <= d.end) html = statusHtml('Në mësim', 'accent', 'bi-easel');
@@ -1726,16 +1741,21 @@ function refreshScored(gid){
   const rows = document.querySelectorAll(`#groupModal_${gid} tr[data-student-row]`);
   if (!rows.length) return;
   let scored = 0;
-  rows.forEach(r => {
-    const s = clean(r.querySelector('td[data-field="final_score"] .editable')?.textContent);
-    if (s && s !== '—') scored++;
-  });
+  rows.forEach(r => { if (finalOf(r)) scored++; });
   const text = scored === 0 ? 'ende pa pikë' : (scored === rows.length ? 'të gjithë me pikë' : scored + ' me pikë');
   document.querySelectorAll(`[data-scored-label="${gid}"]`).forEach(el => {
     el.textContent = text;
     if (el.classList.contains('cell-sub')) el.classList.toggle('text-warning', scored < rows.length);
   });
 }
+
+/* Pas ruajtjes së pikëve sipas moduleve (group-results.js): gjendja e kursantëve dhe numëruesi. */
+document.addEventListener('qta:results-saved', (ev)=>{
+  const gid = ev.detail && ev.detail.group;
+  if (!gid) return;
+  document.querySelectorAll(`#groupModal_${gid} tr[data-student-row]`).forEach(r => refreshStudentStatus(r, gid));
+  refreshScored(gid);
+});
 
 /* Pas ndryshimit të datave të grupit: datat në dritare, gjendja e grupit dhe e kursantëve. */
 function refreshGroup(gid){
@@ -1778,7 +1798,6 @@ async function saveEditable(editable){
       refreshGroup(ctx.group_id);
     } else {
       refreshStudentStatus(editable.closest('tr[data-student-row]'), ctx.group_id);
-      if (ctx.field === 'final_score') refreshScored(ctx.group_id);
     }
     notify('success','Ndryshimi u ruajt.');
   }catch(err){

@@ -30,7 +30,7 @@ COMPONENTS.md are the original specification; where they differ, this file wins.
 |---|---|
 | `app/assets/css/tokens.css` | Primitives (stone, brick, blue, green, amber, red) → semantic tokens (light + dark) → Bootstrap `--bs-*` mapping |
 | `app/assets/css/base.css` | Element defaults, headings, links, focus, utilities (`.num`, `.code`, `.eyebrow`, `.visually-hidden`…) |
-| `app/assets/css/components.css` | Every reusable component (sections 1–30, see §5); motion is section 30 |
+| `app/assets/css/components.css` | Every reusable component (sections 1–33, see §5); motion is section 30 |
 | `app/assets/css/shell.css` | Authenticated shell: sidebar, rail mode, mobile drawer, topbar, footer, page-to-page transition |
 | `app/assets/css/public.css` | Public shell: masthead, hero, verification, login, contact, footer |
 | `app/assets/css/error.css` | Standalone styles for the static 400/401/403/404/500 pages |
@@ -41,9 +41,11 @@ COMPONENTS.md are the original specification; where they differ, this file wins.
 | `app/shared/list_filter.php`, `partials/list_toolbar.php` | One way to search and filter every list (§5a) |
 | `app/shared/students_list.php`, `group_list.php`, `agency_list.php` | The filters of one dataset, shared by its page and its export, so both always show the same rows |
 | `app/assets/js/date-picker.js` | Calendar dialog for every `data-dmy` field or editable cell (§5 "Calendar", §6) — loaded on every panel page by `app_scripts.php` |
-| `app/assets/js/lesson-groups.js`, `lesson-group.js` | Scheduled groups: create preview; group page tabs, schedule changes, trainees, exams and points |
+| `app/assets/js/lesson-groups.js`, `lesson-group.js` | Scheduled groups: create preview; group page tabs, schedule changes, trainees and exams |
+| `app/assets/js/group-results.js` | Points per module: the "Vendos pikët" window of a group (both registries, §5 "Points per module"); loaded by `groups.php` and `lesson_group.php` |
 | `app/shared/themeli.php` | PHP helpers for dates, names, statuses, empty states (§7) |
 | `app/shared/domain.php`, `schedule.php`, `curriculum.php`, `group_members.php`, `lesson_groups.php`, `staff_guard.php` | Domain services for courses, modules, topics and scheduled groups — see `docs/domain/COURSES-AND-SCHEDULES.md` |
+| `app/shared/results.php`, `partials/results_dialog.php` | Points per module and the final result: one service for the window, the group tables and, later, certificates and reports (`qta_results_enrollment()`); the partial renders the open button, the result cell and the dialog shell — see `docs/domain/COURSES-AND-SCHEDULES.md` §15 |
 | `app/shared/app_ui.php` | Role labels, menus, active item |
 | `app/shared/help.php`, `help_topics.php` | Help panel ("Si funksionon?") and help centre content |
 
@@ -165,6 +167,7 @@ midis 1001 dhe 1040.") — never as a permanent explanation.
 | Scheduled group page (28) | `.lg-lead`, `.lg-tabs` (scrolls sideways on phones), `.lg-date`, `.lg-hours-choice`, `.lg-danger`, `.lg-lock`, `fieldset > legend.form-label` | Facts row under the title; tabs "Orari i mësimit / Kursantët dhe provimet / Dokumentet"; the delete zone sits last. `.lg-lock` = the padlock before a historical date of a converted group ("data historike") |
 | Day plan (31) | `.dplan` › `.dplan-months` › `.dplan-month` (`.dplan-month-title`, `table.dplan-grid[role=grid]`) › `td.dplan-day[role=gridcell](.is-on,.is-off,.is-bound,.is-sun,.is-warn,.is-manual,.is-selected,.is-today,.is-refused)` (`.dplan-num`, `.dplan-val`, `.dplan-unit`, `.dplan-marks`), `.dplan-pad`, `.dplan-out`; `.dplan-legend` + `.dplan-swatch(.is-on,.is-off,.is-manual)`; picker `.dplan-editor(.is-sheet)` (`-head/-title/-hint/-label/-keys`) › `.dplan-opts[role=radiogroup] > .dplan-opt[role=radio](.is-none)` | Rendered by `qta_render_day_plan()` (`partials/day_plan.php`), editing by `QtaDayPlan.mount()` (`day-plan.js`). One cell per date of a historical period, each with a full accessible name ("e enjte, 01.10.2026: 8 orë. data historike e fillimit"). Roving tabindex: arrows day/week, PageUp/PageDown month, Home/End start/end, Enter/Space opens the hours picker (a bottom sheet on phones), digits 0–8 set hours, Delete = "Pa mësim", Ctrl+Z undo; Esc returns focus to the date. States never rely on colour alone: hours are written, boundaries carry a padlock, Sundays with lessons a warning icon, manual changes a dot, and the legend names them all |
 | Conversion (32) | `.cv-layout` › `.cv-main` (`.cv-tools`, `.cv-intro`, `.cv-plan`, `details.cv-curriculum` › `.cv-modules` › `.cv-module-name/-hours`, `.cv-topics` › `.cv-topic-num/-hours`) + `.cv-side` (`.cv-panel-title`, `.cv-total`, `.cv-counts`, `.cv-verdict`, `.cv-check-list` › `.cv-check` (+ `.cv-check-fix`), `.cv-facts`, `.cv-locked`, `.cv-note`, `.cv-muted`); `.cv-bar` › `.cv-bar-status` (`.cv-bar-text`, `.cv-saved(.is-dirty)`) + `.cv-bar-actions` | `group_conversion.php` and the correction bar of a converted group. Two columns from 1100px; below, one column with the summary, checks and historical data after the calendar. `.cv-bar` is the page's sticky action bar, the same shape as `.bulk-bar`: it always says in words whether the plan is valid ("80 / 80 orë · I vlefshëm, me të diela") and whether it is saved. While it is visible the `.back-top` button is hidden, so it never covers the actions |
+| Points per module (33) | Dialog `.modal-sheet` (`.modal-record` that grows with its columns, up to 96rem) › `.rs-head`, `.rs-notices`, `.rs-body` › `table.rs-grid` › `th.rs-who` (`.rs-name`, `.rs-meta`, `.rs-noexam`), `th.rs-mod` › `.rs-mod-name`, `td.rs-cell(.is-dirty,.is-invalid,.is-readonly)` › `input.rs-input(.is-dirty,.is-saved,[aria-invalid])`, `.rs-final` › `.rs-final-out(.is-pending,.is-empty,.is-legacy,.is-error)` (`.rs-final-value`, `.rs-final-sub`); footer `.rs-foot` › `.rs-status(.is-dirty,.is-error,.is-ok)` + `.rs-actions`; `.rs-loading`. In the group tables: `button.rs-open` (`.rs-open-value`, `.rs-open-sub`) | Rendered by `qta_results_dialog()` / `qta_results_cell()` (`partials/results_dialog.php`), filled by `group-results.js`. One row per trainee (name + AMZË), one column per module in the group's order, the result last. The trainee column, the header row and the result column stay in place while the table scrolls. Long module titles take two lines, the full title is in `title` and in each field's `aria-label` ("Moduli — Emri Mbiemri"). The result is written, never coloured only: "84" or "—" with "2 nga 3 module", "më parë 78" (old points being replaced), "pikë të vjetra", "kontrollo pikët". A changed field is tinted and dotted, an invalid one red with its message in the footer. Without modules, members or an exam date the window says what is missing and, where it can, offers the fix ("Hap kursin", "Cakto datën e provimit"); "Ruaj pikët" appears only when there is something to save |
 | Motion (30) | `@keyframes qta-pop`, `qta-pop-up`, `qta-fade-in`, `qta-rise`, `qta-flash`; `.is-flash` | See §5b |
 
 ### 5a. Lists: search and filters
@@ -264,6 +267,7 @@ toasts, results), `--dur-3` 240 ms (dialogs, panels, the page content). All use
 | Dialogs opened from code | `Modal.show(opener)`: on close without saving, focus returns to the opener (as with `data-bs-toggle`) |
 | Hours that do not fit | JSON endpoints answer HTTP 400 `{code: 'hours_limit', dialog: {title, message, fix: {value, label} \| null}}`; the page shows `qtaConfirm` with "Vendos 10 orë" (saves the valid value) and "Ndrysho orët" (back to the field). Dialog hints say beforehand how many hours are allowed |
 | Server-driven confirmation | JSON endpoints answer HTTP 409 `{confirm: {title, message, confirm}}` (`QtaConfirmNeeded`); the page shows `qtaConfirm` and resends with `force = 1`. The same service computes `dry_run` previews, so the dialog shows the consequence before saving |
+| Points per module (`group-results.js`) | Any `[data-bs-target="#resultsModal"][data-results-group]` opens the window for that group (read-only without edit mode; "Lejo ndryshimet" reopens it via `?results=<id>`). In the window: Enter / ↓ next trainee, Shift+Enter / ↑ previous, Enter on the last row goes to the next module, Esc restores the field, Ctrl+S saves. Closing with unsaved points asks first ("Të mbyllen pikët pa u ruajtur?"), and so does leaving the page. After a save the page's cells update in place and `document` fires `qta:results-saved` (`detail: {group, members}`, each member `{student_id, final, scored, required}`) for page scripts that show derived states |
 
 ## 7. PHP helpers (themeli.php)
 
@@ -277,7 +281,8 @@ List helpers (`list_filter.php` and the dataset files) are in §5a.
 Shared partials: `edit_lock`, `edit_mode_off_banner`, `list_toolbar` (`$LF`), `export_menu`
 (POST, CSRF never in URLs), `group_documents` (`qta_group_documents()`), `qkl_report_modal`,
 `staff_accounts` (admins + editors), `dashboard_staff`, `download_generation_toast`,
-`course_structure` (`qta_render_course_structure()`), `timetable` (`qta_render_timetable()`).
+`course_structure` (`qta_render_course_structure()`), `timetable` (`qta_render_timetable()`),
+`results_dialog` (`qta_results_open_button()`, `qta_results_cell()`, `qta_results_dialog()`).
 Shared pages: `activity_log.php` (history for admins and editors).
 
 `$LF` for `list_toolbar.php`: `action`, `label` (for screen readers), `placeholder` (names

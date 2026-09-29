@@ -4,7 +4,9 @@
    Orari llogaritet vetëm në server (lesson_group_update.php). Këtu:
      - parashikimi i ndikimit para ruajtjes (i njëjti motor, pa ruajtur);
      - konfirmimi kur serveri e kërkon (ditë që kanë kaluar, grup i mbyllur, fshirje);
-     - datat e provimit dhe pikët në tabelë (groups_inline_update.php, si te grupet e tjera);
+     - datat e provimit në tabelë (groups_inline_update.php, si te grupet e tjera); pikët
+       vendosen sipas moduleve në dritaren e tyre (group-results.js) dhe këtu rifreskohen
+       vetëm gjendjet;
      - skedat, printimi dhe fokusi.
    ========================================================================= */
 (function () {
@@ -404,14 +406,18 @@
     if (n === -1) return 'dje';
     return n > 1 ? 'pas ' + n + ' ditësh' : Math.abs(n) + ' ditë më parë';
   }
+  /* Rezultati zyrtar i rreshtit (bosh kur mungon), nga qeliza "Pikët". */
+  function finalOf(row) {
+    var fc = row && row.querySelector('[data-final-cell]');
+    return fc ? (fc.getAttribute('data-final') || '') : '';
+  }
   function refreshStatus(row) {
     var cell = row && row.querySelector('[data-status]');
     if (!cell) return;
-    var score = (row.querySelector('td[data-field="final_score"] .editable') || {}).textContent || '';
-    score = score.trim();
+    var score = finalOf(row);
     var exam = toIso((row.querySelector('td[data-field="exam_date"] .editable') || {}).textContent || '');
     var html;
-    if (score && score !== '—') html = statusHtml('Përfunduar', 'neutral', 'bi-check2');
+    if (score) html = statusHtml('Përfunduar', 'neutral', 'bi-check2');
     else if (exam) html = exam >= TODAY ? statusHtml('Provimi ' + whenLabel(exam), 'info', 'bi-calendar-event') : statusHtml('Pret pikët', 'warning', 'bi-hourglass-split');
     else if (CFG.start > TODAY) html = statusHtml('Nis ' + whenLabel(CFG.start), 'info', 'bi-calendar-event');
     else if (TODAY <= CFG.end) html = statusHtml('Në mësim', 'accent', 'bi-easel');
@@ -421,13 +427,16 @@
   function refreshScored() {
     var rows = document.querySelectorAll('#lgMembersTable tr[data-student-row]');
     var scored = 0;
-    rows.forEach(function (r) {
-      var s = ((r.querySelector('td[data-field="final_score"] .editable') || {}).textContent || '').trim();
-      if (s && s !== '—') scored++;
-    });
+    rows.forEach(function (r) { if (finalOf(r)) scored++; });
     var label = document.querySelector('[data-scored-label]');
     if (label) label.textContent = scored === 0 ? 'ende pa pikë' : (scored === rows.length ? 'të gjithë me pikë' : scored + ' me pikë');
   }
+  /* Pas ruajtjes së pikëve sipas moduleve: gjendja e rreshtave dhe numëruesi. */
+  document.addEventListener('qta:results-saved', function (ev) {
+    if (!ev.detail || ev.detail.group !== CFG.group) return;
+    document.querySelectorAll('#lgMembersTable tr[data-student-row]').forEach(refreshStatus);
+    refreshScored();
+  });
   function flashCell(cell, cls) {
     cell.classList.remove('cell-ok', 'cell-err');
     cell.classList.add(cls);
@@ -447,10 +456,6 @@
       value = toIso(raw);
       if (!value) { ed.textContent = prev || '—'; flashCell(cell, 'cell-err'); toast('Shkruaje datën si dd.mm.vvvv, p.sh. 25.10.2026.', 'danger'); return; }
       if (value < CFG.end) { ed.textContent = prev || '—'; flashCell(cell, 'cell-err'); toast('Provimi nuk mund të jetë para mbarimit të grupit (' + toDmy(CFG.end) + ').', 'danger'); return; }
-    } else if (field === 'final_score') {
-      var num = Number(raw.replace(',', '.'));
-      if (!isFinite(num) || num < 0 || num > 100) { ed.textContent = prev || '—'; flashCell(cell, 'cell-err'); toast('Pikët duhet të jenë nga 0 deri në 100.', 'danger'); return; }
-      value = num;
     }
     var display = value === '' ? '—' : (field === 'exam_date' ? toDmy(value) : String(value));
     if (display === (prev || '—')) { ed.textContent = prev || '—'; return; }
@@ -471,7 +476,6 @@
         ed.dataset.prev = ed.textContent;
         flashCell(cell, 'cell-ok');
         refreshStatus(ed.closest('tr'));
-        if (field === 'final_score') refreshScored();
         toast('Ndryshimi u ruajt.');
       }).catch(function (err) {
         cell.classList.remove('cell-saving');

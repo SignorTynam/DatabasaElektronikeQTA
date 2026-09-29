@@ -72,6 +72,8 @@ if (!function_exists('qta_json_out')) {
       $out = ['ok' => false, 'error' => $e->getMessage(), 'code' => $e->data['code'] ?? null];
       /* Disa gabime shfaqen si dialog me një rregullim të propozuar (p.sh. orët). */
       if (isset($e->data['dialog']) && is_array($e->data['dialog'])) $out['dialog'] = $e->data['dialog'];
+      /* Hollësitë për faqen (p.sh. cilat qeliza të pikëve kanë problem). */
+      if (isset($e->data['details']) && is_array($e->data['details'])) $out['details'] = $e->data['details'];
       qta_json_out($out, 400);
     }
     if ($e instanceof PDOException && ($e->errorInfo[0] ?? '') === '45000' && !empty($e->errorInfo[2])) {

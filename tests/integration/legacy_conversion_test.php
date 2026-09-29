@@ -86,8 +86,12 @@ $cvGroup = cv_legacy_group($pdo, $cvCourse, '2026-10-01', '2026-10-10', $cvMembe
 /* Provime dhe pikë historike: tre kursantë me provim, dy prej tyre me pikë. */
 $pdo->prepare('UPDATE course_group_students cgs JOIN students s ON s.id = cgs.student_id SET cgs.exam_date = ? WHERE cgs.group_id = ? AND CAST(s.nr_amze AS UNSIGNED) IN (?, ?, ?)')
     ->execute(['2026-10-12', $cvGroup, $cvAmze, $cvAmze + 1, $cvAmze + 2]);
+/* Pikë të shkruara para pikëve sipas moduleve: vetëm llogaritja e rezultatit e shkruan
+   final_score (trg_cgs_results_bu), prandaj të dhënat historike shënohen si të tilla. */
+$pdo->exec('SET @qta_results_sync = 1');
 $pdo->prepare('UPDATE course_group_students cgs JOIN students s ON s.id = cgs.student_id SET cgs.final_score = ? WHERE cgs.group_id = ? AND CAST(s.nr_amze AS UNSIGNED) IN (?, ?)')
     ->execute([78.5, $cvGroup, $cvAmze, $cvAmze + 1]);
+$pdo->exec('SET @qta_results_sync = NULL');
 
 /* ============================================================== Testet */
 
@@ -162,7 +166,9 @@ t_case('Konvertimi — ndryshimi i kursit ose i kursantëve e vjetëron draftin'
   t_eq([false, $v2['plan']['days']], [$v3['stale'], $v3['plan']['days']], 'drafti është sërish i freskët, me të njëjtin plan');
 
   /* Një pikë e ndryshuar gjatë shqyrtimit e vjetëron sërish punën. */
+  $pdo->exec('SET @qta_results_sync = 1');
   $pdo->prepare('UPDATE course_group_students SET final_score = 81 WHERE group_id = ? AND final_score IS NOT NULL LIMIT 1')->execute([$cvGroup]);
+  $pdo->exec('SET @qta_results_sync = NULL');
   t_eq(true, qta_conv_view($pdo, $cvGroup)['stale'], 'ndryshimi i pikëve e vjetëron draftin');
   qta_conv_refresh($pdo, $cvGroup, $v3['draft']['revision'], $cvAdmin);
   t_eq(false, qta_conv_view($pdo, $cvGroup)['stale'], 'pas rifreskimit: i freskët');

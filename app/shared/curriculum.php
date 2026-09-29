@@ -17,6 +17,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/domain.php';
+require_once __DIR__ . '/results.php';
 
 const QTA_MODULE_TITLE_MAX = 200;
 const QTA_TOPIC_TITLE_MAX = 255;
@@ -458,6 +459,8 @@ if (!function_exists('qta_curriculum_lock_course')) {
       if ($pos !== null && $pos !== $count + 1) {
         qta_curriculum_reorder($pdo, 'course_modules', $courseId, $id, $pos);
       }
+      /* Grupet e regjistrit të vjetër ndjekin modulet e kursit: moduli i ri u kërkon pikë edhe atyre. */
+      qta_results_sync_course($pdo, $courseId);
       return $id;
     });
   }
@@ -493,18 +496,30 @@ if (!function_exists('qta_curriculum_lock_course')) {
     });
   }
 
-  /** Fshin modulin bashkë me temat e tij. Grupet ekzistuese nuk preken (kanë kopjen e tyre). */
+  /**
+   * Fshin modulin bashkë me temat e tij. Grupet me orar nuk preken (kanë kopjen e tyre).
+   * Grupet e regjistrit të vjetër nuk kanë kopje: një modul me pikë te ato grupe nuk fshihet.
+   */
   function qta_curriculum_delete_module(PDO $pdo, int $moduleId): array
   {
     return qta_tx($pdo, function () use ($pdo, $moduleId): array {
       $m = qta_module_find($pdo, $moduleId);
       if (!$m) throw new QtaUserError('Moduli nuk u gjet. Ndoshta u fshi tashmë — rifresko faqen.');
       qta_curriculum_lock_course($pdo, $m['course_id']);
+      $use = qta_results_legacy_usage($pdo, $moduleId);
+      if ($use['students'] > 0) {
+        $groups = implode(', ', array_map(static fn($g) => '#' . $g, array_slice($use['groups'], 0, 5))) . (count($use['groups']) > 5 ? ' …' : '');
+        throw new QtaUserError('Moduli "' . $m['title'] . '" ka pikë për ' . qta_plural($use['students'], 'kursant', 'kursantë')
+          . ' te ' . (count($use['groups']) === 1 ? 'grupi ' : 'grupet ') . $groups . ' të regjistrit të vjetër, prandaj nuk fshihet. '
+          . 'Konvertoji ato grupe te "Regjistri i kurseve profesionale" ose hiq pikët e këtij moduli, pastaj provo sërish.', ['code' => 'module_has_scores']);
+      }
       $del = $pdo->prepare('DELETE FROM course_topics WHERE module_id = ?');
       $del->execute([$moduleId]);
       $topics = $del->rowCount();
       $pdo->prepare('DELETE FROM course_modules WHERE id = ?')->execute([$moduleId]);
       qta_curriculum_reorder($pdo, 'course_modules', (int)$m['course_id'], null, null);
+      /* Pa këtë modul, disa rezultate të grupeve të regjistrit të vjetër mund të plotësohen. */
+      qta_results_sync_course($pdo, (int)$m['course_id']);
       return ['title' => $m['title'], 'topics' => $topics, 'course_id' => $m['course_id']];
     });
   }

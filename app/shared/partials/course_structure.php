@@ -74,7 +74,8 @@ if (!function_exists('qta_render_course_structure')) {
                 Çdo grup ka kopjen e vet të temave, prandaj ndryshimet këtu vlejnë vetëm për grupet e reja.
               <?php endif; ?>
               <?php if ($legacy > 0): ?>
-                <a href="groups.php?course_id=<?= $cid ?>"><?= h(qta_plural($legacy, 'grup i mëparshëm', 'grupe të mëparshme')) ?></a> pa orar nuk preken nga modulet dhe temat.
+                <a href="groups.php?course_id=<?= $cid ?>"><?= h(qta_plural($legacy, 'grup i mëparshëm', 'grupe të mëparshme')) ?></a> pa orar nuk kanë kopje të kursit:
+                temat nuk i prekin, por pikët e tyre sipas moduleve ndjekin modulet që ka kursi tani.
               <?php endif; ?>
             </span>
           </p>

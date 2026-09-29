@@ -548,6 +548,10 @@ if (!function_exists('qta_lg_change')) {
       if (!qta_lg_curriculum_changed($topics, $modules)) {
         throw new QtaUserError('Temat e grupit janë njësoj si te kursi. Nuk ka asgjë për të marrë.');
       }
+      /* Pikët e moduleve i përkasin kopjes aktuale: një kopje e re do t'i linte pa modul. */
+      if (qta_results_scored_students($pdo, $groupId)) {
+        throw new QtaUserError('Grupi ka pikë sipas moduleve të kopjes së tij, prandaj temat e reja të kursit nuk merren. Ndryshimet e kursit vlejnë për grupet e reja.', ['code' => 'has_scores']);
+      }
       $what = 'refresh';
     } elseif ($type === 'fixed_days') {
       throw new QtaUserError('Ky grup e llogarit orarin nga data e fillimit dhe orët në ditë. Ndrysho një ditë me "Ndrysho ditën".');
@@ -802,8 +806,9 @@ if (!function_exists('qta_lg_set_members')) {
         throw new QtaUserError('Nuk ndryshove asgjë: kursantët e grupit janë të njëjtët.');
       }
 
+      $withScores = qta_results_scored_students($pdo, $groupId);
       $withData = array_values(array_filter($toRemove, static fn($sid) =>
-        $existingRows[$sid]['exam_date'] !== null || $existingRows[$sid]['final_score'] !== null));
+        $existingRows[$sid]['exam_date'] !== null || $existingRows[$sid]['final_score'] !== null || isset($withScores[$sid])));
       if ($withData && !$force) {
         $labels = array_map(static fn($sid) => (string)$existingRows[$sid]['nr_amze'], $withData);
         throw new QtaConfirmNeeded('Të hiqen kursantë me provim ose pikë?',

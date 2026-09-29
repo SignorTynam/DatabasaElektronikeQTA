@@ -1,9 +1,11 @@
 # Courses, modules, topics and scheduled groups
 
 Status: **implemented** on branch `revamp/super-portal` (26.09.2026); conversion of legacy
-groups (§14) and the 8-hour daily limit on branch `feature/legacy-conversion` (28.09.2026).
+groups (§14) and the 8-hour daily limit on branch `feature/legacy-conversion` (28.09.2026);
+points per module (§15) on 28.09.2026.
 Migrations: `db/migrations/2026-09-26-kurset-modulet-temat-orari.sql`, then
-`db/migrations/2026-09-28-konvertimi-i-grupeve.sql` (see `db/migrations/README.md`).
+`db/migrations/2026-09-28-konvertimi-i-grupeve.sql`, then
+`db/migrations/2026-09-28-piket-sipas-moduleve.sql` (see `db/migrations/README.md`).
 UI components and copy: `docs/design-system/THEMELI.md`.
 
 This document is the reference for the domain change "Kurset → Modulet → Temat", for
@@ -230,17 +232,19 @@ Unchanged rules, shared with legacy groups: one group per registration, at most 
 a person cannot take the same course twice, exam date on or after the group's end date,
 points 0–100 only, closing/reopening a group, confirmation before changing a closed group,
 and confirmation before removing trainees who already have an exam date or points. The group
-page edits exam dates and points inline through the existing `groups_inline_update.php`.
+page edits exam dates inline through the existing `groups_inline_update.php`. **Points are
+entered per module** (§15): the final result is calculated and is no longer typed by hand.
 
 ## 9. Permissions
 
 - `course.php`, `lesson_groups.php`, `lesson_group.php`, `group_conversions.php`,
   `group_conversion.php` and their JSON endpoints (`course_structure_update.php`,
-  `lesson_group_update.php`, `group_conversion_update.php`) are for **Administrator and
-  Editor** only; every endpoint accepts only POST and checks the session, the role (read from
-  the database), the CSRF token and the edit mode server-side. Calculations that save nothing
-  (previews, the conversion proposal, "Rishpërndaj automatikisht") do not need the edit mode;
-  saving a draft, refreshing it, converting and correcting a converted group do.
+  `lesson_group_update.php`, `group_conversion_update.php`, `group_results.php`) are for
+  **Administrator and Editor** only; every endpoint accepts only POST and checks the session,
+  the role (read from the database), the CSRF token and the edit mode server-side. Calculations
+  that save nothing (previews, the conversion proposal, "Rishpërndaj automatikisht", reading the
+  points of a group) do not need the edit mode; saving a draft, refreshing it, converting,
+  correcting a converted group and saving points do.
 - Agencies and trainees get no new access: they are redirected away from the new pages and
   keep their existing views (group dates, exams, points), which now say "Kurs".
 - Assigning trainees to a group and choosing their course (the former JSON writes of
@@ -261,6 +265,7 @@ is reused:
 | `course_groups` | as before, now including `model` (the conversion appears as `model` legacy → scheduled) |
 | `group_conversions` | insert (the conversion: who, when, historical dates, hours, lesson days) and delete (only when the converted group itself is deleted) |
 | `group_fixed_days` | every later correction of a converted group, date by date (hours, note) |
+| `enrollment_module_scores` | every module score: insert, update of the score, delete (also when a trainee leaves the group — deleted explicitly, not by cascade); the calculated result appears as `final_score` on `course_group_students` (§15) |
 
 Days, slots and snapshot topics are derived data and are not logged row by row; they are
 fully determined by the logged inputs. The same holds for the day plan written at conversion:
@@ -288,6 +293,9 @@ migration test needs the right to create and drop databases (only `qta_migtest_*
 | `tests/integration/legacy_conversion_test.php` | §14 through the services and the database: preflight, proposal and draft never touch the group; draft revision and stale tabs; course or trainee changes invalidate the draft; atomic in-place conversion (same ID, trainees, AMZË, exams, points, S and E; frozen curriculum, day plan, days, slots, total hours, max 8); the group moves registers without duplication; lesson register and documents after conversion; later corrections inside [S, E]; database guards (arbitrary and reverse model changes, historical dates, schedule kind); rollback after an injected failure; blockers (course, capacity, trainees); Sunday → "Kërkon kontroll"; deleting a converted group |
 | `tests/integration/legacy_conversion_http_test.php` | §14 over HTTP (`php -S` on the test database): GET refused, no session, wrong role, missing or wrong CSRF token, edit mode off; the pages refuse non-staff; propose → save → convert through the endpoint; stale revision and changed data refused; a second conversion refused; the correction endpoint of a converted group follows the same rules |
 | `tests/integration/migration_conversion_test.php` | the 2026-09-28 migration on fresh databases (`qta_migtest_*`, created and dropped by the test): clean database, legacy groups only, with scheduled groups, run twice (identical schema and data), rows above 8 hours (stops, lists them, changes nothing; passes after correction), 2026-09-26 missing (stops, changes nothing), and 2026-09-26 re-run afterwards |
+| `tests/unit/results_test.php` | §15 without a database: reading points (comma or point, 0 and 100, empty ≠ 0, range, two decimals, formats), labels and database format, the average only when complete (the worked example 85/90/75/80/90 → 84; 80/90/70 → 80 and 80/100/70 → 83,33), half-up rounding in integers, earlier points and courses without modules |
+| `tests/integration/results_test.php` | §15 through the services, the database and HTTP: the sheet in 4 queries (no N+1), saving only changed cells with the result calculated by the server and logged, someone else's change (`stale`, nothing saved), one invalid cell stops everything, module of another course, trainee outside the group, no exam date, closed group and earlier points need confirmation, earlier points kept and restored, database rules outside the application (manual result, exam date, module outside the copy, CHECK, identity), removing a trainee deletes and logs the scores, a module deleted from the catalogue stays in a scheduled group, legacy groups follow the course (new module → incomplete, module with scores cannot be deleted, course cannot change, splitting a group moves the scores), certificate data, and the endpoint (POST, session, role, token, edit mode, 409, 400 `invalid` / `stale`) |
+| `tests/integration/migration_results_test.php` | the points migration on fresh databases: clean database, earlier groups with points (no row and no history event changes), run twice, the conversion migration missing (stops, changes nothing), the rules after migration |
 
 ## 12. Known limitations
 
@@ -595,3 +603,86 @@ automatikisht" works there too and saves nothing until the correction is saved.
 | Styles | `app/assets/css/components.css` §31 (`.dplan-*`), §32 (`.cv-*`) |
 | History labels | `app/shared/activity_log.php` |
 | Help | `app/shared/help_topics.php` (`conversions`, `conversion`) |
+
+## 15. Points per module ("Pikët sipas moduleve")
+
+A trainee's result is no longer one number typed by hand. Points are entered **per module**
+and the final result is calculated from them. Both registers work the same way; they differ
+only in which modules a group has (§15.2).
+
+### 15.1 Rules
+
+| Rule | Detail |
+|---|---|
+| Source of truth | `enrollment_module_scores`: one row per trainee in a group × module, `score DECIMAL(5,2)`, 0–100, at most two decimals (the precision `final_score` always had). No row = no points: **empty is not 0**, and 0 is a valid score |
+| Final result | the average of the module scores **only when every module of the group has a score**; otherwise there is no result ("3 nga 5 module") — never an average of the entered modules and never a missing module counted as 0 |
+| Rounding | exact integer arithmetic on hundredths; the result is stored with two decimals, half up (`qta_results_round_avg`); the page shows it without trailing zeros ("84", "83,33", "80,1") |
+| Stored result | `course_group_students.final_score` keeps the official result, so every existing reader (lists, "me pikë" counters, trainee card, dashboards, agency pages, exports, procesverbal, public stats) needs no change. It is **derived data**: only the results service writes it, in the same transaction as the scores (`@qta_results_sync = 1`); the database refuses every other write (`trg_cgs_results_bu`), in both registers |
+| Exam date | as before, points need the trainee's exam date: a module score needs it (`trg_ems_bi`), and the exam date cannot be removed while the trainee has points |
+| Earlier points | a trainee with a result typed before this change and no module scores keeps it unchanged ("pikë të vjetra"). The first module score replaces it only after a confirmation; the earlier value is then kept, unchangeable, in `legacy_final_score` ("më parë 78") and comes back if all module scores are removed. Earlier points are **never** spread over the modules |
+| Server authority | the page calculates only a preview; `qta_results_save` re-validates every cell (numeric, 0–100, two decimals, trainee in the group, module of the group, exam date) and calculates the result itself |
+
+### 15.2 Which modules a group has
+
+| Group | Modules that need a score |
+|---|---|
+| Scheduled (created in the new register or converted) | the modules of **its frozen copy** (`group_schedule_topics`, identified by `source_module_id`), in the copy's order — what the group followed. Later changes to the course never change them; a module deleted from the catalogue stays in the group and keeps its scores. "Merr temat e reja" is refused once the group has module scores |
+| Legacy (old register, no copy) | the modules of the course **as they are now**, in the course's order. Adding a module makes the results of that course's legacy groups incomplete until it gets scores (`qta_results_sync_course`, called by the curriculum service); a module with scores in legacy groups cannot be deleted or moved to another course, and a legacy group with module scores cannot change course. To freeze a legacy group's modules, convert it (§14): its scores then follow the frozen copy, which contains every scored module |
+
+A course without modules has no module scores: the page shows "Kursi nuk ka module" with a
+link to the course (a scheduled group always has at least one module).
+
+### 15.3 Saving
+
+`app/actions/group_results.php`, action `save`: the page sends **only the changed cells**, each
+with the value it saw (`from`) and the new value (`to`, empty = remove). In one transaction the
+service locks the group, its trainees and their scores, checks every cell, and:
+
+- refuses everything (`code = invalid`, the cells listed) if one cell is wrong;
+- refuses everything (`code = stale`) if another person changed one of those cells meanwhile —
+  the new values are returned and become the page's baseline, the user's edits stay unsaved;
+- asks for confirmation (HTTP 409, `force = 1`) for a closed group and for earlier points that
+  would be replaced;
+- writes only the cells that change (explicit INSERT / UPDATE / DELETE, so the history records
+  exactly what happened), recalculates the result of the trainees it touched, reads everything
+  back and verifies it before commit.
+
+The whole sheet is read with 4 queries and the page tables' progress ("3 nga 5 module") with 4
+queries for any number of groups.
+
+### 15.4 The window
+
+"Vendos pikët" (or "Shiko pikët" when edits are locked) in the trainees section of a group — and
+the points of any trainee — open one large window (`.modal-sheet`): trainees × modules, the
+trainee column frozen on the left, the result column frozen on the right, the header frozen on
+top, horizontal scrolling only inside the table; full screen below 992 px. The result column is
+calculated, not a field. Enter / ↓ moves to the next trainee (Enter on the last one to the next
+module), Shift+Enter / ↑ back, Esc restores the cell, Ctrl+S saves. Changed cells have the
+accent colour and a dot; invalid cells a red border and the reason in the footer; unsaved
+changes are never lost silently (closing, Esc and leaving the page ask first; "Anulo
+ndryshimet" restores). After saving the window stays open with "Pikët u ruajtën: 6 ndryshime
+te 2 kursantë." and the page's "Pikët" column, states and counters update without a reload.
+Trainees without an exam date have their cells disabled, with "Cakto datën e provimit", which
+closes the window and puts the focus on that exam date.
+
+### 15.5 For certificates, reports and exports
+
+`qta_results_enrollment($pdo, $groupId, $studentId)` returns the trainee, the course, the group
+with the exam date, every module in order with its score (or `null`) and the result
+(`source` = `modules` | `legacy` | `none`, `complete`, `final`, `legacy_final`) — no extra
+queries in the caller. `qta_results_sheet()` gives the same for a whole group.
+
+### 15.6 Code map
+
+| Concern | Code |
+|---|---|
+| Rules, calculation, reading, saving, resync | `app/shared/results.php` |
+| JSON endpoint (`sheet`, `save`) | `app/actions/group_results.php` |
+| Window, "Vendos pikët", the "Pikët" cell | `app/shared/partials/results_dialog.php`, `app/assets/js/group-results.js` |
+| Pages | `app/pages/lesson_group.php`, `app/pages/groups.php` |
+| Manual result refused, exam date kept | `app/actions/groups_inline_update.php` |
+| Curriculum hooks | `app/shared/curriculum.php` (`qta_curriculum_add_module`, `qta_curriculum_delete_module`) |
+| Database rules and history | `db/migrations/2026-09-28-piket-sipas-moduleve.sql` |
+| Styles | `app/assets/css/components.css` §33 (`.modal-sheet`, `.rs-*`) |
+| History labels | `app/shared/activity_log.php` |
+| Help | `app/shared/help_topics.php` (`groups`, `lesson_group`) |

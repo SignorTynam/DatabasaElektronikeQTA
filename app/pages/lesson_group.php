@@ -39,6 +39,7 @@ require_once __DIR__ . '/../shared/lesson_groups.php';
 require_once __DIR__ . '/../shared/partials/timetable.php';
 require_once __DIR__ . '/../shared/partials/day_plan.php';
 require_once __DIR__ . '/../shared/partials/group_documents.php';
+require_once __DIR__ . '/../shared/partials/results_dialog.php';
 
 $gid = (int)($_GET['id'] ?? 0);
 $g = $gid > 0 ? qta_lg_find($pdo, $gid) : null;
@@ -80,6 +81,9 @@ if ($g) {
   $members = $ms->fetchAll(PDO::FETCH_ASSOC);
   $scored = count(array_filter($members, static fn($m) => $m['final_score'] !== null));
   $amzeList = implode(', ', array_map(static fn($m) => (string)(int)$m['nr_amze'], $members));
+  /* Pikët sipas moduleve: sa module ka kopja e grupit dhe sa pikë ka secili kursant. */
+  $progress = qta_results_progress($pdo, [$gid])[$gid] ?? ['required' => 0, 'scored' => []];
+  $resultsLabel = 'Grupi #' . $gid . ' · ' . (string)$g['course_name'];
 
   /* Sot */
   $todayDay = null;
@@ -100,6 +104,7 @@ else require __DIR__ . '/inc/navbar4.php';
 $pageTitle = $g ? 'Grupi #' . $gid . ' · ' . (string)$g['course_name'] : 'Grupi nuk u gjet';
 $pageScripts = ($g && $fixedMode) ? [qta_asset('app/assets/js/day-plan.js')] : [];
 $pageScripts[] = qta_asset('app/assets/js/lesson-group.js');
+$pageScripts[] = qta_asset('app/assets/js/group-results.js');
 require __DIR__ . '/../shared/app_head.php';
 
 $statusHtml = static function (array $g) use ($today): string {
@@ -423,6 +428,7 @@ $statusHtml = static function (array $g) use ($today): string {
           <div class="d-flex flex-wrap align-items-center gap-2">
             <?php if ($members): ?>
               <span class="section-meta" data-scored-label><?= $scored === 0 ? 'ende pa pikë' : ($scored === count($members) ? 'të gjithë me pikë' : $scored . ' me pikë') ?></span>
+              <?= qta_results_open_button($gid, $resultsLabel, $EDIT_MODE) ?>
             <?php endif; ?>
             <?php if ($EDIT_MODE): ?>
               <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#lgMembers"><i class="bi bi-people" aria-hidden="true"></i>Ndrysho kursantët</button>
@@ -456,9 +462,8 @@ $statusHtml = static function (array $g) use ($today): string {
                       <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" aria-label="Data e provimit për ' . h($full ?: (string)$m['nr_amze']) . '"' : '' ?>
                             data-dmy data-dmy-min="<?= h((string)$g['end_date']) ?>" data-dmy-title="Data e provimit — <?= h($full ?: (string)$m['nr_amze']) ?>"><?= h(qta_date($m['exam_date'])) ?></span>
                     </td>
-                    <td class="cell nowrap num-col" data-student="<?= (int)$m['student_id'] ?>" data-field="final_score" title="Pikët, nga 0 deri në 100">
-                      <span class="editable" contenteditable="<?= $EDIT_MODE ? 'true' : 'false' ?>"<?= $EDIT_MODE ? ' role="textbox" inputmode="decimal" aria-label="Pikët për ' . h($full ?: (string)$m['nr_amze']) . '"' : '' ?>><?= $m['final_score'] !== null ? h(rtrim(rtrim((string)$m['final_score'], '0'), '.')) : '—' ?></span>
-                    </td>
+                    <?= qta_results_cell($gid, (int)$m['student_id'], $m['final_score'], (int)($progress['scored'][(int)$m['student_id']] ?? 0), (int)$progress['required'],
+                          $full !== '' ? $full : 'amza ' . (string)$m['nr_amze'], $resultsLabel) ?>
                     <td data-status><?= qta_enrollment_status(['start_date' => $g['start_date'], 'end_date' => $g['end_date'], 'exam_date' => $m['exam_date'], 'final_score' => $m['final_score']], false) ?></td>
                     <td class="nowrap num-col"><?= $m['age'] !== null ? (int)$m['age'] : '—' ?></td>
                     <td class="nowrap"><?= h((string)(($m['edu_label'] ?? '') ?: '—')) ?></td>
@@ -468,7 +473,8 @@ $statusHtml = static function (array $g) use ($today): string {
             </table>
           </div>
           <?php if ($EDIT_MODE): ?>
-            <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar, ose pikët për t'i shkruar. <kbd>Enter</kbd> ruan, <kbd>Esc</kbd> anulon. Provimi nuk mund të jetë para <?= h(qta_date((string)$g['end_date'])) ?>.</p>
+            <p class="form-text mt-2 mb-0">Kliko datën e provimit për ta zgjedhur në kalendar; provimi nuk mund të jetë para <?= h(qta_date((string)$g['end_date'])) ?>.
+              Pikët vendosen për çdo modul te "Vendos pikët"; rezultati llogaritet vetë.</p>
           <?php endif; ?>
         <?php else: ?>
           <?= qta_empty('Grupi nuk ka ende kursantë', $EDIT_MODE ? 'Shto kursantët me numrat e amzës te "Ndrysho kursantët", ose caktoji te "Kursantët", me çipin "Pa grup".' : 'Për të shtuar kursantë, shtyp "Lejo ndryshimet".', 'bi-people', '', 'is-compact') ?>
@@ -628,6 +634,10 @@ $statusHtml = static function (array $g) use ($today): string {
     </form>
   </div>
 </div>
+<?php endif; ?>
+
+<?php if ($g): ?>
+<?= qta_results_dialog($CSRF, $EDIT_MODE, 'lesson_group.php?id={gid}&edit=1&results={gid}#kursantet') ?>
 <?php endif; ?>
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>

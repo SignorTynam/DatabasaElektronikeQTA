@@ -7,12 +7,15 @@ datën; ekzekutohen sipas radhës së datës.
 |---|---|
 | `2026-09-26-kurset-modulet-temat-orari.sql` | Modulet dhe temat e kursit, grupet me orar mësimi, ditët e veçanta, `course_groups.model`, FK kurs → grupe pa fshirje zinxhir, historiku për tabelat e reja. Përshkrimi i plotë: `docs/domain/COURSES-AND-SCHEDULES.md`. |
 | `2026-09-28-konvertimi-i-grupeve.sql` | Kufiri **8 orë në ditë** (ishte 12) te çdo CHECK i orarit; `group_schedules.schedule_mode` (`calculated` / `fixed_range`) dhe `daily_hours` NULL për oraret me data historike; tabelat `group_fixed_days` (plani i ditëve), `legacy_conversion_drafts` (drafti), `group_conversions` (shënimi i konvertimit); rregullat e bazës për konvertimin (`legacy` → `scheduled` vetëm brenda konvertimit) dhe historiku i tyre. Nuk konverton asnjë grup. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §14. |
+| `2026-09-28-piket-sipas-moduleve.sql` | **Pikët sipas moduleve**: tabela `enrollment_module_scores` (një rresht për kursant në grup × modul, 0–100), kolona `course_group_students.legacy_final_score` (bosh; mbushet vetëm kur pikët e vjetra zëvendësohen nga modulet), rregullat e bazës (rezultati përfundimtar nuk shkruhet më me dorë; moduli duhet t'i përkasë grupit; data e provimit mbetet kur ka pikë; kursi i grupit dhe moduli me pikë të regjistrit të vjetër nuk ndryshojnë) dhe historiku i pikëve. Nuk ndryshon asnjë rresht ekzistues. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §15. |
 
 ## Radha
 
 - **Instalim i ri:** `db/tables.sql` → `db/create_audit.sql` → çdo skedar këtu.
-- **Databaza e punës:** vetëm skedarët që nuk janë ekzekutuar ende, sipas radhës.
-  `2026-09-28` kërkon që `2026-09-26` të jetë ekzekutuar; përndryshe ndalet pa ndryshuar asgjë.
+- **Databaza e punës:** vetëm skedarët që nuk janë ekzekutuar ende, sipas radhës (renditja e
+  tabelës më sipër; dy skedarët e datës 2026-09-28: së pari `konvertimi-i-grupeve`, pastaj
+  `piket-sipas-moduleve`). `2026-09-28-konvertimi…` kërkon që `2026-09-26` të jetë ekzekutuar,
+  dhe `2026-09-28-piket…` kërkon të dy; përndryshe ndalen pa ndryshuar asgjë.
 
 ## Si ekzekutohet
 
@@ -27,6 +30,7 @@ datën; ekzekutohen sipas radhës së datës.
    ```bash
    mysql -u root -p qta_db < db/migrations/2026-09-26-kurset-modulet-temat-orari.sql
    mysql -u root -p qta_db < db/migrations/2026-09-28-konvertimi-i-grupeve.sql
+   mysql -u root -p qta_db < db/migrations/2026-09-28-piket-sipas-moduleve.sql
    ```
 
    Në XAMPP: `C:\xampp\mysql\bin\mysql.exe`. Në phpMyAdmin: zgjidh databazën, skeda
@@ -49,7 +53,7 @@ datën; ekzekutohen sipas radhës së datës.
    SHOW TABLES LIKE 'group_schedule%';
    ```
 
-4. Kontrollo pas `2026-09-28`:
+4. Kontrollo pas `2026-09-28-konvertimi-i-grupeve`:
 
    ```sql
    -- Çdo orar ekzistues është 'calculated', me të njëjtat orë në ditë (1–8).
@@ -73,6 +77,23 @@ datën; ekzekutohen sipas radhës së datës.
    SELECT ROUTINE_NAME FROM information_schema.ROUTINES
    WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME LIKE 'qta\_migrate\_%';               -- pritet: bosh
    ```
+
+5. Kontrollo pas `2026-09-28-piket-sipas-moduleve`:
+
+   ```sql
+   -- Tabela e re (bosh) dhe kolona e pikëve të vjetra (bosh: asnjë rresht nuk ndryshoi).
+   SELECT (SELECT COUNT(*) FROM enrollment_module_scores) AS piket_e_moduleve,
+          (SELECT COUNT(*) FROM course_group_students WHERE legacy_final_score IS NOT NULL) AS kopje;   -- pritet: 0, 0
+
+   -- Rregullat e bazës dhe historiku.
+   SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
+   WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME IN ('trg_ems_bi', 'trg_ems_bu', 'trg_cgs_results_bu',
+     'trg_cgs_results_bd', 'trg_cg_results_course_bu', 'trg_cm_results_bd', 'trg_cm_results_bu',
+     'trg_audit_ems_ai', 'trg_audit_ems_au', 'trg_audit_ems_ad');                           -- pritet: 10
+   ```
+
+   Pas këtij migrimi rezultati përfundimtar (`final_score`) nuk shkruhet më me dorë — as nga
+   phpMyAdmin: baza e refuzon. Pikët vendosen sipas moduleve te "Vendos pikët" i grupit.
 
 ## Siguria e migrimit
 
@@ -99,9 +120,18 @@ datën; ekzekutohen sipas radhës së datës.
 - Përdoruesi i databazës duhet të ketë të drejtat `ALTER`, `CREATE`, `REFERENCES`,
   `TRIGGER` dhe `CREATE ROUTINE`. Me regjistrim binar (binlog) pa `SUPER`, serveri mund
   të kërkojë `log_bin_trust_function_creators = 1` për trigger-at.
+- Më sipër, `2026-09-28` është `2026-09-28-konvertimi-i-grupeve.sql`.
+  `2026-09-28-piket-sipas-moduleve.sql` kontrollon **para çdo ndryshimi** që të dy migrimet
+  e mëparshme janë ekzekutuar dhe ndalet pa ndryshuar asgjë kur mungon njëri. Nuk mbush asnjë
+  kolonë dhe nuk prek asnjë trigger ekzistues: shton vetëm tabelën, kolonën bosh
+  `legacy_final_score` dhe trigger-at e vet. Pikët ekzistuese (`final_score`) mbeten ashtu siç
+  janë dhe shfaqen si "pikë të vjetra" derisa kursanti të marrë pikë sipas moduleve; atëherë
+  vlera e vjetër ruhet te `legacy_final_score` dhe nuk ndryshon më.
 - Të gjitha rastet e mësipërme testohen mbi databaza të përkohshme:
   `tests/integration/migration_conversion_test.php` (databazë e pastër, vetëm grupe të
-  mëparshme, me grupe me orar, ekzekutim i dytë, rreshta mbi 8 orë, pa `2026-09-26`).
+  mëparshme, me grupe me orar, ekzekutim i dytë, rreshta mbi 8 orë, pa `2026-09-26`) dhe
+  `tests/integration/migration_results_test.php` (databazë e pastër, me pikë të mëparshme,
+  ekzekutim i dytë, pa migrimin e konvertimit).
 
 ## Nëse diçka nuk shkon
 
@@ -113,6 +143,11 @@ datën; ekzekutohen sipas radhës së datës.
   listës (shih më sipër) dhe ekzekutoje sërish. Asgjë nuk ka ndryshuar ndërkohë.
 - **"Migrimi 2026-09-28 u ndal: ekzekuto së pari 2026-09-26…"**: ekzekuto `2026-09-26`,
   pastaj `2026-09-28`.
+- **"Migrimi i pikëve sipas moduleve u ndal: ekzekuto së pari…"**: ekzekuto migrimet që
+  mungojnë sipas radhës, pastaj `2026-09-28-piket-sipas-moduleve`. Asgjë nuk ka ndryshuar.
+- **"Rezultati përfundimtar llogaritet nga pikët e moduleve dhe nuk shkruhet me dorë"** gjatë
+  një ndryshimi në phpMyAdmin ose një skripti: pas migrimit të pikëve kjo është e pritshme.
+  Pikët vendosen te "Vendos pikët" i grupit, dhe rezultati llogaritet vetë.
 - **Kthimi mbrapsht**: rikthe kopjen rezervë të hapit 1. Pasi të jenë krijuar grupe me orar
   ose të jenë konvertuar grupe, kthimi mbrapsht i humb ato; mos e bëj pa e ruajtur më parë
   punën e re.

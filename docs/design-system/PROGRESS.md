@@ -21,6 +21,7 @@ Execution prompt: `SUPER-PORTAL-PROMPT.md`. Implemented system: `THEMELI.md`.
 | 13 | **Calendar dialog** for every date: form fields (new groups, earlier groups, trainee, card, special day, history filter) and editable date cells (groups, register, trainees, exams). Replaces the browser's date picker in the history filter. `app/assets/js/date-picker.js`, components §29 | Done |
 | 14 | **UX refinement after the revamp.** One live search and filter system for every list (`app/shared/list_filter.php`, `partials/list_toolbar.php`, app.js "Listat"; THEMELI.md §5a): word-by-word search over the whole dataset, state chips with counts, rare filters behind "Filtra", filters in the URL. "Kursantët pa grup" merged into **Kursantët** (chips "Pa grup / Gati për grup / Pa kurs", assignment one by one or in bulk; writes in `app/actions/student_assignment.php`; the old address redirects). **"Regjistri i plotë" removed** (`register.php`, `register_inline_update.php`, `register_export.php`, `partials/table_filter.php`) after a repository-wide reference scan. Names: **Regjistri i kurseve profesionale**, **Regjistri i vjetër i kurseve profesionale**, **Katalogu i kurseve** (now under Administrimi, same permissions). Menu: Kursantët · Kurset profesionale · Administrimi. Staff home: "Çfarë pret për ty" unchanged, "Nis një punë" in the centre, "Regjistri në shifra" removed; agency home simplified. Icon-only help button, shorter page texts, motion pass and page transitions (components §30, shell.css; THEMELI.md §5b) | Done |
 | 15 | **Konvertimi i grupeve** (branch `feature/legacy-conversion`): legacy groups move in place into "Regjistri i kurseve profesionale" with their historical start and end, a reviewed day plan (`fixed_range` schedules), server-side drafts, an atomic conversion and database guards; later corrections inside the historical dates. **8 hours per day** everywhere (was 12). Pages `group_conversions.php`, `group_conversion.php`; day plan calendar (components §31, `day-plan.js`) and conversion layout (§32). Migration `db/migrations/2026-09-28-…`, reference `docs/domain/COURSES-AND-SCHEDULES.md` §14, tests in `tests/` (engine, services, HTTP, migration) | Done |
+| 16 | **Pikët sipas moduleve** (both registries): one score (0–100, two decimals) per trainee in a group × module (`enrollment_module_scores`); the final result is the average of all modules, "—" with "2 nga 3 module" until every module has points, and is written only by the results service (`final_score` stays as a derived value for every existing reader; the database refuses manual writes). Earlier groups follow the course's current modules, groups with a schedule their frozen copy. Old points stay as "pikë të vjetra" and are kept in `legacy_final_score` once modules replace them. Work window "Vendos pikët" (trainee × module table, sticky columns, live result, keyboard entry, one transactional save with per-cell conflict checks) on `groups.php` and `lesson_group.php`; the "Pikët" column opens it. Certificate-ready data: `qta_results_enrollment()`. `app/shared/results.php`, `app/actions/group_results.php`, `partials/results_dialog.php`, `group-results.js`, components §33. Migration `db/migrations/2026-09-28-piket-sipas-moduleve.sql`, reference `docs/domain/COURSES-AND-SCHEDULES.md` §15, tests in `tests/` (unit, services, HTTP, migration) | Done |
 
 ## Pages
 
@@ -128,3 +129,16 @@ classes (`title-block`, `leaf`, `ledger`, `btn-ink`, `btn-soft-*`, FABs) are gon
 12. **Old bookmarks**: `students_without_groups.php` redirects to `students.php?status=no_group`;
     `register.php` no longer exists (404). Tell users who bookmarked "Regjistri i plotë" to use
     "Të gjithë kursantët" or the registries.
+13. **Run the migration** `db/migrations/2026-09-28-piket-sipas-moduleve.sql` before deploying
+    phase 16, after `2026-09-26` and `2026-09-28-konvertimi-i-grupeve` (backup first; see
+    `db/migrations/README.md`). The group pages (`groups.php`, `lesson_group.php`) need its
+    table. After it,
+    `final_score` can no longer be edited by hand (phpMyAdmin included): points go in per module.
+14. **Merging duplicate trainees** (`students_inline_update.php`, `merge_students`) copies only
+    the group membership of the duplicate: its exam dates and points — now also its module
+    points — are deleted with the duplicate's membership (the deletion is in the history).
+    Pre-existing; if merges are used, move the membership with its data instead.
+15. **Certificates and reports** can read one trainee's modules, points and result from
+    `qta_results_enrollment($pdo, $groupId, $studentId)` (`complete`, `final`, `legacy_final`
+    and the source: modules, old points or none). No document uses it yet; the existing
+    documents still print `final_score`, which the service keeps in step.

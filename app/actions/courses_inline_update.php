@@ -137,6 +137,12 @@ try {
           throw new RuntimeException('Grupi #' . $group_id . ' ka orar mësimi të ndërtuar nga temat e këtij kursi, prandaj nuk kalon te një kurs tjetër. Nëse kursi është gabim, fshije grupin dhe krijoje sërish te "Regjistri i kurseve profesionale".');
       }
       if ((int)$g['course_id'] === $new_course_id) throw new RuntimeException('Grupi është tashmë në këtë kurs.');
+      /* Pikët e moduleve i përkasin moduleve të kursit aktual (edhe baza e refuzon). */
+      $sc = $pdo->prepare("SELECT COUNT(DISTINCT student_id) FROM enrollment_module_scores WHERE group_id = ?");
+      $sc->execute([$group_id]);
+      if ((int)$sc->fetchColumn() > 0) {
+          throw new RuntimeException('Grupi #' . $group_id . ' ka pikë sipas moduleve të kursit të tij, prandaj nuk zhvendoset. Nëse kursi është gabim, hiq së pari pikët te "Vendos pikët".');
+      }
 
       /* Njësoj si te regjistrat e grupeve: grupi i mbyllur ndryshohet vetëm me konfirmim */
       if ((int)$g['is_completed'] === 1 && !$force) {

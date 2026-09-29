@@ -34,6 +34,7 @@ $tableLabels = [
   'course_topics'         => 'Temë',
   'course_groups'         => 'Grup',
   'course_group_students' => 'Kursant në grup',
+  'enrollment_module_scores' => 'Pikët e një moduli',
   'group_schedules'       => 'Orari i grupit',
   'group_day_rules'       => 'Ditë e veçantë',
   'group_fixed_days'      => 'Dita e orarit historik',
@@ -53,7 +54,8 @@ $columnLabels = [
   'course_modules' => ['course_id' => 'Kursi', 'title' => 'Emri i modulit', 'hours' => 'Orë', 'position' => 'Vendi në radhë'],
   'course_topics'  => ['module_id' => 'Moduli', 'title' => 'Tema', 'hours' => 'Orë', 'position' => 'Vendi në modul'],
   'course_groups' => ['course_id' => 'Kursi', 'model' => 'Lloji i grupit', 'start_date' => 'Fillimi', 'end_date' => 'Mbarimi', 'is_completed' => 'Grupi i mbyllur', 'created_at' => 'Krijuar më'],
-  'course_group_students' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'final_score' => 'Pikët', 'exam_date' => 'Data e provimit'],
+  'course_group_students' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'final_score' => 'Pikët', 'legacy_final_score' => 'Pikët e vjetra', 'exam_date' => 'Data e provimit'],
+  'enrollment_module_scores' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'module_id' => 'Moduli', 'score' => 'Pikët e modulit'],
   'group_schedules' => ['group_id' => 'Grupi', 'schedule_mode' => 'Lloji i orarit', 'daily_hours' => 'Orë në ditë', 'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'curriculum_taken_at' => 'Temat u kopjuan më'],
   'group_day_rules' => ['group_id' => 'Grupi', 'rule_date' => 'Data', 'hours' => 'Mësimi atë ditë', 'note' => 'Shënim'],
   'group_fixed_days' => ['hours' => 'Orë mësimi', 'note' => 'Shënim'],
@@ -66,7 +68,7 @@ $tableIcons = [
   'courses' => 'bi-book', 'course_modules' => 'bi-collection', 'course_topics' => 'bi-list-ol', 'course_groups' => 'bi-collection',
   'course_group_students' => 'bi-people', 'group_schedules' => 'bi-calendar-week', 'group_day_rules' => 'bi-calendar-event',
   'group_fixed_days' => 'bi-calendar3', 'group_conversions' => 'bi-arrow-left-right',
-  'student_course_plans' => 'bi-journal-check',
+  'student_course_plans' => 'bi-journal-check', 'enrollment_module_scores' => 'bi-table',
 ];
 
 /* ================================================= Kërkime me memorie */
@@ -86,6 +88,8 @@ function qta_log_lookup(PDO $pdo, string $what, $id): ?string {
     'agency'  => "SELECT COALESCE(NULLIF(company_name,''), CONCAT('Agjencia #',id)) FROM agencies WHERE id=?",
     'group'   => "SELECT CONCAT('Grupi #',cg.id,' · ',c.name) FROM course_groups cg JOIN courses c ON c.id=cg.course_id WHERE cg.id=?",
     'module'  => "SELECT CONCAT(m.title,' (',c.name,')') FROM course_modules m JOIN courses c ON c.id=m.course_id WHERE m.id=?",
+    /* Moduli i hequr nga katalogu mbetet me emrin e tij te kopja e një grupi me orar. */
+    'module_copy' => "SELECT module_title FROM group_schedule_topics WHERE source_module_id=? LIMIT 1",
     'topic'   => "SELECT CONCAT(t.title,' (',m.title,')') FROM course_topics t JOIN course_modules m ON m.id=t.module_id WHERE t.id=?",
     'plan'    => "SELECT CONCAT(TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,''))),' (amza ',s.nr_amze,') · ',c.name)
                   FROM student_course_plans scp JOIN students s ON s.id=scp.student_id LEFT JOIN persons p ON p.id=s.person_id
@@ -124,11 +128,11 @@ function qta_log_value(PDO $pdo, string $col, ?string $val, string $table = ''):
     case 'course_hours': return (int)$val . ' orë';
     case 'teaching_days': return (int)$val . ' ditë';
     case 'position':     return 'vendi ' . (int)$val;
-    case 'module_id':    return qta_log_lookup($pdo, 'module', $val) ?? ('Modul #' . (int)$val);
+    case 'module_id':    return qta_log_lookup($pdo, 'module', $val) ?? qta_log_lookup($pdo, 'module_copy', $val) ?? ('Modul #' . (int)$val);
     case 'is_completed':
       return in_array(strtolower(trim($val)), ['1', 'true', 't', 'yes', 'y', 'on'], true) ? 'Po, i mbyllur' : 'Jo, i hapur';
     case 'hours':       return rtrim(rtrim($val, '0'), '.') . ' orë';
-    case 'final_score': return rtrim(rtrim($val, '0'), '.');
+    case 'final_score': case 'legacy_final_score': case 'score': return rtrim(rtrim($val, '0'), '.');
     case 'status':      return ['planned' => 'Pret grup', 'assigned' => 'Në grup', 'completed' => 'Përfunduar'][$val] ?? $val;
     case 'role_id':     return qta_log_lookup($pdo, 'role', $val) ?? ('Rol #' . (int)$val);
     case 'gender_id':   return qta_log_lookup($pdo, 'gender', $val) ?? ('Gjini #' . (int)$val);
@@ -201,6 +205,12 @@ function qta_log_subject(PDO $pdo, string $table, array $pk, array $tableLabels,
       $s = qta_log_lookup($pdo, 'student', $sid) ?? ('Kursant #' . $sid);
       $g = qta_log_lookup($pdo, 'group', $gid) ?? ('Grup #' . $gid);
       return $s . ' në ' . $g;
+    case 'enrollment_module_scores':
+      $gid = (int)($pk['group_id'] ?? 0); $sid = (int)($pk['student_id'] ?? 0); $mid = (int)($pk['module_id'] ?? 0);
+      $s = qta_log_lookup($pdo, 'student', $sid) ?? ('Kursant #' . $sid);
+      $g = qta_log_lookup($pdo, 'group', $gid) ?? ('Grup #' . $gid);
+      $m = qta_log_lookup($pdo, 'module_copy', $mid) ?? qta_log_lookup($pdo, 'module', $mid) ?? ('Modul #' . $mid);
+      return $label . ': ' . $m . ' · ' . $s . ' në ' . $g;
   }
   if ($name !== null) return $label . ': ' . $name;
   $old = $fromValues();

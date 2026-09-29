@@ -1243,4 +1243,5 @@ DELIMITER ;
 -- sipas radhës së datës (shih db/migrations/README.md):
 --   2026-09-26-kurset-modulet-temat-orari.sql  modulet, temat, grupet me orar
 --   2026-09-28-konvertimi-i-grupeve.sql        8 orë në ditë, konvertimi i grupeve
+--   2026-09-28-piket-sipas-moduleve.sql        pikët sipas moduleve, rezultati i llogaritur
 -- =========================================================

@@ -389,7 +389,11 @@ t_case('Kursantët: ndarja mbi 10, dyfishimi, kufiri 10, heqja me pikë', functi
   t_throws(QtaUserError::class, fn() => qta_lg_set_members($pdo, $g1, '97001-97006, 97100-97104'), 'mbi 10 kursantë refuzohet', 'deri në 10');
   $r = qta_lg_set_members($pdo, $g1, '97001-97006, 97100');
   t_eq([1, 0, 7], [$r['added'], $r['removed'], $r['total']], 'u shtua 1 kursant');
+  /* Rezultat i shkruar para pikëve sipas moduleve (të dhëna të vjetra): vetëm llogaritja e
+     rezultatit e shkruan final_score, prandaj testi e shënon si të tillë. */
+  $pdo->exec('SET @qta_results_sync = 1');
   $pdo->prepare("UPDATE course_group_students cgs JOIN students s ON s.id = cgs.student_id SET cgs.exam_date = '2026-10-10', cgs.final_score = 70 WHERE cgs.group_id = ? AND s.nr_amze = '97100'")->execute([$g1]);
+  $pdo->exec('SET @qta_results_sync = NULL');
   t_throws(QtaConfirmNeeded::class, fn() => qta_lg_set_members($pdo, $g1, '97001-97006'), 'heqja e një kursanti me pikë kërkon konfirmim', 'pikë');
   $r = qta_lg_set_members($pdo, $g1, '97001-97006', ['force' => true]);
   t_eq(1, $r['removed'], 'me konfirmim u hoq');

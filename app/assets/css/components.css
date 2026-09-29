@@ -3449,3 +3449,207 @@ body:has(.cv-bar:not([hidden])) .back-top { display: none; }
 @media print {
   .cv-bar, .cv-tools { display: none !important; }
 }
+
+/* ============================================ 33. Pikët sipas moduleve (dritarja e punës) */
+/* Dritare pune (modal-sheet) për tabelën kursant × modul: kolona e kursantit majtas dhe
+   rezultati djathtas mbeten në vend kur tabela lëviz anash; koka mbetet sipër kur lëviz
+   poshtë. Nga 992px dritarja merr gjerësinë e tabelës, deri në gjerësinë e ekranit; më
+   gjerë, tabela lëviz brenda saj. Nën 992px hapet në gjithë ekranin
+   (modal-fullscreen-lg-down). Vizatohet nga group-results.js. */
+@media (min-width: 992px) {
+  .modal-sheet .modal-dialog {
+    width: fit-content;
+    min-width: min(38rem, calc(100vw - 3rem));
+    max-width: min(96rem, calc(100vw - 3rem));
+  }
+}
+.modal-sheet .modal-header { padding-bottom: var(--sp-3); }
+.rs-head { min-width: 0; }
+.rs-head .modal-meta { margin-bottom: 0; }
+.rs-notices { display: grid; gap: var(--sp-2); padding: 0 1.5rem var(--sp-3); }
+.rs-notices[hidden] { display: none; }
+.rs-body {
+  min-height: 10rem;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--border);
+}
+.rs-body > .empty { margin: var(--sp-5) 1.5rem; }
+.rs-loading { display: grid; gap: var(--sp-3); padding: var(--sp-5) 1.5rem; }
+.rs-loading .skeleton { height: 2rem; }
+
+.rs-grid { width: 100%; border-collapse: separate; border-spacing: 0; }
+.rs-grid > thead > tr > th { padding: .625rem .75rem; vertical-align: bottom; }
+.rs-grid > tbody > tr > * { padding: .375rem .75rem; }
+.rs-grid > tbody > tr:last-child > * { border-bottom: 0; }
+
+/* Kolona e kursantit: e ngrirë majtas, me vijë ndarëse që lëviz bashkë me të. */
+.rs-grid .rs-who {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 13rem;
+  max-width: 18rem;
+  background-color: var(--surface);
+  text-align: left;
+}
+.rs-grid > thead .rs-who { z-index: 3; background-color: var(--surface-sunken); }
+.rs-grid .rs-who::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+.rs-grid > tbody > tr > th.rs-who { font-weight: var(--fw-regular); }
+.rs-name {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-meta { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
+.rs-meta > span { white-space: nowrap; }
+.rs-noexam { color: var(--warning); font-weight: var(--fw-semibold); }
+.rs-grid > tbody > tr.is-blocked .rs-name { color: var(--text-muted); }
+
+/* Emri i modulit: dy rreshta, pjesa tjetër te këshilla (title). Kolonat e moduleve marrin
+   vetëm gjerësinë e tyre; hapësira që tepron (pak module) i shkon kolonës së kursantit. */
+.rs-grid .rs-mod { width: 1%; min-width: 6.5rem; max-width: 10rem; text-align: right; white-space: normal; }
+.rs-grid > tbody > tr > td.rs-cell { width: 1%; }
+.rs-mod-name {
+  display: -webkit-box;
+  width: max-content;      /* një rresht kur titulli nxë, deri në 9rem */
+  max-width: 9rem;
+  margin-left: auto;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+
+/* Qeliza e pikëve: e vogël, numrat djathtas. Ndryshimi i paruajtur ka ngjyrën e
+   theksit dhe një pikë në cep (jo vetëm ngjyrë); gabimi ka kufi të kuq dhe mesazh. */
+.rs-grid > tbody > tr > td.rs-cell { position: relative; padding: .375rem .5rem; text-align: right; }
+.rs-input {
+  width: 5rem;
+  height: var(--control-h-sm);
+  padding: 0 .5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transition: border-color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.rs-input::placeholder { color: var(--text-subtle); opacity: 1; }
+.rs-input:hover:not(:disabled):not(:focus) { border-color: var(--text-subtle); }
+.rs-input:focus { outline: none; border-color: var(--focus); box-shadow: var(--focus-ring); }
+.rs-input:disabled { border-color: var(--border); background: var(--surface-sunken); color: var(--text-subtle); cursor: not-allowed; }
+.rs-input[readonly] { cursor: progress; }
+.rs-input.is-dirty { border-color: var(--accent-border); background: var(--accent-soft); }
+.rs-input[aria-invalid="true"] { border-color: var(--danger); background: var(--danger-soft); box-shadow: 0 0 0 1px var(--danger); }
+.rs-input[aria-invalid="true"]:focus { box-shadow: 0 0 0 1px var(--danger), var(--focus-ring); }
+.rs-grid td.rs-cell.is-dirty::after {
+  content: "";
+  position: absolute;
+  top: .3rem;
+  right: .3rem;
+  width: .375rem;
+  height: .375rem;
+  border-radius: var(--r-full);
+  background: var(--accent-text);
+  pointer-events: none;
+}
+.rs-grid td.rs-cell.is-invalid::after { background: var(--danger); }
+.rs-input.is-saved { animation: rs-saved 900ms var(--ease); }
+@keyframes rs-saved { from { box-shadow: 0 0 0 3px var(--success-border); } to { box-shadow: 0 0 0 3px transparent; } }
+.rs-grid td.rs-cell.is-readonly { color: var(--text); font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) {
+  .rs-input { width: 5.5rem; height: var(--control-h); }
+}
+
+/* Rezultati: i llogaritur, jo fushë. Sipërfaqe e ulët, numër i theksuar, e ngrirë djathtas. */
+.rs-grid .rs-final {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  width: 8rem;
+  min-width: 8rem;
+  max-width: 8rem;
+  background-color: var(--surface-sunken);
+  text-align: right;
+}
+.rs-grid > thead .rs-final { z-index: 3; color: var(--text); }
+.rs-grid .rs-final::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--border-strong);
+  pointer-events: none;
+}
+.rs-final-out { display: flex; flex-direction: column; align-items: flex-end; gap: .05rem; line-height: var(--lh-snug); }
+.rs-final-value { color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.rs-final-sub { color: var(--text-muted); font-size: var(--fs-2xs); line-height: var(--lh-snug); overflow-wrap: anywhere; }
+.rs-final-out:is(.is-pending, .is-empty, .is-error) .rs-final-value { color: var(--text-subtle); font-weight: var(--fw-regular); }
+.rs-final-out.is-legacy .rs-final-value { font-weight: var(--fw-semibold); }
+.rs-final-out.is-error .rs-final-sub { color: var(--danger); font-weight: var(--fw-semibold); }
+
+/* Fundi i dritares: gjendja me fjalë majtas, veprimet djathtas. */
+.modal-footer.rs-foot { justify-content: space-between; }
+.rs-status { display: flex; flex: 1 1 18rem; align-items: center; gap: var(--sp-2); min-width: 0; margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.rs-status > .bi { flex: none; }
+.rs-status.is-dirty { color: var(--text); }
+.rs-status.is-dirty > .bi { color: var(--accent-text); }
+.rs-status.is-error { color: var(--danger); }
+.rs-status.is-ok > .bi { color: var(--success); }
+.rs-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
+@media (max-width: 479.98px) {
+  .rs-actions { width: 100%; }
+  .rs-actions > .btn { flex: 1 1 auto; }
+}
+@media (max-width: 575.98px) {
+  .rs-notices { padding-inline: 1rem; }
+  .rs-grid .rs-who { min-width: 9.5rem; max-width: 11rem; }
+  .rs-grid .rs-final { width: 6rem; min-width: 6rem; max-width: 6rem; }
+}
+
+/* Te tabelat e grupit: pikët hapin dritaren, te kursanti i atij rreshti. */
+.rs-open {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 2.75rem;
+  min-height: var(--control-h-sm);
+  justify-content: center;
+  margin: -.25rem -.375rem;
+  padding: .125rem .375rem;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: pointer;
+}
+.rs-open:hover .rs-open-value { color: var(--link-hover); text-decoration: underline; text-underline-offset: .15em; }
+.rs-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rs-open-sub { display: block; color: var(--text-muted); font-size: var(--fs-2xs); white-space: nowrap; }
+@media print {
+  .rs-open { color: inherit; }
+}

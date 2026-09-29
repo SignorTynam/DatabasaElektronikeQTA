@@ -93,6 +93,25 @@ if (($G['model'] ?? 'legacy') === 'scheduled' && $dateField) {
   echo json_encode(['ok'=>false,'error'=>'Datat e këtij grupi i llogarit orari i mësimit. Ndryshoji te faqja e grupit: "Ndrysho fillimin ose orët në ditë" ose një ditë e veçantë.']); exit;
 }
 
+/* Rezultati përfundimtar llogaritet nga pikët e moduleve (group_results.php) dhe nuk
+   shkruhet më me dorë, në asnjë regjistër. */
+$scoreField = $action === 'update_final_score'
+  || ($action === 'update_cell' && (string)($data['field'] ?? '') === 'final_score');
+if ($scoreField) {
+  http_response_code(400);
+  echo json_encode(['ok'=>false,'error'=>'Rezultati përfundimtar llogaritet nga pikët e moduleve dhe nuk shkruhet me dorë. Vendosi te "Vendos pikët" të grupit.']); exit;
+}
+
+/* Kursanti me pikë (rezultat ose pikë moduli) e mban datën e provimit: pikët e kërkojnë,
+   dhe rezultati nuk hiqet më me dorë. */
+function score_blocks_exam_clear(PDO $pdo, int $gid, int $sid, $finalScore): bool {
+  if ($finalScore !== null) return true;
+  $q = $pdo->prepare('SELECT 1 FROM enrollment_module_scores WHERE group_id = ? AND student_id = ? LIMIT 1');
+  $q->execute([$gid, $sid]);
+  return (bool)$q->fetchColumn();
+}
+const QTA_EXAM_KEEPS_SCORES = 'Kursanti ka pikë, prandaj data e provimit nuk hiqet: pikët kërkojnë datën e provimit.';
+
 $completed = (int)($G['is_completed'] ?? 0) === 1;
 $forced = !empty($data['force']);
 
@@ -164,7 +183,7 @@ try {
         if (!$row) throw new RuntimeException('Ky student nuk i përket këtij grupi.');
 
         if ($value === '' || $value === null) {
-          if ($row['final_score'] !== null) throw new RuntimeException('S’mund të hiqet data e testit kur nota ekziston. Hiqe notën fillimisht.');
+          if (score_blocks_exam_clear($pdo, $group_id, $student_id, $row['final_score'])) throw new RuntimeException(QTA_EXAM_KEEPS_SCORES);
           $st = $pdo->prepare("UPDATE course_group_students SET exam_date=NULL WHERE group_id=:g AND student_id=:s");
           $st->execute([':g'=>$group_id, ':s'=>$student_id]);
           echo json_encode(['ok'=>true,'display'=>'—']); exit;
@@ -178,37 +197,6 @@ try {
         $st = $pdo->prepare("UPDATE course_group_students SET exam_date=:d WHERE group_id=:g AND student_id=:s");
         $st->execute([':d'=>$iso, ':g'=>$group_id, ':s'=>$student_id]);
         echo json_encode(['ok'=>true,'display'=>fmt_dMY($iso)]); exit;
-      }
-
-      case 'final_score': {
-        if ($student_id <= 0) throw new RuntimeException('ID studenti e pavlefshme.');
-        // Sigurohu që studenti i përket këtij grupi dhe lexo exam_date
-        $chk = $pdo->prepare("SELECT exam_date FROM course_group_students WHERE group_id=:g AND student_id=:s");
-        $chk->execute([':g'=>$group_id, ':s'=>$student_id]);
-        $row = $chk->fetch(PDO::FETCH_ASSOC);
-        if (!$row) throw new RuntimeException('Ky student nuk i përket këtij grupi.');
-
-        if ($value === '' || $value === null) {
-          $st = $pdo->prepare("UPDATE course_group_students SET final_score=NULL WHERE group_id=:g AND student_id=:s");
-          $st->execute([':g'=>$group_id, ':s'=>$student_id]);
-          echo json_encode(['ok'=>true,'display'=>'—']); exit;
-        }
-
-        $val = str_replace(',', '.', trim((string)$value));
-        if (!is_numeric($val)) throw new RuntimeException('Nota duhet të jetë numër.');
-        $num = (float)$val;
-        if ($num < 0 || $num > 100) throw new RuntimeException('Nota duhet në intervalin 0–100.');
-
-        if (empty($row['exam_date'])) throw new RuntimeException('S’lejohet nota pa caktuar datën e testit për studentin.');
-        if (!empty($G['end_date']) && $row['exam_date'] < $G['end_date']) {
-          throw new RuntimeException('Data e testit e studentit është para datës së mbarimit të grupit. Përditëso datat.');
-        }
-
-        $st = $pdo->prepare("UPDATE course_group_students SET final_score=:v WHERE group_id=:g AND student_id=:s");
-        $st->execute([':v'=>$num, ':g'=>$group_id, ':s'=>$student_id]);
-
-        $disp = rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
-        echo json_encode(['ok'=>true,'display'=>$disp]); exit;
       }
 
       default:
@@ -263,8 +251,8 @@ try {
     $exam = $data['exam_date'] ?? null;
 
     if ($exam === '' || $exam === null) {
-      if ($row['final_score'] !== null) {
-        throw new RuntimeException('S’mund të hiqet data e testit kur nota ekziston. Hiqe notën fillimisht.');
+      if (score_blocks_exam_clear($pdo, $group_id, $student_id, $row['final_score'])) {
+        throw new RuntimeException(QTA_EXAM_KEEPS_SCORES);
       }
       $st = $pdo->prepare("UPDATE course_group_students SET exam_date=NULL WHERE group_id=:g AND student_id=:s");
       $st->execute([':g'=>$group_id, ':s'=>$student_id]);
@@ -279,40 +267,6 @@ try {
     $st = $pdo->prepare("UPDATE course_group_students SET exam_date=:d WHERE group_id=:g AND student_id=:s");
     $st->execute([':d'=>$iso, ':g'=>$group_id, ':s'=>$student_id]);
     echo json_encode(['ok'=>true,'display'=>fmt_dMY($iso)]); exit;
-  }
-
-  /* === NOTA PER-STUDENT === */
-  if ($action === 'update_final_score') {
-    if ($student_id <= 0) throw new RuntimeException('ID studenti e pavlefshme.');
-
-    $chk = $pdo->prepare("SELECT exam_date FROM course_group_students WHERE group_id=:g AND student_id=:s");
-    $chk->execute([':g'=>$group_id, ':s'=>$student_id]);
-    $row = $chk->fetch(PDO::FETCH_ASSOC);
-    if (!$row) throw new RuntimeException('Ky student nuk i përket këtij grupi.');
-
-    $score = $data['final_score'] ?? null;
-
-    if ($score === '' || $score === null) {
-      $st = $pdo->prepare("UPDATE course_group_students SET final_score=NULL WHERE group_id=:g AND student_id=:s");
-      $st->execute([':g'=>$group_id, ':s'=>$student_id]);
-      echo json_encode(['ok'=>true,'display'=>'—']); exit;
-    }
-
-    $val = str_replace(',', '.', trim((string)$score));
-    if (!is_numeric($val)) throw new RuntimeException('Nota duhet të jetë numër.');
-    $num = (float)$val;
-    if ($num < 0 || $num > 100) throw new RuntimeException('Nota duhet në intervalin 0–100.');
-
-    if (empty($row['exam_date'])) throw new RuntimeException('S’lejohet nota pa caktuar datën e testit për studentin.');
-    if (!empty($G['end_date']) && $row['exam_date'] < $G['end_date']) {
-      throw new RuntimeException('Data e testit e studentit është para datës së mbarimit të grupit. Përditëso datat.');
-    }
-
-    $st = $pdo->prepare("UPDATE course_group_students SET final_score=:v WHERE group_id=:g AND student_id=:s");
-    $st->execute([':v'=>$num, ':g'=>$group_id, ':s'=>$student_id]);
-
-    $disp = rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
-    echo json_encode(['ok'=>true,'display'=>$disp]); exit;
   }
 
   echo json_encode(['ok'=>false,'error'=>'Veprim i panjohur.']);
