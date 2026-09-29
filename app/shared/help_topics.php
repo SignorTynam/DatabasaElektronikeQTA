@@ -260,6 +260,25 @@ return [
     ],
   ],
 
+  'calendar' => [
+    'title' => 'Kalendari',
+    'roles' => $staff,
+    'intro' => 'Kalendari tregon kur fillon dhe kur mbaron çdo grup i Regjistrit të kurseve profesionale. Çdo grup ka rreshtin e vet: vija shkon nga dita e parë te dita e fundit e mësimit, të dyja të përfshira.',
+    'steps' => [
+      ['Zgjidh muajin', 'Shigjetat kalojnë te muaji i kaluar ose te tjetri; "Sot" të kthen te muaji i sotëm. Kliko emrin e muajit për të zgjedhur një datë tjetër në kalendar.'],
+      ['Lexo grupet', 'Fjala dhe ngjyra tregojnë gjendjen: "Nis …", "Në mësim", "Pret mbylljen", "I mbyllur". Vija vertikale shënon sot; të dielat janë më të zbehta.'],
+      ['Filtro', 'Çipat tregojnë sa grupe ka në çdo gjendje dhe shfaqin vetëm ato. "Filtra" zgjedh kursin. "Regjistri i vjetër" shfaq edhe grupet që nuk janë konvertuar ende; ato kanë vijë me ndërprerje.'],
+      ['Hap një grup', 'Kliko rreshtin: del një dritare me datat, kursantët dhe modulet e temat e grupit. Prej aty hap grupin, kursin ose kartelën e një kursanti.'],
+    ],
+    'tips' => [
+      'Datat nuk ndryshohen këtu. Orari ndryshohet te faqja e grupit, që e rillogarit dhe e kontrollon.',
+      'Modulet dhe temat në dritare janë kopja e grupit: ndryshimet e mëvonshme të kursit nuk i prekin.',
+      'Në telefon kalendari hapet si listë; mund ta ndërrosh te "Kalendar" ose "Listë".',
+      'Me tastierë: shigjetat lart e poshtë lëvizin nga një grup te tjetri, Page Up dhe Page Down ndërrojnë muajin, Enter hap grupin.',
+      'Adresa e faqes mban muajin, filtrat dhe grupin e hapur: mund ta ruash ose t\'ia dërgosh një kolegu.',
+    ],
+  ],
+
   /* --------------------------------------------------------- Administrimi */
   'agencies' => [
     'title' => 'Agjencitë',

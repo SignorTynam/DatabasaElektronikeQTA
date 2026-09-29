@@ -216,6 +216,22 @@ Courses and scheduled groups (see `docs/domain/COURSES-AND-SCHEDULES.md`):
   end blocks the change;
 - agencies and trainees cannot open `course.php`, `lesson_groups.php`, `lesson_group.php`.
 
+Group calendar (`calendar.php`, see `docs/domain/COURSES-AND-SCHEDULES.md` §16):
+
+- only administrators and editors open the page or get data from `calendar_data.php` (401/403
+  otherwise, also for a group's details); the menu item exists only for them;
+- a group from 01.10 to 20.10 covers 20.10 too; a one-day group shows on its day; a group from
+  December into January shows in both months;
+- calculated and converted (historical dates) groups both appear; legacy groups only with the
+  "Regjistri i vjetër" chip, dashed, without course content;
+- the state words match the register ("Nis …", "Në mësim", "Pret mbylljen", "I mbyllur");
+- the dialog shows the group's frozen modules and topics even after the course was edited, and
+  links to the group, the course and each trainee's card;
+- keyboard: one tab stop for the rows, ↑/↓, Page Up/Down, Enter opens, Esc closes and focus
+  returns; Back closes the dialog, Forward reopens it; `?group=N` opens it directly;
+- 320 px uses the list without sideways page scroll; light and dark; the list of groups
+  (`?from&to`) contains no names, AMZË or personal numbers.
+
 ## 16. Visual review
 
 Take screenshots at minimum:

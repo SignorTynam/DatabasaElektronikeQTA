@@ -1083,15 +1083,6 @@ uasort($groups, function ($A, $B) { return ($A['min_amze'] <=> $B['min_amze']); 
 /* Pikët sipas moduleve: modulet e kursit të çdo grupi dhe pikët e secilit kursant (4 query për gjithë listën). */
 $resultsProgress = $groups ? qta_results_progress($pdo, array_keys($groups)) : [];
 
-/* Gjendja e grupit me fjalë */
-$groupStatus = static function (array $h) use ($today): string {
-  if ((int)$h['is_completed'] === 1) return qta_status('I mbyllur', 'success', 'bi-lock-fill');
-  $start = (string)$h['start_date']; $end = (string)$h['end_date'];
-  if ($start > $today) return qta_status('Nis ' . qta_when_label($start), 'info', 'bi-calendar-event');
-  if ($end >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
-  return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
-};
-
 /* Shënimi në krye të dritares së grupit: i hapur / i mbyllur, me veprimin përkatës.
    E njëjta përmbajtje ndërtohet edhe në JS (paintGroupState). */
 $groupNotice = static function (int $gid, bool $completed) use ($EDIT_MODE): string {
@@ -1244,7 +1235,7 @@ $LF = [
                   <span class="cell-sub<?= $nScored < $nStud ? ' text-warning' : '' ?>" data-scored-label="<?= (int)$gid ?>"><?= h($scoredLabel($nScored, $nStud)) ?></span>
                 <?php endif; ?>
               </td>
-              <td data-group-status="<?= (int)$gid ?>"><?= $groupStatus($h0) ?></td>
+              <td data-group-status="<?= (int)$gid ?>"><?= qta_group_status($h0, $today) ?></td>
               <td class="nowrap">
                 <div class="form-check form-switch mb-0">
                   <input class="form-check-input toggle-completed" type="checkbox" role="switch" id="gDone_<?= (int)$gid ?>"
@@ -1309,7 +1300,7 @@ $LF = [
             <div class="modal-meta">
               <span><i class="bi bi-calendar-range" aria-hidden="true"></i><span data-group-dates="<?= $gid ?>"><?= h(qta_date($h0['start_date'])) ?> – <?= h(qta_date($h0['end_date'])) ?></span></span>
               <span><i class="bi bi-people" aria-hidden="true"></i><?= $nStud ?>/10 kursantë</span>
-              <span data-group-status="<?= $gid ?>"><?= $groupStatus($h0) ?></span>
+              <span data-group-status="<?= $gid ?>"><?= qta_group_status($h0, $today) ?></span>
             </div>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>

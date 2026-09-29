@@ -61,9 +61,11 @@ if (!function_exists('qta_json_out')) {
 
   /**
    * Gabimet e domenit → përgjigje JSON e qartë. Gabimet e papritura regjistrohen
-   * dhe përdoruesi merr një mesazh të thjeshtë (pa detaje teknike).
+   * dhe përdoruesi merr një mesazh të thjeshtë (pa detaje teknike). $unexpected
+   * zëvendëson fillimin e atij mesazhi te pikat që vetëm lexojnë (p.sh. "Kalendari
+   * nuk u ngarkua"); referenca shtohet gjithnjë.
    */
-  function qta_json_fail(Throwable $e): void
+  function qta_json_fail(Throwable $e, ?string $unexpected = null): void
   {
     if ($e instanceof QtaConfirmNeeded) {
       qta_json_out(['ok' => false, 'confirm' => ['title' => $e->title, 'message' => $e->getMessage(), 'confirm' => $e->confirmLabel]], 409);
@@ -82,6 +84,7 @@ if (!function_exists('qta_json_out')) {
     }
     $ref = bin2hex(random_bytes(4));
     error_log('[QTA ' . $ref . '] ' . get_class($e) . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-    qta_json_out(['ok' => false, 'error' => 'Ndryshimi nuk u ruajt për shkak të një gabimi të papritur. Asgjë nuk ndryshoi. Provo sërish; nëse përsëritet, njofto administratorin (referenca ' . $ref . ').'], 500);
+    $lead = $unexpected ?? 'Ndryshimi nuk u ruajt për shkak të një gabimi të papritur. Asgjë nuk ndryshoi.';
+    qta_json_out(['ok' => false, 'error' => $lead . ' Provo sërish; nëse përsëritet, njofto administratorin (referenca ' . $ref . ').'], 500);
   }
 }

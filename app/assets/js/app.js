@@ -1222,7 +1222,7 @@
 
     function contextType() {
       var page = (window.location.pathname.split('/').pop() || '').toLowerCase();
-      if (/^groups|^lesson_group/.test(page)) return 'group';
+      if (/^groups|^lesson_group|^calendar/.test(page)) return 'group';
       if (page === 'courses.php' || page === 'course.php') return 'course';
       if (page === 'agencies.php') return 'agency';
       if (page === 'users.php' || page === 'editors.php') return 'user';

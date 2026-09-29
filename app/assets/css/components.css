@@ -1687,7 +1687,8 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   /* Çipat në një rresht që rrëshqet anash: lista nis më lart. */
   .lf-chips { flex-wrap: nowrap; margin-inline: calc(var(--sp-4) * -1); padding: 0 var(--sp-4) .125rem; overflow-x: auto; scrollbar-width: none; }
   .lf-chips::-webkit-scrollbar { display: none; }
-  .lf-chip-set { flex-wrap: nowrap; }
+  /* Grupi i çipave nuk ngushtohet: përndryshe çipat e tij dalin sipër filtrave pas tij. */
+  .lf-chip-set { flex: none; flex-wrap: nowrap; }
   .lf-chips .chip { flex: none; }
 }
 
@@ -3652,4 +3653,439 @@ body:has(.cv-bar:not([hidden])) .back-top { display: none; }
 .rs-open-sub { display: block; color: var(--text-muted); font-size: var(--fs-2xs); white-space: nowrap; }
 @media print {
   .rs-open { color: inherit; }
+}
+
+/* ============================================ 34. Kalendari i grupeve */
+/* calendar.php: kur fillon dhe kur mbaron çdo grup i Regjistrit të kurseve profesionale,
+   muaj pas muaji. Vizatohet nga calendar.js me të dhënat e app/shared/group_calendar.php.
+     .cal-toolbar  "Sot" ‹ › · muaji (hap kalendarin e datave) · Kalendar | Listë · Filtra
+     .cal-chips    gjendjet me numra (janë edhe legjenda e ngjyrave) · regjistri i vjetër · kursi
+     .cal-timeline një rresht për grup, ditët e muajit si kolona; vija nga dita e parë te
+                   dita e fundit, të dyja të përfshira; të dielat më të zbehta, java e re me
+                   vijë, sot me vijë vertikale; teksti i vijës del vetëm kur nxë (@container)
+     .cal-list     të njëjtat grupe si listë; parazgjedhje nën 768px
+     .calg-*       dritarja e një grupi (.modal-record): gjendja sot, faktet, kursantët,
+                   modulet dhe temat e kopjes së grupit
+   Gjendja nuk thuhet kurrë vetëm me ngjyrë: çdo vijë ka ikonën, çdo rresht fjalën. */
+.cal { position: relative; }
+.cal-toolbar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.cal-nav { display: flex; align-items: center; gap: var(--sp-1); }
+.cal-title { margin: 0; font-family: var(--font-sans); font-size: var(--fs-xl); font-weight: var(--fw-bold); line-height: var(--lh-tight); }
+.cal-period {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: var(--control-h);
+  padding: 0 .625rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.cal-period:hover { background: var(--surface-hover); }
+.cal-period:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cal-period > .bi { color: var(--text-muted); font-size: .55em; }
+.cal-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
+/* I njëjti kontroll i segmentuar, në lartësinë e butonave të shiritit. */
+.cal-tools .segmented { padding: .15rem; }
+.cal-tools .segmented > button { min-height: calc(var(--control-h) - .3rem - 2px); padding: 0 .75rem; }
+@media (pointer: coarse) {
+  .cal-tools .segmented > button { min-height: var(--touch-min); }
+}
+@media (max-width: 575.98px) {
+  /* Në telefon pamja dhe "Filtra" zënë rreshtin e vet, nga e majta. */
+  .cal-tools { width: 100%; margin-left: 0; }
+  .cal-tools .segmented { display: flex; flex: 1 1 auto; }
+  .cal-tools .segmented > button { flex: 1 1 0; justify-content: center; }
+}
+/* Po lexohet muaji: një vijë e hollë nën shirit; kalendari i mëparshëm mbetet. */
+.cal-progress {
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--sp-2) * -1);
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease);
+}
+.cal-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: 2px;
+  background: var(--action);
+}
+.cal.is-busy .cal-progress { opacity: 1; }
+.cal.is-busy .cal-progress::before { animation: qta-progress 900ms var(--ease) infinite; }
+
+.cal-chips { margin-bottom: var(--sp-4); }
+/* Toni i gjendjes (i njëjtë me qta_status): --tone për tekstin dhe kufirin, --tone-soft për mbushjen. */
+.cal { --tone: var(--text-muted); --tone-soft: var(--surface-sunken); }
+.cal .tone-accent  { --tone: var(--accent-text); --tone-soft: var(--accent-soft); }
+.cal .tone-info    { --tone: var(--info);        --tone-soft: var(--info-soft); }
+.cal .tone-warning { --tone: var(--warning);     --tone-soft: var(--warning-soft); }
+.cal .tone-success { --tone: var(--success);     --tone-soft: var(--success-soft); }
+/* Kufiri i vijës dhe i shenjës së legjendës: ≥ 3:1 ndaj sipërfaqes, në të dy temat. */
+.cal-swatch {
+  display: inline-block;
+  flex: none;
+  width: .75rem;
+  height: .75rem;
+  border: 1px solid color-mix(in srgb, var(--tone) 65%, var(--tone-soft));
+  border-radius: 3px;
+  background: var(--tone-soft);
+}
+.cal-legacy-chip { border-style: dashed; }
+.cal-legacy-chip[aria-pressed="true"] { border-style: solid; }
+
+.cal-body { position: relative; min-height: 10rem; transition: opacity var(--dur-2) var(--ease); }
+.cal-body.is-stale { opacity: .55; }
+.cal-body.is-fresh { animation: qta-fade-in var(--dur-2) var(--ease); }
+/* Skeleti del vetëm nëse kalendari vonon: pa vezullim kur vizatohet menjëherë. */
+.cal-skeleton { display: grid; gap: var(--sp-3); animation: cal-appear var(--dur-2) var(--ease) 200ms both; }
+.cal-skeleton .skeleton { height: 2.75rem; }
+@keyframes cal-appear { from { opacity: 0; } to { opacity: 1; } }
+
+/* ----- Pamja "Kalendar": rreshtat e grupeve mbi ditët e muajit */
+.cal-scroll { min-width: 0; }
+.cal-timeline {
+  --cal-label-w: clamp(10.5rem, 24%, 17rem);
+  container: cal-timeline / inline-size;
+  position: relative;
+  overflow: clip;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+/* Koka e ditëve mbetet sipër ndërsa faqja lëviz poshtë. */
+.cal-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: var(--cal-label-w) minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.cal-corner {
+  display: flex;
+  align-items: flex-end;
+  padding: .5rem .75rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+.cal-scale,
+.cal-cols,
+.cal-track { display: grid; grid-template-columns: repeat(var(--cal-days), minmax(0, 1fr)); }
+.cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .15rem;
+  min-width: 0;
+  padding: .375rem 0 .3rem;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.cal-wd { font-weight: var(--fw-semibold); }
+.cal-dn {
+  display: grid;
+  place-items: center;
+  width: min(1.5rem, 100%);
+  aspect-ratio: 1;
+  border-radius: var(--r-full);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+.cal-day.is-sun .cal-dn { color: var(--text-muted); font-weight: var(--fw-regular); }
+.cal-day.is-week { box-shadow: inset 1px 0 0 var(--border); }
+.cal-day.is-today .cal-wd { color: var(--accent-text); }
+.cal-day.is-today .cal-dn { background: var(--action); color: var(--action-text); font-weight: var(--fw-bold); }
+@container cal-timeline (max-width: 56rem) {
+  .cal-wd { display: none; }
+  .cal-dn { font-size: var(--fs-2xs); letter-spacing: -.02em; }
+}
+
+.cal-grid { position: relative; }
+/* Kolonat e ditëve pas rreshtave: të dielat (pa mësim) më të zbehta, java e re me vijë. */
+.cal-cols {
+  position: absolute;
+  inset: 0 0 0 var(--cal-label-w);
+  pointer-events: none;
+}
+.cal-col.is-sun { background: var(--surface-sunken); }
+.cal-col.is-week { box-shadow: inset 1px 0 0 var(--border); }
+.cal-col.is-today { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); }
+.cal-rows { position: relative; margin: 0; padding: 0; list-style: none; }
+/* Sot: një vijë mbi rreshtat, në mes të ditës — grupet që e presin janë në mësim sot. */
+.cal-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--cal-label-w) + (100% - var(--cal-label-w)) * (var(--cal-t) - .5) / var(--cal-days) - 1px);
+  z-index: 1;
+  width: 2px;
+  background: var(--action);
+  pointer-events: none;
+}
+.cal-row + .cal-row { border-top: 1px solid var(--border); }
+.cal-event {
+  display: grid;
+  grid-template-columns: var(--cal-label-w) minmax(0, 1fr);
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cal-event:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cal-label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .125rem;
+  min-width: 0;
+  padding: .375rem .75rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  transition: background-color var(--dur-1) var(--ease);
+}
+.cal-event:hover .cal-label { background: var(--surface-hover); }
+.cal-course {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 .5rem;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
+}
+.cal-state { display: inline-flex; align-items: center; gap: .25rem; color: var(--tone); font-weight: var(--fw-semibold); }
+.cal-track { position: relative; align-items: center; padding: .5rem 0; }
+.cal-bar {
+  container: cal-bar / inline-size;
+  grid-row: 1;
+  grid-column: var(--cal-s) / var(--cal-e);
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  min-width: 0;
+  height: 1.625rem;
+  margin: 0 2px;
+  padding: 0 .4rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tone) 65%, var(--tone-soft));
+  border-radius: var(--r-sm);
+  background: var(--tone-soft);
+  color: var(--tone);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color var(--dur-1) var(--ease);
+}
+.cal-event:hover .cal-bar { border-color: var(--tone); }
+/* Grupi nisi para muajit / vazhdon pas tij: skaji është i hapur dhe ka një shigjetë. */
+.cal-bar.is-before { margin-left: 0; border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.cal-bar.is-after { margin-right: 0; border-right-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+/* Grup i regjistrit të vjetër (kur shfaqet): pa ngjyrë mbushjeje, me vijë me ndërprerje. */
+.cal-bar.is-legacy { border-style: dashed; background: var(--surface); }
+.cal-bar-icon { flex: none; font-size: .95em; }
+.cal-cut { flex: none; font-size: .8em; }
+.cal-bar-text { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cal-bar-dates { display: none; }
+@container cal-bar (min-width: 5.5rem) {
+  .cal-bar-text { display: inline; }
+}
+@container cal-bar (min-width: 14rem) {
+  .cal-bar-dates { display: inline; }
+}
+@container cal-bar (max-width: 1.5rem) {
+  .cal-bar-icon { display: none; }
+}
+
+/* ----- Pamja "Listë" */
+.cal-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  list-style: none;
+}
+.cal-list > li + li { border-top: 1px solid var(--border); }
+.cal-item {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.cal-item:hover { background: var(--surface-hover); }
+.cal-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cal-item-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: .35rem 0;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  line-height: 1.1;
+}
+.cal-item-date b { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.cal-item-date span { color: var(--text-muted); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
+.cal-item.is-legacy .cal-item-date { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.cal-item-main { min-width: 0; }
+.cal-item-title { display: block; font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.cal-item-meta { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
+
+@media (max-width: 767.98px) {
+  /* Kalendari (kur zgjidhet) rrëshqet anash; emrat e grupeve mbeten në vend. */
+  .cal-scroll { overflow-x: auto; overscroll-behavior-x: contain; border-radius: var(--r-lg); }
+  .cal-timeline { --cal-label-w: 9.5rem; min-width: calc(9.5rem + var(--cal-days) * 1.75rem); }
+  .cal-head { position: relative; }
+  .cal-corner,
+  .cal-label { position: sticky; left: 0; z-index: 2; }
+}
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .cal-head { top: var(--topbar-h); }
+}
+@media (max-width: 479.98px) {
+  .cal-item { grid-template-columns: 3rem minmax(0, 1fr); padding-inline: var(--sp-3); }
+  .cal-item > .status { grid-column: 2; justify-self: start; }
+}
+
+/* ----- Dritarja e grupit */
+.cal-modal .modal-body { min-height: 18rem; }
+.calg-head { min-width: 0; }
+.calg-note { margin-bottom: var(--sp-5); }
+.calg-facts { margin-bottom: var(--sp-6); }
+.calg-loading { display: grid; gap: var(--sp-3); }
+.calg-loading .skeleton { height: 1.25rem; }
+.calg-loading .skeleton.is-short { width: 60%; }
+.calg-loading .skeleton.is-title { width: 30%; height: 1.1rem; margin-top: var(--sp-4); }
+.calg-loading .skeleton.is-block { height: 4.5rem; }
+.calg-muted { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.calg-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 0 var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.calg-people > li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: .45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.calg-people .person-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calg-source { margin: 0 0 var(--sp-3); color: var(--text-muted); font-size: var(--fs-sm); }
+.calg-source b { color: var(--text); }
+.calg-modules {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  list-style: none;
+}
+.calg-modules > li + li { border-top: 1px solid var(--border); }
+.calg-module > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  padding: .5rem var(--sp-4);
+  list-style: none;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.calg-module > summary::-webkit-details-marker { display: none; }
+.calg-module > summary::marker { content: ""; }
+.calg-module > summary:hover { background: var(--surface-hover); }
+.calg-module > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.calg-mod-pos {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.calg-mod-main { flex: 1 1 auto; min-width: 0; }
+.calg-mod-title { display: block; font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.calg-mod-meta { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
+.calg-mod-chev { flex: none; color: var(--text-muted); transition: transform var(--dur-2) var(--ease); }
+.calg-module[open] > summary .calg-mod-chev { transform: rotate(180deg); }
+.calg-topics {
+  margin: 0;
+  padding: 0 0 var(--sp-2);
+  list-style: none;
+  animation: qta-fade-in var(--dur-2) var(--ease);
+}
+.calg-topics > li {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+  gap: var(--sp-3);
+  padding: .3rem var(--sp-4);
+  font-size: var(--fs-sm);
+}
+.calg-topic-num { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: center; }
+.calg-topic-title { min-width: 0; overflow-wrap: anywhere; }
+.calg-topic-hours { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 575.98px) {
+  .calg-module > summary,
+  .calg-topics > li { padding-inline: var(--sp-3); }
 }

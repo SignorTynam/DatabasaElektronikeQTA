@@ -228,12 +228,6 @@ foreach ($pdo->query("SELECT course_id, COUNT(*) AS n FROM student_course_plans 
 $openAdd = $EDIT_MODE && isset($_GET['add']);
 $addHref = 'courses.php?' . http_build_query(['edit' => '1', 'add' => '1']);
 $today   = date('Y-m-d');
-$groupState = static function (array $g) use ($today): string {
-    if ((int)$g['is_completed'] === 1) return qta_status('I mbyllur', 'success', 'bi-lock-fill');
-    if ((string)$g['start_date'] > $today) return qta_status('Nis ' . qta_when_label((string)$g['start_date']), 'info', 'bi-calendar-event');
-    if ((string)$g['end_date'] >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
-    return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
-};
 $groupHref = static fn(array $g): string => ($g['model'] ?? 'legacy') === 'scheduled'
     ? 'lesson_group.php?id=' . (int)$g['id']
     : 'groups.php?group=' . (int)$g['id'];
@@ -424,7 +418,7 @@ require __DIR__ . '/../shared/app_head.php';
                     </td>
                     <td class="nowrap"><?= h(qta_date($g['start_date'])) ?> – <?= h(qta_date($g['end_date'])) ?></td>
                     <td class="nowrap num-col"><?= (int)$g['members'] ?><span class="text-subtle">/10</span></td>
-                    <td><?= $groupState($g) ?></td>
+                    <td><?= qta_group_status($g, $today) ?></td>
                     <?php if ($EDIT_MODE): ?>
                       <td class="col-actions">
                         <?php if (!$isScheduled): ?>

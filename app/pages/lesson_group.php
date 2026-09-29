@@ -106,13 +106,6 @@ $pageScripts = ($g && $fixedMode) ? [qta_asset('app/assets/js/day-plan.js')] : [
 $pageScripts[] = qta_asset('app/assets/js/lesson-group.js');
 $pageScripts[] = qta_asset('app/assets/js/group-results.js');
 require __DIR__ . '/../shared/app_head.php';
-
-$statusHtml = static function (array $g) use ($today): string {
-  if ((int)$g['is_completed'] === 1) return qta_status('I mbyllur', 'success', 'bi-lock-fill');
-  if ((string)$g['start_date'] > $today) return qta_status('Nis ' . qta_when_label((string)$g['start_date']), 'info', 'bi-calendar-event');
-  if ((string)$g['end_date'] >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
-  return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
-};
 ?>
 
 <main class="app-main" id="main" tabindex="-1">
@@ -139,7 +132,7 @@ $statusHtml = static function (array $g) use ($today): string {
           <span><?= h(qta_hours_label((int)$totalHours)) ?>, <?= (int)$g['daily_hours'] ?> në ditë</span>
         <?php endif; ?>
         <span><?= count($members) ?>/10 kursantë</span>
-        <?= $statusHtml($g) ?>
+        <?= qta_group_status($g, $today) ?>
         <?php if ($fixedMode): ?>
           <?= qta_status('Konvertuar nga regjistri i vjetër', 'neutral', 'bi-arrow-left-right') ?>
         <?php endif; ?>

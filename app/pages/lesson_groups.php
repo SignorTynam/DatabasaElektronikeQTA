@@ -159,12 +159,6 @@ $pageTitle = 'Regjistri i kurseve profesionale';
 $pageScripts = [qta_asset('app/assets/js/lesson-groups.js')];
 require __DIR__ . '/../shared/app_head.php';
 
-$groupStatus = static function (array $g) use ($today): string {
-  if ((int)$g['is_completed'] === 1) return qta_status('I mbyllur', 'success', 'bi-lock-fill');
-  if ((string)$g['start_date'] > $today) return qta_status('Nis ' . qta_when_label((string)$g['start_date']), 'info', 'bi-calendar-event');
-  if ((string)$g['end_date'] >= $today) return qta_status('Në mësim', 'accent', 'bi-easel');
-  return qta_status('Pret mbylljen', 'warning', 'bi-hourglass-split');
-};
 $scoredLabel = static function (int $scored, int $total): string {
   if ($scored === 0) return 'ende pa pikë';
   return $scored === $total ? 'të gjithë me pikë' : $scored . ' me pikë';
@@ -274,7 +268,7 @@ $LF = [
                   <?php if ($n > 0): ?><span class="cell-sub<?= (int)$g['scored'] < $n ? ' text-warning' : '' ?>"><?= h($scoredLabel((int)$g['scored'], $n)) ?></span><?php endif; ?>
                 </td>
                 <td>
-                  <?= $groupStatus($g) ?>
+                  <?= qta_group_status($g, $today) ?>
                   <?php if ($tl): ?>
                     <span class="cell-sub">Sot: <?= h((string)$tl['first']['module_title']) ?> · <?= h((string)$tl['first']['topic_title']) ?></span>
                   <?php endif; ?>

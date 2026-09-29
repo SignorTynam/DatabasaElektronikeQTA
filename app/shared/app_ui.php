@@ -73,6 +73,7 @@ if (!function_exists('qta_app_active_key')) {
       'group_conversion.php'        => 'register_groups',
       'lesson_groups.php'           => 'lesson_groups',
       'lesson_group.php'            => 'lesson_groups',
+      'calendar.php'                => 'calendar',
       'course.php'                  => 'courses',
       'courses.php'                 => 'courses',
       'logs.php'                    => 'logs',
@@ -107,11 +108,13 @@ if (!function_exists('qta_app_menu')) {
       ],
     ];
 
-    /* Kurset profesionale: regjistri me orar dhe ai i vjetër (pa orar). */
+    /* Kurset profesionale: regjistri me orar, kalendari i tij (kur fillon dhe mbaron çdo
+       grup) dhe regjistri i vjetër (pa orar). */
     $training = [
       'label' => 'Kurset profesionale',
       'children' => [
         ['key' => 'lesson_groups',   'label' => 'Regjistri i kurseve profesionale',          'href' => 'lesson_groups.php', 'icon' => 'bi-calendar-week'],
+        ['key' => 'calendar',        'label' => 'Kalendari',                                 'href' => 'calendar.php',      'icon' => 'bi-calendar3-range'],
         ['key' => 'register_groups', 'label' => 'Regjistri i vjetër i kurseve profesionale', 'href' => 'groups.php',        'icon' => 'bi-archive'],
       ],
     ];

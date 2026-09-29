@@ -2,7 +2,8 @@
 
 Status: **implemented** on branch `revamp/super-portal` (26.09.2026); conversion of legacy
 groups (§14) and the 8-hour daily limit on branch `feature/legacy-conversion` (28.09.2026);
-points per module (§15) on 28.09.2026.
+points per module (§15) on 28.09.2026; the group calendar "Kalendari" (§16, read-only, no
+migration) on 29.09.2026.
 Migrations: `db/migrations/2026-09-26-kurset-modulet-temat-orari.sql`, then
 `db/migrations/2026-09-28-konvertimi-i-grupeve.sql`, then
 `db/migrations/2026-09-28-piket-sipas-moduleve.sql` (see `db/migrations/README.md`).
@@ -32,6 +33,7 @@ and the policies chosen where the product had a choice.
 | **Plani i ditëve** | Every date from start to end of a converted group with its hours (0 = no lesson). The source of its schedule. | `group_fixed_days` |
 | **Konvertimi i grupeve** | Moving a legacy group, in place, into "Regjistri i kurseve profesionale" (`group_conversions.php`, `group_conversion.php`). | `legacy_conversion_drafts`, `group_conversions` |
 | **Grup i konvertuar** | A scheduled group that came from the legacy register. Badge "Konvertuar nga regjistri i vjetër". | `group_conversions.status = 'completed'` |
+| **Kalendari** | When every group of "Regjistri i kurseve profesionale" starts and ends, month by month, with a read-only overview of each group (§16). | no storage of its own: a projection of the tables above |
 | ~~Regjistri i plotë~~ | Removed in phase 14 (`register.php`, `register_inline_update.php`, `register_export.php`). Registrations are listed in "Të gjithë kursantët" (`students.php`, with each trainee's group); exam dates and points are edited in the group itself. | no data removed |
 
 Hours are always whole teaching hours ("orë mësimore").
@@ -245,6 +247,10 @@ entered per module** (§15): the final result is calculated and is no longer typ
   that save nothing (previews, the conversion proposal, "Rishpërndaj automatikisht", reading the
   points of a group) do not need the edit mode; saving a draft, refreshing it, converting,
   correcting a converted group and saving points do.
+- `calendar.php` and its read-only JSON endpoint `calendar_data.php` (§16) follow the same
+  boundary: Administrator and Editor only, session and role read from the database on every
+  request; the endpoint answers only GET and writes nothing, so it needs neither the CSRF token
+  nor the edit mode.
 - Agencies and trainees get no new access: they are redirected away from the new pages and
   keep their existing views (group dates, exams, points), which now say "Kurs".
 - Assigning trainees to a group and choosing their course (the former JSON writes of
@@ -296,6 +302,9 @@ migration test needs the right to create and drop databases (only `qta_migtest_*
 | `tests/unit/results_test.php` | §15 without a database: reading points (comma or point, 0 and 100, empty ≠ 0, range, two decimals, formats), labels and database format, the average only when complete (the worked example 85/90/75/80/90 → 84; 80/90/70 → 80 and 80/100/70 → 83,33), half-up rounding in integers, earlier points and courses without modules |
 | `tests/integration/results_test.php` | §15 through the services, the database and HTTP: the sheet in 4 queries (no N+1), saving only changed cells with the result calculated by the server and logged, someone else's change (`stale`, nothing saved), one invalid cell stops everything, module of another course, trainee outside the group, no exam date, closed group and earlier points need confirmation, earlier points kept and restored, database rules outside the application (manual result, exam date, module outside the copy, CHECK, identity), removing a trainee deletes and logs the scores, a module deleted from the catalogue stays in a scheduled group, legacy groups follow the course (new module → incomplete, module with scores cannot be deleted, course cannot change, splitting a group moves the scores), certificate data, and the endpoint (POST, session, role, token, edit mode, 409, 400 `invalid` / `stale`) |
 | `tests/integration/migration_results_test.php` | the points migration on fresh databases: clean database, earlier groups with points (no row and no history event changes), run twice, the conversion migration missing (stops, changes nothing), the rules after migration |
+| `tests/unit/calendar_test.php` | §16 without a database: group states on their boundaries (starts today, ends today, one-day group, ended yesterday, closed wins) and their words, the month from the address (leap February, December, invalid values), the accepted interval (order, 62 days, ISO only, impossible dates, arrays), inclusive days across month, year, leap day and clock changes, a group as an event (stored dates, links per register, no personal fields) |
+| `tests/integration/calendar_test.php` | §16 on stored data: a group appears in every interval that touches one of its days and in no other, one-day groups, a group from December into January, states for a given day, PHP state = SQL state for every group of the database, calculated and fixed-range groups, trainee count without personal data, legacy groups counted and shown only on request, the frozen copy after the course is renamed, module dates from the stored schedule, the day note, a missing group, the nearest groups of an empty month, 2 queries for any interval and at most 5 for a group (no N+1) |
+| `tests/integration/calendar_http_test.php` | §16 over HTTP: the page only for administrator and editor (trainee, agency and anonymous redirected), "Kalendari" active in the menu and absent for trainees and agencies, the first month in the page, `?group=` opens the group's month; the endpoint: 401 without a session, 403 for trainees and agencies (also for a group's details), POST refused (405, `Allow: GET`), `no-store` and `nosniff`, invalid intervals (400 `bad_range`), a missing group (404), legacy groups only with `legacy=1`, no names, AMZË or personal numbers in the list, the details with names, AMZË, links and the frozen topics, and a clean server log |
 
 ## 12. Known limitations
 
@@ -686,3 +695,140 @@ queries in the caller. `qta_results_sheet()` gives the same for a whole group.
 | Styles | `app/assets/css/components.css` §33 (`.modal-sheet`, `.rs-*`) |
 | History labels | `app/shared/activity_log.php` |
 | Help | `app/shared/help_topics.php` (`groups`, `lesson_group`) |
+
+## 16. The group calendar ("Kalendari")
+
+`calendar.php` ("Kurset profesionale → Kalendari", between the two registers) shows when every
+group of "Regjistri i kurseve profesionale" starts and ends, month by month, and opens a
+read-only overview of any group. It writes nothing and has **no table of its own**: it is a
+projection of the domain above. No migration was needed.
+
+### 16.1 Source of truth
+
+| Shown | Read from |
+|---|---|
+| Duration: a bar from the first to the last day | `course_groups.start_date` / `end_date`, both lesson days, both included |
+| State | `qta_group_state()` / `qta_group_state_meta()` (`themeli.php`): the same rule and words as the registers — "Nis …", "Në mësim", "Pret mbylljen", "I mbyllur". `qta_group_state_sql()` is the same rule in SQL for the chips of the lists; a test checks that both agree for every group |
+| Lesson days, course hours, hours per day, schedule kind | `group_schedules` (`teaching_days`, `course_hours`, `daily_hours`, `schedule_mode`) |
+| Modules and topics | the group's frozen copy `group_schedule_topics` (`qta_lg_topics()`), never the course as it is now (§5) |
+| When each module is taught, today's lesson | the stored schedule `group_schedule_days` / `_slots` (`qta_lg_days()`, `qta_sched_annotate()`, `qta_sched_module_windows()`) |
+| Trainees | `course_group_students` |
+
+Nothing is recalculated: the schedule engine is not called, and dates, states, durations and
+sentences come from the server with "today" of the server. The browser only lays them out, with
+date-only arithmetic in UTC.
+
+### 16.2 Which groups
+
+- Every group of "Regjistri i kurseve profesionale" (`model = 'scheduled'` with its schedule
+  row), **calculated** or **fixed_range** (converted, with historical dates) — the same set as
+  `lesson_groups.php`.
+- **Legacy groups** are hidden by default but counted: the chip "Regjistri i vjetër N" appears
+  only when the month has some, and shows them (`?legacy=1`) with a dashed outline. Their
+  overview has the dates, the state and the trainees, **no course content** (they have no frozen
+  copy, and today's course would misrepresent what was taught), a link to the legacy register and
+  "Përgatit konvertimin". A link `calendar.php?group=N` to a legacy group turns the filter on.
+  Reason: the calendar organises the current register; during the transition, legacy groups that
+  are still running are real teaching load and must not disappear silently. Once converted
+  (§14) they appear as ordinary groups with their historical dates.
+
+### 16.3 Inclusive dates
+
+A group from 01.10 to 20.10 lasts 20 days, 20.10 included (`qta_calendar_days()` = end − start
++ 1, date-only, unaffected by clock changes). The server selects groups by inclusive overlap,
+`start_date <= :to AND end_date >= :from`, so a group appears in every interval that touches one
+of its days. The timeline ends a bar at the grid line after its last day
+(`grid-column: start / end + 1`): the only exclusive end, in the presentation layer; stored dates
+never change.
+
+### 16.4 Read-only
+
+There is no drag, resize or date editing. A schedule changes only on the group page, through
+`qta_lg_change()` (recalculation, revision check, historical locks, confirmations, history).
+
+### 16.5 Views and controls
+
+| View | Use |
+|---|---|
+| **Kalendar** (default from 768 px) | One row per group, sorted by start; the days of the month as columns; Sundays shaded (no lessons), a line at each new week, a vertical line for today. The bar has the state's icon and, when it fits (container queries), "20 ditë" or "01.10.2026 – 20.10.2026 · 20 ditë"; a group that starts before or ends after the month has an open edge with a chevron |
+| **Listë** (default below 768 px) | The same groups in order of start: start date, course, "Grupi #N · dates · days · trainees", state |
+
+Why not a month grid: on the current data up to 83 groups run at the same time (16 on average);
+lanes in a month grid would hide most of them behind "+N". The timeline gives every group its own
+readable row. No week view: groups have no times of day.
+
+Controls: "Sot", ‹ ›, and the month title, which opens the shared date dialog (`date-picker.js`)
+to jump to any date's month. State chips (one at a time, with the month's counts after the course
+filter) are also the colour legend; "Filtra" holds the course. Empty month: "Nuk ka grupe në këtë
+periudhë." with buttons to the nearest month before and after that has groups, the hidden legacy
+groups if any, and the register. Filtered empty: "Asnjë grup nuk përputhet me filtrat." with
+"Hiq filtrat".
+
+Keyboard: one tab stop for the rows; ↑/↓ move between groups, Home/End to the first and last,
+Page Up/Page Down change the month (focus stays on the same group when it continues), Enter or
+Space opens the overview, Esc closes it and focus returns to the group. Month changes and filter
+results are announced.
+
+### 16.6 The overview dialog
+
+`.modal-record`, large, scrollable, full screen below 768 px. It opens at once with its header
+filled from the month's data (course, "Grupi #N · code", state, dates, duration), then loads the
+details (`?group=N`) behind a skeleton; a failure keeps the header and offers "Provo sërish" (or
+"Hyr sërish" when the session ended).
+
+1. Today's note, with the sentences of the group page: "Sot, dita 5 nga 17 · 5 orë — Excel: …",
+   "Sot nuk ka mësim …", "Mësimi nis nesër, …", "Mësimi mbaroi …"; none for a closed group.
+2. Facts: lesson days; course hours with hours per day (or "data historike"); how the schedule is
+   made (calculated from the start, or converted on a date by a person).
+3. Trainees ("7/10"): name and AMZË, each name linking to `student_card.php?sid=N`; no personal
+   numbers or other personal data.
+4. Course content: "3 module · 10 tema · 40 orë", the source ("Kopja e grupit: modulet dhe temat
+   siç ishin më …"), then one disclosure per module (position, title, hours, number of topics,
+   the dates when it is taught) with its topics in order and their hours; "Hap të gjitha".
+5. Actions: "Hap kursin" (quiet), "Mbyll", **"Hap grupin"** (primary). Nothing is edited here.
+
+### 16.7 Loading, address and history
+
+The page carries the first month's groups (no second request). Other months come from the
+endpoint; the previous rows stay visible, faded only after 160 ms, with a thin line under the
+toolbar; a newer request aborts the older one and late answers are ignored.
+
+The address follows the state: `?month=2026-10&view=list&status=active&course_id=5&legacy=1&group=12`
+(defaults omitted). Month, view and filters add a history step; opening a group adds `?group=N`,
+so Back closes the dialog and Forward reopens it. A direct link opens the group's month and its
+dialog; closing it replaces the address instead of leaving the page.
+
+### 16.8 Endpoint `calendar_data.php`
+
+| Request | Answer |
+|---|---|
+| `GET ?from=2026-10-01&to=2026-10-31[&legacy=1]` | `{ok, from, to, today, legacy, legacy_hidden, events, nearest}`. An event: `id, course_id, course, code, start, end, days, members` (a count), `legacy, status {key, label, tone, icon}, href, course_href` — no names, AMZË or personal data. `nearest {prev, next}` only when the interval is empty |
+| `GET ?group=12` | `{ok, group}`: the header data, `members` (id, name, AMZË, card link), `facts`, `note`, `curriculum` (null for legacy groups), `conversion_href` for legacy groups |
+
+- Administrator and Editor only (`qta_json_require_staff()`: 401 without a session, 403 for other
+  roles); only GET (405 with `Allow: GET`); the session is released after the check. It writes
+  nothing, so no CSRF token and no edit mode, like `search_advanced.php`.
+- The interval must be two ISO dates, start ≤ end, at most 62 days (`qta_calendar_range()`,
+  400 `bad_range`); no other filter reaches SQL, and every value is a bound parameter. A missing
+  group answers 404 `not_found`. `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`.
+- Queries: the groups with their trainee count in one aggregate query plus one count of the hidden
+  legacy groups (a third only for an empty month); the details in 5 queries, whatever the number
+  of trainees, modules and topics.
+- Indexes: the existing `idx_cg_model_start (model, start_date)` serves the query. On 20 000
+  synthetic groups (about 400 overlapping one month) a month answers in about 80 ms; an index
+  `(model, end_date)` would halve that at such a scale and was **not** added for today's data
+  (151 groups). Revisit with `EXPLAIN` if the register grows by two orders of magnitude.
+
+### 16.9 Code map
+
+| Concern | Code |
+|---|---|
+| Read model: month, interval, events, details, today's note | `app/shared/group_calendar.php` |
+| Group state in PHP (also used by `lesson_groups.php`, `lesson_group.php`, `courses.php`, `groups.php`) | `app/shared/themeli.php` (`qta_group_state()`, `qta_group_state_meta()`, `qta_group_status()`) |
+| JSON endpoint | `app/actions/calendar_data.php` |
+| Page | `app/pages/calendar.php` |
+| Controller: views, filters, address, keyboard, dialog | `app/assets/js/calendar.js` |
+| Styles | `app/assets/css/components.css` §34 (`.cal-*`, `.calg-*`) |
+| Menu and active item | `app/shared/app_ui.php` |
+| Help | `app/shared/help_topics.php` (`calendar`) |
+| Tests | `tests/unit/calendar_test.php`, `tests/integration/calendar_test.php`, `tests/integration/calendar_http_test.php` (§11) |

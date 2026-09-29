@@ -258,9 +258,9 @@ if (!function_exists('qta_list_pager')) {
 
 if (!function_exists('qta_group_state_sql')) {
   /**
-   * Gjendja e një grupi si kusht SQL — e njëjta radhë si qta_status() në faqe:
-   * i mbyllur → nis më vonë → në mësim → pret mbylljen. Data e sotme vjen nga
-   * PHP-ja (si etiketat në faqe), jo nga ora e serverit të bazës.
+   * Gjendja e një grupi si kusht SQL — e njëjta rregull si qta_group_state() në PHP
+   * (themeli.php): i mbyllur → nis më vonë → në mësim → pret mbylljen. Data e sotme
+   * vjen nga PHP-ja (si etiketat në faqe), jo nga ora e serverit të bazës.
    */
   function qta_group_state_sql(string $state, string $alias = 'cg'): string
   {

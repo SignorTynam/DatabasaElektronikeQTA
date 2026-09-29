@@ -317,7 +317,31 @@ Baseline:
 
 If implementation keeps Spectral temporarily, treat it as a migration state. The final system must choose one canonical serif and load only what is used.
 
-## 20. Definition of complete component
+## 20. Group calendar
+
+"Kalendari" (`calendar.php`) shows durations, not appointments: when each group of the
+professional-course register starts and ends. Implemented in `calendar.js` + components.css §34;
+domain rules in `docs/domain/COURSES-AND-SCHEDULES.md` §16.
+
+- It is a read-only projection of existing data: no table of its own, no date editing, no drag or
+  resize. Changes happen on the group page.
+- One row per group over the days of the month (timeline). A bar covers the first and the last
+  day; both are included. Every bar carries the state's icon, every row the state's word — colour
+  is never alone. The state chips (with counts) are the legend.
+- The list view is the same data in order of start; it is the default on narrow screens, where the
+  timeline scrolls sideways with the group names fixed.
+- One toolbar: "Sot", previous/next, the month (opens the shared date dialog), the view switch,
+  "Filtra" for rare filters. No second filter bar and no decorative figures.
+- Rows are one tab stop with arrow keys; Page Up/Page Down change the month; focus is never lost
+  across months, filters or the dialog.
+- The group dialog is an overview and a place to navigate: key facts in the header, then today's
+  lesson, facts, trainees and the group's frozen course content in disclosures; one primary action
+  ("Hap grupin"). It opens at once and loads its details behind a skeleton.
+- Loading keeps the previous month visible; an error keeps the toolbar and offers "Provo sërish";
+  an empty month says so and offers the nearest month with groups.
+- The address holds the month, view, filters and the open group; Back and Forward restore them.
+
+## 21. Definition of complete component
 
 A component is complete only when:
 

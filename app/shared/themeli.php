@@ -55,6 +55,14 @@ if (!function_exists('qta_month_short')) {
   }
 }
 
+if (!function_exists('qta_month_name')) {
+  /** "tetor"; me ucfirst() për tituj: "Tetor 2026". */
+  function qta_month_name(int $month): string {
+    $names = [1 => 'janar', 'shkurt', 'mars', 'prill', 'maj', 'qershor', 'korrik', 'gusht', 'shtator', 'tetor', 'nëntor', 'dhjetor'];
+    return $names[$month] ?? '';
+  }
+}
+
 if (!function_exists('qta_weekday')) {
   function qta_weekday(int $isoDay): string {
     $names = [1 => 'e hënë', 'e martë', 'e mërkurë', 'e enjte', 'e premte', 'e shtunë', 'e diel'];
@@ -89,21 +97,24 @@ if (!function_exists('qta_ago')) {
 }
 
 if (!function_exists('qta_days_until')) {
-  /** Numri i ditëve nga sot deri në datë (negativ = në të kaluarën). */
-  function qta_days_until(?string $value): ?int {
+  /**
+   * Numri i ditëve nga sot deri në datë (negativ = në të kaluarën).
+   * $today ('Y-m-d') zëvendëson datën e sotme, p.sh. kur gjendja llogaritet për një ditë të dhënë.
+   */
+  function qta_days_until(?string $value, ?string $today = null): ?int {
     $ts = $value ? strtotime(substr($value, 0, 10)) : false;
     if (!$ts) {
       return null;
     }
-    $today = strtotime(date('Y-m-d'));
-    return (int)round(($ts - $today) / 86400);
+    $base = strtotime($today ?? date('Y-m-d'));
+    return (int)round(($ts - $base) / 86400);
   }
 }
 
 if (!function_exists('qta_when_label')) {
   /** "sot", "nesër", "pas 5 ditësh", "dje", "3 ditë më parë". */
-  function qta_when_label(?string $value): string {
-    $n = qta_days_until($value);
+  function qta_when_label(?string $value, ?string $today = null): string {
+    $n = qta_days_until($value, $today);
     if ($n === null) return '';
     if ($n === 0) return 'sot';
     if ($n === 1) return 'nesër';
@@ -223,6 +234,56 @@ if (!function_exists('qta_enrollment_status')) {
       return qta_status('Pret datën e provimit', 'warning');
     }
     return qta_status('Pa grup ende', 'neutral');
+  }
+}
+
+if (!function_exists('qta_group_state')) {
+  /**
+   * Gjendja e një grupi për stafin, në këtë radhë: i mbyllur → nis më vonë → në mësim
+   * → pret mbylljen. E njëjta në regjistrat, katalogun dhe kalendarin; qta_group_state_sql()
+   * (list_filter.php) është e njëjta rregull në SQL, për çipat e listave.
+   * Pret is_completed, start_date dhe end_date ('Y-m-d'); fillimi dhe mbarimi janë ditë
+   * mësimi, prandaj grupi është "në mësim" edhe në ditën e fundit.
+   * @return string closed | upcoming | active | awaiting_close
+   */
+  function qta_group_state(array $g, ?string $today = null): string {
+    $today = $today ?? date('Y-m-d');
+    if ((int)($g['is_completed'] ?? 0) === 1) return 'closed';
+    if ((string)$g['start_date'] > $today) return 'upcoming';
+    if ((string)$g['end_date'] >= $today) return 'active';
+    return 'awaiting_close';
+  }
+
+  /** Pamja e një gjendjeje: toni i qta_status() dhe ikona. */
+  function qta_group_state_look(string $state): array {
+    return match ($state) {
+      'closed'   => ['tone' => 'success', 'icon' => 'bi-lock-fill'],
+      'upcoming' => ['tone' => 'info', 'icon' => 'bi-calendar-event'],
+      'active'   => ['tone' => 'accent', 'icon' => 'bi-easel'],
+      default    => ['tone' => 'warning', 'icon' => 'bi-hourglass-split'],
+    };
+  }
+
+  /**
+   * Gjendja me fjalë ("Nis pas 3 ditësh", "Në mësim" …), me tonin dhe ikonën e saj.
+   * @return array{key:string,label:string,tone:string,icon:string}
+   */
+  function qta_group_state_meta(array $g, ?string $today = null): array {
+    $today = $today ?? date('Y-m-d');
+    $state = qta_group_state($g, $today);
+    $label = match ($state) {
+      'closed'   => 'I mbyllur',
+      'upcoming' => 'Nis ' . qta_when_label((string)$g['start_date'], $today),
+      'active'   => 'Në mësim',
+      default    => 'Pret mbylljen',
+    };
+    return ['key' => $state, 'label' => $label] + qta_group_state_look($state);
+  }
+
+  /** Gjendja e grupit si status (fjalë + ikonë), p.sh. në kolonën "Gjendja". */
+  function qta_group_status(array $g, ?string $today = null): string {
+    $m = qta_group_state_meta($g, $today);
+    return qta_status($m['label'], $m['tone'], $m['icon']);
   }
 }
 
