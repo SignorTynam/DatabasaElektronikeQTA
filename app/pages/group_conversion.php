@@ -317,7 +317,7 @@ $check = static function (string $key, string $kind, string $text, ?array $fix =
           <dd><?= count($members) ?><?php if ($members): ?> <span class="cv-muted">· <?= $withExam ?> me provim, <?= $withScore ?> me pikë</span><?php endif; ?></dd>
           <?php if ((int)$g['is_completed'] === 1): ?><dt>Gjendja</dt><dd>I mbyllur</dd><?php endif; ?>
         </dl>
-        <p class="cv-note"><i class="bi bi-lock" aria-hidden="true"></i>Fillimi dhe mbarimi janë data historike: nuk ndryshojnë as tani, as pas konvertimit.</p>
+        <p class="cv-note"><i class="bi bi-lock" aria-hidden="true"></i>Këto data ruhen si prejardhja historike e konvertimit dhe nuk ndryshojnë. Pas konvertimit, periudha operative mund të korrigjohet te faqja e grupit.</p>
       </section>
     </aside>
   </div>

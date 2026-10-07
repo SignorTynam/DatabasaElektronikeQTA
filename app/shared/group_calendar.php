@@ -15,7 +15,7 @@ declare(strict_types=1);
  *
  * Cilat grupe shfaqen:
  *   - grupet e "Regjistrit të kurseve profesionale" (model 'scheduled', me orar), si me
- *     orar të llogaritur ashtu edhe me data historike (të konvertuara);
+ *     orar të llogaritur ashtu edhe me periudhë të përcaktuar;
  *   - grupet e regjistrit të vjetër (model 'legacy') vetëm kur kërkohen: nuk kanë orar as
  *     kopje temash, prandaj shfaqen të dallueshme dhe pa përmbajtje kursi. Kur nuk
  *     kërkohen, numërohen, që përdoruesi të dijë se ekzistojnë.
@@ -265,9 +265,11 @@ if (!function_exists('qta_calendar_group')) {
     $out['facts'] = [
       ['label' => 'Ditë mësimi', 'value' => (string)(int)$g['teaching_days']],
       ['label' => 'Orët e kursit', 'value' => qta_hours_label((int)$g['course_hours'])
-        . ($fixed ? ' · data historike' : ' · ' . (int)$g['daily_hours'] . ' në ditë')],
+        . ($fixed ? ' · periudhë e përcaktuar' : ' · ' . (int)$g['daily_hours'] . ' në ditë')],
       ['label' => 'Orari', 'value' => $fixed
-        ? 'Konvertuar nga regjistri i vjetër më ' . qta_date((string)$g['converted_at']) . (!empty($g['converted_by_name']) ? ' nga ' . $g['converted_by_name'] : '')
+        ? (qta_lg_is_converted($g)
+          ? 'Periudhë e përcaktuar · konvertuar më ' . qta_date((string)$g['converted_at']) . (!empty($g['converted_by_name']) ? ' nga ' . $g['converted_by_name'] : '')
+          : 'Periudhë e përcaktuar nga krijimi i grupit')
         : 'Llogaritet nga data e fillimit'],
     ];
     $out['note'] = qta_calendar_group_note($g, $days, $today);

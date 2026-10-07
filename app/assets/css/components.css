@@ -3115,7 +3115,7 @@ td:hover > .dp-cell-icon,
 .form-check-input { transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), background-position var(--dur-2) var(--ease); }
 
 /* ============================================ 31. Plani i ditëve (kalendari i orëve) */
-/* Grupet me data historike: çdo datë e periudhës me orët e saj, muaj pas muaji.
+/* Grupet me periudhë të përcaktuar: çdo datë me orët e saj, muaj pas muaji.
    Vizatohet nga partials/day_plan.php dhe redaktohet me day-plan.js. Gjendja
    thuhet gjithmonë edhe me fjalë (aria-label, legjenda), jo vetëm me ngjyrë. */
 .dplan { position: relative; }

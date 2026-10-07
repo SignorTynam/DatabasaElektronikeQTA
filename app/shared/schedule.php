@@ -9,7 +9,7 @@ declare(strict_types=1);
  *
  * Dy mënyra orari, të njëjtat tema dhe e njëjta ndarje e orëve:
  *   calculated   (këtu) fillimi + orët në ditë + ditët e veçanta → mbarimi llogaritet;
- *   fixed_range  (schedule_fixed.php) fillimi dhe mbarimi janë data historike dhe
+ *   fixed_range  (schedule_fixed.php) fillimi dhe mbarimi përcaktohen shprehimisht dhe
  *                çdo datë ka orët e veta → orari ndërtohet brenda asaj periudhe.
  * Të dyja përdorin qta_sched_allocate() për ndarjen e temave dhe
  * qta_sched_verify_allocation() për kontrollin e pavarur të saj.

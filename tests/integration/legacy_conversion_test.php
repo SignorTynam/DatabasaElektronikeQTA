@@ -262,12 +262,10 @@ t_case('Konvertimi — regjistri i orëve dhe dokumentet përdorin kopjen dhe or
   t_eq(50, (int)$hours->fetchColumn(), 'procesverbali merr orët nga kopja e grupit');
 });
 
-t_case('Konvertimi — korrigjimet e mëvonshme: brenda periudhës, datat nuk lëvizin', function () use ($pdo, $cvGroup) {
+t_case('Konvertimi — korrigjimet e mëvonshme dhe ndryshimi i periudhës operative', function () use ($pdo, $cvGroup) {
   $g = qta_lg_find($pdo, $cvGroup);
   $rev = (int)$g['revision'];
   $today = '2026-09-28';
-  t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'settings', 'start_date' => '02.10.2026', 'daily_hours' => 5], ['revision' => $rev, 'today' => $today]),
-    'fillimi nuk ndryshohet', 'data historike');
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'rule', 'date' => '03.10.2026', 'mode' => 'hours', 'hours' => 4], ['revision' => $rev, 'today' => $today]),
     'ditët e veçanta nuk vlejnë', 'plani i ditëve');
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'refresh'], ['revision' => $rev, 'today' => $today]),
@@ -275,7 +273,7 @@ t_case('Konvertimi — korrigjimet e mëvonshme: brenda periudhës, datat nuk l�
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'fixed_days', 'days' => ['2026-10-03' => 4]], ['revision' => $rev, 'today' => $today]),
     'korrigjim që prish shumën refuzohet', 'Janë vendosur 4 orë më shumë');
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'fixed_days', 'days' => ['2026-10-01' => 0, '2026-10-03' => 8]], ['revision' => $rev, 'today' => $today]),
-    'fillimi pa mësim refuzohet', 'data historike e fillimit');
+    'fillimi pa mësim refuzohet', 'fillimi i periudhës');
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'fixed_days', 'days' => ['2026-10-11' => 1]], ['revision' => $rev, 'today' => $today]),
     'datë jashtë periudhës refuzohet', 'jashtë periudhës');
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, ['type' => 'fixed_days', 'days' => ['2026-10-03' => 9]], ['revision' => $rev, 'today' => $today]),
@@ -303,14 +301,36 @@ t_case('Konvertimi — korrigjimet e mëvonshme: brenda periudhës, datat nuk l�
     'grup i mbyllur: kërkon konfirmim', 'mbyllur');
   $pdo->prepare('UPDATE course_groups SET is_completed = 0 WHERE id = ?')->execute([$cvGroup]);
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $cvGroup, $change, ['revision' => $rev, 'today' => $today]), 'versioni i vjetër refuzohet', 'dikush tjetër');
+
+  /* Periudha operative ndryshon; faktet burimore të konvertimit jo. */
+  $source = $pdo->query('SELECT source_start_date, source_end_date FROM group_conversions WHERE group_id = ' . $cvGroup)->fetch(PDO::FETCH_ASSOC);
+  $currentRev = (int)qta_lg_find($pdo, $cvGroup)['revision'];
+  $range = qta_lg_change($pdo, $cvGroup,
+    ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '11.10.2026'],
+    ['revision' => $currentRev, 'today' => $today]);
+  $g = qta_lg_find($pdo, $cvGroup);
+  t_eq(['2026-09-30', '2026-10-11'], [$g['start_date'], $g['end_date']], 'datat operative ndryshojnë');
+  t_eq($source, $pdo->query('SELECT source_start_date, source_end_date FROM group_conversions WHERE group_id = ' . $cvGroup)->fetch(PDO::FETCH_ASSOC),
+    'datat burimore të konvertimit mbeten të pandryshuara');
+  t_eq(true, qta_lg_is_converted($g), 'prejardhja e konvertimit mbetet');
+  t_eq(50, array_sum(array_column(qta_lg_days($pdo, $cvGroup), 'hours')), 'pas rindërtimit mbeten 50 orë');
+  t_ok(cv_count($pdo, "SELECT COUNT(*) FROM audit_events WHERE table_name = 'course_groups' AND action = 'UPDATE' AND row_pk LIKE ?", ['%' . $cvGroup . '%']) >= 1,
+    'historiku: datat operative shënohen');
 });
 
-t_case('Konvertimi — rregullat e bazës: lloji dhe datat historike', function () use ($pdo, $cvGroup, $cvCourse, $cvAmze) {
+t_case('Konvertimi — rregullat e bazës: lloji dhe prejardhja historike', function () use ($pdo, $cvGroup, $cvCourse, $cvAmze) {
   $other = cv_legacy_group($pdo, $cvCourse, '2026-11-02', '2026-11-12', [$cvAmze + 50]);
   t_throws(PDOException::class, fn() => $pdo->exec("UPDATE course_groups SET model = 'scheduled' WHERE id = " . $other), 'legacy → scheduled pa konvertim refuzohet', 'nuk mund të ndryshohet');
   t_throws(PDOException::class, fn() => $pdo->exec("UPDATE course_groups SET model = 'legacy' WHERE id = " . $cvGroup), 'scheduled → legacy refuzohet', 'nuk mund të ndryshohet');
-  t_throws(PDOException::class, fn() => $pdo->exec("UPDATE course_groups SET end_date = '2026-10-11' WHERE id = " . $cvGroup), 'mbarimi historik nuk ndryshon', 'data historike');
-  t_throws(PDOException::class, fn() => $pdo->exec("UPDATE course_groups SET start_date = '2026-09-30' WHERE id = " . $cvGroup), 'fillimi historik nuk ndryshon', 'data historike');
+  $pdo->beginTransaction();
+  try {
+    $pdo->exec("UPDATE course_groups SET start_date = '2026-09-29', end_date = '2026-10-12' WHERE id = " . $cvGroup);
+    t_ok(true, 'baza lejon korrigjimin e datave operative të fixed_range');
+  } finally {
+    $pdo->rollBack();
+  }
+  t_throws(PDOException::class, fn() => $pdo->exec("UPDATE group_conversions SET source_end_date = '2026-10-12' WHERE group_id = " . $cvGroup),
+    'mbarimi burimor i konvertimit nuk ndryshon', 'nuk ndryshon');
   t_throws(PDOException::class, fn() => $pdo->exec("UPDATE group_schedules SET schedule_mode = 'calculated', daily_hours = 5 WHERE group_id = " . $cvGroup), 'orari nuk kthehet në të llogaritur', 'nuk ndryshon');
   t_throws(PDOException::class, fn() => $pdo->exec('UPDATE group_conversions SET status = \'applying\' WHERE group_id = ' . $cvGroup), 'shënimi i konvertimit nuk ndryshon', 'nuk ndryshon');
   t_throws(PDOException::class, fn() => $pdo->exec("INSERT INTO group_day_rules (group_id, rule_date, hours) VALUES ($cvGroup, '2026-10-04', 3)"), 'ditë e veçantë te grupi i konvertuar refuzohet', 'vetëm për grupet me orar të llogaritur');

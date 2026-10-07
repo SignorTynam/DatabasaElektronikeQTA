@@ -11,7 +11,7 @@ declare(strict_types=1);
  *
  *   echo qta_render_timetable($annotatedDays, $rules, $group, $edit, $today);
  *
- * Për një grup të konvertuar (schedule_mode 'fixed_range') $rules është plani i
+ * Për një grup me periudhë të përcaktuar (schedule_mode 'fixed_range') $rules është plani i
  * ditëve (data → orë, shënim): çdo ditë ka pikërisht orët e planit, pa "ditë të
  * veçanta"; korrigjimet bëhen te kalendari i planit, jo rresht pas rreshti.
  */

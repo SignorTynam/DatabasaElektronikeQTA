@@ -160,6 +160,8 @@ t_case('QKL: PDF është një tabelë e vazhdueshme me header që përsëritet',
   t_eq(1, substr_count($html, '<table class="report">'), 'vetëm një tabelë raporti');
   t_ok(str_contains($html, '.report thead { display: table-header-group; }'), 'thead përsëritet në faqe');
   t_ok(str_contains($html, 'page-break-inside: avoid'), 'rreshti nuk ndahet mes faqeve');
+  t_ok(str_contains($html, '@page { margin: 28.35pt; } /* 10 mm print-safe margin */'), 'margjinat e printimit janë 10 mm në të katër anët');
+  t_ok(str_contains($html, 'body { margin: 10mm;'), 'Dompdf merr margjinën reale 10 mm nga trupi i dokumentit');
   t_ok(!str_contains($html, 'class="page"'), 'nuk ka faqe/chunks manuale');
   t_ok(str_contains($html, 'LN-2358-11-2016'), 'licenca është e njëjtë në PDF');
   t_ok(str_contains($html, 'Përgjegjës për Mbrojtjen'), 'teksti i kursit mbetet në dokument');

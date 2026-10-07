@@ -151,6 +151,15 @@
   function impactText(impact) {
     var n = impact.new, o = impact.old;
     var parts = [];
+    if (impact.what === 'fixed_range_settings') {
+      parts.push('Periudha bëhet ' + toDmy(n.start_date) + ' – ' + toDmy(n.end_date)
+        + '; tani është ' + toDmy(o.start_date) + ' – ' + toDmy(o.end_date) + '.');
+      parts.push(n.days + ' ditë mësimi dhe ' + n.fixed.off_days + ' ditë pa mësim.');
+      if (impact.changed_dates && impact.changed_dates.length) {
+        parts.push('Rindërtohen ' + impact.changed_dates.length + ' data; e para është ' + toDmy(impact.first_changed) + '.');
+      }
+      return parts.join(' ');
+    }
     parts.push(n.end_date === o.end_date ? 'Mbarimi mbetet ' + n.end_on + '.' : 'Do të mbarojë ' + n.end_on + '; tani mbaron më ' + toDmy(o.end_date) + '.');
     parts.push(n.days + ' ditë mësimi' + (n.last_day_hours < CFG.daily ? ', dita e fundit me ' + n.last_day_hours + ' orë' : '') + '.');
     if (impact.changed_dates && impact.changed_dates.length) {
@@ -220,6 +229,54 @@
       }).catch(function (err) {
         busy(btn, false);
         if (!err.cancelled) formError(sForm, err.message);
+      });
+    });
+  }
+
+  /* ------------------------------------------ Periudha e përcaktuar */
+  var fixedSettingsModal = document.getElementById('lgFixedSettings');
+  if (fixedSettingsModal) {
+    var fsForm = fixedSettingsModal.querySelector('form');
+    var fsChange = function () {
+      return { type: 'fixed_range_settings', start_date: fsForm.elements.start_date.value, end_date: fsForm.elements.end_date.value };
+    };
+    var fsPreview = debounce(function () {
+      var start = toIso(fsForm.elements.start_date.value);
+      var end = toIso(fsForm.elements.end_date.value);
+      if (start === CFG.start && end === CFG.end) {
+        setImpact(fsForm, '', 'Ndrysho fillimin ose mbarimin për të parë si rindërtohet orari.');
+        return;
+      }
+      if (!start || !end) {
+        setImpact(fsForm, '', 'Plotëso të dyja datat si dd.mm.vvvv.');
+        return;
+      }
+      previewChange(fsForm, fsChange());
+    }, 300);
+    fsForm.addEventListener('input', fsPreview);
+    fixedSettingsModal.addEventListener('shown.bs.modal', function () { fsForm.elements.start_date.focus(); });
+    document.addEventListener('click', function (ev) {
+      var opener = ev.target.closest ? ev.target.closest('[data-lg-fixed-settings]') : null;
+      if (!opener) return;
+      fsForm.reset();
+      formError(fsForm, '');
+      setImpact(fsForm, '', 'Ndrysho fillimin ose mbarimin për të parë si rindërtohet orari.');
+      modal(fixedSettingsModal).show(opener);
+    });
+    fsForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (!toIso(fsForm.elements.start_date.value) || !toIso(fsForm.elements.end_date.value)) {
+        formError(fsForm, 'Plotëso të dyja datat si dd.mm.vvvv.');
+        return;
+      }
+      var btn = fsForm.querySelector('button[type="submit"]');
+      formError(fsForm, '');
+      busy(btn, true);
+      run({ action: 'change', revision: CFG.revision, change: fsChange() }).then(function (json) {
+        reloadWith(json.message);
+      }).catch(function (err) {
+        busy(btn, false);
+        if (!err.cancelled) formError(fsForm, err.message);
       });
     });
   }
@@ -486,7 +543,7 @@
     });
   }
 
-  /* ------------------------------------ Plani i ditëve (grup i konvertuar) */
+  /* ----------------------------- Plani i ditëve (periudhë e përcaktuar) */
   /* Datat historike nuk lëvizin; korrigjohen vetëm orët brenda periudhës. Shiriti
      del vetëm kur ka ndryshime të paruajtura; ruajtja kalon nga e njëjta rrugë
      (run) si çdo ndryshim orari, me konfirmim për ditët e kaluara dhe grupin e mbyllur. */

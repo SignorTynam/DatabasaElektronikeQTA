@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- * day_plan.php — Plani i ditëve si kalendar mujor (grupet me data historike).
+ * day_plan.php — Plani i ditëve si kalendar mujor (periudhë e përcaktuar).
  *
  * Çdo muaj i periudhës [S, E] është një tabelë e hënë–e diel. Çdo datë e
  * periudhës tregon orët e saj (ose "—" kur s'ka mësim), fillimin dhe mbarimin
- * historik me dry, dhe të dielat me mësim si shenjë kontrolli. Datat e muajit
+ * si kufij të periudhës, dhe të dielat me mësim si shenjë kontrolli. Datat e muajit
  * jashtë periudhës shfaqen të zbehura, vetëm për orientim.
  *
  * Me $opts['editable'] tabela merr role="grid" dhe çdo datë bëhet qelizë e
@@ -27,8 +27,8 @@ if (!function_exists('qta_render_day_plan')) {
   function qta_day_plan_label(string $date, int $hours, bool $isStart, bool $isEnd, bool $manual, string $note): string
   {
     $parts = [qta_sched_day_label($date) . ': ' . ($hours > 0 ? qta_hours_label($hours) : 'pa mësim')];
-    if ($isStart) $parts[] = 'data historike e fillimit';
-    if ($isEnd) $parts[] = 'data historike e mbarimit';
+    if ($isStart) $parts[] = 'fillimi i periudhës';
+    if ($isEnd) $parts[] = 'mbarimi i periudhës';
     if ($hours > 0 && !$isStart && !$isEnd && qta_sched_is_sunday($date)) $parts[] = 'e diel me mësim, kontrolloje';
     if ($manual) $parts[] = 'ndryshuar me dorë';
     if ($note !== '') $parts[] = 'shënim: ' . $note;
@@ -107,7 +107,6 @@ if (!function_exists('qta_render_day_plan')) {
         echo '<span class="dplan-num" aria-hidden="true">' . $dn . '</span>';
         echo '<span class="dplan-val" aria-hidden="true">' . ($hours > 0 ? $hours . '<span class="dplan-unit"> orë</span>' : '—') . '</span>';
         echo '<span class="dplan-marks" aria-hidden="true">'
-          . ($isStart || $isEnd ? '<i class="bi bi-lock-fill"></i>' : '')
           . ($isSunday && $hours > 0 && !$isStart && !$isEnd ? '<i class="bi bi-exclamation-triangle-fill"></i>' : '')
           . ($note !== '' ? '<i class="bi bi-chat-left-text"></i>' : '')
           . '</span>';
@@ -125,7 +124,7 @@ if (!function_exists('qta_render_day_plan')) {
     echo '<ul class="dplan-legend" aria-label="Shenjat e kalendarit">'
       . '<li><span class="dplan-swatch is-on" aria-hidden="true"></span>Ditë mësimi, me orët</li>'
       . '<li><span class="dplan-swatch is-off" aria-hidden="true"></span>Pa mësim</li>'
-      . '<li><i class="bi bi-lock-fill" aria-hidden="true"></i>Fillimi dhe mbarimi historik</li>'
+      . '<li><i class="bi bi-calendar-range" aria-hidden="true"></i>Fillimi dhe mbarimi i periudhës</li>'
       . '<li><i class="bi bi-exclamation-triangle-fill is-warn" aria-hidden="true"></i>E diel me mësim — kontrolloje</li>'
       . ($editable ? '<li><span class="dplan-swatch is-manual" aria-hidden="true"></span>Ndryshuar me dorë</li>' : '')
       . '</ul>';

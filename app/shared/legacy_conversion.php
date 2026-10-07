@@ -663,7 +663,7 @@ if (!function_exists('qta_conv_apply')) {
    *   6. ndërton orarin nga plani i miratuar dhe e verifikon në mënyrë të pavarur;
    *   7. shënon konvertimin ('applying') — vetëm kjo e lejon bazën të ndryshojë llojin;
    *   8. kalon grupin 'legacy' → 'scheduled' (i njëjti ID, kurs dhe data);
-   *   9. krijon orarin me data historike, kopjen e temave, planin e ditëve, ditët dhe pjesët;
+   *   9. krijon orarin me periudhën burimore, kopjen e temave, planin e ditëve, ditët dhe pjesët;
    *  10. lexon sërish gjithçka dhe e verifikon, bashkë me kursantët, provimet dhe pikët;
    *  11. mbyll konvertimin ('completed') dhe heq draftin.
    *

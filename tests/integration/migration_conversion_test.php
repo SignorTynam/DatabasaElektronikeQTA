@@ -17,6 +17,7 @@ declare(strict_types=1);
 const MIG_ROOT = __DIR__ . '/../../db/';
 const MIG_0926 = MIG_ROOT . 'migrations/2026-09-26-kurset-modulet-temat-orari.sql';
 const MIG_0928 = MIG_ROOT . 'migrations/2026-09-28-konvertimi-i-grupeve.sql';
+const MIG_1007 = MIG_ROOT . 'migrations/2026-10-07-orari-me-periudhe-te-percaktuar.sql';
 const MIG_DATA_TABLES = ['courses', 'course_groups', 'course_group_students', 'students', 'group_schedule_topics',
   'group_schedule_days', 'group_schedule_slots', 'group_day_rules', 'audit_events', 'audit_event_fields'];
 
@@ -340,6 +341,59 @@ t_case('Migrimi 2026-09-28 — me grupe me orar, pastaj i ekzekutuar sërish', f
     t_eq(null, mig_run($pdo, MIG_0928)['error'], '2026-09-28 pas tij');
     t_eq($schema, mig_schema($pdo), 'e njëjta skemë si pas migrimit të parë');
     t_eq($data, mig_data($pdo, $all), 'të njëjtat të dhëna si pas migrimit të parë');
+  } finally {
+    mig_drop($db);
+  }
+});
+
+t_case('Migrimi 2026-10-07 — fixed_range i ri, datat operative dhe prejardhja', function () use ($migTag) {
+  $db = mig_name($migTag, 'fixednew');
+  try {
+    $pdo = mig_create($db);
+    t_eq(null, mig_run($pdo, MIG_0926)['error'], 'migrimi 2026-09-26');
+    t_eq(null, mig_run($pdo, MIG_0928)['error'], 'migrimi 2026-09-28');
+    t_eq(null, mig_run($pdo, MIG_1007)['error'], 'migrimi 2026-10-07');
+
+    $triggers = array_column(mig_schema($pdo)['triggers'], 'TRIGGER_NAME');
+    foreach (['trg_audit_gfd_ai', 'trg_audit_gfd_ad', 'trg_gs_requires_scheduled_bi', 'trg_cg_model_guard_bu'] as $trigger) {
+      t_ok(in_array($trigger, $triggers, true), 'trigger-i i ri: ' . $trigger);
+    }
+
+    $pdo->exec("INSERT INTO courses (code,name,hours) VALUES ('MIG-FIX','Periudhë e re',16)");
+    $course = (int)$pdo->lastInsertId();
+    $pdo->exec("INSERT INTO course_groups (course_id,start_date,end_date,model) VALUES ($course,'2026-10-01','2026-10-02','scheduled')");
+    $group = (int)$pdo->lastInsertId();
+    $pdo->exec("INSERT INTO group_schedules (group_id,schedule_mode,daily_hours,course_hours,curriculum_taken_at,teaching_days,revision,generated_at)
+                VALUES ($group,'fixed_range',NULL,16,NOW(),2,1,NOW())");
+    $pdo->exec("INSERT INTO group_fixed_days (group_id,lesson_date,hours) VALUES ($group,'2026-10-01',8),($group,'2026-10-02',8)");
+    t_eq(0, (int)mig_one($pdo, "SELECT COUNT(*) FROM group_conversions WHERE group_id = $group"), 'fixed_range i ri nuk kërkon konvertim');
+    $pdo->exec("UPDATE course_groups SET start_date='2026-09-30', end_date='2026-10-03' WHERE id=$group");
+    t_eq('2026-09-30|2026-10-03', (string)mig_one($pdo, "SELECT CONCAT(start_date,'|',end_date) FROM course_groups WHERE id=$group"),
+      'datat operative lejohen të ndryshojnë');
+    t_throws(PDOException::class, fn() => $pdo->exec("UPDATE group_schedules SET schedule_mode='calculated',daily_hours=8 WHERE group_id=$group"),
+      'mënyra e orarit mbetet e pandryshueshme', 'nuk ndryshon');
+
+    /* Një konvertim real mban datat burimore edhe kur datat operative lejohen. */
+    $pdo->exec("INSERT INTO course_groups (course_id,start_date,end_date,model) VALUES ($course,'2026-11-01','2026-11-02','legacy')");
+    $legacy = (int)$pdo->lastInsertId();
+    $pdo->exec("INSERT INTO group_conversions (group_id,source_start_date,source_end_date,course_hours,teaching_days,algorithm_version,approved_plan_hash,source_fingerprint,status,converted_at)
+                VALUES ($legacy,'2026-11-01','2026-11-02',16,2,'test',REPEAT('0',64),REPEAT('1',64),'applying',NOW())");
+    $pdo->exec("UPDATE course_groups SET model='scheduled' WHERE id=$legacy");
+    $pdo->exec("INSERT INTO group_schedules (group_id,schedule_mode,daily_hours,course_hours,curriculum_taken_at,teaching_days,revision,generated_at)
+                VALUES ($legacy,'fixed_range',NULL,16,NOW(),2,1,NOW())");
+    $pdo->exec("UPDATE group_conversions SET status='completed' WHERE group_id=$legacy");
+    t_throws(PDOException::class, fn() => $pdo->exec("UPDATE group_conversions SET source_end_date='2026-11-03' WHERE group_id=$legacy"),
+      'datat burimore mbeten të pandryshueshme', 'nuk ndryshon');
+    $pdo->exec("UPDATE course_groups SET end_date='2026-11-03' WHERE id=$legacy");
+    t_eq('2026-11-02', (string)mig_one($pdo, "SELECT source_end_date FROM group_conversions WHERE group_id=$legacy"),
+      'korrigjimi operativ nuk prek burimin');
+
+    $schema = mig_schema($pdo);
+    $data = mig_data($pdo, array_merge(MIG_DATA_TABLES, ['group_schedules', 'group_fixed_days', 'group_conversions']));
+    t_eq(null, mig_run($pdo, MIG_1007)['error'], 'ekzekutimi i dytë 2026-10-07');
+    t_eq($schema, mig_schema($pdo), 'migrimi i ri është idempotent në skemë');
+    t_eq($data, mig_data($pdo, array_merge(MIG_DATA_TABLES, ['group_schedules', 'group_fixed_days', 'group_conversions'])),
+      'migrimi i ri është idempotent në të dhëna');
   } finally {
     mig_drop($db);
   }

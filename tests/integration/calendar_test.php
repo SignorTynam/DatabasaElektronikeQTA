@@ -172,8 +172,8 @@ t_case('Kalendari: orari i llogaritur dhe ai me data historike', function () use
   t_eq(['fixed_range', false], [$fixed['mode'], $fixed['legacy']], 'grupi i konvertuar: data historike');
   $facts = static fn(array $g): array => array_column($g['facts'], 'value', 'label');
   t_eq(['3', '20 orë · 8 në ditë', 'Llogaritet nga data e fillimit'], array_values($facts($calc)), 'faktet e orarit të llogaritur');
-  t_eq('20 orë · data historike', $facts($fixed)['Orët e kursit'], 'orët e grupit me data historike');
-  t_ok(str_starts_with($facts($fixed)['Orari'], 'Konvertuar nga regjistri i vjetër më '), 'kur u konvertua');
+  t_eq('20 orë · periudhë e përcaktuar', $facts($fixed)['Orët e kursit'], 'orët e grupit me periudhë të përcaktuar');
+  t_ok(str_starts_with($facts($fixed)['Orari'], 'Periudhë e përcaktuar · konvertuar më '), 'kur u konvertua');
   $inRange = cal_event(qta_calendar_events($pdo, '2091-06-01', '2091-06-30'), $G['fixed']['id']);
   t_eq(['2091-06-01', '2091-06-05', 5, false], [$inRange['start'], $inRange['end'], $inRange['days'], $inRange['legacy']], 'grupi i konvertuar del me datat historike, si grup me orar');
 });

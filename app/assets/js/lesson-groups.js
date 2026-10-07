@@ -24,6 +24,30 @@
   var text = form.querySelector('[data-lg-preview-text]');
   var timer = null;
   var seq = 0;
+  var calculatedFields = form.querySelector('[data-lg-calculated-fields]');
+  var fixedFields = form.querySelector('[data-lg-fixed-fields]');
+  var dailyInput = form.elements.daily_hours;
+  var endInput = form.elements.end_date;
+
+  function mode() {
+    return form.querySelector('input[name="schedule_mode"]:checked').value;
+  }
+
+  function syncMode() {
+    var fixed = mode() === 'fixed_range';
+    calculatedFields.hidden = fixed;
+    fixedFields.hidden = !fixed;
+    dailyInput.required = !fixed;
+    endInput.required = fixed;
+    if (CFG.edit) {
+      dailyInput.disabled = fixed;
+      endInput.disabled = !fixed;
+    }
+    setPreview('', fixed
+      ? 'Plotëso kursin, fillimin dhe mbarimin: sistemi propozon shpërndarjen e orëve.'
+      : 'Plotëso kursin, fillimin dhe orët në ditë: këtu del kur mbaron mësimi.');
+    schedule();
+  }
 
   function setPreview(kind, message) {
     box.classList.remove('is-ok', 'is-error');
@@ -37,8 +61,13 @@
     var course = form.elements.course_id.value;
     var start = form.elements.start_date.value.trim();
     var daily = form.elements.daily_hours.value.trim();
-    if (!course || !/^\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{4}$/.test(start) || !daily) {
-      setPreview('', 'Zgjidh kursin, datën e fillimit dhe orët në ditë: këtu del kur mbaron mësimi.');
+    var end = form.elements.end_date.value.trim();
+    var scheduleMode = mode();
+    var dateOk = /^\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{4}$/;
+    if (!course || !dateOk.test(start) || (scheduleMode === 'calculated' ? !daily : !dateOk.test(end))) {
+      setPreview('', scheduleMode === 'fixed_range'
+        ? 'Plotëso kursin, fillimin dhe mbarimin: sistemi propozon shpërndarjen e orëve.'
+        : 'Plotëso kursin, fillimin dhe orët në ditë: këtu del kur mbaron mësimi.');
       return;
     }
     var mine = ++seq;
@@ -47,13 +76,23 @@
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ csrf: CFG.csrf, action: 'preview_new', course_id: course, start_date: start, daily_hours: daily })
+      body: JSON.stringify({ csrf: CFG.csrf, action: 'preview_new', course_id: course,
+        schedule_mode: scheduleMode, start_date: start, end_date: end, daily_hours: daily })
     }).then(function (r) { return r.json().catch(function () { return null; }); })
       .then(function (json) {
         if (mine !== seq) return;
         if (!json) { setPreview('error', 'Parashikimi nuk u mor. Kontrollo lidhjen; grupi mund të krijohet sërish.'); return; }
         if (!json.ok) { setPreview('error', json.error || 'Kontrollo të dhënat.'); return; }
         var s = json.summary;
+        if (json.schedule_mode === 'fixed_range') {
+          var f = s.fixed;
+          var sundayCount = f.sundays.length + f.boundary_sundays.length;
+          setPreview('ok', 'Periudha ' + s.start_label + ' – ' + s.end_label + ' · '
+            + plural(f.teaching_days, 'ditë mësimi', 'ditë mësimi') + ' · '
+            + plural(f.off_days, 'ditë pa mësim', 'ditë pa mësim')
+            + (sundayCount ? ' · ' + plural(sundayCount, 'e diel me mësim', 'të diela me mësim') + ' për kontroll' : '') + '.');
+          return;
+        }
         setPreview('ok', 'Mbaron ' + s.end_on + ' · ' + plural(s.days, 'ditë mësimi', 'ditë mësimi') + ' për ' + s.total_hours + ' orë'
           + (s.last_day_hours < parseInt(daily, 10) ? ' · dita e fundit ka ' + plural(s.last_day_hours, 'orë', 'orë') : '')
           + (s.sundays_skipped ? ' · ' + plural(s.sundays_skipped, 'e diel', 'të diela') + ' pa mësim' : '') + '.');
@@ -62,12 +101,16 @@
   }
 
   function schedule() { clearTimeout(timer); timer = setTimeout(preview, 250); }
-  ['course_id', 'start_date', 'daily_hours'].forEach(function (name) {
+  ['course_id', 'start_date', 'daily_hours', 'end_date'].forEach(function (name) {
     var el = form.elements[name];
     if (!el) return;
     el.addEventListener('input', schedule);
     el.addEventListener('change', schedule);
   });
+  form.querySelectorAll('input[name="schedule_mode"]').forEach(function (el) {
+    el.addEventListener('change', syncMode);
+  });
+  syncMode();
   var modalEl = document.getElementById('createLessonGroup');
   if (modalEl) modalEl.addEventListener('shown.bs.modal', function () {
     preview();
@@ -98,11 +141,20 @@
     var missing = [];
     if (!form.elements.course_id.value) missing.push('kursin');
     if (!form.elements.start_date.value.trim()) missing.push('datën e fillimit');
-    if (!form.elements.daily_hours.value.trim()) missing.push('orët në ditë');
+    if (mode() === 'fixed_range') {
+      if (!form.elements.end_date.value.trim()) missing.push('datën e mbarimit');
+    } else if (!form.elements.daily_hours.value.trim()) {
+      missing.push('orët në ditë');
+    }
     if (missing.length) {
       ev.preventDefault();
       toast('Plotëso ' + missing.join(', ') + '.', 'warning');
-      (form.elements.course_id.value ? (form.elements.start_date.value.trim() ? form.elements.daily_hours : form.elements.start_date) : form.elements.course_id).focus();
+      var focus = form.elements.course_id;
+      if (form.elements.course_id.value) {
+        focus = !form.elements.start_date.value.trim() ? form.elements.start_date
+          : (mode() === 'fixed_range' ? form.elements.end_date : form.elements.daily_hours);
+      }
+      focus.focus();
       return;
     }
     var nums = parseAmze(form.elements.amze_spec.value);

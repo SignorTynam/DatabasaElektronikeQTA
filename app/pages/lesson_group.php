@@ -51,9 +51,10 @@ if ($g && $g['model'] !== 'scheduled') {
 
 $today = date('Y-m-d');
 if ($g) {
-  /* Grupi i konvertuar ka datat historike dhe planin e ditëve në vend të orëve në ditë
-     dhe ditëve të veçanta; pjesa tjetër e faqes është e njëjtë. */
+  /* fixed_range ka plan të plotë ditësh në vend të orëve në ditë dhe ditëve të
+     veçanta. Prejardhja e konvertimit është një fakt tjetër, i pavarur. */
   $fixedMode = qta_lg_is_fixed($g);
+  $converted = qta_lg_is_converted($g);
   $topics = qta_lg_topics($pdo, $gid);
   $rules = $fixedMode ? qta_lg_fixed_days($pdo, $gid) : qta_lg_rules($pdo, $gid);
   $days = qta_sched_annotate($topics, qta_lg_days($pdo, $gid));
@@ -133,7 +134,7 @@ require __DIR__ . '/../shared/app_head.php';
         <?php endif; ?>
         <span><?= count($members) ?>/10 kursantë</span>
         <?= qta_group_status($g, $today) ?>
-        <?php if ($fixedMode): ?>
+        <?php if ($converted): ?>
           <?= qta_status('Konvertuar nga regjistri i vjetër', 'neutral', 'bi-arrow-left-right') ?>
         <?php endif; ?>
       </p>
@@ -163,10 +164,10 @@ require __DIR__ . '/../shared/app_head.php';
     <div class="notice has-action is-sunken mb-3">
       <i class="bi bi-journal-arrow-down" aria-hidden="true"></i>
       <span>
-        <b>Kursi është ndryshuar pas <?= $fixedMode ? 'konvertimit' : 'krijimit' ?> të grupit.</b>
+        <b>Kursi është ndryshuar pas <?= $converted ? 'konvertimit' : 'krijimit' ?> të grupit.</b>
         Ky grup ndjek modulet dhe temat siç ishin më <?= h(qta_datetime((string)$g['curriculum_taken_at'])) ?>.
         <?php if ($fixedMode): ?>
-          Ato mbeten historike për këtë grup — ndryshimet e kursit vlejnë për grupet e reja.
+          Kopja e këtij grupi nuk ndryshon — ndryshimet e kursit vlejnë për grupet e reja.
         <?php elseif ($started || $closed): ?>
           Grupi ka nisur, prandaj temat e tij nuk ndryshojnë — ndryshimet e kursit vlejnë për grupet e reja.
         <?php elseif (!$liveReady): ?>
@@ -231,9 +232,14 @@ require __DIR__ . '/../shared/app_head.php';
 
       <section class="section" aria-labelledby="lgSummaryTitle">
         <div class="section-head">
-          <h2 class="section-title" id="lgSummaryTitle">Orari në shkurt</h2>
+          <h2 class="section-title" id="lgSummaryTitle">Përmbledhja e orarit</h2>
           <?php if ($fixedMode): ?>
-            <span class="section-meta">Konvertuar nga regjistri i vjetër më <?= h(qta_datetime((string)$g['converted_at'])) ?><?= !empty($g['converted_by_name']) ? ' nga ' . h((string)$g['converted_by_name']) : '' ?></span>
+            <?php if ($converted): ?>
+              <span class="section-meta">Konvertuar më <?= h(qta_datetime((string)$g['converted_at'])) ?><?= !empty($g['converted_by_name']) ? ' nga ' . h((string)$g['converted_by_name']) : '' ?></span>
+            <?php endif; ?>
+            <?php if ($EDIT_MODE): ?>
+              <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-fixed-settings><i class="bi bi-calendar-range" aria-hidden="true"></i>Ndrysho periudhën</button>
+            <?php endif; ?>
           <?php elseif ($EDIT_MODE): ?>
             <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-settings><i class="bi bi-sliders" aria-hidden="true"></i>Ndrysho fillimin ose orët në ditë</button>
           <?php endif; ?>
@@ -242,13 +248,13 @@ require __DIR__ . '/../shared/app_head.php';
         <div class="stats">
           <div class="stat">
             <span class="stat-label">Fillon</span>
-            <span class="stat-value lg-date"><i class="bi bi-lock-fill lg-lock" aria-hidden="true"></i><?= h(qta_date((string)$g['start_date'])) ?></span>
-            <span class="stat-note"><?= h(qta_weekday(qta_sched_weekday((string)$g['start_date']))) ?> · data historike</span>
+            <span class="stat-value lg-date"><?= h(qta_date((string)$g['start_date'])) ?></span>
+            <span class="stat-note"><?= h(qta_weekday(qta_sched_weekday((string)$g['start_date']))) ?> · kufiri i periudhës</span>
           </div>
           <div class="stat">
             <span class="stat-label">Mbaron</span>
-            <span class="stat-value lg-date"><i class="bi bi-lock-fill lg-lock" aria-hidden="true"></i><?= h(qta_date((string)$g['end_date'])) ?></span>
-            <span class="stat-note"><?= h(qta_weekday(qta_sched_weekday((string)$g['end_date']))) ?> · data historike</span>
+            <span class="stat-value lg-date"><?= h(qta_date((string)$g['end_date'])) ?></span>
+            <span class="stat-note"><?= h(qta_weekday(qta_sched_weekday((string)$g['end_date']))) ?> · kufiri i periudhës</span>
           </div>
           <div class="stat">
             <span class="stat-label">Ditë mësimi</span>
@@ -261,6 +267,11 @@ require __DIR__ . '/../shared/app_head.php';
             <span class="stat-note">të shumtën <?= QTA_DAY_MAX_HOURS ?> në një ditë</span>
           </div>
         </div>
+        <?php if ($converted): ?>
+          <p class="form-text mb-0 mt-3">Prejardhja e konvertimit: periudha origjinale
+            <?= h(qta_sched_range_label((string)$g['source_start_date'], (string)$g['source_end_date'])) ?>.
+            Këto të dhëna ruhen të pandryshuara edhe kur korrigjohet periudha operative.</p>
+        <?php endif; ?>
         <?php else: ?>
         <div class="stats">
           <div class="stat">
@@ -298,9 +309,9 @@ require __DIR__ . '/../shared/app_head.php';
             </div>
           <?php endif; ?>
         </div>
-        <p class="cv-intro">Fillimi dhe mbarimi janë data historike dhe nuk ndryshojnë.
+        <p class="cv-intro">Fillimi dhe mbarimi përcaktojnë periudhën ku shpërndahen orët.
           <?= $EDIT_MODE
-            ? 'Për të korrigjuar orarin, kliko një datë ose shkruaj orët me shifra; ruaje kur plani ka sërish ' . h(qta_hours_label((int)$totalHours)) . '.'
+            ? 'Për të ndryshuar kufijtë përdor “Ndrysho periudhën”; për orët kliko një datë ose shkruaji me shifra dhe ruaj kur plani ka sërish ' . h(qta_hours_label((int)$totalHours)) . '.'
             : 'Orët e çdo date brenda periudhës; ditët pa orë nuk kanë mësim.' ?></p>
         <?= qta_render_day_plan(qta_lg_fixed_hours($rules), (string)$g['start_date'], (string)$g['end_date'], [
           'id' => 'lgPlan', 'editable' => $EDIT_MODE, 'today' => $today,
@@ -591,6 +602,53 @@ require __DIR__ . '/../shared/app_head.php';
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
         <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i>Ruaj ditën</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<?php else: ?>
+<!-- Dialog: periudha e përcaktuar -->
+<div class="modal fade" id="lgFixedSettings" tabindex="-1" aria-labelledby="lgFixedSettingsTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" data-lg-form="fixed_range_settings" novalidate>
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow mb-0">Grupi #<?= $gid ?> · <?= h((string)$g['course_name']) ?></span>
+          <h2 class="modal-title" id="lgFixedSettingsTitle"><i class="bi bi-calendar-range" aria-hidden="true"></i>Periudha e orarit</h2>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger py-2" data-form-error role="alert" hidden></div>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label" for="lgfsStart">Data e fillimit <span class="req" aria-hidden="true">*</span></label>
+            <input class="form-control" id="lgfsStart" name="start_date" type="text" inputmode="numeric" autocomplete="off"
+                   data-dmy required value="<?= h(qta_date((string)$g['start_date'])) ?>" placeholder="dd.mm.vvvv">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="lgfsEnd">Data e mbarimit <span class="req" aria-hidden="true">*</span></label>
+            <input class="form-control" id="lgfsEnd" name="end_date" type="text" inputmode="numeric" autocomplete="off"
+                   data-dmy required value="<?= h(qta_date((string)$g['end_date'])) ?>" placeholder="dd.mm.vvvv">
+          </div>
+          <div class="col-12">
+            <div class="plan-preview" data-lg-impact role="status" aria-live="polite">
+              <i class="bi bi-calendar-range" aria-hidden="true"></i>
+              <span data-lg-impact-text>Ndrysho fillimin ose mbarimin për të parë si rindërtohet orari.</span>
+            </div>
+          </div>
+        </div>
+        <p class="form-text mb-0 mt-3">Sistemi ruan vendimet e ditëve që mbeten në periudhë sa herë që është e mundur dhe rishpërndan diferencën. Orari, temat dhe plani i ditëve ruhen së bashku ose nuk ndryshojnë fare.</p>
+        <?php if ($converted): ?>
+          <p class="form-text mb-0 mt-2">Datat origjinale të konvertimit
+            <?= h(qta_sched_range_label((string)$g['source_start_date'], (string)$g['source_end_date'])) ?>
+            mbeten të pandryshuara si prejardhje.</p>
+        <?php endif; ?>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i>Ruaj dhe rindërto</button>
       </div>
     </form>
   </div>

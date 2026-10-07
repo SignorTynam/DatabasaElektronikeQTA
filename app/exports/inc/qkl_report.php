@@ -286,9 +286,10 @@ function qkl_render_pdf_html(array $rows): string
   <head>
     <meta charset="UTF-8">
     <style>
-      @page { size: A4 landscape; margin: 8mm 7mm 8mm; }
+      @page { margin: 28.35pt; } /* 10 mm print-safe margin */
       * { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; color: #111; font-family: DejaVu Sans, sans-serif; }
+      html { margin: 0; padding: 0; }
+      body { margin: 10mm; padding: 0; color: #111; font-family: DejaVu Sans, sans-serif; }
       .subject { width: 100%; margin: 0 0 3mm; border-collapse: collapse; table-layout: fixed; }
       .subject td { border: 0; padding: .45mm .8mm; font-size: 8pt; line-height: 1.2; }
       .subject td:first-child { width: 37mm; padding-left: 0; font-weight: bold; }

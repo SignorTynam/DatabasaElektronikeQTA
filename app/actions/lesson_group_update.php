@@ -7,10 +7,10 @@ declare(strict_types=1);
  * Veprimet:
  *   preview_new   parashikimi i orarit për një grup të ri (pa ruajtur)
  *   change        orari: 'settings' (fillimi, orët në ditë), 'rule' (një ditë e
- *                 veçantë) ose 'refresh' (temat e reja të kursit); për një grup të
- *                 konvertuar 'fixed_days' (orët e disa datave brenda datave
- *                 historike); me dry_run vetëm parashikon
- *   rebalance     grup i konvertuar: rishpërndan orët e planit të dërguar (pa ruajtur)
+ *                 veçantë) ose 'refresh' (temat e reja të kursit); për një orar
+ *                 fixed_range edhe 'fixed_range_settings' dhe 'fixed_days';
+ *                 me dry_run vetëm parashikon
+ *   rebalance     orar me periudhë: rishpërndan orët e planit (pa ruajtur)
  *   members       kursantët e grupit (numrat e amzës, deri në 10)
  *   delete        fshirja e grupit
  *
@@ -49,8 +49,13 @@ function lg_when(string $iso): string
 try {
   switch ($action) {
     case 'preview_new': {
-      $p = qta_lg_preview_new($pdo, $data['course_id'] ?? null, $data['start_date'] ?? null, $data['daily_hours'] ?? null);
+      $p = qta_lg_preview_new($pdo, $data['course_id'] ?? null, $data['start_date'] ?? null,
+        $data['daily_hours'] ?? null, $data['schedule_mode'] ?? 'calculated', $data['end_date'] ?? null);
       $s = $p['summary'];
+      if ($p['schedule_mode'] === 'fixed_range') {
+        qta_json_out(['ok' => true, 'schedule_mode' => 'fixed_range',
+          'summary' => $s + ['fixed' => $p['fixed_summary'], 'course_name' => $p['course']['name']]]);
+      }
       $sundays = 0;
       for ($d = $s['start_date']; $d <= $s['end_date']; $d = qta_sched_next_day($d)) {
         if (qta_sched_is_sunday($d)) $sundays++;
@@ -77,7 +82,13 @@ try {
         qta_json_out(['ok' => true, 'revision' => $r['revision'], 'impact' => $r,
           'message' => 'Korrigjimi u ruajt: ' . ($edited === 1 ? 'ndryshoi 1 ditë' : 'ndryshuan ' . $edited . ' ditë')
             . ($moved ? ($moved === 1 ? ', dhe temat u rindanë edhe në 1 ditë tjetër' : ', dhe temat u rindanë edhe në ' . $moved . ' ditë të tjera') : '')
-            . '. Datat historike mbeten ' . qta_sched_range_label($n['start_date'], $n['end_date']) . '.']);
+            . '. Periudha mbetet ' . qta_sched_range_label($n['start_date'], $n['end_date']) . '.']);
+      }
+      if ($r['what'] === 'fixed_range_settings') {
+        qta_json_out(['ok' => true, 'revision' => $r['revision'], 'impact' => $r,
+          'message' => 'Periudha dhe i gjithë orari u rindërtuan: '
+            . qta_sched_range_label($n['start_date'], $n['end_date']) . ', '
+            . qta_plural((int)$n['days'], 'ditë mësimi', 'ditë mësimi') . '.']);
       }
       $endText = $n['end_date'] === $o['end_date']
         ? 'Mbarimi mbetet ' . lg_when($n['end_date']) . '.'
@@ -94,7 +105,7 @@ try {
       /* Vetëm llogaritje: asgjë nuk ruhet, prandaj nuk kërkon "Lejo ndryshimet". */
       $g = qta_lg_require($pdo, $groupId);
       if (!qta_lg_is_fixed($g)) {
-        throw new QtaUserError('Rishpërndarja vlen për grupet me data historike. Ky grup e llogarit orarin nga orët në ditë.');
+        throw new QtaUserError('Rishpërndarja vlen për grupet me periudhë të përcaktuar. Ky grup e llogarit orarin nga orët në ditë.');
       }
       $plan = [];
       foreach ((array)($data['plan'] ?? []) as $item) {

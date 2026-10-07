@@ -2,12 +2,11 @@
 declare(strict_types=1);
 
 /**
- * schedule_fixed.php — Orari me data historike ('fixed_range'): grupet e
- * konvertuara nga "Regjistri i vjetër i kurseve profesionale".
+ * schedule_fixed.php — Orari me periudhë të përcaktuar ('fixed_range').
  *
- * Te një grup i konvertuar fillimi (S) dhe mbarimi (E) janë fakte historike: nuk
- * lëvizin kurrë. Problemi është i kundërt me orarin e llogaritur: jo "sa zgjat
- * kursi", por "si ndahen orët e kursit brenda periudhës [S, E]".
+ * Fillimi (S) dhe mbarimi (E) jepen shprehimisht. Problemi është i kundërt me
+ * orarin e llogaritur: jo "sa zgjat kursi", por "si ndahen orët e kursit brenda
+ * periudhës [S, E]". Të dy kufijtë mund të ndryshohen nga shërbimi i grupit.
  *
  * Plani i ditëve është burimi i orarit: çdo datë nga S te E ka orët e veta,
  * 0–8 (0 = pa mësim). Ruhet i plotë — asnjë datë nuk mungon, që të mos ketë
@@ -17,7 +16,7 @@ declare(strict_types=1);
  * te builder-i, qta_sched_verify_fixed_range()):
  *   S ≤ data ≤ E për çdo datë të planit, dhe çdo datë e [S, E] ka orët e veta;
  *   0 ≤ orët ≤ 8 për çdo datë; 1 ≤ orët ≤ 8 për çdo ditë mësimi;
- *   orët(S) ≥ 1 dhe orët(E) ≥ 1 — kufijtë historikë janë ditë mësimi;
+ *   orët(S) ≥ 1 dhe orët(E) ≥ 1 — kufijtë e periudhës janë ditë mësimi;
  *   Σ orët = orët e kursit (të kopjes së temave);
  *   temat ndahen në radhën e kursit me të njëjtin algoritëm si orari i
  *   llogaritur (qta_sched_allocate).
@@ -27,7 +26,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/schedule.php';
 
-/** Versioni i propozimit automatik; ruhet te çdo konvertim. */
+/** Versioni i propozimit automatik; ruhet edhe si provë e konvertimeve. */
 const QTA_FIXED_ALGORITHM_VERSION = 'fixed-range-1';
 
 /* ============================================================ Ndihmës */
@@ -124,10 +123,10 @@ if (!function_exists('qta_sched_fixed_feasibility')) {
     $out = ['ok' => false, 'code' => null, 'reason' => null, 'calendar_days' => 0, 'capacity' => 0,
             'required_days' => 0, 'eligible_days' => 0, 'sundays_needed' => 0];
     if (!qta_sched_is_iso_date($start) || !qta_sched_is_iso_date($end)) {
-      return ['code' => 'bad_dates', 'reason' => 'Grupi nuk ka datë fillimi ose mbarimi të vlefshme. Korrigjoje te "Regjistri i vjetër i kurseve profesionale".'] + $out;
+      return ['code' => 'bad_dates', 'reason' => 'Grupi nuk ka datë fillimi ose mbarimi të vlefshme. Kontrollo datat e periudhës.'] + $out;
     }
     if ($end < $start) {
-      return ['code' => 'end_before_start', 'reason' => 'Mbarimi i grupit (' . qta_sched_dmy($end) . ') është para fillimit (' . qta_sched_dmy($start) . '). Korrigjoje te "Regjistri i vjetër i kurseve profesionale".'] + $out;
+      return ['code' => 'end_before_start', 'reason' => 'Mbarimi i grupit (' . qta_sched_dmy($end) . ') është para fillimit (' . qta_sched_dmy($start) . '). Kontrollo datat e periudhës.'] + $out;
     }
     try {
       $dates = qta_sched_dates($start, $end);
@@ -146,11 +145,11 @@ if (!function_exists('qta_sched_fixed_feasibility')) {
       return ['code' => 'capacity',
               'reason' => 'Kursi ka ' . $hours . ' orë, por periudha ' . $range . ' ka vetëm ' . $n . ($n === 1 ? ' ditë' : ' ditë kalendarike')
                 . '. Me të shumtën ' . QTA_DAY_MAX_HOURS . ' orë në ditë aty zënë ' . $capacity . ' orë — '
-                . ($hours - $capacity) . ' orë më pak se kursi. Me këto data dhe këto orë grupi nuk mund të konvertohet.'] + $out;
+                . ($hours - $capacity) . ' orë më pak se kursi. Me këto data orari nuk mund të ndërtohet.'] + $out;
     }
     if ($start !== $end && $hours < 2) {
       return ['code' => 'boundaries',
-              'reason' => 'Kursi ka vetëm 1 orë, por dita e parë dhe e fundit e periudhës ' . $range . ' duhet të kenë mësim. Me këto data grupi nuk mund të konvertohet.'] + $out;
+              'reason' => 'Kursi ka vetëm 1 orë, por dita e parë dhe e fundit e periudhës ' . $range . ' duhet të kenë mësim. Me këto data orari nuk mund të ndërtohet.'] + $out;
     }
     $required = max((int)ceil($hours / QTA_DAY_MAX_HOURS), $start === $end ? 1 : 2);
     $eligible = 0;
@@ -168,7 +167,7 @@ if (!function_exists('qta_sched_fixed_issues')) {
   /**
    * Çfarë nuk shkon në një plan ditësh, me fjalë, pa hedhur gabim. E vetmja
    * listë rregullash për planin: e përdorin builder-i (hedh të parin), ndërfaqja
-   * (i tregon të gjitha) dhe konvertimi.
+   * (i tregon të gjitha), krijimi dhe konvertimi.
    *
    * @param array<string,mixed> $dayHours
    * @return array<int,array{code:string,text:string,date?:string}>
@@ -191,7 +190,7 @@ if (!function_exists('qta_sched_fixed_issues')) {
       if (!qta_sched_is_iso_date($date)) {
         $shape[] = ['code' => 'bad_date', 'text' => 'Plani ka një datë të pavlefshme. Rifresko faqen dhe provo sërish.'];
       } elseif ($date < $start || $date > $end) {
-        $shape[] = ['code' => 'outside', 'date' => $date, 'text' => 'Data ' . qta_sched_dmy($date) . ' është jashtë periudhës historike ' . $range . '.'];
+        $shape[] = ['code' => 'outside', 'date' => $date, 'text' => 'Data ' . qta_sched_dmy($date) . ' është jashtë periudhës së përcaktuar ' . $range . '.'];
       } elseif (!is_int($h) || $h < 0) {
         $shape[] = ['code' => 'bad_hours', 'date' => $date, 'text' => 'Orët e datës ' . qta_sched_dmy($date) . ' duhet të jenë një numër i plotë nga 0 deri në ' . QTA_DAY_MAX_HOURS . '.'];
       }
@@ -214,11 +213,11 @@ if (!function_exists('qta_sched_fixed_issues')) {
     }
     if ((int)$dayHours[$start] < 1) {
       $issues[] = ['code' => 'start_off', 'date' => $start,
-                   'text' => 'Dita e parë, ' . qta_sched_day_label($start) . ', duhet të ketë mësim: është data historike e fillimit të grupit.'];
+                   'text' => 'Dita e parë, ' . qta_sched_day_label($start) . ', duhet të ketë mësim: është fillimi i periudhës së grupit.'];
     }
     if ($end !== $start && (int)$dayHours[$end] < 1) {
       $issues[] = ['code' => 'end_off', 'date' => $end,
-                   'text' => 'Dita e fundit, ' . qta_sched_day_label($end) . ', duhet të ketë mësim: është data historike e mbarimit të grupit.'];
+                   'text' => 'Dita e fundit, ' . qta_sched_day_label($end) . ', duhet të ketë mësim: është mbarimi i periudhës së grupit.'];
     }
     $sum = 0;
     foreach ($dates as $d) $sum += (int)$dayHours[$d];
@@ -236,7 +235,7 @@ if (!function_exists('qta_sched_fixed_issues')) {
 
   /**
    * Përmbledhja e një plani për ndërfaqen: orët e vendosura, ditët, të dielat e
-   * përdorura dhe problemet. 'ok' = gati për konvertim nga ana e orarit.
+   * përdorura dhe problemet. 'ok' = orari është gati për ruajtje.
    *
    * @return array{planned:int,hours:int,teaching_days:int,off_days:int,sundays:string[],boundary_sundays:string[],max_day:int,issues:array,ok:bool}
    */
@@ -270,7 +269,7 @@ if (!function_exists('qta_sched_build_fixed_range')) {
    * Temat + plani i ditëve → orari. Hedh QtaUserError me problemin e parë kur
    * plani nuk i mban rregullat; përndryshe ndan temat në radhë nëpër ditët me
    * orë (qta_sched_allocate) dhe kthen të njëjtën strukturë si qta_sched_build().
-   * start_date dhe end_date janë gjithmonë datat historike S dhe E.
+   * start_date dhe end_date janë gjithmonë kufijtë S dhe E.
    *
    * @param array<int,array<string,mixed>> $topics  në radhë
    * @param array<string,int>              $dayHours çdo datë e [S, E]
@@ -304,7 +303,7 @@ if (!function_exists('qta_sched_build_fixed_range')) {
 
 if (!function_exists('qta_sched_verify_fixed_range')) {
   /**
-   * Kontroll i pavarur i një orari me data historike. Nuk i beson builder-it:
+   * Kontroll i pavarur i një orari me periudhë të përcaktuar. Nuk i beson builder-it:
    * rikontrollon ndarjen e temave (qta_sched_verify_allocation) dhe, veç saj,
    * kufijtë e palëvizshëm, periudhën, planin e plotë, ndjekjen e planit dhe
    * shumat. Kthen listën e shkeljeve (bosh = e saktë).
@@ -318,22 +317,22 @@ if (!function_exists('qta_sched_verify_fixed_range')) {
   {
     $v = qta_sched_verify_allocation($topics, $plan);
     if (!qta_sched_is_iso_date($start) || !qta_sched_is_iso_date($end) || $end < $start) {
-      $v[] = 'periudha historike është e pavlefshme: ' . $start . ' – ' . $end;
+      $v[] = 'periudha e përcaktuar është e pavlefshme: ' . $start . ' – ' . $end;
       return $v;
     }
     if (($plan['start_date'] ?? null) !== $start) {
-      $v[] = 'fillimi i orarit (' . ($plan['start_date'] ?? '—') . ') nuk është fillimi historik (' . $start . ')';
+      $v[] = 'fillimi i orarit (' . ($plan['start_date'] ?? '—') . ') nuk është fillimi i periudhës (' . $start . ')';
     }
     if (($plan['end_date'] ?? null) !== $end) {
-      $v[] = 'mbarimi i orarit (' . ($plan['end_date'] ?? '—') . ') nuk është mbarimi historik (' . $end . ')';
+      $v[] = 'mbarimi i orarit (' . ($plan['end_date'] ?? '—') . ') nuk është mbarimi i periudhës (' . $end . ')';
     }
     $days = $plan['days'] ?? [];
     if ($days) {
       if ((string)$days[0]['date'] !== $start) {
-        $v[] = 'dita e parë e mësimit (' . $days[0]['date'] . ') nuk është fillimi historik';
+        $v[] = 'dita e parë e mësimit (' . $days[0]['date'] . ') nuk është fillimi i periudhës';
       }
       if ((string)$days[count($days) - 1]['date'] !== $end) {
-        $v[] = 'dita e fundit e mësimit (' . $days[count($days) - 1]['date'] . ') nuk është mbarimi historik';
+        $v[] = 'dita e fundit e mësimit (' . $days[count($days) - 1]['date'] . ') nuk është mbarimi i periudhës';
       }
     }
 
@@ -372,7 +371,7 @@ if (!function_exists('qta_sched_verify_fixed_range')) {
       }
       $seen[$d] = true;
       if (!isset($inRange[$d])) {
-        $v[] = 'ditë mësimi jashtë periudhës historike: ' . $d;
+        $v[] = 'ditë mësimi jashtë periudhës së përcaktuar: ' . $d;
       } elseif ((int)($dayHours[$d] ?? -1) !== (int)$day['hours']) {
         $v[] = 'dita ' . $d . ' ka ' . (int)$day['hours'] . ' orë, plani ' . var_export($dayHours[$d] ?? null, true);
       }
@@ -395,13 +394,13 @@ if (!function_exists('qta_sched_verify_fixed_range')) {
 
 if (!function_exists('qta_sched_propose_fixed_range')) {
   /**
-   * Propozimi automatik i orëve brenda periudhës historike. Përcaktues: të
-   * njëjtat H, S, E japin gjithmonë të njëjtin propozim. Nuk është e vërteta
-   * historike — është një rindërtim i vlefshëm që njeriu e shqyrton.
+   * Propozimi automatik i orëve brenda periudhës së përcaktuar. Përcaktues: të
+   * njëjtat H, S, E japin gjithmonë të njëjtin propozim. Për grupet e
+   * konvertuara është rindërtim i arsyeshëm, jo pretendim për të vërtetën historike.
    *
    * 1. Ditët e nevojshme: k = ⌈H / 8⌉, të paktën 2 kur S ≠ E.
    * 2. Ditët e preferuara: e hëna–e shtuna, plus S dhe E edhe kur janë të diela
-   *    (janë data historike, prandaj lejohen).
+   *    (janë kufijtë e periudhës, prandaj lejohen).
    * 3. Kur ka të paktën k të tilla, zgjidhen k, njëtrajtësisht në gjithë periudhën
    *    dhe me S e E brenda (qta_sched_spread: round(j·(m−1)/(k−1)), gjysma lart).
    * 4. Përndryshe merren të gjitha dhe vetëm aq të diela të brendshme sa mungojnë,
@@ -487,7 +486,7 @@ if (!function_exists('qta_sched_rebalance_fixed_range')) {
     $bound = [$start => true, $end => true];
     $sundayInside = static fn(string $d): bool => !isset($bound[$d]) && qta_sched_is_sunday($d);
 
-    /* Kufijtë historikë kanë gjithmonë mësim. */
+    /* Kufijtë e periudhës kanë gjithmonë mësim. */
     foreach ($bound as $d => $_) {
       if ($plan[$d] < 1) $plan[$d] = 1;
     }

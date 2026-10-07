@@ -37,7 +37,7 @@ $tableLabels = [
   'enrollment_module_scores' => 'Pikët e një moduli',
   'group_schedules'       => 'Orari i grupit',
   'group_day_rules'       => 'Ditë e veçantë',
-  'group_fixed_days'      => 'Dita e orarit historik',
+  'group_fixed_days'      => 'Ditë e periudhës së orarit',
   'group_conversions'     => 'Konvertim nga regjistri i vjetër',
   'student_course_plans'  => 'Kurs i zgjedhur',
   'education_levels'      => 'Nivel arsimi',
@@ -56,9 +56,9 @@ $columnLabels = [
   'course_groups' => ['course_id' => 'Kursi', 'model' => 'Lloji i grupit', 'start_date' => 'Fillimi', 'end_date' => 'Mbarimi', 'is_completed' => 'Grupi i mbyllur', 'created_at' => 'Krijuar më'],
   'course_group_students' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'final_score' => 'Pikët', 'legacy_final_score' => 'Pikët e vjetra', 'exam_date' => 'Data e provimit'],
   'enrollment_module_scores' => ['group_id' => 'Grupi', 'student_id' => 'Kursanti', 'module_id' => 'Moduli', 'score' => 'Pikët e modulit'],
-  'group_schedules' => ['group_id' => 'Grupi', 'schedule_mode' => 'Lloji i orarit', 'daily_hours' => 'Orë në ditë', 'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'curriculum_taken_at' => 'Temat u kopjuan më'],
+  'group_schedules' => ['group_id' => 'Grupi', 'schedule_mode' => 'Lloji i orarit', 'daily_hours' => 'Orë në ditë', 'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'curriculum_taken_at' => 'Temat u kopjuan më', 'revision' => 'Versioni i orarit', 'generated_at' => 'Orari u rindërtua më'],
   'group_day_rules' => ['group_id' => 'Grupi', 'rule_date' => 'Data', 'hours' => 'Mësimi atë ditë', 'note' => 'Shënim'],
-  'group_fixed_days' => ['hours' => 'Orë mësimi', 'note' => 'Shënim'],
+  'group_fixed_days' => ['group_id' => 'Grupi', 'lesson_date' => 'Data', 'hours' => 'Orë mësimi', 'note' => 'Shënim'],
   'group_conversions' => ['group_id' => 'Grupi', 'source_start_date' => 'Fillimi historik', 'source_end_date' => 'Mbarimi historik',
                           'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'algorithm_version' => 'Propozimi automatik'],
   'student_course_plans'  => ['student_id' => 'Kursanti', 'course_id' => 'Kursi', 'status' => 'Gjendja', 'group_id' => 'Grupi', 'selected_by' => 'Zgjodhi'],
@@ -116,17 +116,18 @@ function qta_log_value(PDO $pdo, string $col, ?string $val, string $table = ''):
     return (int)$val === 0 ? 'Pa mësim' : ((int)$val . ' orë');
   }
   switch ($col) {
-    case 'birth_date': case 'start_date': case 'end_date': case 'exam_date': case 'rule_date':
+    case 'birth_date': case 'start_date': case 'end_date': case 'exam_date': case 'rule_date': case 'lesson_date':
       return qta_date(substr($val, 0, 10), $val);
-    case 'created_at': case 'curriculum_taken_at':
+    case 'created_at': case 'curriculum_taken_at': case 'generated_at':
       return qta_datetime($val, $val);
     case 'model':        return $val === 'scheduled' ? 'Me orar mësimi' : 'Pa orar (i mëparshëm)';
-    case 'schedule_mode': return $val === 'fixed_range' ? 'Me data historike (i konvertuar)' : 'Llogaritet nga orët në ditë';
+    case 'schedule_mode': return $val === 'fixed_range' ? 'Me periudhë të përcaktuar' : 'Llogaritet nga orët në ditë';
     case 'source_start_date': case 'source_end_date': return qta_date(substr($val, 0, 10), $val);
     case 'algorithm_version': return 'versioni ' . $val;
     case 'daily_hours':  return (int)$val . ' orë në ditë';
     case 'course_hours': return (int)$val . ' orë';
     case 'teaching_days': return (int)$val . ' ditë';
+    case 'revision': return 'versioni ' . (int)$val;
     case 'position':     return 'vendi ' . (int)$val;
     case 'module_id':    return qta_log_lookup($pdo, 'module', $val) ?? qta_log_lookup($pdo, 'module_copy', $val) ?? ('Modul #' . (int)$val);
     case 'is_completed':

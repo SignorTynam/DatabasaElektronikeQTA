@@ -69,8 +69,10 @@ t_case('Integrimi: grupet e mëparshme nuk kanë orar; çdo grup me orar ka orar
   t_ok(count($legacyIds) > 0, 'ka grupe të mëparshme në databazë');
   t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM group_schedules gs JOIN course_groups cg ON cg.id = gs.group_id WHERE cg.model = 'legacy'"), 'asnjë orar për një grup të mëparshëm');
   t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM course_groups cg WHERE cg.model = 'scheduled' AND NOT EXISTS (SELECT 1 FROM group_schedules gs WHERE gs.group_id = cg.id)"), 'çdo grup me orar ka orarin e vet');
-  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM group_schedules gs WHERE gs.schedule_mode = 'fixed_range' AND NOT EXISTS (SELECT 1 FROM group_conversions gc WHERE gc.group_id = gs.group_id AND gc.status = 'completed')"),
-    'një orar me data historike ekziston vetëm pas një konvertimi të kryer');
+  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM group_schedules WHERE schedule_mode = 'fixed_range' AND daily_hours IS NOT NULL"),
+    'orari me periudhë të përcaktuar nuk ka orë standarde në ditë');
+  t_eq(0, it_count($pdo, "SELECT COUNT(*) FROM group_conversions gc JOIN group_schedules gs ON gs.group_id = gc.group_id WHERE gc.status = 'completed' AND gs.schedule_mode <> 'fixed_range'"),
+    'çdo konvertim i kryer ruan mënyrën fixed_range');
 });
 
 t_case('Pranimi A — struktura ruhet, radha është e qartë, historiku shënohet', function () use ($pdo, $W, $tag) {
@@ -246,6 +248,59 @@ t_case('Pranimi C — grup i ri, 100 orë, 01.10.2026, 5 orë/ditë, 11.10 me 4 
   t_eq(0, it_count($pdo, 'SELECT COUNT(*) FROM (SELECT t.module_seq FROM group_schedule_topics t JOIN group_schedule_slots s ON s.group_id = t.group_id AND s.topic_seq = t.seq WHERE t.group_id = ? GROUP BY t.module_seq, t.module_hours HAVING SUM(s.hours) <> t.module_hours) x', [$gid]), 'çdo modul ka pikërisht orët e veta');
   $GLOBALS['IT_GROUP_C'] = $gid;
   $GLOBALS['IT_COURSE_C'] = $cid;
+});
+
+t_case('Grup i ri me mbarim manual — krijim, ndarje, rindërtim dhe rollback', function () use ($pdo, $W, $tag) {
+  $cid = it_course($pdo, 'FIXED-' . $tag, 'Kurs me periudhë', 20,
+    [['A', 10, $W], ['B', 10, $W]]);
+  $preview = qta_lg_preview_new($pdo, $cid, '01.10.2026', null, 'fixed_range', '06.10.2026');
+  t_eq(['fixed_range', '2026-10-01', '2026-10-06', 20],
+    [$preview['schedule_mode'], $preview['summary']['start_date'], $preview['summary']['end_date'], $preview['summary']['total_hours']],
+    'serveri propozon orarin brenda periudhës');
+
+  $res = qta_lg_create($pdo, ['course_id' => $cid, 'schedule_mode' => 'fixed_range',
+    'start_date' => '01.10.2026', 'end_date' => '06.10.2026', 'amze_spec' => '96501-96512']);
+  t_eq([2, 6, 6], [count($res['groups']), $res['groups'][0]['count'], $res['groups'][1]['count']], '12 kursantë ndahen 6 + 6');
+  [$gid, $gid2] = array_column($res['groups'], 'group_id');
+  $g = qta_lg_find($pdo, $gid);
+  t_eq(['fixed_range', null, false], [$g['schedule_mode'], $g['daily_hours'], qta_lg_is_converted($g)], 'fixed_range i ri nuk etiketohet si i konvertuar');
+  t_eq(6, count(qta_lg_fixed_days($pdo, $gid)), 'ruhet çdo datë e periudhës');
+  t_eq(20, array_sum(qta_lg_fixed_hours(qta_lg_fixed_days($pdo, $gid))), 'plani ka saktësisht orët e kursit');
+  t_eq(it_signature($pdo, $gid), it_signature($pdo, $gid2), 'grupet e ndara marrin të njëjtin orar');
+
+  $before = it_signature($pdo, $gid);
+  $fixedBefore = qta_lg_fixed_days($pdo, $gid);
+  $dry = qta_lg_change($pdo, $gid, ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '08.10.2026'],
+    ['revision' => 1, 'dry_run' => true, 'today' => '2026-09-20']);
+  t_eq('fixed_range_settings', $dry['what'], 'dry-run raporton ndryshimin e periudhës');
+  t_eq($before, it_signature($pdo, $gid), 'dry-run nuk ndryshon orarin');
+  t_eq($fixedBefore, qta_lg_fixed_days($pdo, $gid), 'dry-run nuk ndryshon planin e ditëve');
+
+  $r = qta_lg_change($pdo, $gid, ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '08.10.2026'],
+    ['revision' => 1, 'today' => '2026-09-20']);
+  $g = qta_lg_find($pdo, $gid);
+  t_eq(['2026-09-30', '2026-10-08', 2], [$g['start_date'], $g['end_date'], (int)$g['revision']], 'të dy kufijtë dhe versioni ndryshojnë');
+  $fixed = qta_lg_fixed_days($pdo, $gid);
+  t_eq([9, 20], [count($fixed), array_sum(qta_lg_fixed_hours($fixed))], 'plani rindërtohet i plotë me të njëjtin total');
+  t_eq([], qta_sched_verify_fixed_range(qta_lg_topics($pdo, $gid),
+    ['start_date' => $g['start_date'], 'end_date' => $g['end_date'], 'days' => qta_lg_days($pdo, $gid)],
+    $g['start_date'], $g['end_date'], qta_lg_fixed_hours($fixed)), 'orari i ruajtur verifikohet i pavarur');
+
+  $sig = it_signature($pdo, $gid);
+  $dates = [$g['start_date'], $g['end_date']];
+  t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid,
+    ['type' => 'fixed_range_settings', 'start_date' => '01.10.2026', 'end_date' => '02.10.2026'],
+    ['revision' => $r['revision'], 'today' => '2026-09-20']), 'periudha pa kapacitet refuzohet', 'nuk mund të ndërtohet');
+  $afterFail = qta_lg_find($pdo, $gid);
+  t_eq($dates, [$afterFail['start_date'], $afterFail['end_date']], 'pas refuzimit datat mbeten');
+  t_eq($sig, it_signature($pdo, $gid), 'pas refuzimit orari mbetet');
+
+  /* Provimi në datën e vjetër ndalon zgjatjen. */
+  $student = (int)$pdo->query("SELECT student_id FROM course_group_students WHERE group_id = $gid LIMIT 1")->fetchColumn();
+  $pdo->prepare('UPDATE course_group_students SET exam_date = ? WHERE group_id = ? AND student_id = ?')->execute(['2026-10-08', $gid, $student]);
+  t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid,
+    ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '09.10.2026'],
+    ['revision' => $r['revision'], 'today' => '2026-09-20']), 'zgjatja pas provimit refuzohet', 'datës së provimit');
 });
 
 t_case('Pranimi E — rillogaritja 5 → 4 orë, pastaj kthim i saktë', function () use ($pdo) {

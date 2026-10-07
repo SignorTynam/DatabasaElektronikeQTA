@@ -44,7 +44,9 @@ require_once __DIR__ . '/../shared/lesson_groups.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_group') {
   $form = [
     'course_id' => (string)($_POST['course_id'] ?? ''),
+    'schedule_mode' => (string)($_POST['schedule_mode'] ?? 'calculated'),
     'start_date' => (string)($_POST['start_date'] ?? ''),
+    'end_date' => (string)($_POST['end_date'] ?? ''),
     'daily_hours' => (string)($_POST['daily_hours'] ?? ''),
     'amze_spec' => (string)($_POST['amze_spec'] ?? ''),
   ];
@@ -97,6 +99,7 @@ $st = $pdo->prepare("
   SELECT cg.id, cg.course_id, cg.start_date, cg.end_date, cg.is_completed,
          c.name AS course_name, c.code AS course_code,
          gs.schedule_mode, gs.daily_hours, gs.course_hours, gs.teaching_days,
+         MAX(gc.converted_at) AS converted_at,
          COUNT(cgs.student_id) AS members,
          COALESCE(SUM(cgs.final_score IS NOT NULL), 0) AS scored,
          MIN(CAST(s.nr_amze AS UNSIGNED)) AS amze_min,
@@ -104,6 +107,7 @@ $st = $pdo->prepare("
   FROM course_groups cg
   JOIN courses c ON c.id = cg.course_id
   JOIN group_schedules gs ON gs.group_id = cg.id
+  LEFT JOIN group_conversions gc ON gc.group_id = cg.id AND gc.status = 'completed'
   LEFT JOIN course_group_students cgs ON cgs.group_id = cg.id
   LEFT JOIN students s ON s.id = cgs.student_id
   WHERE " . implode(' AND ', $w) . "
@@ -256,8 +260,8 @@ $LF = [
                 <td class="nowrap"><?= h(qta_date((string)$g['end_date'])) ?></td>
                 <td class="nowrap" data-sort-value="<?= (int)$g['course_hours'] ?>">
                   <?php if ($g['schedule_mode'] === 'fixed_range'): ?>
-                    <?= h(qta_hours_label((int)$g['course_hours'])) ?> · data historike
-                    <span class="cell-sub"><?= h(qta_plural((int)$g['teaching_days'], 'ditë mësimi', 'ditë mësimi')) ?> · konvertuar</span>
+                    <?= h(qta_hours_label((int)$g['course_hours'])) ?> · periudhë e përcaktuar
+                    <span class="cell-sub"><?= h(qta_plural((int)$g['teaching_days'], 'ditë mësimi', 'ditë mësimi')) ?><?= $g['converted_at'] ? ' · konvertuar' : '' ?></span>
                   <?php else: ?>
                     <?= h(qta_hours_label((int)$g['course_hours'])) ?> · <?= (int)$g['daily_hours'] ?> në ditë
                     <span class="cell-sub"><?= h(qta_plural((int)$g['teaching_days'], 'ditë mësimi', 'ditë mësimi')) ?></span>
@@ -285,7 +289,7 @@ $LF = [
     <?php else: ?>
       <?= qta_empty('Ende pa grupe me orar',
             $readyCount > 0
-              ? 'Krijo grupin e parë: zgjidh kursin, datën e fillimit dhe orët në ditë — orari ndërtohet vetë.'
+              ? 'Krijo grupin e parë: zgjidh kursin dhe mënyrën e mbarimit — orari ndërtohet vetë.'
               : 'Së pari plotëso një kurs me module dhe tema te "Katalogu i kurseve"; pastaj krijo grupin.',
             'bi-calendar-week',
             $readyCount > 0 ? '<a class="btn btn-primary" href="' . h($createHref) . '">Krijo grup</a>' : '<a class="btn btn-primary" href="courses.php">Te katalogu i kurseve</a>') ?>
@@ -330,22 +334,44 @@ $LF = [
             </select>
             <div class="form-text" id="lgcCourseHelp">Kurset "jo gati" nuk kanë ende module dhe tema me orët e plota. <a href="courses.php">Plotësoji te Katalogu i kurseve</a>.</div>
           </div>
+          <?php $createMode = (string)($createForm['schedule_mode'] ?? 'calculated'); ?>
+          <div class="col-12">
+            <fieldset>
+              <legend class="form-label">Si përcaktohet mbarimi? <span class="req" aria-hidden="true">*</span></legend>
+              <div class="form-check">
+                <input class="form-check-input" id="lgcCalculated" name="schedule_mode" type="radio" value="calculated"
+                       <?= $createMode === 'fixed_range' ? '' : 'checked' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                <label class="form-check-label" for="lgcCalculated">Llogarite automatikisht nga orët në ditë</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" id="lgcFixed" name="schedule_mode" type="radio" value="fixed_range"
+                       <?= $createMode === 'fixed_range' ? 'checked' : '' ?> <?= $EDIT_MODE ? '' : 'disabled' ?>>
+                <label class="form-check-label" for="lgcFixed">Përcakto datën e mbarimit</label>
+              </div>
+            </fieldset>
+          </div>
           <div class="col-sm-6">
             <label class="form-label" for="lgcStart">Data e fillimit <span class="req" aria-hidden="true">*</span></label>
             <input class="form-control" id="lgcStart" name="start_date" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.vvvv"
                    required data-dmy value="<?= h((string)($createForm['start_date'] ?? '')) ?>" aria-describedby="lgcStartHelp" <?= $EDIT_MODE ? '' : 'disabled' ?>>
-            <div class="form-text" id="lgcStartHelp">Dita e parë e mësimit, p.sh. 01.10.2026. Nuk mund të jetë e diel.</div>
+            <div class="form-text" id="lgcStartHelp">Dita e parë e mësimit, p.sh. 01.10.2026.</div>
           </div>
-          <div class="col-sm-6">
+          <div class="col-sm-6" data-lg-calculated-fields <?= $createMode === 'fixed_range' ? 'hidden' : '' ?>>
             <label class="form-label" for="lgcDaily">Orë mësimi në ditë <span class="req" aria-hidden="true">*</span></label>
             <input class="form-control" id="lgcDaily" name="daily_hours" type="number" min="1" max="<?= QTA_DAY_MAX_HOURS ?>" step="1" inputmode="numeric"
                    placeholder="p.sh. 5" required value="<?= h((string)($createForm['daily_hours'] ?? '')) ?>" aria-describedby="lgcDailyHelp" <?= $EDIT_MODE ? '' : 'disabled' ?>>
             <div class="form-text" id="lgcDailyHelp">Nga e hëna në të shtunë. Ditë me orë të tjera i shton më pas te grupi.</div>
           </div>
+          <div class="col-sm-6" data-lg-fixed-fields <?= $createMode === 'fixed_range' ? '' : 'hidden' ?>>
+            <label class="form-label" for="lgcEnd">Data e mbarimit <span class="req" aria-hidden="true">*</span></label>
+            <input class="form-control" id="lgcEnd" name="end_date" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.vvvv"
+                   data-dmy value="<?= h((string)($createForm['end_date'] ?? '')) ?>" aria-describedby="lgcEndHelp" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+            <div class="form-text" id="lgcEndHelp">Sistemi propozon shpërndarjen e orëve brenda kësaj periudhe.</div>
+          </div>
           <div class="col-12">
             <div class="plan-preview" data-lg-preview role="status" aria-live="polite">
               <i class="bi bi-calendar-range" aria-hidden="true"></i>
-              <span data-lg-preview-text>Zgjidh kursin, datën e fillimit dhe orët në ditë: këtu del kur mbaron mësimi.</span>
+              <span data-lg-preview-text>Plotëso kursin dhe datat e orarit për të parë parashikimin.</span>
             </div>
           </div>
           <div class="col-12">

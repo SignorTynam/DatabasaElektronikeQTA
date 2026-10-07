@@ -1,14 +1,14 @@
 /* ============================================================================
-   day-plan.js — Kalendari i orëve të një periudhe historike (QtaDayPlan).
+   day-plan.js — Kalendari i orëve të një periudhe të përcaktuar (QtaDayPlan).
 
-   E përdorin konvertimi i një grupi (group-conversion.js) dhe korrigjimi i një
-   grupi të konvertuar (lesson-group.js). Kalendari vizatohet nga serveri
+   E përdorin konvertimi i një grupi (group-conversion.js) dhe grupet me
+   periudhë të përcaktuar (lesson-group.js). Kalendari vizatohet nga serveri
    (partials/day_plan.php); këtu shtohet redaktimi:
      - klik ose Enter/Hapësirë mbi një datë hap zgjedhjen e orëve;
      - shifrat 0–8 i vendosin orët menjëherë, Delete e bën "pa mësim";
      - shigjetat lëvizin ditë/javë, PageUp/PageDown muaj, Home/End te fillimi
        dhe mbarimi i periudhës; Ctrl+Z zhbën ndryshimin e fundit;
-     - fillimi dhe mbarimi historik nuk bëhen "pa mësim";
+     - fillimi dhe mbarimi i periudhës nuk bëhen "pa mësim";
      - pas çdo ndryshimi: ngjarja 'dplan:change' me datat që ndryshuan.
 
    Rregullat e plota i kontrollon vetëm serveri; këtu është ndihma e çastit.
@@ -76,8 +76,8 @@
     function label(d) {
       var s = state[d];
       var parts = [dayLabel(d) + ': ' + hoursLabel(s.h)];
-      if (d === start) parts.push('data historike e fillimit');
-      if (d === end) parts.push('data historike e mbarimit');
+      if (d === start) parts.push('fillimi i periudhës');
+      if (d === end) parts.push('mbarimi i periudhës');
       if (sundayLesson(d)) parts.push('e diel me mësim, kontrolloje');
       if (s.manual) parts.push('ndryshuar me dorë');
       if (s.note) parts.push('shënim: ' + s.note);
@@ -97,8 +97,7 @@
       if (val) val.innerHTML = s.h > 0 ? s.h + '<span class="dplan-unit"> orë</span>' : '—';
       var marks = c.querySelector('.dplan-marks');
       if (marks) {
-        marks.innerHTML = (isBound(d) ? '<i class="bi bi-lock-fill"></i>' : '')
-          + (sundayLesson(d) ? '<i class="bi bi-exclamation-triangle-fill"></i>' : '')
+        marks.innerHTML = (sundayLesson(d) ? '<i class="bi bi-exclamation-triangle-fill"></i>' : '')
           + (s.note ? '<i class="bi bi-chat-left-text"></i>' : '');
       }
       if (editable) c.setAttribute('aria-label', label(d));
@@ -117,7 +116,7 @@
     /**
      * Zbaton ndryshime: { 'yyyy-mm-dd': { h?, note? } }.
      * opts.origin: 'manual' (dora e përdoruesit), 'auto' (sistemi), ose pa të (mban shenjën).
-     * Kufijtë historikë nuk bien nën 1 orë; asnjë ditë nuk kalon maksimumin.
+     * Kufijtë e periudhës nuk bien nën 1 orë; asnjë ditë nuk kalon maksimumin.
      */
     function apply(changes, opts) {
       opts = opts || {};
@@ -163,7 +162,7 @@
         return;
       }
       if (isBound(d) && h === 0) {
-        announce((d === start ? 'Fillimi' : 'Mbarimi') + ' historik (' + dmy(d) + ') duhet të ketë mësim.');
+        announce((d === start ? 'Fillimi' : 'Mbarimi') + ' i periudhës (' + dmy(d) + ') duhet të ketë mësim.');
         byDate[d].classList.remove('is-refused');
         void byDate[d].offsetWidth;
         byDate[d].classList.add('is-refused');
@@ -257,8 +256,8 @@
       openFor = d;
       editor.querySelector('[data-ed-title]').textContent = cap(dayLabel(d));
       var hint = editor.querySelector('[data-ed-hint]');
-      var text = d === start ? 'Fillimi historik i grupit: kjo ditë ka gjithmonë mësim.'
-        : d === end ? 'Mbarimi historik i grupit: kjo ditë ka gjithmonë mësim.'
+      var text = d === start ? 'Fillimi i periudhës: kjo ditë ka gjithmonë mësim.'
+        : d === end ? 'Mbarimi i periudhës: kjo ditë ka gjithmonë mësim.'
         : weekday(d) === 0 ? 'E diel: vendos orë vetëm nëse mësimi u zhvillua vërtet këtë ditë.' : '';
       hint.textContent = text;
       hint.hidden = !text;

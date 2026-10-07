@@ -182,11 +182,11 @@ t_case('Fiks — plani refuzohet me mesazh të qartë', function () use ($MSO50)
   $e = t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $nine), 'ditë me 9 orë refuzohet', 'Më 05.10.2026 janë vendosur 9 orë');
   t_eq('day_over', $e instanceof QtaUserError ? $e->data['code'] : null, 'kodi day_over');
   $noStart = $ok; $noStart['2026-10-01'] = 0; $noStart['2026-10-03'] = 8;
-  t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $noStart), 'fillimi pa mësim refuzohet', 'data historike e fillimit');
+  t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $noStart), 'fillimi pa mësim refuzohet', 'fillimi i periudhës');
   $noEnd = $ok; $noEnd['2026-10-10'] = 0; $noEnd['2026-10-08'] = 7;
-  t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $noEnd), 'mbarimi pa mësim refuzohet', 'data historike e mbarimit');
+  t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $noEnd), 'mbarimi pa mësim refuzohet', 'mbarimi i periudhës');
   $outside = $ok; $outside['2026-10-11'] = 1;
-  t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $outside), 'datë jashtë periudhës', 'jashtë periudhës historike');
+  t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $outside), 'datë jashtë periudhës', 'jashtë periudhës së përcaktuar');
   $missing = $ok; unset($missing['2026-10-03']);
   t_throws(QtaUserError::class, fn() => qta_sched_build_fixed_range($MSO50, '2026-10-01', '2026-10-10', $missing), 'datë që mungon', 'nuk ka orët e datës 03.10.2026');
   $bad = $ok; $bad['x'] = 1;

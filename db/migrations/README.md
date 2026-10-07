@@ -8,14 +8,15 @@ datën; ekzekutohen sipas radhës së datës.
 | `2026-09-26-kurset-modulet-temat-orari.sql` | Modulet dhe temat e kursit, grupet me orar mësimi, ditët e veçanta, `course_groups.model`, FK kurs → grupe pa fshirje zinxhir, historiku për tabelat e reja. Përshkrimi i plotë: `docs/domain/COURSES-AND-SCHEDULES.md`. |
 | `2026-09-28-konvertimi-i-grupeve.sql` | Kufiri **8 orë në ditë** (ishte 12) te çdo CHECK i orarit; `group_schedules.schedule_mode` (`calculated` / `fixed_range`) dhe `daily_hours` NULL për oraret me data historike; tabelat `group_fixed_days` (plani i ditëve), `legacy_conversion_drafts` (drafti), `group_conversions` (shënimi i konvertimit); rregullat e bazës për konvertimin (`legacy` → `scheduled` vetëm brenda konvertimit) dhe historiku i tyre. Nuk konverton asnjë grup. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §14. |
 | `2026-09-28-piket-sipas-moduleve.sql` | **Pikët sipas moduleve**: tabela `enrollment_module_scores` (një rresht për kursant në grup × modul, 0–100), kolona `course_group_students.legacy_final_score` (bosh; mbushet vetëm kur pikët e vjetra zëvendësohen nga modulet), rregullat e bazës (rezultati përfundimtar nuk shkruhet më me dorë; moduli duhet t'i përkasë grupit; data e provimit mbetet kur ka pikë; kursi i grupit dhe moduli me pikë të regjistrit të vjetër nuk ndryshojnë) dhe historiku i pikëve. Nuk ndryshon asnjë rresht ekzistues. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §15. |
+| `2026-10-07-orari-me-periudhe-te-percaktuar.sql` | E bën `fixed_range` një mënyrë të përgjithshme për grupet e reja dhe të konvertuara; lejon korrigjimin e datave operative, por lë të pandryshueshme datat burimore te `group_conversions`. Përditëson auditimin e versionit/rindërtimit dhe të rreshtave të planit. Nuk ndryshon asnjë rresht ekzistues. |
 
 ## Radha
 
 - **Instalim i ri:** `db/tables.sql` → `db/create_audit.sql` → çdo skedar këtu.
 - **Databaza e punës:** vetëm skedarët që nuk janë ekzekutuar ende, sipas radhës (renditja e
   tabelës më sipër; dy skedarët e datës 2026-09-28: së pari `konvertimi-i-grupeve`, pastaj
-  `piket-sipas-moduleve`). `2026-09-28-konvertimi…` kërkon që `2026-09-26` të jetë ekzekutuar,
-  dhe `2026-09-28-piket…` kërkon të dy; përndryshe ndalen pa ndryshuar asgjë.
+  `piket-sipas-moduleve`), pastaj `2026-10-07-orari-me-periudhe-te-percaktuar.sql`.
+  Migrimi 2026-10-07 kërkon tabelat e migrimit të konvertimit; përndryshe ndalet.
 
 ## Si ekzekutohet
 
@@ -31,6 +32,7 @@ datën; ekzekutohen sipas radhës së datës.
    mysql -u root -p qta_db < db/migrations/2026-09-26-kurset-modulet-temat-orari.sql
    mysql -u root -p qta_db < db/migrations/2026-09-28-konvertimi-i-grupeve.sql
    mysql -u root -p qta_db < db/migrations/2026-09-28-piket-sipas-moduleve.sql
+   mysql -u root -p qta_db < db/migrations/2026-10-07-orari-me-periudhe-te-percaktuar.sql
    ```
 
    Në XAMPP: `C:\xampp\mysql\bin\mysql.exe`. Në phpMyAdmin: zgjidh databazën, skeda
@@ -95,6 +97,25 @@ datën; ekzekutohen sipas radhës së datës.
    Pas këtij migrimi rezultati përfundimtar (`final_score`) nuk shkruhet më me dorë — as nga
    phpMyAdmin: baza e refuzon. Pikët vendosen sipas moduleve te "Vendos pikët" i grupit.
 
+6. Kontrollo pas `2026-10-07-orari-me-periudhe-te-percaktuar`:
+
+   ```sql
+   -- fixed_range nuk kërkon më domosdoshmërisht një konvertim.
+   SHOW CREATE TRIGGER trg_gs_requires_scheduled_bi;
+
+   -- Datat burimore të konvertimit ruhen veçmas nga datat operative.
+   SELECT cg.id, cg.start_date AS operative_start, cg.end_date AS operative_end,
+          gc.source_start_date, gc.source_end_date
+   FROM course_groups cg
+   JOIN group_conversions gc ON gc.group_id = cg.id
+   WHERE gc.status = 'completed';
+
+   -- Auditimi i rindërtimit të plotë.
+   SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
+   WHERE TRIGGER_SCHEMA = DATABASE()
+     AND TRIGGER_NAME IN ('trg_audit_gfd_ai','trg_audit_gfd_au','trg_audit_gfd_ad','trg_audit_gs_au');
+   ```
+
 ## Siguria e migrimit
 
 - Mund të ekzekutohen disa herë: çdo hap kontrollon nëse është bërë (`CREATE TABLE IF NOT
@@ -103,6 +124,8 @@ datën; ekzekutohen sipas radhës së datës.
 - Nuk fshijnë, nuk rishkruajnë dhe nuk zhvendosin asnjë rresht ekzistues; nuk krijojnë orar
   për grupet ekzistuese dhe nuk konvertojnë asnjë grup; nuk shtojnë asgjë në historik gjatë
   migrimit. `2026-09-28` i jep çdo orari ekzistues llojin `calculated`, pa i ndryshuar vlerat.
+- `2026-10-07` rikrijon vetëm trigger-at përkatës. Është idempotent, nuk prek rreshtat
+  ekzistues dhe nuk ndryshon `group_conversions.source_start_date/source_end_date`.
 - `2026-09-28` kontrollon **para çdo ndryshimi** dhe ndalet pa ndryshuar asgjë kur:
   - `2026-09-26` nuk është ekzekutuar;
   - një grup me orar ka mbi 8 orë në një ditë (orët në ditë, një ditë e orarit, një pjesë e
@@ -129,7 +152,8 @@ datën; ekzekutohen sipas radhës së datës.
   vlera e vjetër ruhet te `legacy_final_score` dhe nuk ndryshon më.
 - Të gjitha rastet e mësipërme testohen mbi databaza të përkohshme:
   `tests/integration/migration_conversion_test.php` (databazë e pastër, vetëm grupe të
-  mëparshme, me grupe me orar, ekzekutim i dytë, rreshta mbi 8 orë, pa `2026-09-26`) dhe
+  mëparshme, me grupe me orar, fixed_range i ri, datat operative/burimore, ekzekutim i dytë,
+  rreshta mbi 8 orë, pa `2026-09-26`) dhe
   `tests/integration/migration_results_test.php` (databazë e pastër, me pikë të mëparshme,
   ekzekutim i dytë, pa migrimin e konvertimit).
 

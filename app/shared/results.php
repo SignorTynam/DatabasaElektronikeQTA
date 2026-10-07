@@ -164,10 +164,12 @@ if (!function_exists('qta_results_groups')) {
     $ph = implode(',', array_fill(0, count($ids), '?'));
     $st = $pdo->prepare("
       SELECT cg.id, cg.course_id, cg.model, cg.start_date, cg.end_date, cg.is_completed,
-             c.name AS course_name, c.code AS course_code, gs.schedule_mode
+             c.name AS course_name, c.code AS course_code, gs.schedule_mode,
+             gc.converted_at
       FROM course_groups cg
       JOIN courses c ON c.id = cg.course_id
       LEFT JOIN group_schedules gs ON gs.group_id = cg.id
+      LEFT JOIN group_conversions gc ON gc.group_id = cg.id AND gc.status = 'completed'
       WHERE cg.id IN ($ph)
     ");
     $st->execute($ids);
@@ -631,7 +633,7 @@ if (!function_exists('qta_results_payload')) {
       'group' => [
         'id' => $g['id'], 'course_id' => $g['course_id'], 'course' => (string)$g['course_name'],
         'closed' => (bool)$g['closed'], 'source' => $sheet['module_source'],
-        'converted' => ($g['schedule_mode'] ?? null) === 'fixed_range',
+        'converted' => !empty($g['converted_at']),
       ],
       'modules' => array_map(static fn($m) => ['id' => $m['id'], 'title' => $m['title'], 'hours' => $m['hours']], $sheet['modules']),
       'members' => array_map(static function ($m) {

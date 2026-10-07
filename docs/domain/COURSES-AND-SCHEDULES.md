@@ -28,9 +28,9 @@ and the policies chosen where the product had a choice.
 | **Katalogu i kurseve** | The list of courses with their modules, topics and hours (`courses.php`, until phase 14 called "Kurset"; in the menu under Administrimi, same permissions). | `courses`, `course_modules`, `course_topics` |
 | **Orari i mësimit / Ditë pas dite** | The lesson days and which topic hours fall on each day. | `group_schedule_days`, `group_schedule_slots` |
 | **Orar i llogaritur** | A schedule calculated from a start date, usual hours per day and special days; the end date follows from it (§6). | `group_schedules.schedule_mode = 'calculated'` |
-| **Orar me data historike** | The schedule of a converted group: start and end are the legacy group's historical dates and never move; the hours of every date come from the day plan (§14). | `group_schedules.schedule_mode = 'fixed_range'` |
+| **Orar me periudhë të përcaktuar** | A schedule whose operational start and end are explicit and editable; the hours of every date come from the full day plan (§14). It can be chosen for a new group or inherited through conversion. | `group_schedules.schedule_mode = 'fixed_range'` |
 | **Ditë e veçantë** | A date that differs from the usual pattern (other hours, no lesson, a Sunday with lessons). Calculated schedules only. | `group_day_rules` |
-| **Plani i ditëve** | Every date from start to end of a converted group with its hours (0 = no lesson). The source of its schedule. | `group_fixed_days` |
+| **Plani i ditëve** | Every date from start to end of a `fixed_range` group with its hours (0 = no lesson). The source of its schedule. | `group_fixed_days` |
 | **Konvertimi i grupeve** | Moving a legacy group, in place, into "Regjistri i kurseve profesionale" (`group_conversions.php`, `group_conversion.php`). | `legacy_conversion_drafts`, `group_conversions` |
 | **Grup i konvertuar** | A scheduled group that came from the legacy register. Badge "Konvertuar nga regjistri i vjetër". | `group_conversions.status = 'completed'` |
 | **Kalendari** | When every group of "Regjistri i kurseve profesionale" starts and ends, month by month, with a read-only overview of each group (§16). | no storage of its own: a projection of the tables above |
@@ -424,10 +424,10 @@ state and a short hint ("Përdor 1 të diel", "Mungojnë 3 orë", "Kursi nuk ës
 
 `group_schedules.schedule_mode` is `ENUM('calculated','fixed_range')`:
 
-| | `calculated` (created in the new register) | `fixed_range` (converted) |
+| | `calculated` | `fixed_range` |
 |---|---|---|
 | Inputs | start, usual hours per day, special days | S, E, and the hours of every date in [S, E] |
-| End date | calculated (§6) | fixed: always E |
+| End date | calculated (§6) | explicit E; editable together with S |
 | `daily_hours` | 1–8 | `NULL` — there is no "usual" day, and no fake value is stored |
 | Source of truth | `group_day_rules` + engine | `group_fixed_days` (every date, 0 = no lesson) + engine |
 | Engine | `qta_sched_build` / `qta_sched_verify` | `qta_sched_build_fixed_range` / `qta_sched_verify_fixed_range` (`app/shared/schedule_fixed.php`, pure PHP) |
@@ -440,6 +440,11 @@ day above 8 hours, S or E without lessons, or a total different from the course 
 conversion). The independent verifier re-checks the allocation (`qta_sched_verify_allocation`)
 and, separately, the fixed boundaries, the period, that every day follows the plan and all
 sums. The stored rows are read back and verified again before every commit.
+
+New groups choose either kind in `lesson_groups.php`. For `fixed_range`, the user supplies
+S and E and the server creates the initial full day plan with
+`qta_sched_propose_fixed_range`; `daily_hours` is `NULL`. This is independent of
+conversion provenance: only a completed row in `group_conversions` means “converted”.
 
 ### 14.3 The 8-hour limit
 
@@ -565,12 +570,12 @@ One transaction; any failure rolls everything back and the group stays exactly a
 
 The `applying` state is never visible outside the transaction.
 
-### 14.9 Database guards (migration 2026-09-28)
+### 14.9 Database guards (migrations 2026-09-28 and 2026-10-07)
 
 | Trigger | Rule |
 |---|---|
-| `trg_cg_model_guard_bu` | `model` changes only legacy → scheduled with an `applying` conversion, and then course and dates stay; never scheduled → legacy; a scheduled group keeps its course; a converted group keeps S and E forever |
-| `trg_gs_requires_scheduled_bi` | a schedule only for a scheduled group; a `fixed_range` schedule only during a conversion |
+| `trg_cg_model_guard_bu` | `model` changes only legacy → scheduled with an `applying` conversion, and then course and dates stay; never scheduled → legacy; a scheduled group keeps its course. Operational dates may change after creation |
+| `trg_gs_requires_scheduled_bi` | a schedule only for a scheduled group; either schedule kind can be created for it |
 | `trg_gs_group_fixed_bu` | a schedule never moves to another group and never changes kind |
 | `trg_gdr_requires_calculated_bi` | special days only for calculated schedules |
 | `trg_gfd_requires_fixed_bi`, `trg_gfd_fixed_bu` | day plan rows only for `fixed_range` schedules, only inside [S, E]; a row's date never changes |
@@ -581,18 +586,28 @@ The `applying` state is never visible outside the transaction.
 Plus the CHECKs of §14.3 (`chk_gs_daily` ties the kind to `daily_hours`: 1–8 for calculated,
 `NULL` for fixed_range). These hold for every client, not only for the application.
 
-### 14.10 After conversion; correcting a converted group
+The completed conversion row remains immutable. In particular,
+`group_conversions.source_start_date/source_end_date` always retain the original legacy
+facts even when the operational `course_groups.start_date/end_date` are corrected later.
+The 2026-10-07 migration also audits schedule revisions and day-plan inserts/deletes used by
+a full rebuild.
+
+### 14.10 After conversion; correcting a fixed-range group
 
 The group disappears from the legacy register and its conversion list and appears in
-"Regjistri i kurseve profesionale" with the badge "Konvertuar nga regjistri i vjetër", the
-line "Konvertuar nga regjistri i vjetër më … nga …", locked dates marked "data historike" and
-the list text "X orë · data historike". It has no "usual hours per day", no special days and
-no "Merr temat e reja".
+"Regjistri i kurseve profesionale" with the badge "Konvertuar nga regjistri i vjetër" and
+the conversion line. The operational dates are shown as the boundaries of a “periudhë e
+përcaktuar”; the original conversion dates are shown separately as immutable provenance.
+A new `fixed_range` group has the same schedule UI without the converted badge.
 
-"Plani i ditëve" on `lesson_group.php` uses the same calendar editor. A correction (`change`
-with `type = fixed_days`, `qta_lg_change_fixed_in_tx`) changes only the hours and notes of
-dates inside [S, E], rebuilds and verifies the schedule from the frozen topics, and is saved
-atomically with the schedule `revision` check. It asks for confirmation when a date before
+"Plani i ditëve" on `lesson_group.php` uses the same calendar editor. A day correction
+(`type = fixed_days`) changes hours/notes. “Ndrysho periudhën”
+(`type = fixed_range_settings`) may change both S and E: intersecting day decisions and
+notes are retained whenever possible, the difference is rebalanced, and the complete
+`group_fixed_days`, derived days/slots, operational dates, revision and timestamp are
+rewritten in one transaction. The frozen curriculum and conversion-source dates do not
+change. An impossible period or exam conflict rolls the whole transaction back. Both paths
+rebuild and independently verify the schedule. They ask for confirmation when a date before
 today changes or the group is closed (the same dialogs as §7), and the success message says
 how many days were edited and how many others received moved topics. "Rishpërndaj
 automatikisht" works there too and saves nothing until the correction is saved.
@@ -721,7 +736,7 @@ date-only arithmetic in UTC.
 ### 16.2 Which groups
 
 - Every group of "Regjistri i kurseve profesionale" (`model = 'scheduled'` with its schedule
-  row), **calculated** or **fixed_range** (converted, with historical dates) — the same set as
+  row), **calculated** or **fixed_range** (explicit operational period) — the same set as
   `lesson_groups.php`.
 - **Legacy groups** are hidden by default but counted: the chip "Regjistri i vjetër N" appears
   only when the month has some, and shows them (`?legacy=1`) with a dashed outline. Their
@@ -744,7 +759,7 @@ never change.
 ### 16.4 Read-only
 
 There is no drag, resize or date editing. A schedule changes only on the group page, through
-`qta_lg_change()` (recalculation, revision check, historical locks, confirmations, history).
+`qta_lg_change()` (recalculation, revision check, confirmations and history).
 
 ### 16.5 Views and controls
 
@@ -778,8 +793,8 @@ details (`?group=N`) behind a skeleton; a failure keeps the header and offers "P
 
 1. Today's note, with the sentences of the group page: "Sot, dita 5 nga 17 · 5 orë — Excel: …",
    "Sot nuk ka mësim …", "Mësimi nis nesër, …", "Mësimi mbaroi …"; none for a closed group.
-2. Facts: lesson days; course hours with hours per day (or "data historike"); how the schedule is
-   made (calculated from the start, or converted on a date by a person).
+2. Facts: lesson days; course hours with hours per day (or "periudhë e përcaktuar"); how the
+   schedule is made, with conversion date/person only when conversion provenance exists.
 3. Trainees ("7/10"): name and AMZË, each name linking to `student_card.php?sid=N`; no personal
    numbers or other personal data.
 4. Course content: "3 module · 10 tema · 40 orë", the source ("Kopja e grupit: modulet dhe temat
