@@ -6,6 +6,7 @@ mb_internal_encoding('UTF-8');
 require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
+require_once __DIR__ . '/inc/qkl_report.php';
 qta_audit_attach($pdo);
 
 function qta_download_status(string $status, string $message): void {
@@ -110,45 +111,6 @@ if ($amzeStart > $amzeEnd) {
 @ini_set('memory_limit', '512M');
 @set_time_limit(120);
 
-function qkl_iso_to_dmy(?string $iso): string {
-  if (!$iso || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return '';
-  $ts = strtotime($iso);
-  return $ts ? date('d-m-Y', $ts) : '';
-}
-
-function qkl_clean_key(string $value): string {
-  $value = mb_strtolower(trim($value), 'UTF-8');
-  return strtr($value, [
-    'ë' => 'e',
-    'ç' => 'c',
-    'Ë' => 'e',
-    'Ç' => 'c',
-  ]);
-}
-
-function qkl_gender_label(?string $code, ?string $label): string {
-  $code = strtoupper(trim((string)$code));
-  if ($code === 'M') return 'Mashkull';
-  if ($code === 'F') return 'Femër';
-  return trim((string)$label);
-}
-
-function qkl_education_label(?string $code, ?string $label): string {
-  $code = strtoupper(trim((string)$code));
-  if ($code === 'AU') return 'Arsim 8/9 vjeçar';
-  if ($code === 'AM') return 'Arsim i mesëm';
-  if ($code === 'AL') return 'Arsim i lartë';
-
-  $normalized = qkl_clean_key((string)$label);
-  if ($normalized === '') return '';
-  if (str_contains($normalized, '8') || str_contains($normalized, '9') || str_contains($normalized, 'ulet') || str_contains($normalized, 'ulët')) {
-    return 'Arsim 8/9 vjeçar';
-  }
-  if (str_contains($normalized, 'mes')) return 'Arsim i mesëm';
-  if (str_contains($normalized, 'lart')) return 'Arsim i lartë';
-  return '';
-}
-
 function qkl_first_existing_column(PDO $pdo, string $table, array $candidates): ?string {
   $stmt = $pdo->prepare("
     SELECT COLUMN_NAME
@@ -193,61 +155,16 @@ function qkl_stream_file(string $tmpPath, string $mime, string $downloadName): n
   exit;
 }
 
-function qkl_report_headers(): array {
-  return [
-    'Nr.ID',
-    'Emër',
-    'Atësi',
-    'Mbiemër',
-    'Shtetësia',
-    'Gjinia',
-    'Datëlindje',
-    'Arsimi',
-    'Nr.Amze',
-    'Emërtimi i kursit',
-    'Datë fillimi',
-    'Datë mbarimi',
-    'Datë certifikimi',
-    'Datë ndërprerje',
-  ];
-}
-
-function qkl_build_rows(array $records): array {
-  $rows = [];
-  foreach ($records as $record) {
-    $rows[] = [
-      (string)($record['personal_number'] ?? ''),
-      (string)($record['first_name'] ?? ''),
-      (string)($record['father_name'] ?? ''),
-      (string)($record['last_name'] ?? ''),
-      trim((string)($record['citizenship_value'] ?? '')) !== '' ? (string)$record['citizenship_value'] : 'Shqiptare',
-      qkl_gender_label($record['gender_code'] ?? null, $record['gender_label'] ?? null),
-      qkl_iso_to_dmy($record['birth_date'] ?? null),
-      qkl_education_label($record['edu_code'] ?? null, $record['edu_label'] ?? null),
-      (string)($record['nr_amze'] ?? ''),
-      (string)($record['course_name'] ?? ''),
-      qkl_iso_to_dmy($record['start_date'] ?? null),
-      qkl_iso_to_dmy($record['end_date'] ?? null),
-      qkl_iso_to_dmy($record['exam_date'] ?? null),
-      '',
-    ];
-  }
-  return $rows;
-}
-
 function qkl_output_xlsx(array $rows, string $filenameBase): void {
   $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
   $sheet = $spreadsheet->getActiveSheet();
   $sheet->setTitle('Raporti QKL');
 
-  $sheet->setCellValue('A2', 'Emërtimi i Subjektit:');
-  $sheet->setCellValue('B2', 'Qendra e Trajnimeve të Avancuara');
-  $sheet->setCellValue('A3', 'NIPT:');
-  $sheet->setCellValue('B3', 'L61325037A');
-  $sheet->setCellValue('A4', 'Numër Licence:');
-  $sheet->setCellValue('B4', 'LN-2358-11-2016');
-  $sheet->setCellValue('A5', 'Adresë/Kontakt:');
-  $sheet->setCellValue('B5', 'Rruga Bilal Konxholli');
+  foreach (qkl_report_subject() as $index => $item) {
+    $row = $index + 2;
+    $sheet->setCellValue('A' . $row, $item['label']);
+    $sheet->setCellValue('B' . $row, $item['value']);
+  }
 
   $headers = qkl_report_headers();
   foreach ($headers as $index => $header) {
@@ -284,89 +201,7 @@ function qkl_output_xlsx(array $rows, string $filenameBase): void {
 }
 
 function qkl_output_pdf(array $rows, string $filenameBase): void {
-  $escape = fn($value) => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-  $headers = qkl_report_headers();
-  $chunks = $rows ? array_chunk($rows, 20) : [[]];
-
-  ob_start(); ?>
-  <!doctype html>
-  <html lang="sq">
-  <head>
-    <meta charset="UTF-8">
-    <style>
-      @page { margin: 18px; }
-      * { font-family: DejaVu Sans, sans-serif; font-size: 7.5px; }
-      .page { page-break-after: always; }
-      .page:last-child { page-break-after: auto; }
-      table { width: 100%; border-collapse: collapse; }
-      .subject { margin-bottom: 8px; }
-      .subject td { border: 0; padding: 2px 4px; font-size: 8.5px; }
-      .subject td:first-child { font-weight: bold; width: 120px; }
-      .report { table-layout: fixed; }
-      .report th, .report td { border: 1px solid #777; padding: 2px 3px; vertical-align: top; word-break: break-word; }
-      .report th { background: #efefef; font-weight: bold; }
-      .col-id { width: 8%; }
-      .col-name, .col-father, .col-last { width: 7%; }
-      .col-citizen, .col-gender { width: 6%; }
-      .col-date { width: 7%; }
-      .col-edu { width: 8%; }
-      .col-amze { width: 6%; }
-      .col-course { width: 12%; }
-    </style>
-  </head>
-  <body>
-    <?php foreach ($chunks as $pageIndex => $chunk): ?>
-      <div class="page">
-        <?php if ($pageIndex === 0): ?>
-          <table class="subject">
-            <tr><td>Emërtimi i Subjektit:</td><td>Qendra e Trajnimeve të Avancuara</td></tr>
-            <tr><td>NIPT:</td><td>L61325037A</td></tr>
-            <tr><td>Numër Licence:</td><td></td></tr>
-            <tr><td>Adresë/Kontakt:</td><td>Rruga Bilal Konxholli</td></tr>
-          </table>
-        <?php endif; ?>
-        <table class="report">
-          <thead>
-            <tr>
-              <?php foreach ($headers as $idx => $header): ?>
-                <?php
-                  $classes = [
-                    0 => 'col-id',
-                    1 => 'col-name',
-                    2 => 'col-father',
-                    3 => 'col-last',
-                    4 => 'col-citizen',
-                    5 => 'col-gender',
-                    6 => 'col-date',
-                    7 => 'col-edu',
-                    8 => 'col-amze',
-                    9 => 'col-course',
-                    10 => 'col-date',
-                    11 => 'col-date',
-                    12 => 'col-date',
-                    13 => 'col-date',
-                  ];
-                ?>
-                <th class="<?= $classes[$idx] ?? '' ?>"><?= $escape($header) ?></th>
-              <?php endforeach; ?>
-            </tr>
-          </thead>
-          <tbody>
-          <?php foreach ($chunk as $row): ?>
-          <tr>
-            <?php foreach ($row as $cell): ?>
-              <td><?= $escape($cell) ?></td>
-            <?php endforeach; ?>
-          </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-    <?php endforeach; ?>
-  </body>
-  </html>
-  <?php
-  $html = ob_get_clean();
+  $html = qkl_render_pdf_html($rows);
 
   @ini_set('memory_limit', '1024M');
   $options = new \Dompdf\Options();
@@ -387,53 +222,8 @@ $citizenshipSelect = $citizenshipColumn
   ? 'p.`' . str_replace('`', '``', $citizenshipColumn) . '` AS citizenship_value'
   : "'Shqiptare' AS citizenship_value";
 
-$sql = "
-  SELECT
-    s.nr_amze,
-    p.personal_number,
-    p.first_name,
-    p.father_name,
-    p.last_name,
-    p.birth_date,
-    $citizenshipSelect,
-    g.code AS gender_code,
-    g.label AS gender_label,
-    el.code AS edu_code,
-    el.label AS edu_label,
-    lastg.course_name,
-    lastg.start_date,
-    lastg.end_date,
-    lastg.exam_date
-  FROM students s
-  JOIN persons p ON p.id = s.person_id
-  LEFT JOIN genders g ON g.id = p.gender_id
-  LEFT JOIN education_levels el ON el.id = s.education_level_id
-  LEFT JOIN (
-    SELECT t.student_id, t.course_name, t.start_date, t.end_date, t.exam_date
-    FROM (
-      SELECT
-        cgs.student_id,
-        c.name AS course_name,
-        cg.start_date,
-        cg.end_date,
-        cgs.exam_date,
-        ROW_NUMBER() OVER (PARTITION BY cgs.student_id ORDER BY cg.start_date DESC, cg.id DESC) AS rn
-      FROM course_group_students cgs
-      JOIN course_groups cg ON cg.id = cgs.group_id
-      JOIN courses c ON c.id = cg.course_id
-    ) t
-    WHERE t.rn = 1
-  ) lastg ON lastg.student_id = s.id
-  WHERE CAST(s.nr_amze AS UNSIGNED) BETWEEN :amze_start AND :amze_end
-  ORDER BY CAST(s.nr_amze AS UNSIGNED) ASC, s.nr_amze ASC
-";
-$stmt = $pdo->prepare($sql);
-$stmt->execute([
-  ':amze_start' => $amzeStart,
-  ':amze_end' => $amzeEnd,
-]);
-$records = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-$rows = qkl_build_rows($records);
+$records = qkl_fetch_records($pdo, (int)$amzeStart, (int)$amzeEnd, $citizenshipSelect);
+$rows = qkl_build_rows(qkl_normalize_records($records));
 $filenameBase = 'raporti_qkl_' . date('Ymd_His');
 
 if ($format === 'xlsx') {
