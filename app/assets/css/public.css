@@ -669,225 +669,103 @@ body.public .verdict { scroll-margin-top: calc(var(--masthead-h) + var(--sp-4));
 .result-empty .bi { color: var(--text-subtle); font-size: 2.25rem; }
 
 /* ------------------------------------------------------------- Hyrja */
-/* Dy gjysma: në të djathtë modulli (i pari në DOM), në të majtë një panel
-   "plan teknik" i errët me arsyet pse ekziston regjistri. Paneli mbetet i errët
-   në të dy pamjet — ngjyrat e tij janë lokale, jo shenjat e temës. */
-body.page-signin .site-footer { margin-top: 0; }
+/* Hyrja nuk ka faqe më vete: është një dialog mbi faqen ku je
+   (partials/login_dialog.php, login-ui.js). Vetëm formulari: logoja, titulli,
+   lloji i llogarisë, dy fushat, "Hyr" dhe "Harrove fjalëkalimin?". */
+.login-modal { --bs-modal-width: 26rem; }
+.login-modal .modal-content { padding: var(--sp-5) var(--sp-8) var(--sp-6); }
 
-.signin {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas: "brand form";
-  min-height: calc(100vh - var(--masthead-h));
-}
-.signin-main { grid-area: form; }
-.signin-brand { grid-area: brand; }
-@media (max-width: 991.98px) {
-  .signin {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "form" "brand";
-    min-height: 0;
-  }
-}
-
-.signin-main {
+.login-top {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: clamp(2rem, 6vw, 4.5rem) clamp(1rem, 5vw, 3.5rem);
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin: 0 calc(var(--sp-3) * -1) var(--sp-5) 0;
 }
-.signin-form { width: min(100%, 26.5rem); }
-.signin-title {
-  margin: 0 0 .35rem;
+.login-logo { flex: none; width: auto; height: 22px; }
+.login-title {
+  margin: 0 0 var(--sp-6);
   font-family: var(--font-display);
-  font-size: clamp(2rem, 1.55rem + 1.3vw, 2.6rem);
+  font-size: var(--fs-2xl);
   font-weight: var(--fw-semibold);
-  letter-spacing: -.02em;
-  line-height: 1.1;
+  letter-spacing: -.015em;
+  line-height: var(--lh-tight);
 }
-.signin-sub { margin: 0 0 var(--sp-6); color: var(--text-muted); }
+.login-notice { margin: 0 0 var(--sp-5); }
+.login-error { margin: 0 0 var(--sp-5); animation: qta-rise var(--dur-2) var(--ease); }
 
-/* Lloji i llogarisë: tre zgjedhje në një rresht, jo tre karta të larta */
-.role-switch {
+/* Lloji i llogarisë: kontrolli i segmentuar i Themelit, në gjithë gjerësinë. */
+.login-roles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
+  width: 100%;
+  margin-bottom: var(--sp-6);
 }
-.role-tab {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: .3rem;
-  min-height: 4.75rem;
-  padding: .7rem .4rem;
-  border: 1px solid var(--border-control);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  line-height: 1.2;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.role-tab .bi { color: var(--text-subtle); font-size: 1.4rem; transition: color var(--dur-1) var(--ease); }
-.role-tab input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.role-tab:hover { border-color: var(--border-strong); color: var(--text); }
-.role-tab:has(input:checked) {
-  border-color: var(--action);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  box-shadow: inset 0 0 0 1px var(--action);
-}
-.role-tab:has(input:checked) .bi { color: var(--accent-text); }
-.role-tab:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
-.role-hint {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  min-height: 1.5rem;
-  margin: var(--sp-3) 0 var(--sp-5);
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-}
-.role-hint::before {
-  content: "";
-  flex: none;
-  width: .4rem;
-  height: .4rem;
-  border-radius: var(--r-full);
-  background: var(--action);
-}
+.login-roles > label { padding-inline: .375rem; line-height: 1.2; }
 
-/* "Harrove fjalëkalimin?" */
-.signin-help { margin-top: var(--sp-4); }
-.signin-help > summary {
+.login-field + .login-field { margin-top: var(--sp-5); }
+.login-field .form-text { margin-bottom: 0; }
+.login-submit { margin-top: var(--sp-6); }
+
+/* "Harrove fjalëkalimin?": e mbyllur poshtë butonit; punon edhe pa JavaScript. */
+.login-forgot { margin-top: var(--sp-3); text-align: center; }
+.login-forgot > summary {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
-  min-height: var(--touch-min);
+  min-height: var(--control-h);
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-sm);
   color: var(--link);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   list-style: none;
   cursor: pointer;
 }
-.signin-help > summary::-webkit-details-marker { display: none; }
-.signin-help > summary::after {
+.login-forgot > summary::-webkit-details-marker { display: none; }
+.login-forgot > summary::after {
   content: "\F282"; /* bi-chevron-down */
   font-family: "bootstrap-icons";
-  font-size: .8em;
+  font-size: .75em;
   transition: transform var(--dur-2) var(--ease);
 }
-.signin-help[open] > summary::after { transform: rotate(180deg); }
-.signin-help > summary:hover { color: var(--link-hover); text-decoration: underline; }
-.signin-help-body {
+.login-forgot[open] > summary::after { transform: rotate(180deg); }
+.login-forgot > summary:hover { color: var(--link-hover); text-decoration: underline; }
+.login-forgot-body {
+  margin-top: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-md);
   background: var(--surface-sunken);
-  font-size: var(--fs-sm);
-}
-.signin-help-body a { display: inline-flex; align-items: center; gap: .3rem; }
-.signin-safe {
-  display: flex;
-  align-items: flex-start;
-  gap: .5rem;
-  margin: var(--sp-6) 0 0;
-  padding-top: var(--sp-4);
-  border-top: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: var(--fs-xs);
-}
-.signin-safe .bi { flex: none; color: var(--success); font-size: 1rem; }
-
-/* Paneli i markës */
-.signin-brand {
-  --brand-bg: #1c1a17;
-  --brand-text: #f6f2ea;
-  --brand-muted: rgba(246, 242, 234, .74);
-  --brand-line: rgba(246, 242, 234, .07);
-  --brand-card: rgba(246, 242, 234, .06);
-  --brand-border: rgba(246, 242, 234, .16);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--sp-10);
-  overflow: hidden;
-  padding: clamp(2rem, 5vw, 4rem) clamp(1.5rem, 5vw, 4.5rem);
-  background-color: var(--brand-bg);
-  background-image:
-    radial-gradient(ellipse 70% 55% at 85% 0%, rgba(196, 92, 58, .38), transparent 70%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(11, 87, 160, .30), transparent 70%),
-    linear-gradient(var(--brand-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--brand-line) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
-  color: var(--brand-text);
-}
-:root[data-theme="dark"] .signin-brand { --brand-bg: #221f1b; border-right: 1px solid var(--border); }
-@media (max-width: 991.98px) {
-  :root[data-theme="dark"] .signin-brand { border-right: 0; border-top: 1px solid var(--border); }
-}
-.signin-brand-body { max-width: 34rem; }
-.signin-brand-eyebrow {
-  margin: 0 0 var(--sp-3);
-  color: var(--brand-muted);
   font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
+  text-align: left;
+  animation: qta-pop var(--dur-2) var(--ease);
 }
-.signin-brand-title {
-  margin: 0 0 var(--sp-8);
-  font-family: var(--font-display);
-  font-size: clamp(1.9rem, 1.2rem + 2vw, 3rem);
-  font-weight: var(--fw-semibold);
-  letter-spacing: -.02em;
-  line-height: 1.12;
+.login-forgot-body p { margin: 0; }
+.login-forgot-body p + p { margin-top: var(--sp-2); }
+.login-forgot-body a { display: inline-flex; align-items: center; gap: .3rem; font-weight: var(--fw-semibold); }
+
+@media (max-width: 479.98px) {
+  .login-modal .modal-content { padding: var(--sp-4) var(--sp-5) var(--sp-5); }
+  .login-top { margin-bottom: var(--sp-4); }
+  .login-title { margin-bottom: var(--sp-5); font-size: var(--fs-xl); }
+  .login-roles { margin-bottom: var(--sp-5); }
 }
-.signin-points { display: grid; gap: var(--sp-5); margin: 0; padding: 0; list-style: none; }
-.signin-points li { display: flex; align-items: flex-start; gap: var(--sp-4); }
-.signin-points b { display: block; margin-bottom: .15rem; font-size: var(--fs-base); }
-.signin-points li > span:last-child { color: var(--brand-muted); font-size: var(--fs-sm); line-height: 1.5; }
-.signin-point-icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid var(--brand-border);
-  border-radius: var(--r-md);
-  background: var(--brand-card);
-  font-size: 1.1rem;
+
+/* Pa JavaScript, ose kur Bootstrap-i nuk u ngarkua, dialogu i kërkuar (?hyr)
+   shfaqet në faqe si formular i zakonshëm, pa butonin e mbylljes. */
+html:not(.js) .login-modal.is-requested,
+.login-modal.is-static {
+  position: relative;
+  display: block;
+  height: auto;
+  overflow: visible;
+  opacity: 1;
 }
-.signin-verify {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3) var(--sp-4);
-  padding: var(--sp-4) var(--sp-5);
-  border: 1px solid var(--brand-border);
-  border-radius: var(--r-lg);
-  background: var(--brand-card);
-}
-.signin-verify b { display: block; }
-.signin-verify span { color: var(--brand-muted); font-size: var(--fs-sm); }
-.btn.signin-verify-btn {
-  --bs-btn-color: #1c1a17;
-  --bs-btn-bg: #f6f2ea;
-  --bs-btn-border-color: #f6f2ea;
-  --bs-btn-hover-color: #1c1a17;
-  --bs-btn-hover-bg: #fff;
-  --bs-btn-hover-border-color: #fff;
-  --bs-btn-active-color: #1c1a17;
-  --bs-btn-active-bg: #fff;
-  font-weight: var(--fw-semibold);
-}
-.signin-brand :focus-visible { outline-color: #fff; }
+html:not(.js) .login-modal.is-requested .modal-dialog,
+.login-modal.is-static .modal-dialog { margin-block: var(--sp-8); transform: none; }
+html:not(.js) .login-modal .login-close,
+.login-modal.is-static .login-close { display: none; }
 
 /* ------------------------------------------------------------ Fundi */
 .site-footer {

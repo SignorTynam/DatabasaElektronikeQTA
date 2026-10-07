@@ -1755,7 +1755,8 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   border-radius: var(--r-full);
   background: var(--surface-sunken);
 }
-.segmented > button {
+.segmented > button,
+.segmented > label {
   display: inline-flex;
   align-items: center;
   gap: .4rem;
@@ -1769,11 +1770,24 @@ a.stat:hover { border-color: var(--border-strong); color: var(--text); }
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   cursor: pointer;
-  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
-.segmented > button:hover { color: var(--text); }
-.segmented > button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
-.segmented > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.segmented > button:hover,
+.segmented > label:hover { color: var(--text); }
+.segmented > button[aria-checked="true"],
+.segmented > label:has(> input:checked) { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+/* Në temën e errët hija nuk shihet: zgjedhja ngrihet me sfond më të çelët dhe një vijë. */
+:root[data-theme="dark"] .segmented > button[aria-checked="true"],
+:root[data-theme="dark"] .segmented > label:has(> input:checked) { background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--border-control); }
+.segmented > button:focus-visible,
+.segmented > label:has(> input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* Me radio të vërteta, kur zgjedhja dërgohet me formularin (p.sh. lloji i llogarisë
+   te hyrja): <fieldset class="segmented"><legend class="visually-hidden">…</legend>
+   <label><input type="radio" name="…"><span>…</span></label>…</fieldset>. Shigjetat
+   e tastierës lëvizin mes zgjedhjeve, si te çdo grup radio. */
+fieldset:where(.segmented) { min-width: 0; margin: 0; }
+.segmented > label { position: relative; justify-content: center; text-align: center; }
+.segmented > label > input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 
 /* ============================================== 23. Kyçi i ndryshimeve */
 /* Mbron të dhënat nga ndryshimet aksidentale; gjendja thuhet me fjalë. */

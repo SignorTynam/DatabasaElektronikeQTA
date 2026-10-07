@@ -102,7 +102,7 @@ require_once __DIR__ . '/navbarMain.php';
         </div>
         <div class="d-flex flex-wrap gap-2">
           <a class="btn btn-primary btn-lg" href="contact.php"><i class="bi bi-envelope" aria-hidden="true"></i>Na kontaktoni</a>
-          <a class="btn btn-secondary btn-lg" href="<?= h($loginHref) ?>"><?= h($loginText) ?></a>
+          <a class="btn btn-secondary btn-lg" href="<?= h($loginHref) ?>"<?= $currentUser ? '' : ' data-login' ?>><?= h($loginText) ?></a>
         </div>
       </div>
     </div>

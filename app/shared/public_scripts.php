@@ -5,6 +5,7 @@ declare(strict_types=1);
  * public_scripts.php — skriptet e faqeve publike.
  *   $publicPlugins  array  ['html5-qrcode'] kur faqja skanon kode QR
  *   $pageScripts    array  URL-ra JS shtesë
+ * login-ui.js ngarkohet kudo: dialogu i hyrjes është në kokën e çdo faqeje publike.
  */
 
 require_once __DIR__ . '/public_ui.php';
@@ -20,6 +21,7 @@ $pageScripts = $pageScripts ?? [];
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <?php endif; ?>
 <script src="<?= h(qta_asset('app/assets/js/app.js')) ?>" defer></script>
+<script src="<?= h(qta_asset('app/assets/js/login-ui.js')) ?>" defer></script>
 <?php foreach ($pageScripts as $script): ?>
   <script src="<?= h((string)$script) ?>" defer></script>
 <?php endforeach; ?>

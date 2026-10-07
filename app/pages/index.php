@@ -60,7 +60,7 @@ require_once __DIR__ . '/navbarMain.php';
           <?php if ($currentUser): ?>
             <a class="btn btn-secondary btn-lg" href="<?= h($panelHref) ?>">Vazhdo te <?= h(mb_strtolower(qta_public_panel_label($role))) ?></a>
           <?php else: ?>
-            <a class="btn btn-secondary btn-lg" href="selectProfile.php">Hyr në sistem</a>
+            <a class="btn btn-secondary btn-lg" href="selectProfile.php" data-login>Hyr në sistem</a>
           <?php endif; ?>
         </div>
 
@@ -141,13 +141,13 @@ require_once __DIR__ . '/navbarMain.php';
           <span class="audience-icon"><i class="bi bi-person-badge" aria-hidden="true"></i></span>
           <h3>Kursanti</h3>
           <p>Sheh kurset e veta, datat e provimit, pikët dhe kodin QR të certifikatave.</p>
-          <a href="selectProfile.php?role=student">Hyr si kursant</a>
+          <a href="selectProfile.php?role=student" data-login="student">Hyr si kursant</a>
         </div>
         <div class="audience">
           <span class="audience-icon"><i class="bi bi-building" aria-hidden="true"></i></span>
           <h3>Agjencia</h3>
           <p>Kompania ndjek punonjësit e saj: grupet, provimet dhe dokumentet.</p>
-          <a href="selectProfile.php?role=agjencia">Hyr si agjenci</a>
+          <a href="selectProfile.php?role=agjencia" data-login="agjencia">Hyr si agjenci</a>
         </div>
         <div class="audience">
           <span class="audience-icon"><i class="bi bi-cone-striped" aria-hidden="true"></i></span>
@@ -159,7 +159,7 @@ require_once __DIR__ . '/navbarMain.php';
           <span class="audience-icon"><i class="bi bi-person-workspace" aria-hidden="true"></i></span>
           <h3>Stafi i QTA-së</h3>
           <p>Mban regjistrin, cakton grupet, shënon provimet dhe lëshon certifikatat.</p>
-          <a href="selectProfile.php?role=staff">Hyr si staf</a>
+          <a href="selectProfile.php?role=staff" data-login="staff">Hyr si staf</a>
         </div>
       </div>
     </div>

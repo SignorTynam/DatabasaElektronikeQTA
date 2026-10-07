@@ -34,7 +34,7 @@ if (!$isApp) {
       ['Stafi i QTA', 'Hyn me email-in e punës dhe fjalëkalimin.'],
       ['Agjencitë', 'Hyjnë me NIPT-in e kompanisë (10 shenja) dhe fjalëkalimin që u dha QTA.'],
       ['Kursantët', 'Hyjnë me numrin personal të letërnjoftimit dhe fjalëkalimin.'],
-      ['Harrove fjalëkalimin?', 'Te faqja e hyrjes shtyp "Harrova fjalëkalimin" dhe ndiq udhëzimet, ose na kontakto.'],
+      ['Harrove fjalëkalimin?', 'Shtyp "Hyr", pastaj "Harrove fjalëkalimin?" poshtë butonit: aty shkruan si ta rivendosësh. Mund të na kontaktosh edhe drejtpërdrejt.'],
     ],
     'tips' => ['Pas hyrjes së parë, ndrysho fjalëkalimin te "Profili im".'],
   ]] + $topics;

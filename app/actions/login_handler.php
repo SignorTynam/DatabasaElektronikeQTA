@@ -1,35 +1,66 @@
 <?php
 // login_handler.php — hyrja sipas rolit.
+// Dialogu i hyrjes (partials/login_dialog.php) e dërgon me fetch dhe pret JSON:
+// {ok: true, redirect} ose {ok: false, code, error, csrf}. Pa JavaScript formulari
+// dërgohet si zakonisht dhe përgjigjja është një ridrejtim, si më parë.
 session_start();
 require __DIR__ . '/database.php';
+
+$wantsJson = str_contains(strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json');
+
+$reply = static function (array $data): void {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+};
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: selectProfile.php');
     exit;
 }
 
-$role = (string)($_POST['role'] ?? '');
-$identifier = trim((string)($_POST['identifier'] ?? ''));
-$password = (string)($_POST['password'] ?? '');
+$text = static fn($value): string => is_string($value) ? $value : '';
+$role = $text($_POST['role'] ?? '');
+$identifier = trim($text($_POST['identifier'] ?? ''));
+$password = $text($_POST['password'] ?? '');
 
 $validRoles = ['staff', 'administrator', 'editor', 'agjencia', 'student'];
 $backRole = in_array($role, $validRoles, true) ? $role : 'staff';
 
-$fail = static function (string $message) use ($backRole, $identifier): void {
+$fail = static function (string $message, string $code) use ($backRole, $identifier, $wantsJson, $reply): void {
+    if ($wantsJson) {
+        /* Dialogu mbetet i hapur: me shenjën e seancës mund të provohet sërish pa rifreskuar faqen. */
+        if (empty($_SESSION['csrf_login'])) {
+            $_SESSION['csrf_login'] = bin2hex(random_bytes(24));
+        }
+        $reply(['ok' => false, 'code' => $code, 'error' => $message, 'csrf' => $_SESSION['csrf_login']]);
+    }
     $_SESSION['login_error'] = $message;
     $_SESSION['login_identifier'] = mb_substr($identifier, 0, 120);
     header('Location: selectProfile.php?role=' . urlencode($backRole));
     exit;
 };
 
-/* Mbrojtja CSRF: formulari duhet të vijë nga faqja jonë e hyrjes. */
-$csrf = (string)($_POST['csrf'] ?? '');
+/* Mbrojtja CSRF: formulari duhet të vijë nga dialogu ynë i hyrjes. */
+$csrf = $text($_POST['csrf'] ?? '');
 if (empty($_SESSION['csrf_login']) || !hash_equals((string)$_SESSION['csrf_login'], $csrf)) {
-    $fail('Faqja e hyrjes kishte qëndruar e hapur shumë gjatë. Provo sërish.');
+    $fail('Faqja kishte qëndruar e hapur shumë gjatë. Shtyp sërish "Hyr".', 'csrf');
 }
 
 if ($identifier === '' || $password === '') {
-    $fail('Plotëso të dyja fushat: identifikimin dhe fjalëkalimin.');
+    $fail('Plotëso të dyja fushat: identifikimin dhe fjalëkalimin.', 'missing');
+}
+
+/* Emri i identifikimit në mesazhin e gabimit, sipas llojit të llogarisë. */
+$idName = match ($role) {
+    'staff', 'administrator', 'editor' => 'Email-i',
+    'agjencia' => 'NIPT-i',
+    'student'  => 'Numri personal',
+    default    => '',
+};
+if ($idName === '') {
+    $fail('Zgjidh si do të hysh: staf, agjenci apo kursant.', 'role');
 }
 
 /* NIPT-i dhe numri personal shkruhen shpesh me hapësira — i heqim. */
@@ -64,8 +95,8 @@ try {
                 LIMIT 1");
         $stmt->execute([':identifier' => $identifier]);
 
-    } elseif ($role === 'student') {
-        /* users -> students (user_id) -> persons (personal_number) */
+    } else {
+        /* Kursanti: users -> students (user_id) -> persons (personal_number) */
         $stmt = $pdo->prepare("SELECT u.id AS user_id, r.name AS role_name, c.password_hash, u.full_name, p.personal_number
                 FROM users u
                 JOIN roles r      ON u.role_id = r.id
@@ -75,15 +106,12 @@ try {
                 WHERE p.personal_number = :identifier AND r.name = 'student'
                 LIMIT 1");
         $stmt->execute([':identifier' => $identifier]);
-
-    } else {
-        $fail('Zgjidh si do të hysh: staf, agjenci apo kursant.');
     }
 
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, $user['password_hash'])) {
-        $fail('Identifikimi ose fjalëkalimi nuk është i saktë. Kontrollo dhe provo sërish.');
+        $fail($idName . ' ose fjalëkalimi nuk është i saktë. Kontrollo dhe provo sërish.', 'credentials');
     }
 
     // Hyrja u krye
@@ -93,20 +121,20 @@ try {
     $_SESSION['role']      = $user['role_name'];
     $_SESSION['full_name'] = $user['full_name'] ?? '';
 
-    switch ($user['role_name']) {
-        case 'administrator':
-            header('Location: dashboard_admin.php'); exit;
-        case 'editor':
-            header('Location: dashboard_editor.php'); exit;
-        case 'agjencia':
-            header('Location: dashboard_agjencia.php'); exit;
-        case 'student':
-            header('Location: dashboard_student.php'); exit;
-        default:
-            header('Location: selectProfile.php'); exit;
+    $target = match ($user['role_name']) {
+        'administrator' => 'dashboard_admin.php',
+        'editor'        => 'dashboard_editor.php',
+        'agjencia'      => 'dashboard_agjencia.php',
+        'student'       => 'dashboard_student.php',
+        default         => 'selectProfile.php',
+    };
+    if ($wantsJson) {
+        $reply(['ok' => true, 'redirect' => $target]);
     }
+    header('Location: ' . $target);
+    exit;
 
 } catch (Exception $e) {
     error_log('[QTA login] ' . $e->getMessage());
-    $fail('Hyrja nuk u krye për shkak të një problemi teknik. Provo sërish pas pak.');
+    $fail('Hyrja nuk u krye për shkak të një problemi teknik. Provo sërish pas pak.', 'server');
 }

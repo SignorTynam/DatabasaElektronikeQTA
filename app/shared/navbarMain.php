@@ -4,10 +4,12 @@ declare(strict_types=1);
 /**
  * navbarMain.php — Koka e faqeve publike (Themeli).
  * Marka majtas; Kreu · Verifiko · Rreth nesh · Kontakt; pamja dhe hyrja djathtas.
- * Në celular lidhjet hapen nga butoni "Menuja".
+ * Në celular lidhjet hapen nga butoni "Menuja". "Hyr" hap dialogun e hyrjes
+ * mbi faqen (partials/login_dialog.php), që vizatohet menjëherë pas kokës.
  */
 
 require_once __DIR__ . '/public_ui.php';
+require_once __DIR__ . '/partials/login_dialog.php';
 
 if (empty($NAV_ACTIVE)) {
   $path = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '');
@@ -16,7 +18,6 @@ if (empty($NAV_ACTIVE)) {
     'aboutus.php' => 'about',
     'contact.php' => 'contact',
     'verify.php' => 'verify',
-    'selectProfile.php' => 'login',
     default => '',
   };
 }
@@ -79,8 +80,8 @@ $links = [
               <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Dil nga llogaria</a></li>
             </ul>
           </div>
-        <?php elseif ($NAV_ACTIVE !== 'login'): /* në faqen e hyrjes butoni do të ishte i tepërt */ ?>
-          <a class="btn btn-primary" href="selectProfile.php">
+        <?php else: ?>
+          <a class="btn btn-primary" href="selectProfile.php" data-login>
             <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Hyr
           </a>
         <?php endif; ?>
@@ -89,3 +90,4 @@ $links = [
 
   </div>
 </header>
+<?php qta_login_dialog($currentUser); ?>

@@ -37,7 +37,7 @@ require_once __DIR__ . '/public_ui.php';
         <ul>
           <li><a href="aboutus.php">Rreth nesh</a></li>
           <li><a href="contact.php">Kontakt</a></li>
-          <li><a href="selectProfile.php">Hyr në sistem</a></li>
+          <li><a href="selectProfile.php" data-login>Hyr në sistem</a></li>
         </ul>
       </div>
 
