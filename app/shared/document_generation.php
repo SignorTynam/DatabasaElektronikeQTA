@@ -42,6 +42,39 @@ function qta_document_write(string $id, array $state): void
     } finally { fclose($fh); }
 }
 
+/** Hold a process-owned lock, even between progress writes. No clock-based expiry. */
+function qta_document_hold_worker(string $id): void
+{
+    if (($GLOBALS['qta_document_worker']['id'] ?? '') === $id) return;
+    $fh = fopen(qta_document_directory() . '/' . $id . '.lock', 'c+b');
+    if (!$fh || !flock($fh, LOCK_EX | LOCK_NB)) {
+        if ($fh) fclose($fh);
+        throw new RuntimeException('Gjenerimi i dokumentit nuk mund të niset.');
+    }
+    $GLOBALS['qta_document_worker'] = ['id' => $id, 'handle' => $fh];
+}
+
+/** Detect a killed worker by its released lock, never by the duration of the job. */
+function qta_document_status(string $id, array $state): array
+{
+    if ($state['status'] !== 'working' || empty($state['worker_tracked'])) return $state;
+    $fh = fopen(qta_document_directory() . '/' . $id . '.lock', 'c+b');
+    if (!$fh) return $state;
+    try {
+        if (!flock($fh, LOCK_EX | LOCK_NB)) return $state;
+        // Completion may have happened between reading the metadata and taking the lock.
+        $state = qta_document_read($id) ?? $state;
+        if ($state['status'] === 'working') {
+            $state['status'] = 'error';
+            $state['message'] = 'Serveri e ndërpre gjenerimin e dokumentit. Provo përsëri; nëse përsëritet, njofto administratorin.';
+            $state['finished_at'] = time();
+            qta_document_write($id, $state);
+            @unlink(qta_document_directory() . '/' . $id . '.bin');
+        }
+        return $state;
+    } finally { fclose($fh); }
+}
+
 function qta_export_progress(int $percent, string $message): void
 {
     if (empty($GLOBALS['qta_document_job'])) return;
@@ -89,8 +122,10 @@ function qta_export_clean_output(): void
 
 function qta_document_capture(string $id): void
 {
+    qta_document_hold_worker($id);
     $GLOBALS['qta_document_job'] = $id;
     $GLOBALS['qta_document_state'] = qta_document_read($id);
+    $GLOBALS['qta_document_state']['worker_tracked'] = true;
     $GLOBALS['qta_document_headers'] = [];
     ini_set('display_errors', '0');
     ini_set('log_errors', '1');

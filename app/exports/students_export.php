@@ -305,61 +305,17 @@ function exportPdf(array $headers, array $data, string $filename): void {
     signal_download_ready();
     cleanOutputBuffer();
 
-    $escape = function ($s) {
-        return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    };
-
-    ob_start();
-    ?>
-    <html>
-    <head>
-      <meta charset="UTF-8" />
-      <style>
-        * { font-family: DejaVu Sans, sans-serif; font-size: 11px; }
-        h3 { margin: 0 0 10px 0; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #bdb5a4; padding: 4px 6px; }
-        th { background: #ebe8df; }
-      </style>
-    </head>
-    <body>
-      <table>
-        <thead>
-          <tr>
-            <?php foreach ($headers as $h): ?>
-              <th><?= $escape($h) ?></th>
-            <?php endforeach; ?>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($data as $row): ?>
-            <tr>
-              <?php foreach ($row as $cell): ?>
-                <td><?= $escape($cell) ?></td>
-              <?php endforeach; ?>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    </body>
-    </html>
-    <?php
-    $html = ob_get_clean();
-
-    $options = new \Dompdf\Options();
-    $options->set('isRemoteEnabled', true);
-    $dompdf = new \Dompdf\Dompdf($options);
-    $dompdf->loadHtml($html, 'UTF-8');
-    $dompdf->setPaper('A3', 'landscape');
-    qta_export_progress(70, 'Po përpunohet dokumenti PDF.');
-    $dompdf->render();
-    qta_export_progress(85, 'Dokumenti PDF u krijua. Po ruhet skedari.');
-
+    require_once __DIR__ . '/inc/students_pdf.php';
+    $pdf = qta_students_pdf($headers, $data, static function (int $completed, int $total): void {
+        qta_export_progress(45 + (int)floor(45 * $completed / max(1, $total)),
+            'Po përgatitet PDF-ja: ' . $completed . ' nga ' . $total . ' kursantë.');
+    });
+    qta_export_progress(95, 'Dokumenti PDF u krijua. Po ruhet skedari.');
     qta_export_header('Content-Type: application/pdf');
     qta_export_header('Content-Disposition: attachment; filename="'.$filename.'.pdf"');
+    qta_export_header('Content-Length: ' . strlen($pdf));
     qta_export_header('Cache-Control: max-age=0');
-
-    echo $dompdf->output();
+    echo $pdf;
     exit;
 }
 

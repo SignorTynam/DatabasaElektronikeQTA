@@ -22,6 +22,7 @@ if ($action === 'status' || $action === 'file') {
     if (!$state || !hash_equals($state['owner'], qta_document_owner())) {
         qta_document_json(['error' => 'Dokumenti nuk u gjet për këtë sesion.'], 404);
     }
+    $state = qta_document_status($id, $state);
     if ($action === 'status') {
         unset($state['owner']);
         qta_document_json($state);
@@ -61,12 +62,15 @@ foreach (glob(qta_document_directory() . '/*.json') ?: [] as $old) {
     $oldState = qta_document_read($oldId);
     if (!empty($oldState['finished_at']) && $oldState['finished_at'] < time() - 86400) {
         @unlink(qta_document_directory() . '/' . $oldId . '.bin');
+        @unlink(qta_document_directory() . '/' . $oldId . '.lock');
         @unlink($old);
     }
 }
 $id = bin2hex(random_bytes(24));
+// Acquire before publishing the job ID so a concurrent poll cannot see a false stop.
+qta_document_hold_worker($id);
 qta_document_write($id, ['owner' => qta_document_owner(), 'status' => 'working',
-    'percent' => 0, 'message' => 'Po nis përgatitja e dokumentit.']);
+    'worker_tracked' => true, 'percent' => 0, 'message' => 'Po nis përgatitja e dokumentit.']);
 
 // Finish the small HTTP response before generation. Apache consumes Content-Length;
 // FPM also releases its response explicitly. The same PHP request starts work immediately.

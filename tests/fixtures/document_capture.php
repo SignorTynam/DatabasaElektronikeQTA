@@ -5,6 +5,10 @@ require_once __DIR__ . '/../../app/shared/document_generation.php';
 [$script, $id, $mode] = $argv;
 qta_document_write($id, ['owner' => 'test', 'status' => 'working', 'percent' => 0, 'message' => 'test']);
 qta_document_capture($id);
+if ($mode === 'worker') {
+    qta_export_progress(55, 'Worker running');
+    while (true) usleep(100000);
+}
 qta_download_status('ok', 'legacy early success');
 if (qta_document_read($id)['status'] !== 'working') throw new RuntimeException('Premature completion');
 ob_start(); echo 'discarded HTML'; qta_export_clean_output();
