@@ -1330,7 +1330,7 @@ $LF = [
             <section class="modal-section" aria-labelledby="gmDocs_<?= $gid ?>">
               <div class="modal-section-head">
                 <h3 class="modal-section-title" id="gmDocs_<?= $gid ?>">Dokumentet e grupit</h3>
-                <span class="section-meta">Zgjidh formatin — dokumenti hapet në një skedë të re.</span>
+                <span class="section-meta">Zgjidh formatin dhe prit derisa dokumenti të jetë gati.</span>
               </div>
               <?= qta_group_documents($gid, $CSRF) ?>
             </section>

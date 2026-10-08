@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
+require_once __DIR__ . '/../shared/document_generation.php';
+@set_time_limit(0);
 mb_internal_encoding('UTF-8');
 ob_start();
 
@@ -22,24 +24,14 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
-function qta_download_status(string $status, string $message): void {
-  foreach (['qta_file_ready' => $status, 'qta_file_msg' => $message] as $name => $value) {
-    setcookie($name, $value, [
-      'expires'  => time() + 60,
-      'path'     => '/',
-      'secure'   => !empty($_SERVER['HTTPS']),
-      'httponly' => false,
-      'samesite' => 'Lax',
-    ]);
-  }
-}
+
 
 function qta_fail(int $code, string $message): never {
-  while (ob_get_level() > 0) { @ob_end_clean(); }
+  qta_export_clean_output();
   qta_download_status('error', $message);
   http_response_code($code);
-  header('Content-Type: text/plain; charset=UTF-8');
-  header('X-Content-Type-Options: nosniff');
+  qta_export_header('Content-Type: text/plain; charset=UTF-8');
+  qta_export_header('X-Content-Type-Options: nosniff');
   exit($message);
 }
 
@@ -108,7 +100,6 @@ require_once $autoload;
 require_once __DIR__ . '/inc/lesson_register_documents.php';
 
 @ini_set('memory_limit', '512M');
-@set_time_limit(120);
 
 /* ===== Modeli: orari i ruajtur dhe kopja e temave të grupit ===== */
 try {
@@ -126,6 +117,7 @@ try {
 }
 
 /* ===== Dokumenti ===== */
+qta_export_progress(35, 'Të dhënat u përgatitën. Po krijohen faqet e regjistrit.');
 $tmp = tempnam(sys_get_temp_dir(), 'qta_lr_');
 try {
   if ($format === 'pdf') {
@@ -157,19 +149,19 @@ qta_audit_event('lesson_register.download', [
 if (function_exists('ini_get') && ini_get('zlib.output_compression')) {
   @ini_set('zlib.output_compression', 'Off');
 }
-while (ob_get_level() > 0) { @ob_end_clean(); }
+qta_export_clean_output();
 
 $filename = qta_lr_filename((int)$groupId, $format, (string)$model['generated_on']);
-header('X-File-Download: 1');
+qta_export_header('X-File-Download: 1');
 qta_download_status('ok', 'Regjistri i orëve të mësimit u krijua.');
-header('Content-Type: ' . $mime);
-header('Content-Disposition: attachment; filename="' . $filename . '"');
-header('Content-Transfer-Encoding: binary');
-header('Cache-Control: private, max-age=0, must-revalidate');
-header('Pragma: public');
-header('X-Content-Type-Options: nosniff');
+qta_export_header('Content-Type: ' . $mime);
+qta_export_header('Content-Disposition: attachment; filename="' . $filename . '"');
+qta_export_header('Content-Transfer-Encoding: binary');
+qta_export_header('Cache-Control: private, max-age=0, must-revalidate');
+qta_export_header('Pragma: public');
+qta_export_header('X-Content-Type-Options: nosniff');
 $size = @filesize($tmp);
-if ($size !== false) header('Content-Length: ' . $size);
+if ($size !== false) qta_export_header('Content-Length: ' . $size);
 readfile($tmp);
 @unlink($tmp);
 exit;

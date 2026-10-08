@@ -62,6 +62,7 @@
   --surface-sunken:   var(--stone-100);  /* menuja anësore, koka e tabelës */
   --surface-hover:    var(--stone-150);  /* hover neutral, rresht i zgjedhur */
   --surface-inverse:  var(--stone-900);
+  --dialog-backdrop:  var(--stone-950);
 
   /* Vijat */
   --border:           var(--stone-200);
@@ -179,6 +180,7 @@
   --masthead-h:     64px;
   --content-max:    1280px;
   --content-wide:   1720px;
+  --dialog-document-w: 32rem;
   --prose-max:      72ch;
 
   --z-sticky:   1020;

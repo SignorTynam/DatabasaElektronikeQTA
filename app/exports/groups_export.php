@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
+require_once __DIR__ . '/../shared/document_generation.php';
+@set_time_limit(0);
 mb_internal_encoding('UTF-8');
 
 require_once __DIR__ . '/database.php';
@@ -10,22 +12,7 @@ require_once __DIR__ . '/inc/audit_bootstrap.php';
 require_once __DIR__ . '/inc/qkl_report.php';
 qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
-function qta_download_status(string $status, string $message): void {
-  setcookie('qta_file_ready', $status, [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-  setcookie('qta_file_msg', $message, [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-}
+
 
 function qta_fail(int $code, string $message): never {
   qta_download_status('error', $message);
@@ -62,7 +49,7 @@ if (!$autoloadLoaded) {
 
 if (!isset($_SESSION['user_id'])) {
   qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.');
-  header('Location: selectProfile.php');
+  qta_export_header('Location: selectProfile.php');
   exit;
 }
 
@@ -78,7 +65,7 @@ $me = $userStmt->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($me['role_name'] ?? ''));
 if (!$me || !in_array($role, ['administrator', 'editor'], true)) {
   qta_download_status('error', 'Nuk ke leje për këtë dokument.');
-  header('Location: selectProfile.php');
+  qta_export_header('Location: selectProfile.php');
   exit;
 }
 
@@ -110,7 +97,6 @@ if ($amzeStart > $amzeEnd) {
 }
 
 @ini_set('memory_limit', '512M');
-@set_time_limit(120);
 
 function qkl_first_existing_column(PDO $pdo, string $table, array $candidates): ?string {
   $stmt = $pdo->prepare("
@@ -131,23 +117,21 @@ function qkl_prepare_output(): void {
   if (function_exists('ini_get') && ini_get('zlib.output_compression')) {
     @ini_set('zlib.output_compression', 'Off');
   }
-  while (ob_get_level() > 0) {
-    @ob_end_clean();
-  }
+  qta_export_clean_output();
 }
 
 function qkl_stream_file(string $tmpPath, string $mime, string $downloadName): never {
   qkl_prepare_output();
   qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
-  header('X-File-Download: 1');
-  header('Content-Type: ' . $mime);
-  header('Content-Disposition: attachment; filename="' . $downloadName . '"');
-  header('Content-Transfer-Encoding: binary');
-  header('Cache-Control: private, max-age=0, must-revalidate');
-  header('Pragma: public');
-  header('X-Accel-Buffering: no');
+  qta_export_header('X-File-Download: 1');
+  qta_export_header('Content-Type: ' . $mime);
+  qta_export_header('Content-Disposition: attachment; filename="' . $downloadName . '"');
+  qta_export_header('Content-Transfer-Encoding: binary');
+  qta_export_header('Cache-Control: private, max-age=0, must-revalidate');
+  qta_export_header('Pragma: public');
+  qta_export_header('X-Accel-Buffering: no');
   $size = @filesize($tmpPath);
-  if ($size !== false) header('Content-Length: ' . $size);
+  if ($size !== false) qta_export_header('Content-Length: ' . $size);
   $fh = fopen($tmpPath, 'rb');
   if ($fh === false) qta_fail(500, 'Skedari i raportit nuk mund të lexohet.');
   fpassthru($fh);
@@ -211,7 +195,9 @@ function qkl_output_pdf(array $rows, string $filenameBase): void {
   $dompdf = new \Dompdf\Dompdf($options);
   $dompdf->loadHtml($html, 'UTF-8');
   $dompdf->setPaper('A4', 'landscape');
+  qta_export_progress(70, 'Po përpunohet dokumenti PDF.');
   $dompdf->render();
+  qta_export_progress(85, 'Dokumenti PDF u krijua. Po ruhet skedari.');
 
   $tmp = tempnam(sys_get_temp_dir(), 'qkl_pdf_');
   file_put_contents($tmp, $dompdf->output());

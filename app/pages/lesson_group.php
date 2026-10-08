@@ -494,7 +494,7 @@ require __DIR__ . '/../shared/app_head.php';
       <section class="section" aria-labelledby="lgDocsTitle">
         <div class="section-head">
           <h2 class="section-title" id="lgDocsTitle">Dokumentet e grupit</h2>
-          <span class="section-meta">Zgjidh formatin — dokumenti hapet në një skedë të re.</span>
+          <span class="section-meta">Zgjidh formatin dhe prit derisa dokumenti të jetë gati.</span>
         </div>
         <?= $members
           ? qta_group_documents($gid, $CSRF, ['lesson_register' => true])

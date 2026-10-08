@@ -1,87 +1,24 @@
 <?php
-// Njoftimi i progresit gjatë gjenerimit të dokumenteve (Excel/PDF/Word).
-// Eksportet vendosin cookie-n qta_file_ready kur dokumenti është gati.
+// Kept at its existing include path for pages that already load this component.
+if (!empty($GLOBALS['qta_document_dialog_rendered'])) return;
+$GLOBALS['qta_document_dialog_rendered'] = true;
 ?>
-<script>
-(function () {
-  if (window.qtaDownloadToast) return;
-
-  var READY_COOKIE = 'qta_file_ready';
-  var MSG_COOKIE = 'qta_file_msg';
-  var DOWNLOAD_RE = /(?:register_export|students_export|groups_export|register_export_agency|download_[a-z_]+)\.php\b/i;
-
-  var pollTimer = null;
-  var timeoutTimer = null;
-  var activeToast = null;
-
-  function setCookie(name, value, maxAgeSec) {
-    document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=' + maxAgeSec + '; SameSite=Lax';
-  }
-  function getCookie(name) {
-    var match = document.cookie.split(';').map(function (c) { return c.trim(); })
-      .find(function (c) { return c.indexOf(name + '=') === 0; });
-    return match ? match.slice(name.length + 1) : '';
-  }
-  function clearReadyCookie() { setCookie(READY_COOKIE, '', 0); setCookie(MSG_COOKIE, '', 0); }
-
-  function toast(message, variant, title, opts) {
-    return window.qtaToast ? window.qtaToast(message, variant, title, opts) : null;
-  }
-
-  function hideActive() {
-    if (activeToast && window.bootstrap) {
-      var inst = window.bootstrap.Toast.getInstance(activeToast);
-      if (inst) inst.hide(); else activeToast.remove();
-    }
-    activeToast = null;
-  }
-
-  function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
-  }
-
-  function finish(finalType, finalMessage) {
-    stopPolling();
-    clearReadyCookie();
-    hideActive();
-    if (finalType && finalMessage) toast(finalMessage, finalType, finalType === 'success' ? 'Dokumenti është gati' : 'Dokumenti nuk u krijua');
-  }
-
-  function start(message) {
-    if (pollTimer) return;
-    clearReadyCookie();
-    activeToast = toast(message || 'Dokumenti po përgatitet. Mund të vazhdosh punën.', 'info', 'Po përgatitet dokumenti', { autohide: false });
-
-    pollTimer = setInterval(function () {
-      var status = decodeURIComponent(getCookie(READY_COOKIE) || '').trim().toLowerCase();
-      if (!status) return;
-      var rawMsg = getCookie(MSG_COOKIE);
-      var msg = rawMsg ? decodeURIComponent(rawMsg) : '';
-      if (status === 'ok' || status === 'success') {
-        finish('success', msg || 'Dokumenti u shkarkua. Kontrollo dosjen "Shkarkime".');
-      } else {
-        finish('danger', msg || 'Dokumenti nuk u krijua. Provo përsëri.');
-      }
-    }, 500);
-
-    timeoutTimer = setTimeout(function () {
-      finish('danger', 'Dokumenti po vonon shumë. Provo përsëri ose zvogëlo listën me filtra.');
-    }, 5 * 60 * 1000);
-  }
-
-  window.qtaDownloadToast = { start: start, finish: finish };
-
-  document.addEventListener('click', function (ev) {
-    var a = ev.target.closest ? ev.target.closest('a[href]') : null;
-    if (a && DOWNLOAD_RE.test(a.getAttribute('href') || '')) start(a.dataset.downloadToast);
-  }, true);
-
-  document.addEventListener('submit', function (ev) {
-    var form = ev.target;
-    if (form && form.tagName === 'FORM' && DOWNLOAD_RE.test(form.getAttribute('action') || '')) {
-      start(form.dataset.downloadToast);
-    }
-  }, true);
-})();
-</script>
+<dialog class="document-generation" id="documentGeneration" aria-labelledby="documentGenerationTitle" aria-describedby="documentGenerationHelp">
+  <div class="modal-header">
+    <h2 class="modal-title" id="documentGenerationTitle" tabindex="-1">Po përgatitet dokumenti</h2>
+  </div>
+  <div class="modal-body">
+    <p id="documentGenerationHelp">Prit derisa dokumenti të jetë gati. Gjatë përgatitjes nuk mund të kryesh veprime të tjera.</p>
+    <div class="document-generation-status" role="status" aria-live="polite" aria-atomic="true">
+      <span data-document-status>Po nis përgatitja e dokumentit.</span>
+      <span class="num" data-document-percent>0%</span>
+    </div>
+    <progress class="document-generation-progress" max="100" value="0" aria-label="Përgatitja e dokumentit"></progress>
+    <p class="text-muted mt-3 mb-0">Mbaje këtë faqe hapur. Dokumenti do të shkarkohet sapo të jetë gati.</p>
+    <div class="alert alert-danger mt-3 mb-0" role="alert" data-document-error hidden></div>
+  </div>
+  <div class="modal-footer" data-document-actions hidden>
+    <button type="button" class="btn btn-primary" data-document-retry>Provo përsëri</button>
+  </div>
+</dialog>
+<script src="<?= h(qta_asset('app/assets/js/document-generation.js')) ?>" defer></script>

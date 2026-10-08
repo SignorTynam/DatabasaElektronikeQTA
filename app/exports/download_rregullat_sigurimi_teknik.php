@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
+require_once __DIR__ . '/../shared/document_generation.php';
+@set_time_limit(0);
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
@@ -10,22 +12,7 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
-function qta_download_status(string $status, string $message): void {
-  setcookie('qta_file_ready', $status, [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-  setcookie('qta_file_msg', $message, [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-}
+
 
 function qta_fail(int $code, string $message): never {
   qta_download_status('error', $message);
@@ -270,10 +257,10 @@ qta_audit_event('sigurimi_teknik.download', [
 ]);
 
 /* Output */
-if (ob_get_length()) { ob_end_clean(); }
+qta_export_clean_output();
 
 $baseName = 'Rregullat_Sigurimi_Teknik_Grupi_'.$groupId;
-header('X-File-Download: 1');
+qta_export_header('X-File-Download: 1');
 qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 
 if ($format === 'pdf') {
@@ -290,22 +277,24 @@ if ($format === 'pdf') {
   $dompdf = new Dompdf\Dompdf($options);
   $dompdf->loadHtml($html, 'UTF-8');
   $dompdf->setPaper('A4', 'portrait');
+  qta_export_progress(70, 'Po përpunohet dokumenti PDF.');
   $dompdf->render();
+  qta_export_progress(85, 'Dokumenti PDF u krijua. Po ruhet skedari.');
 
-  header('Content-Type: application/pdf');
-  header('Content-Disposition: attachment; filename="'.$baseName.'.pdf"');
-  header('Cache-Control: private, max-age=0, must-revalidate');
-  header('Pragma: public');
+  qta_export_header('Content-Type: application/pdf');
+  qta_export_header('Content-Disposition: attachment; filename="'.$baseName.'.pdf"');
+  qta_export_header('Cache-Control: private, max-age=0, must-revalidate');
+  qta_export_header('Pragma: public');
 
   echo $dompdf->output();
   exit;
 }
 
 /* DOC */
-header('Content-Type: application/msword; charset=UTF-8');
-header('Content-Disposition: attachment; filename="'.$baseName.'.doc"');
-header('Cache-Control: private, max-age=0, must-revalidate');
-header('Pragma: public');
+qta_export_header('Content-Type: application/msword; charset=UTF-8');
+qta_export_header('Content-Disposition: attachment; filename="'.$baseName.'.doc"');
+qta_export_header('Cache-Control: private, max-age=0, must-revalidate');
+qta_export_header('Pragma: public');
 
 echo "\xEF\xBB\xBF";
 echo $html;

@@ -15,6 +15,8 @@ error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
+require_once __DIR__ . '/../shared/document_generation.php';
+@set_time_limit(0);
 mb_internal_encoding('UTF-8');
 
 require_once __DIR__ . '/database.php';
@@ -22,22 +24,7 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
-function qta_download_status(string $status, string $message): void {
-    setcookie('qta_file_ready', $status, [
-        'expires'  => time() + 60,
-        'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS']),
-        'httponly' => false,
-        'samesite' => 'Lax',
-    ]);
-    setcookie('qta_file_msg', $message, [
-        'expires'  => time() + 60,
-        'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS']),
-        'httponly' => false,
-        'samesite' => 'Lax',
-    ]);
-}
+
 
 function qta_fail(int $code, string $message): never {
     qta_download_status('error', $message);
@@ -76,7 +63,7 @@ if (!$autoloadLoaded) {
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
     qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.');
-    header('Location: selectProfile.php');
+    qta_export_header('Location: selectProfile.php');
     exit;
 }
 $u = $pdo->prepare("
@@ -92,7 +79,7 @@ $currentUser = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($currentUser['role_name'] ?? ''));
 if (!$currentUser || !in_array($role, array('administrator','editor'), true)) {
     qta_download_status('error', 'Nuk ke leje për këtë dokument.');
-    header('Location: selectProfile.php');
+    qta_export_header('Location: selectProfile.php');
     exit;
 }
 
@@ -262,14 +249,12 @@ $filename = 'studentet_'.date('Ymd_His');
    Funksionet e eksportit
    =============================== */
 function signal_download_ready(): void {
-    header('X-File-Download: 1');
+    qta_export_header('X-File-Download: 1');
     qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 }
 
 function cleanOutputBuffer(): void {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
+    qta_export_clean_output();
 }
 
 function exportXlsx(array $headers, array $data, string $filename): void {
@@ -306,11 +291,12 @@ function exportXlsx(array $headers, array $data, string $filename): void {
         $sheet->getColumnDimension($colLetter)->setAutoSize(true);
     }
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="'.$filename.'.xlsx"');
-    header('Cache-Control: max-age=0');
+    qta_export_header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    qta_export_header('Content-Disposition: attachment; filename="'.$filename.'.xlsx"');
+    qta_export_header('Cache-Control: max-age=0');
 
     $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    qta_export_progress(80, 'Po ruhet skedari i dokumentit.');
     $writer->save('php://output');
     exit;
 }
@@ -365,11 +351,13 @@ function exportPdf(array $headers, array $data, string $filename): void {
     $dompdf = new \Dompdf\Dompdf($options);
     $dompdf->loadHtml($html, 'UTF-8');
     $dompdf->setPaper('A3', 'landscape');
+    qta_export_progress(70, 'Po përpunohet dokumenti PDF.');
     $dompdf->render();
+    qta_export_progress(85, 'Dokumenti PDF u krijua. Po ruhet skedari.');
 
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment; filename="'.$filename.'.pdf"');
-    header('Cache-Control: max-age=0');
+    qta_export_header('Content-Type: application/pdf');
+    qta_export_header('Content-Disposition: attachment; filename="'.$filename.'.pdf"');
+    qta_export_header('Cache-Control: max-age=0');
 
     echo $dompdf->output();
     exit;
@@ -408,11 +396,12 @@ function exportDocx(array $headers, array $data, string $filename): void {
         }
     }
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    header('Content-Disposition: attachment; filename="'.$filename.'.docx"');
-    header('Cache-Control: max-age=0');
+    qta_export_header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    qta_export_header('Content-Disposition: attachment; filename="'.$filename.'.docx"');
+    qta_export_header('Cache-Control: max-age=0');
 
     $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+    qta_export_progress(80, 'Po ruhet skedari i dokumentit.');
     $writer->save('php://output');
     exit;
 }

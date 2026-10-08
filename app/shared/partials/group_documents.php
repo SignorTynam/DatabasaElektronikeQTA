@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * Çdo dokument është një kartë me një formular të vogël: çdo buton është një
  * format dhe e nis shkarkimin direkt (POST — tokeni CSRF nuk del në URL —
- * në skedë të re). Nuk ka dialog të dytë për zgjedhjen e formatit.
+ * me modal bllokues deri në marrjen e skedarit). Nuk ka dialog të dytë për zgjedhjen e formatit.
  *
  *   require_once __DIR__ . '/../shared/partials/group_documents.php';
  *   echo qta_group_documents($groupId, $CSRF);
@@ -15,7 +15,7 @@ declare(strict_types=1);
  * "Regjistri i orëve të mësimit" del vetëm kur thirrësi e kërkon shprehimisht:
  * ai ndërtohet nga orari i grupit, që grupet e mëparshme nuk e kanë.
  *
- * Njoftimi "Po përgatitet dokumenti" vjen nga download_generation_toast.php.
+ * Modali "Po përgatitet dokumenti" vjen nga download_generation_toast.php.
  */
 
 if (!function_exists('qta_group_documents')) {
@@ -62,7 +62,7 @@ if (!function_exists('qta_group_documents')) {
     $out = '<div class="doc-grid">';
     foreach ($docs as $doc) {
       $out .= '<form class="doc-card" method="post" action="' . h($doc['action']) . '" target="_blank"'
-        . ' data-download-toast="Dokumenti po përgatitet. Do të hapet në një skedë të re.">'
+        . ' data-download-toast="Prit derisa dokumenti të jetë gati.">'
         . '<input type="hidden" name="csrf" value="' . h($csrf) . '">'
         . '<input type="hidden" name="group_id" value="' . $groupId . '">'
         . '<span class="doc-card-icon"><i class="bi ' . h($doc['icon']) . '" aria-hidden="true"></i></span>'

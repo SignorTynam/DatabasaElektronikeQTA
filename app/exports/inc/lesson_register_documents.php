@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/../../shared/lesson_register.php';
+require_once __DIR__ . '/../../shared/document_generation.php';
 
 /** Shenjë e përkohshme për tab-in në Word (zëvendësohet me <w:tab/>). */
 const QTA_LR_DOCX_TAB = "\u{E000}";
@@ -286,7 +287,9 @@ if (!function_exists('qta_lr_pdf_fonts')) {
     $dompdf->addInfo('Title', $model['title']);
     $dompdf->addInfo('Author', 'QTA');
     $dompdf->addInfo('Creator', 'QTA — Regjistri i orëve të mësimit');
+    qta_export_progress(70, 'Po përpunohet regjistri PDF.');
     $dompdf->render();
+    qta_export_progress(85, 'Regjistri PDF u krijua. Po ruhet skedari.');
 
     return [
       'bytes' => (string)$dompdf->output(),
@@ -335,6 +338,7 @@ if (!function_exists('qta_lr_render_docx')) {
     ]);
 
     foreach ($model['pages'] as $i => $p) {
+      qta_export_progress(40 + (int)(25 * $i / max(1, count($model['pages']))), 'Po përgatitet faqja ' . ($i + 1) . ' nga ' . count($model['pages']) . '.');
       if ($p['kind'] === 'attendance') {
         if ($i > 0) {
           /* Paragraf i vogël (1 pt) që e çon tabelën në faqe të re. */
@@ -355,6 +359,7 @@ if (!function_exists('qta_lr_render_docx')) {
     }
 
     $writer = \PhpOffice\PhpWord\IOFactory::createWriter($word, 'Word2007');
+    qta_export_progress(80, 'Po ruhet regjistri Word.');
     $writer->save($path);
     qta_lr_docx_finish($path);
   }

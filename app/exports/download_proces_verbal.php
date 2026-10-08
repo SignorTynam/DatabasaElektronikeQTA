@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
+require_once __DIR__ . '/../shared/document_generation.php';
+@set_time_limit(0);
 mb_internal_encoding('UTF-8');
 
 require_once __DIR__ . '/database.php';
@@ -10,22 +12,7 @@ $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
-function qta_download_status(string $status, string $message): void {
-  setcookie('qta_file_ready', $status, [
-    'expires'  => time()+60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-  setcookie('qta_file_msg', $message, [
-    'expires'  => time()+60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-}
+
 
 function qta_fail(int $code, string $message): never {
   qta_download_status('error', $message);
@@ -58,13 +45,13 @@ if (!$autoloadLoaded) {
 }
 
 /* ===== Guard: admin/editor + CSRF ===== */
-if (!isset($_SESSION['user_id'])) { qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.'); header('Location: selectProfile.php'); exit; }
+if (!isset($_SESSION['user_id'])) { qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.'); qta_export_header('Location: selectProfile.php'); exit; }
 
 $u = $pdo->prepare("SELECT u.id, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=:id LIMIT 1");
 $u->execute([':id'=>$_SESSION['user_id']]);
 $me = $u->fetch(PDO::FETCH_ASSOC);
 $role = strtolower((string)($me['role_name'] ?? ''));
-if (!$me || !in_array($role, ['administrator','editor'], true)) { qta_download_status('error', 'Nuk ke leje për këtë dokument.'); header('Location: selectProfile.php'); exit; }
+if (!$me || !in_array($role, ['administrator','editor'], true)) { qta_download_status('error', 'Nuk ke leje për këtë dokument.'); qta_export_header('Location: selectProfile.php'); exit; }
 
 /* POST (i preferuar: tokeni nuk del në URL) ose GET për lidhjet e vjetra */
 $request     = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
@@ -84,7 +71,6 @@ $missingMsg = qta_export_requirements_message('download_proces_verbal', ['docx' 
 if ($missingMsg !== null) { qta_fail(500, $missingMsg); }
 
 @ini_set('memory_limit','512M');
-@set_time_limit(120);
 
 /* ===== Konstantat â€œsi në fotoâ€ ===== */
 const DIDACTIC_TITLE = 'Drejtuesi didaktik';
@@ -106,25 +92,25 @@ function iso_to_dmy_dash(?string $iso): string {
 function clean(?string $s): string { return trim((string)$s); }
 
 function signal_download_ready(): void {
-  header('X-File-Download: 1');
+  qta_export_header('X-File-Download: 1');
   qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 }
 function qta_prepare_output(): void {
   if (function_exists('ini_get') && ini_get('zlib.output_compression')) {
     @ini_set('zlib.output_compression', 'Off');
   }
-  while (ob_get_level() > 0) { @ob_end_clean(); }
+  qta_export_clean_output();
 }
 function qta_stream_file(string $tmpPath, string $mime, string $downloadName): void {
   qta_prepare_output();
-  header('Content-Type: '.$mime);
-  header('Content-Disposition: attachment; filename="'.$downloadName.'"');
-  header('Content-Transfer-Encoding: binary');
-  header('Cache-Control: private, max-age=0, must-revalidate');
-  header('Pragma: public');
-  header('X-Accel-Buffering: no');
+  qta_export_header('Content-Type: '.$mime);
+  qta_export_header('Content-Disposition: attachment; filename="'.$downloadName.'"');
+  qta_export_header('Content-Transfer-Encoding: binary');
+  qta_export_header('Cache-Control: private, max-age=0, must-revalidate');
+  qta_export_header('Pragma: public');
+  qta_export_header('X-Accel-Buffering: no');
   $size = @filesize($tmpPath);
-  if ($size !== false) header('Content-Length: '.$size);
+  if ($size !== false) qta_export_header('Content-Length: '.$size);
   $fh = fopen($tmpPath, 'rb');
   fpassthru($fh);
   fclose($fh);
@@ -466,7 +452,9 @@ function exportPdfProcesVerbal(
   $dompdf = new \Dompdf\Dompdf($opt);
   $dompdf->loadHtml($html, 'UTF-8');
   $dompdf->setPaper('A4','landscape');
+  qta_export_progress(70, 'Po përpunohet dokumenti PDF.');
   $dompdf->render();
+  qta_export_progress(85, 'Dokumenti PDF u krijua. Po ruhet skedari.');
 
   $tmp = tempnam(sys_get_temp_dir(), 'qta_pv_pdf_');
   file_put_contents($tmp, $dompdf->output());

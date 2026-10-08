@@ -988,6 +988,33 @@ td.cell-err { transition: box-shadow var(--dur-3) var(--ease); }
 }
 .modal-body > :last-child { margin-bottom: 0; }
 
+/* Blocking document preparation, above every Bootstrap workspace dialog. */
+.document-generation {
+  width: min(calc(100% - var(--sp-8)), var(--dialog-document-w));
+  max-width: calc(100% - var(--sp-4));
+  max-height: calc(100dvh - var(--sp-8));
+  margin: auto;
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: auto;
+}
+.document-generation::backdrop { background: var(--dialog-backdrop); opacity: .6; }
+.document-generation .modal-header { padding: var(--sp-6) var(--sp-6) var(--sp-3); }
+.document-generation .modal-body { padding: var(--sp-3) var(--sp-6) var(--sp-6); }
+.document-generation .modal-footer { background: var(--surface-sunken); }
+.document-generation [hidden] { display: none; }
+.document-generation-status { display: flex; justify-content: space-between; gap: var(--sp-4); margin-block: var(--sp-5) var(--sp-2); }
+.document-generation-status .num { flex: 0 0 auto; font-weight: var(--fw-semibold); }
+.document-generation-progress { display: block; width: 100%; height: var(--sp-2); border: 0; border-radius: var(--r-sm); background: var(--surface-sunken); accent-color: var(--action); }
+.document-generation-progress::-webkit-progress-bar { background: var(--surface-sunken); border-radius: var(--r-sm); }
+.document-generation-progress::-webkit-progress-value { background: var(--action); border-radius: var(--r-sm); }
+.document-generation-progress::-moz-progress-bar { background: var(--action); border-radius: var(--r-sm); }
+body.is-generating-document { overflow: hidden; }
+
 /* Dialog mbi dialog (p.sh. konfirmimi kur ndryshon pikët e një grupi të mbyllur):
    i dyti del sipër dhe sfondi i tij errëson të parin. */
 .modal.is-stacked { --bs-modal-zindex: 1065; }

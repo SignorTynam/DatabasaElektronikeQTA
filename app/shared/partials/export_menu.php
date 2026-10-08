@@ -25,7 +25,7 @@ $exportIcons   = [
 ];
 ?>
 <form class="dropdown" method="post" action="<?= h((string)$exportAction) ?>"
-      data-download-toast="Dokumenti po përgatitet. Mund të vazhdosh punën.">
+      data-download-toast="Prit derisa dokumenti të jetë gati.">
   <input type="hidden" name="csrf" value="<?= h((string)$CSRF) ?>">
   <?php foreach ($exportFields as $exportName => $exportValue):
     if ($exportValue === null || $exportValue === '' || $exportValue === false) continue; ?>

@@ -340,8 +340,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
   $rows = $ex->fetchAll(PDO::FETCH_ASSOC);
   $allFields = $loadFields(array_column($rows, 'id'));
 
-  header('Content-Type: text/csv; charset=UTF-8');
-  header('Content-Disposition: attachment; filename="' . $LOG['csv'] . '_' . date('Y-m-d_Hi') . '.csv"');
+  require_once __DIR__ . '/document_generation.php';
+  qta_export_progress(70, 'Po ruhet historiku i ndryshimeve.');
+  qta_export_header('Content-Type: text/csv; charset=UTF-8');
+  qta_export_header('Content-Disposition: attachment; filename="' . $LOG['csv'] . '_' . date('Y-m-d_Hi') . '.csv"');
   $out = fopen('php://output', 'w');
   fwrite($out, "\xEF\xBB\xBF"); // Excel e lexon saktë ë/ç
   $head = ['Data', 'Ora', 'Çfarë ndodhi', 'Ku', 'Çfarë', 'Ndryshimet'];
@@ -466,7 +468,7 @@ $LF = [
       </h2>
       <?php if ($total > 0): ?>
         <div class="list-actions">
-          <a class="btn btn-secondary" href="<?= h($csvUrl) ?>"><i class="bi bi-download" aria-hidden="true"></i>Shkarko (Excel)</a>
+          <a class="btn btn-secondary" href="<?= h($csvUrl) ?>" data-document-endpoint="activity_log_export.php" data-document-csrf="<?= h((string)($_SESSION['csrf_token'] ?? '')) ?>"><i class="bi bi-download" aria-hidden="true"></i>Shkarko (Excel)</a>
         </div>
       <?php endif; ?>
     </div>

@@ -2,26 +2,13 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
+require_once __DIR__ . '/../shared/document_generation.php';
+@set_time_limit(0);
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 
-function qta_download_status(string $status, string $message): void {
-  setcookie('qta_file_ready', $status, [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-  setcookie('qta_file_msg', $message, [
-    'expires'  => time() + 60,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']),
-    'httponly' => false,
-    'samesite' => 'Lax',
-  ]);
-}
+
 
 function qta_fail(int $code, string $message): never {
   qta_download_status('error', $message);
@@ -43,7 +30,7 @@ register_shutdown_function(function () {
 --------------------------------*/
 if (!isset($_SESSION['user_id'])) {
   qta_download_status('error', 'Sesioni ka mbaruar. Hyr sërish në llogari dhe provo përsëri.');
-  header('Location: selectProfile.php');
+  qta_export_header('Location: selectProfile.php');
   exit;
 }
 $usr = $pdo->prepare("
@@ -55,7 +42,7 @@ $usr->execute([':uid'=>$_SESSION['user_id']]);
 $me = $usr->fetch(PDO::FETCH_ASSOC);
 if (!$me || $me['role_name']!=='agjencia') {
   qta_download_status('error', 'Nuk ke leje për këtë dokument.');
-  header('Location: selectProfile.php');
+  qta_export_header('Location: selectProfile.php');
   exit;
 }
 
@@ -225,7 +212,7 @@ function htmlTable(array $headers, array $data, string $title): string {
 $title = "Regjistri i studentëve – {$AGENCY['company_name']}";
 
 function signal_download_ready(): void {
-  header('X-File-Download: 1');
+  qta_export_header('X-File-Download: 1');
   qta_download_status('ok', 'Dokumenti u gjenerua me sukses.');
 }
 
@@ -275,18 +262,19 @@ switch ($f) {
         $sheet->getColumnDimensionByColumn($c)->setAutoSize(true);
       }
 
-      header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.xlsx"');
-      header('Cache-Control: max-age=0');
-      if (ob_get_length()) { ob_end_clean(); }
+      qta_export_header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      qta_export_header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.xlsx"');
+      qta_export_header('Cache-Control: max-age=0');
+      qta_export_clean_output();
       $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+      qta_export_progress(80, 'Po ruhet skedari i dokumentit.');
       $writer->save('php://output');
       exit;
     } else {
       // Fallback: CSV kompatibël me Excel
-      header('Content-Type: text/csv; charset=utf-8');
-      header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.csv"');
-      if (ob_get_length()) { ob_end_clean(); }
+      qta_export_header('Content-Type: text/csv; charset=utf-8');
+      qta_export_header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.csv"');
+      qta_export_clean_output();
       $out = fopen('php://output', 'w');
       // UTF-8 BOM që Excel t’i lexojë shkronjat shqip
       fwrite($out, chr(0xEF).chr(0xBB).chr(0xBF));
@@ -302,13 +290,17 @@ switch ($f) {
       $dompdf = new \Dompdf\Dompdf(['isHtml5ParserEnabled'=>true, 'isRemoteEnabled'=>true]);
       $dompdf->loadHtml($html, 'UTF-8');
       $dompdf->setPaper('A4', 'landscape');
+      qta_export_progress(70, 'Po përpunohet dokumenti PDF.');
       $dompdf->render();
-      if (ob_get_length()) { ob_end_clean(); }
-      $dompdf->stream('QTA-Regjistri-'.$agencySlug.'-'.$now.'.pdf', ['Attachment'=>true]);
+      qta_export_progress(85, 'Dokumenti PDF u krijua. Po ruhet skedari.');
+      qta_export_clean_output();
+      qta_export_header('Content-Type: application/pdf');
+      qta_export_header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.pdf"');
+      echo $dompdf->output();
       exit;
     } else {
       // Fallback: jep HTML për “Print to PDF”
-      header('Content-Type: text/html; charset=utf-8');
+      qta_export_header('Content-Type: text/html; charset=utf-8');
       echo $html;
       exit;
     }
@@ -343,17 +335,18 @@ switch ($f) {
         }
       }
 
-      header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.docx"');
-      if (ob_get_length()) { ob_end_clean(); }
+      qta_export_header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      qta_export_header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.docx"');
+      qta_export_clean_output();
       $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+      qta_export_progress(80, 'Po ruhet skedari i dokumentit.');
       $writer->save('php://output');
       exit;
     } else {
       // Fallback: HTML i hapshëm me Word
       $html = htmlTable($headers, $data, $title);
-      header('Content-Type: application/msword; charset=utf-8');
-      header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.doc"');
+      qta_export_header('Content-Type: application/msword; charset=utf-8');
+      qta_export_header('Content-Disposition: attachment; filename="QTA-Regjistri-'.$agencySlug.'-'.$now.'.doc"');
       echo $html;
       exit;
     }
