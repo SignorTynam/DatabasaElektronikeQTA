@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* ------------------------------
    Guard: admin/editor i loguar
@@ -25,14 +26,14 @@ if (!$currentUser || !in_array($role, ['administrator', 'editor'], true)) {
 
 /* Kyçi i ndryshimeve */
 if (isset($_GET['edit'])) {
-  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+  qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
   $qs = $_GET; unset($qs['edit']);
   header('Location: lesson_groups.php' . ($qs ? '?' . http_build_query($qs) : ''));
   exit;
 }
 $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 require_once __DIR__ . '/../shared/themeli.php';
@@ -62,21 +63,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $when = qta_sched_on_label($s['end_date']);
     if (count($res['groups']) === 1) {
       $g0 = $res['groups'][0];
-      $_SESSION['flash_ok'] = 'Grupi #' . $g0['group_id'] . ' u krijua' . ($g0['count'] ? ' me ' . $g0['count'] . ' kursantë' : '')
-        . '. Orari mbaron ' . $when . ', pas ' . qta_plural((int)$s['days'], 'dite', 'ditësh') . ' mësimi.';
+      qta_session_put(['flash_ok'], 'Grupi #' . $g0['group_id'] . ' u krijua' . ($g0['count'] ? ' me ' . $g0['count'] . ' kursantë' : '')
+        . '. Orari mbaron ' . $when . ', pas ' . qta_plural((int)$s['days'], 'dite', 'ditësh') . ' mësimi.');
       header('Location: lesson_group.php?id=' . (int)$g0['group_id']);
       exit;
     }
     $parts = array_map(static fn($g) => '#' . $g['group_id'] . ' (' . $g['count'] . ', amza ' . $g['amze_min'] . '–' . $g['amze_max'] . ')', $res['groups']);
-    $_SESSION['flash_ok'] = 'U krijuan ' . count($res['groups']) . ' grupe me të njëjtin orar: ' . implode(', ', $parts) . '. Mbarojnë ' . $when . '.';
+    qta_session_put(['flash_ok'], 'U krijuan ' . count($res['groups']) . ' grupe me të njëjtin orar: ' . implode(', ', $parts) . '. Mbarojnë ' . $when . '.');
     header('Location: lesson_groups.php');
     exit;
   } catch (QtaUserError $e) {
-    $_SESSION['lg_create_form'] = $form + ['error' => $e->getMessage()];
+    qta_session_put(['lg_create_form'], $form + ['error' => qta_error_message($e)]);
   } catch (Throwable $e) {
-    $ref = bin2hex(random_bytes(4));
-    error_log('[QTA ' . $ref . '] krijimi i grupit: ' . $e->getMessage());
-    $_SESSION['lg_create_form'] = $form + ['error' => 'Grupi nuk u krijua për shkak të një gabimi të papritur. Asgjë nuk u ruajt. Provo sërish (referenca ' . $ref . ').'];
+    $ref = qta_request_exception($e);
+    qta_session_put(['lg_create_form'], $form + ['error' => 'Grupi nuk u krijua për shkak të një gabimi të papritur. Asgjë nuk u ruajt. Provo sërish (referenca ' . $ref . ').']);
   }
   header('Location: lesson_groups.php?create=1');
   exit;
@@ -145,13 +145,12 @@ $readyCount = 0;
 foreach ($courses as $c) if (!empty($summaries[(int)$c['id']]['ready'])) $readyCount++;
 
 /* Formulari i krijimit pas një gabimi */
-$createForm = $_SESSION['lg_create_form'] ?? null;
-unset($_SESSION['lg_create_form']);
+$createForm = qta_session_take(['lg_create_form'], null);
 $openCreate = $EDIT_MODE && (isset($_GET['create']) || $createForm !== null);
 $prefCourse = (int)($createForm['course_id'] ?? ($openCreate ? $courseFilterId : 0));
 
-$flash_ok = $_SESSION['flash_ok'] ?? null; unset($_SESSION['flash_ok']);
-$flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
+$flash_ok = qta_session_take(['flash_ok'], null);
+$flash_err = qta_session_take(['flash_err'], null);
 
 $NAV_ACTIVE = 'lesson_groups';
 $HELP_TOPIC = 'lesson_groups';
@@ -392,7 +391,7 @@ $LF = [
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
 <script type="application/json" id="lgConfig"><?= json_encode([
-  'csrf' => $CSRF, 'endpoint' => 'lesson_group_update.php', 'edit' => $EDIT_MODE,
+  'csrf' => $CSRF, 'endpoint' => 'lesson_group_update.php', 'edit' => $EDIT_MODE, 'amze_max' => QTA_AMZE_MAX_PER_REQUEST,
   'flash_ok' => $flash_ok, 'flash_err' => $flash_err,
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 </body>

@@ -11,7 +11,8 @@ declare(strict_types=1);
  * shih app/shared/lesson_register.php.
  */
 
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 mb_internal_encoding('UTF-8');
 ob_start();
 
@@ -19,7 +20,7 @@ require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 function qta_download_status(string $status, string $message): void {
   foreach (['qta_file_ready' => $status, 'qta_file_msg' => $message] as $name => $value) {

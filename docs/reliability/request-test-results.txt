@@ -1,0 +1,9 @@
+• integration/request_reliability_test.php
+  group edit: 31.5 ms
+  concurrent live + mutation: 34.2 ms
+• unit/request_session_test.php
+  session hold: reader 1326 ms
+  session release: reader 2 ms
+  session flash: reader 2 ms
+
+Kaluan: 45  Dështuan: 0

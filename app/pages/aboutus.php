@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/public_ui.php';
@@ -20,7 +21,7 @@ try {
       (SELECT COUNT(*) FROM courses)       AS modules,
       (SELECT COUNT(*) FROM course_groups) AS `groups`
   ")->fetch(PDO::FETCH_ASSOC) ?: $figures;
-} catch (Throwable $e) {
+} catch (Throwable $e) { qta_request_exception($e);
   /* mbaj zerot */
 }
 

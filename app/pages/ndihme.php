@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 
 /**
  * ndihme.php — Qendra e ndihmës.

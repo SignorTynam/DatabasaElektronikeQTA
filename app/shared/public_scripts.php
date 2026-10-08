@@ -20,6 +20,7 @@ $pageScripts = $pageScripts ?? [];
 <?php if (qta_plugin_enabled('html5-qrcode', $publicPlugins ?? null)): ?>
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <?php endif; ?>
+<script src="<?= h(qta_asset('app/assets/js/request.js')) ?>"></script>
 <script src="<?= h(qta_asset('app/assets/js/app.js')) ?>" defer></script>
 <script src="<?= h(qta_asset('app/assets/js/login-ui.js')) ?>" defer></script>
 <?php foreach ($pageScripts as $script): ?>

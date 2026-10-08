@@ -1,13 +1,14 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* Guard: vetëm admin i loguar */
 if (!isset($_SESSION['user_id'])) {
@@ -30,6 +31,7 @@ if (!$me || strtolower((string)$me['role_name']) !== 'administrator') {
 
 /* Lexo input (JSON ose form) */
 $raw = file_get_contents('php://input');
+qta_request_action('update_field');
 $data = json_decode($raw, true);
 if (!is_array($data)) $data = $_POST;
 
@@ -101,6 +103,6 @@ try {
 
     echo json_encode(['ok'=>true,'display'=>$dispValue]);
 } catch (Throwable $e) {
-    http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+    http_response_code(qta_error_status($e));
+    echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]);
 }

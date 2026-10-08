@@ -1,12 +1,13 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
@@ -38,6 +39,7 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csr
 }
 
 $action    = $in['action'] ?? '';
+qta_request_action($action);
 
 /* Shtimi dhe heqja kërkojnë ndryshimet të hapura; lista lexohet gjithmonë. */
 if ($action !== 'list_assigned' && empty($_SESSION['edit_mode'])) {
@@ -46,22 +48,8 @@ if ($action !== 'list_assigned' && empty($_SESSION['edit_mode'])) {
 }
 $agency_id = isset($in['agency_id']) ? (int)$in['agency_id'] : 0;
 
-function parseAmzeRanges(string $s): array {
-  $out=[];
-  foreach (preg_split('/\s*,\s*/', trim($s)) as $tok) {
-    if ($tok==='') continue;
-    if (preg_match('/^(\d+)\s*-\s*(\d+)$/',$tok,$m)) {
-      $a=(int)$m[1]; $b=(int)$m[2];
-      if($a>$b) [$a,$b]=[$b,$a];
-      for($i=$a;$i<=$b;$i++) $out[$i]=true;
-    } elseif (preg_match('/^\d+$/',$tok)) {
-      $out[(int)$tok]=true;
-    }
-  }
-  $nums=array_keys($out);
-  sort($nums,SORT_NUMERIC);
-  return $nums;
-}
+require_once __DIR__ . '/../shared/group_members.php';
+function parseAmzeRanges(string $s): array { return qta_amze_parse($s); }
 
 try {
 
@@ -190,6 +178,7 @@ try {
 
   echo json_encode(['ok'=>false,'error'=>'Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.']);
 } catch (Throwable $e) {
-  http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+  if ($pdo->inTransaction()) $pdo->rollBack();
+  http_response_code(qta_error_status($e));
+  echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]);
 }

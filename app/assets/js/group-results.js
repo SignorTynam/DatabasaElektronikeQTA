@@ -292,7 +292,7 @@
 
   /* -------------------------------------------------------- Leximi */
   function post(payload) {
-    return fetch(CFG.endpoint || 'group_results.php', {
+    return window.qtaFetch.response(CFG.endpoint || 'group_results.php', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -487,12 +487,12 @@
       }
       setBusy(false);
       failSave(json);
-    }).catch(function () {
+    }).catch(function (err) {
       if (!S || S.gid !== gid) return;
       setBusy(false);
-      S.error = 'Pikët nuk u ruajtën: nuk mora përgjigje nga serveri. Kontrollo lidhjen dhe provo sërish — ndryshimet e tua janë ende këtu.';
+      S.error = err.message + ' Ndryshimet e tua janë ende këtu.';
       paintStatus();
-    });
+    }).finally(function () { if (S && S.gid === gid) setBusy(false); });
   }
 
   function applySaved(json, sent, focusKey) {

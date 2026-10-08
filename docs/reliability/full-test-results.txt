@@ -1,0 +1,28 @@
+• integration/calendar_http_test.php
+• integration/calendar_test.php
+• integration/legacy_conversion_http_test.php
+• integration/legacy_conversion_test.php
+• integration/lesson_groups_test.php
+• integration/lesson_register_test.php
+• integration/login_http_test.php
+• integration/migration_conversion_test.php
+• integration/migration_results_test.php
+• integration/qkl_report_test.php
+• integration/request_reliability_test.php
+  group edit: 46.5 ms
+  concurrent live + mutation: 40 ms
+• integration/results_test.php
+• unit/calendar_test.php
+• unit/curriculum_check_test.php
+• unit/date_input_test.php
+• unit/fixed_range_engine_test.php
+• unit/lesson_register_test.php
+• unit/qkl_report_test.php
+• unit/request_session_test.php
+  session hold: reader 1287 ms
+  session release: reader 2 ms
+  session flash: reader 2 ms
+• unit/results_test.php
+• unit/schedule_engine_test.php
+
+Kaluan: 1671  Dështuan: 0

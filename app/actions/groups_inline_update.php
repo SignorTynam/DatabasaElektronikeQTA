@@ -1,13 +1,14 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* Guard: admin OSE editor */
 if (!isset($_SESSION['user_id'])) {
@@ -48,6 +49,7 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$csrf
 }
 
 $action     = $data['action'] ?? '';
+qta_request_action($action);
 $student_id = (int)($data['student_id'] ?? 0);
 $group_id   = isset($data['group_id']) && $data['group_id']!=='' ? (int)$data['group_id'] : null;
 
@@ -272,6 +274,6 @@ try {
   echo json_encode(['ok'=>false,'error'=>'Veprim i panjohur.']);
 
 } catch (Throwable $e) {
-  http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+  http_response_code(qta_error_status($e));
+  echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]);
 }

@@ -17,14 +17,15 @@ declare(strict_types=1);
  * rikontrollon gjithçka, pavarësisht nga ç'tregon faqja.
  */
 
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/staff_guard.php';
 require_once __DIR__ . '/../shared/legacy_conversion.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
   qta_json_out(['ok' => false, 'error' => 'Kjo adresë pranon vetëm ruajtje nga faqja e konvertimit.'], 405);
@@ -91,18 +92,18 @@ try {
     case 'refresh': {
       qta_json_require_edit_mode();
       $r = qta_conv_refresh($pdo, $groupId, $data['revision'] ?? null, $userId);
-      $_SESSION['flash_ok'] = $r['discarded']
+      qta_session_put(['flash_ok'], $r['discarded']
         ? 'Të dhënat e reja nuk i mbajnë orët e kursit brenda periudhës historike, prandaj drafti u hoq. Shiko arsyen më poshtë.'
         : ($r['kept'] ? 'Të dhënat u rifreskuan. Plani yt mbeti i njëjtë — kontrolloje sërish para konvertimit.'
-                      : 'Periudha e grupit ndryshoi, prandaj plani filloi nga propozimi automatik. Kontrolloje para konvertimit.');
+                      : 'Periudha e grupit ndryshoi, prandaj plani filloi nga propozimi automatik. Kontrolloje para konvertimit.'));
       qta_json_out(['ok' => true, 'reload' => true]);
     }
 
     case 'convert': {
       qta_json_require_edit_mode();
       $r = qta_conv_apply($pdo, $groupId, $data['revision'] ?? null, $data['source'] ?? null, $userId);
-      $_SESSION['flash_ok'] = 'Grupi #' . $groupId . ' u konvertua. Tani është te "Regjistri i kurseve profesionale" me orarin e miratuar: '
-        . $r['hours'] . ' orë në ' . $r['teaching_days'] . ' ditë mësimi, ' . qta_sched_range_label($r['start_date'], $r['end_date']) . '.';
+      qta_session_put(['flash_ok'], 'Grupi #' . $groupId . ' u konvertua. Tani është te "Regjistri i kurseve profesionale" me orarin e miratuar: '
+        . $r['hours'] . ' orë në ' . $r['teaching_days'] . ' ditë mësimi, ' . qta_sched_range_label($r['start_date'], $r['end_date']) . '.');
       qta_json_out(['ok' => true, 'redirect' => 'lesson_group.php?id=' . $groupId]);
     }
 

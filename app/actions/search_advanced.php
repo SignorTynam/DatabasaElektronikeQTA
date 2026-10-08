@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
@@ -592,6 +593,6 @@ try {
         'took_ms' => $elapsed,
     ]);
 } catch (Throwable $exception) {
-    error_log('Advanced search failed: ' . $exception->getMessage());
-    search_error('Kërkimi dështoi. Provo sërish.', 500);
+    $ref = qta_request_exception($exception);
+    search_error('Kërkimi dështoi. Provo sërish. Referenca: ' . $ref, 500);
 }

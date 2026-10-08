@@ -33,6 +33,7 @@ $helpTopic   = $HELP_TOPIC ?? null;
 <?php endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?= h(qta_asset('app/assets/js/request.js')) ?>"></script>
 <script src="<?= h(qta_asset('app/assets/js/app.js')) ?>" defer></script>
 <script src="<?= h(qta_asset('app/assets/js/date-picker.js')) ?>" defer></script>
 <?php foreach ($pageScripts as $script): ?>

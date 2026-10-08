@@ -42,7 +42,7 @@
   }
 
   function postJSON(url, payload) {
-    return fetch(url, {
+    return window.qtaFetch.response(url, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -55,7 +55,9 @@
   /* ---------------------------------------------- 1. Redaktimi në tabelë */
   function saveInline(studentId, field, value, cell, displayEl, extra) {
     if (!EDIT) return Promise.resolve();
-    cell.classList.add('cell-saving');
+    if (cell.classList.contains('cell-saving')) return;
+    cell.setAttribute('aria-busy', 'true');
+      cell.classList.add('cell-saving');
     return postJSON(CFG.inline, Object.assign({ student_id: studentId, field: field, value: value }, extra || {}))
       .then(function (json) {
         cell.classList.remove('cell-saving');
@@ -71,7 +73,7 @@
         if (displayEl && displayEl.dataset.prev != null) displayEl.textContent = displayEl.dataset.prev;
         flashCell(cell, 'cell-err', 1200);
         notify('danger', e.message || 'Ndryshimi nuk u ruajt.');
-      });
+      }).finally(function () { cell.classList.remove('cell-saving'); cell.removeAttribute('aria-busy'); });
   }
 
   var amzeExistsState = null;
@@ -111,7 +113,7 @@
         var sel = document.getElementById('pickCourseSelect');
         if (sel) sel.value = '';
         modal('pickCourseModal').show();
-      });
+      }).catch(function (err) { el.textContent = oldVal; notify('danger', err.message, { autohide: false }); });
       return;
     }
 
@@ -138,7 +140,11 @@
         el.textContent = oldPN || '—';
         flashCell(cell, 'cell-err', 1200);
         notify('danger', json.error || 'Ndryshimi nuk u ruajt.');
-      });
+      }).catch(function (err) {
+        el.textContent = oldPN || '—';
+        flashCell(cell, 'cell-err', 1200);
+        notify('danger', err.message, { autohide: false });
+      }).finally(function () { cell.classList.remove('cell-saving'); });
       return;
     }
 
@@ -291,8 +297,9 @@
   on('btnConfirmDelete', 'click', function () {
     if (!deleteState.sid) return;
     var btn = document.getElementById('btnConfirmDelete');
+    if (btn && btn.disabled) return;
     busy(btn, true);
-    fetch('students.php', {
+    window.qtaFetch.response('students.php', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -311,7 +318,7 @@
     }).catch(function (e) {
       busy(btn, false);
       notify('danger', e.message || 'Fshirja nuk u krye.');
-    });
+    }).finally(function () { busy(btn, false); });
   });
 
   /* Shto kursant: numri personal i dikujt që ekziston plotëson të dhënat. */
@@ -323,7 +330,7 @@
   on('pnInput', 'blur', function () {
     var pn = document.getElementById('pnInput').value.trim();
     if (!pn) return;
-    fetch('students.php?action=lookup_person&personal_number=' + encodeURIComponent(pn), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    window.qtaFetch.response('students.php?action=lookup_person&personal_number=' + encodeURIComponent(pn), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (res) { return res.json(); })
       .then(function (json) {
         if (!json.ok) { notify('danger', json.error || 'Kërkimi nuk u krye.'); return; }
@@ -360,6 +367,7 @@
       var sel = row && row.querySelector('[data-group-select]');
       var gid = parseInt((sel && sel.value) || '0', 10);
       if (!gid) { notify('warning', 'Zgjidh grupin së pari.'); if (sel) sel.focus(); return; }
+      if (assign && assign.disabled) return;
       busy(assign, true);
       postJSON(CFG.assign, { action: 'assign_to_group', student_id: parseInt(assign.dataset.student, 10), group_id: gid })
         .then(function (json) {
@@ -367,7 +375,7 @@
           if (!json.ok) { notify('danger', json.error || 'Kursanti nuk u caktua.'); return; }
           afterChange(json.message || 'Kursanti u caktua në grup.');
         })
-        .catch(function () { busy(assign, false); notify('danger', 'Lidhja dështoi. Provo sërish.'); });
+        .catch(function (err) { notify('danger', err.message, { autohide: false }); }).finally(function () { busy(assign, false); });
       return;
     }
 
@@ -378,6 +386,7 @@
       var psel = prow && prow.querySelector('[data-plan-select]');
       var cid = psel && psel.value ? parseInt(psel.value, 10) : 0;
       if (!cid) { notify('warning', 'Zgjidh kursin së pari.'); if (psel) psel.focus(); return; }
+      if (planSave && planSave.disabled) return;
       busy(planSave, true);
       postJSON(CFG.assign, { action: 'set_student_plan', student_id: parseInt(planSave.dataset.student, 10), course_id: cid })
         .then(function (json) {
@@ -385,7 +394,7 @@
           if (!json.ok) { notify('danger', json.error || 'Kursi nuk u ruajt.'); return; }
           afterChange(json.message || 'Kursi u ruajt. Tani zgjidh grupin.');
         })
-        .catch(function () { busy(planSave, false); notify('danger', 'Lidhja dështoi. Provo sërish.'); });
+        .catch(function (err) { notify('danger', err.message, { autohide: false }); }).finally(function () { busy(planSave, false); });
       return;
     }
 
@@ -400,6 +409,7 @@
         danger: true
       }).then(function (ok) {
         if (!ok) return;
+        if (planRemove && planRemove.disabled) return;
         busy(planRemove, true);
         postJSON(CFG.assign, {
           action: 'remove_student_plan',
@@ -409,7 +419,7 @@
           busy(planRemove, false);
           if (!json.ok) { notify('danger', json.error || 'Kursi nuk u hoq.'); return; }
           afterChange(json.message || 'Kursi u hoq. Zgjidh një kurs tjetër kur të jesh gati.');
-        }).catch(function () { busy(planRemove, false); notify('danger', 'Lidhja dështoi. Provo sërish.'); });
+        }).catch(function (err) { notify('danger', err.message, { autohide: false }); }).finally(function () { busy(planRemove, false); });
       });
       return;
     }
@@ -475,15 +485,24 @@
       danger: false
     }).then(function (ok) {
       if (!ok) return;
+      if (btn && btn.disabled) return;
       busy(btn, true);
-      var done = 0, failed = [], i = 0;
-      function next() {
-        if (i >= ids.length) return finish();
-        if (prog) prog.textContent = 'Po caktoj ' + (i + 1) + ' nga ' + ids.length + '…';
-        postJSON(CFG.assign, { action: 'assign_to_group', student_id: ids[i], group_id: gid })
-          .then(function (json) { if (json.ok) done++; else failed.push(json.error || 'nuk u pranua'); })
-          .catch(function () { failed.push('lidhja dështoi'); })
-          .then(function () { i++; next(); });
+      var done = 0, failed = [];
+      async function assignAll() {
+        try {
+          for (var i = 0; i < ids.length; i++) {
+            if (prog) prog.textContent = 'Po caktoj ' + (i + 1) + ' nga ' + ids.length + '…';
+            try {
+              var json = await postJSON(CFG.assign, { action: 'assign_to_group', student_id: ids[i], group_id: gid });
+              if (json.ok) done++; else failed.push(json.error || 'nuk u pranua');
+            } catch (err) {
+              failed.push(err.message);
+              // A transport error has an unknown outcome: do not continue the batch.
+              break;
+            }
+          }
+          finish();
+        } finally { busy(btn, false); if (prog) prog.textContent = ''; }
       }
       function finish() {
         if (prog) prog.textContent = '';
@@ -497,7 +516,7 @@
           notify('danger', 'Asnjë kursant nuk u caktua. ' + (failed[0] || ''), { autohide: false });
         }
       }
-      next();
+      assignAll();
     });
   }
 

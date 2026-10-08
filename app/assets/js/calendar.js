@@ -314,7 +314,7 @@
     ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     setBusy(true);
     var url = CFG.endpoint + '?from=' + mi.from + '&to=' + mi.to + (S.legacy ? '&legacy=1' : '');
-    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' }, signal: ctrl ? ctrl.signal : undefined })
+    window.qtaFetch.response(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' }, signal: ctrl ? ctrl.signal : undefined })
       .then(function (r) {
         return r.json().catch(function () { return null; }).then(function (json) { return { status: r.status, json: json }; });
       })
@@ -340,7 +340,7 @@
         feed = null;
         render({ focus: opts.focus ? 'keep' : false });
         announce('Kalendari nuk u ngarkua për ' + mi.inText + '. Kontrollo lidhjen.');
-      });
+      }).finally(function () { if (mine === seq) setBusy(false); });
   }
 
   /* ------------------------------------------------------------ Adresa dhe historiku */
@@ -633,7 +633,7 @@
 
   function loadDetail(id) {
     var mine = ++current.seq;
-    fetch(CFG.endpoint + '?group=' + encodeURIComponent(String(id)), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    window.qtaFetch.response(CFG.endpoint + '?group=' + encodeURIComponent(String(id)), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (r) {
         return r.json().catch(function () { return null; }).then(function (json) { return { status: r.status, json: json }; });
       })
@@ -653,11 +653,10 @@
         }
         detailError(id, res.json && res.json.error, res.status);
       })
-      .catch(function () {
+      .catch(function (err) {
         if (mine !== current.seq || current.id !== id) return;
-        M.body.removeAttribute('aria-busy');
-        detailError(id, null, 0);
-      });
+        detailError(id, err.message, err.status || 0);
+      }).finally(function () { if (mine === current.seq && current.id === id) M.body.removeAttribute('aria-busy'); });
   }
   function detailError(id, message, status) {
     M.body.innerHTML = emptyHtml('bi-wifi-off', 'Detajet e grupit nuk u ngarkuan',

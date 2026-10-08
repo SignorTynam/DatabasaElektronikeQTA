@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/domain.php';
 
@@ -13,7 +14,7 @@ try {
   // (opsionale) audit
   if (file_exists(__DIR__ . '/inc/audit_bootstrap.php')) {
     require_once __DIR__ . '/inc/audit_bootstrap.php';
-    if (function_exists('qta_audit_attach')) qta_audit_attach($pdo);
+    if (function_exists('qta_audit_attach')) qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
   }
 
   /* =========================
@@ -60,6 +61,7 @@ try {
   }
 
   $action = (string)($data['action'] ?? '');
+  qta_request_action($action);
   if ($action==='') { http_response_code(400); echo json_encode(['ok'=>false,'error'=>'Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.']); exit; }
 
   /* ===============
@@ -296,7 +298,11 @@ try {
     if ($pid<=0) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
     if ($nr==='') throw new RuntimeException('Shkruaj numrin e amzës.');
 
-    $ensure_person_exists($pdo, $pid);
+    $pdo->beginTransaction();
+    // Serialize implicit user creation for this person, then keep both inserts atomic.
+    $personLock = $pdo->prepare('SELECT id FROM persons WHERE id=? FOR UPDATE');
+    $personLock->execute([$pid]);
+    if (!$personLock->fetchColumn()) throw new RuntimeException('Ky person nuk u gjet. Rifresko faqen.');
 
     // Unik AMZË
     $du=$pdo->prepare("SELECT id FROM students WHERE nr_amze=:nr LIMIT 1");
@@ -326,6 +332,7 @@ try {
                          VALUES (:p,:u,:n,NULL)");
     $insS->execute([':p'=>$pid, ':u'=>$user_id, ':n'=>$nr]);
     $sid=(int)$pdo->lastInsertId();
+    $pdo->commit();
 
     echo json_encode(['ok'=>true,'student_id'=>$sid,'nr_amze'=>$nr]); exit;
   }
@@ -442,6 +449,7 @@ try {
   echo json_encode(['ok'=>false,'error'=>'Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.']); exit;
 
 } catch (Throwable $e) {
-  http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>$e->getMessage() ?: 'Diçka nuk shkoi. Provo sërish.']);
+  if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+  http_response_code(qta_error_status($e));
+  echo json_encode(['ok'=>false,'error'=>qta_error_message($e) ?: 'Diçka nuk shkoi. Provo sërish.']);
 }

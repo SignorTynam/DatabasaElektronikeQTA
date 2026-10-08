@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 require_once __DIR__ . '/../shared/themeli.php';
 
 /* ---------------------------------
@@ -68,12 +69,12 @@ $lastPasswordChange = $pc->fetchColumn() ?: null;
 
 /* Helpers */
 function flash(string $k, ?string $m = null) {
-  if ($m === null) { if (!empty($_SESSION['flash'][$k])) { $x = $_SESSION['flash'][$k]; unset($_SESSION['flash'][$k]); return $x; } return null; }
-  $_SESSION['flash'][$k] = $m;
+  if ($m === null) { if (!empty($_SESSION['flash'][$k])) { return qta_session_take(['flash', $k]); } return null; }
+  qta_session_put(['flash', $k], $m);
 }
 
 /* CSRF */
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* ---------------------------------
@@ -158,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     throw new RuntimeException('Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.');
   } catch (Throwable $e) {
-    flash('err', $e->getMessage());
+    flash('err', qta_error_message($e));
     header('Location: profile.php'); exit;
   }
 }

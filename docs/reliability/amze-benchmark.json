@@ -1,0 +1,65 @@
+[
+    {
+        "students": 100,
+        "requested": 100,
+        "legacy_queries": 100,
+        "batch_queries": 1,
+        "explain_cast": {
+            "type": "index",
+            "key": "PRIMARY",
+            "rows": "100",
+            "Extra": "Using where"
+        },
+        "explain_indexed_candidate": {
+            "type": "index",
+            "key": "PRIMARY",
+            "rows": "100",
+            "Extra": "Using where"
+        },
+        "legacy_n_selects_median_ms": 10.4,
+        "batch_one_scan_median_ms": 0.71,
+        "future_indexed_numeric_median_ms": 1.1
+    },
+    {
+        "students": 1000,
+        "requested": 200,
+        "legacy_queries": 200,
+        "batch_queries": 1,
+        "explain_cast": {
+            "type": "index",
+            "key": "PRIMARY",
+            "rows": "1080",
+            "Extra": "Using where"
+        },
+        "explain_indexed_candidate": {
+            "type": "index",
+            "key": "PRIMARY",
+            "rows": "1080",
+            "Extra": "Using where"
+        },
+        "legacy_n_selects_median_ms": 127.05,
+        "batch_one_scan_median_ms": 2.56,
+        "future_indexed_numeric_median_ms": 2.53
+    },
+    {
+        "students": 10000,
+        "requested": 200,
+        "legacy_queries": 200,
+        "batch_queries": 1,
+        "explain_cast": {
+            "type": "index",
+            "key": "PRIMARY",
+            "rows": "10495",
+            "Extra": "Using where"
+        },
+        "explain_indexed_candidate": {
+            "type": "range",
+            "key": "ix_numeric",
+            "rows": "200",
+            "Extra": "Using where; Using index; Using filesort"
+        },
+        "legacy_n_selects_median_ms": 1684.33,
+        "batch_one_scan_median_ms": 19.45,
+        "future_indexed_numeric_median_ms": 3.28
+    }
+]

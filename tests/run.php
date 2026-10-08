@@ -76,6 +76,13 @@ if ($integration) {
   $files = array_merge($files, glob(__DIR__ . '/integration/*_test.php') ?: []);
 }
 sort($files);
+foreach ($argv as $arg) {
+  if (str_starts_with($arg, '--filter=')) {
+    $filter = substr($arg, strlen('--filter='));
+    $files = array_values(array_filter($files, static fn($file) => str_contains(basename($file), $filter)));
+    if (!$files) { fwrite(STDERR, "Asnjë test nuk përputhet me filtrin.\n"); exit(2); }
+  }
+}
 
 foreach ($files as $file) {
   echo '• ', substr($file, strlen(__DIR__) + 1), PHP_EOL;

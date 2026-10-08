@@ -407,7 +407,7 @@
       if (controller) controller.abort();
       controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       setBusy(true);
-      fetch(url, {
+      window.qtaFetch.response(url, {
         credentials: 'same-origin',
         headers: { 'Accept': 'text/html', 'X-QTA-Live': '1' },
         signal: controller ? controller.signal : undefined
@@ -431,7 +431,7 @@
           if (mine !== seq) return;
           setBusy(false);
           showError(true);
-        });
+        }).finally(function () { if (mine === seq) setBusy(false); });
     }
 
     function go(opts) {
@@ -838,6 +838,9 @@
   document.addEventListener('submit', function (event) {
     var form = event.target;
     if (!form || !form.hasAttribute || !form.hasAttribute('data-confirm') || form.dataset.confirmed === '1') return;
+    if (event.defaultPrevented) return;
+    if (form.dataset.confirming === '1') { event.preventDefault(); return; }
+    form.dataset.confirming = '1';
     event.preventDefault();
     var submitter = event.submitter || null;
     window.qtaConfirm({
@@ -848,8 +851,8 @@
     }).then(function (ok) {
       if (!ok) return;
       form.dataset.confirmed = '1';
-      if (form.requestSubmit) form.requestSubmit(submitter || undefined); else form.submit();
-    });
+      window.qtaNativeSubmit(form, submitter);
+    }).finally(function () { delete form.dataset.confirming; });
   }, true);
 
   document.addEventListener('click', function (event) {
@@ -915,12 +918,6 @@
     if (el.value !== out) el.value = out;
   });
 
-  document.addEventListener('submit', function (event) {
-    var form = event.target;
-    if (!form || !form.matches || !form.matches('form[data-loading]') || event.defaultPrevented) return;
-    var btn = event.submitter || form.querySelector('button[type="submit"], button:not([type])');
-    if (btn) { btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true'); }
-  });
 
   /* Kodet QR: <div data-qr="URL" data-qr-size="200">. Libraria (qrcodejs)
      ngarkohet vetëm nga faqet që e kanë nevojë, prandaj presim DOMContentLoaded. */
@@ -1302,6 +1299,7 @@
     }
 
     function renderStart() {
+      body.removeAttribute('aria-busy');
       var items = recent();
       summary.textContent = 'Gati për kërkim';
       input.removeAttribute('aria-activedescendant');
@@ -1331,7 +1329,7 @@
 
     function run() {
       var q = input.value.trim();
-      if (q.length < 2) { flat = []; active = -1; renderStart(); return; }
+      if (q.length < 2) { ++seq; if (controller) controller.abort(); flat = []; active = -1; renderStart(); return; }
 
       var mine = ++seq;
       if (controller) controller.abort();
@@ -1341,7 +1339,7 @@
       var params = new URLSearchParams({ q: q, sort: sort, status: status, period: period, match: matchMode, limit: limit });
       if (only) params.set('type', only);
 
-      fetch('app/actions/search_advanced.php?' + params.toString(), {
+      window.qtaFetch.response('app/actions/search_advanced.php?' + params.toString(), {
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
         signal: controller ? controller.signal : undefined
@@ -1397,9 +1395,9 @@
           if (error && error.name === 'AbortError') return;
           if (mine !== seq) return;
           body.removeAttribute('aria-busy');
-          body.innerHTML = '<div class="pal-message is-error"><i class="bi bi-wifi-off" aria-hidden="true"></i><b>Nuk u lidh me serverin</b><span>Kontrollo internetin dhe provo sërish.</span></div>';
-          summary.textContent = 'Pa lidhje'; flat = []; active = -1;
-        });
+          body.innerHTML = '<div class="pal-message is-error"><i class="bi bi-wifi-off" aria-hidden="true"></i><b>Kërkimi nuk u krye</b><span>' + esc(error.message || 'Kontrollo internetin dhe provo sërish.') + '</span></div>';
+          summary.textContent = 'Kërkimi nuk u krye'; flat = []; active = -1;
+        }).finally(function () { if (mine === seq) body.removeAttribute('aria-busy'); });
     }
 
     function updateTypeCounts(counts) {

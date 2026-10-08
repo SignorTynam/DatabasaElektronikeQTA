@@ -56,20 +56,8 @@ if (!function_exists('qta_login_dialog')) {
     $roles = qta_login_roles();
 
     /* Mesazhi i një hyrjeje të dështuar pa JavaScript (login_handler.php). */
-    $error = null;
-    if (!empty($_SESSION['login_error'])) {
-      $error = (string)$_SESSION['login_error'];
-      unset($_SESSION['login_error']);
-    }
-    $remembered = '';
-    if (!empty($_SESSION['login_identifier'])) {
-      $remembered = (string)$_SESSION['login_identifier'];
-      unset($_SESSION['login_identifier']);
-    }
-
-    if (empty($_SESSION['csrf_login'])) {
-      $_SESSION['csrf_login'] = bin2hex(random_bytes(24));
-    }
+    $error = $GLOBALS['qta_login_flash']['error'] ?? null;
+    $remembered = (string)($GLOBALS['qta_login_flash']['identifier'] ?? '');
 
     /* ?hyr hap dialogun sapo ngarkohet faqja; ?hyr=student zgjedh edhe llojin. */
     $asked = $_GET['hyr'] ?? null;

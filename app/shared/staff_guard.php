@@ -7,9 +7,12 @@ declare(strict_types=1);
  * dhe tokeni i faqes. Asnjë vendim nuk mbështetet te butonat e fshehur.
  */
 
+require_once __DIR__ . '/request.php';
+
 if (!function_exists('qta_json_out')) {
   function qta_json_out(array $payload, int $status = 200): void
   {
+    $payload['request_id'] = qta_request_id();
     http_response_code($status);
     header('Content-Type: application/json; charset=UTF-8');
     header('Cache-Control: no-store');
@@ -22,7 +25,9 @@ if (!function_exists('qta_json_out')) {
   {
     $raw = file_get_contents('php://input');
     $data = json_decode((string)$raw, true);
-    return is_array($data) ? $data : $_POST;
+    $data = is_array($data) ? $data : $_POST;
+    qta_request_action($data['action'] ?? null);
+    return $data;
   }
 
   /**
@@ -82,9 +87,10 @@ if (!function_exists('qta_json_out')) {
       /* Rregull i bazës (trigger) me mesazh shqip. */
       qta_json_out(['ok' => false, 'error' => (string)$e->errorInfo[2]], 400);
     }
-    $ref = bin2hex(random_bytes(4));
-    error_log('[QTA ' . $ref . '] ' . get_class($e) . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-    $lead = $unexpected ?? 'Ndryshimi nuk u ruajt për shkak të një gabimi të papritur. Asgjë nuk ndryshoi.';
-    qta_json_out(['ok' => false, 'error' => $lead . ' Provo sërish; nëse përsëritet, njofto administratorin (referenca ' . $ref . ').'], 500);
+    $ref = qta_request_exception($e);
+    $lead = qta_database_busy($e)
+      ? 'Të dhënat po përpunohen nga një veprim tjetër. Kontrollo gjendjen dhe provo sërish.'
+      : ($unexpected ?? 'Veprimi nuk përfundoi siç pritej. Kontrollo nëse ndryshimi është ruajtur para se ta provosh përsëri.');
+    qta_json_out(['ok' => false, 'error' => $lead . ' Referenca: ' . $ref], qta_database_busy($e) ? 409 : 500);
   }
 }

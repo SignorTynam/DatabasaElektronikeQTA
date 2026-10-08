@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* ------------------------------
    Guard: admin/editor i loguar
@@ -24,7 +25,7 @@ if (!$currentUser || !in_array($role, ['administrator', 'editor'], true)) {
 }
 
 if (isset($_GET['edit'])) {
-  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+  qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
   $qs = $_GET; unset($qs['edit']);
   header('Location: group_conversions.php' . ($qs ? '?' . http_build_query($qs) : ''));
   exit;

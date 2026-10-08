@@ -147,14 +147,15 @@
     if (!payload) return;
     lastPayload = payload;
     setVerdict('loading');
-    fetch('verify.php', {
+    window.qtaFetch.response('verify.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ action: 'verify', payload: payload })
     })
       .then(function (r) { return r.json(); })
       .then(function (json) { render(json, payload); })
-      .catch(function () { render(null, payload); });
+      .catch(function () { render(null, payload); })
+      .finally(function () { result.setAttribute('aria-busy', 'false'); });
   }
 
   /* ------------------------------------------------------------- Kamera */

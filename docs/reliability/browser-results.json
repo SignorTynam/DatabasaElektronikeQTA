@@ -1,0 +1,106 @@
+{
+  "errors": {
+    "results": [
+      {
+        "kind": 401,
+        "reset": true
+      },
+      {
+        "kind": 403,
+        "reset": true
+      },
+      {
+        "kind": 409,
+        "reset": true
+      },
+      {
+        "kind": 500,
+        "reset": true
+      },
+      {
+        "kind": "invalid_json",
+        "reset": true
+      },
+      {
+        "kind": "network",
+        "reset": true
+      },
+      {
+        "kind": "timeout",
+        "reset": true
+      },
+      {
+        "kind": "409 confirmation cancelled",
+        "reset": true
+      },
+      {
+        "kind": "duplicate inline save",
+        "requests": 1,
+        "busyDuringFirst": true,
+        "reset": true
+      }
+    ],
+    "errors": []
+  },
+  "roles": [
+    {
+      "role": "administrator@test.invalid",
+      "pages": 6,
+      "errors": [],
+      "failures": [],
+      "textZoom": "200%",
+      "focus": "A"
+    },
+    {
+      "role": "editor@test.invalid",
+      "pages": 4,
+      "errors": [],
+      "failures": [],
+      "textZoom": "200%",
+      "focus": "A"
+    },
+    {
+      "role": "T12345678A",
+      "pages": 3,
+      "errors": [],
+      "failures": [],
+      "textZoom": "200%",
+      "focus": "A"
+    },
+    {
+      "role": "T26010100A",
+      "pages": 2,
+      "errors": [],
+      "failures": [],
+      "textZoom": "200%",
+      "focus": "A"
+    },
+    {
+      "role": "public",
+      "pages": 6,
+      "errors": [],
+      "failures": [],
+      "textZoom": "200%",
+      "focus": "A"
+    }
+  ],
+  "native_submit": {
+    "post_requests_on_double_click": 1,
+    "screenshots": 10,
+    "widths": [
+      320,
+      375,
+      768,
+      1024,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "keyboard_focus_outline": "solid",
+    "console_page_errors": [],
+    "network_failures": [],
+    "massive_range_preview": "passed (<100ms)"
+  }
+}

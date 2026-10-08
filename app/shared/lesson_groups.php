@@ -445,8 +445,7 @@ if (!function_exists('qta_lg_preview_new')) {
       if ($spec !== '') {
         $nums = qta_amze_parse($spec);
         if (!$nums) throw new QtaUserError('Nuk gjeta asnjë numër amze. Shkruaji si 3400-3403, 3409, ose lëre fushën bosh.');
-        $map = [];
-        foreach ($nums as $n) $map[$n] = qta_amze_ensure_student($pdo, $n);
+        $map = qta_amze_ensure_batch($pdo, $nums);
         qta_members_assert_can_join($pdo, array_values($map), $course['id']);
         $ids = array_values($map);
         $ph = implode(',', array_fill(0, count($ids), '?'));
@@ -887,10 +886,7 @@ if (!function_exists('qta_lg_set_members')) {
         throw new QtaUserError('Një grup mban deri në ' . QTA_GROUP_MAX_MEMBERS . ' kursantë, por ke shkruar ' . count($nums)
           . ' numra amze. Për të tjerët krijo një grup tjetër me të njëjtin kurs.');
       }
-      $target = [];
-      foreach ($nums as $n) {
-        $target[$n] = $existing[$n] ?? qta_amze_ensure_student($pdo, $n);
-      }
+      $target = qta_amze_ensure_batch($pdo, $nums);
       $toRemove = [];
       foreach ($existing as $amze => $sid) if (!isset($target[$amze])) $toRemove[] = $sid;
       $toAdd = [];

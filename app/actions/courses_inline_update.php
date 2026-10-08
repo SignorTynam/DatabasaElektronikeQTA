@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/curriculum.php';
 
@@ -8,7 +9,7 @@ header('Content-Type: application/json; charset=UTF-8');
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* Guard: vetëm admin ose editor i loguar */
 if (!isset($_SESSION['user_id'])) {
@@ -43,6 +44,7 @@ $data = json_decode($raw, true);
 if (!is_array($data)) $data = $_POST;
 
 $action    = $data['action'] ?? '';   // 'update_field' | 'move_group_course'
+qta_request_action($action);
 $csrf      = $data['csrf'] ?? '';
 
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
@@ -200,8 +202,8 @@ try {
   throw new RuntimeException('Ky veprim nuk njihet. Rifresko faqen dhe provo sërish.');
 
 } catch (Throwable $e) {
-    http_response_code(400);
-    $out = ['ok'=>false,'error'=>$e->getMessage()];
+    http_response_code(qta_error_status($e));
+    $out = ['ok'=>false,'error'=>qta_error_message($e)];
     if ($e instanceof QtaUserError) {
         $out['code'] = $e->data['code'] ?? null;
         if (isset($e->data['dialog'])) $out['dialog'] = $e->data['dialog'];

@@ -122,8 +122,8 @@ if (!function_exists('qta_tx')) {
     if ($pdo->inTransaction()) {
       return $fn();
     }
-    $pdo->beginTransaction();
     try {
+      $pdo->beginTransaction();
       $result = $fn();
       $pdo->commit();
       return $result;

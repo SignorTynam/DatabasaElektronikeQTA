@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
@@ -64,7 +65,7 @@ $ast->execute([':uid'=>$me['id']]);
 $AGENCY = $ast->fetch(PDO::FETCH_ASSOC);
 if (!$AGENCY) { qta_fail(403, 'Llogaria jote nuk është e lidhur me një agjenci. Njofto administratorin.'); }
 // CSRF token për eksport
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 

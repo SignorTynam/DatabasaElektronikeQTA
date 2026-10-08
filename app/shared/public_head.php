@@ -11,6 +11,13 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/public_ui.php';
+require_once __DIR__ . '/session.php';
+qta_session_boot();
+// Consume flash before output; rendering the dialog never reacquires a session.
+$GLOBALS['qta_login_flash'] = [
+  'error' => qta_session_take(['login_error']),
+  'identifier' => qta_session_take(['login_identifier'], ''),
+];
 
 $pageTitle = $pageTitle ?? 'Regjistri QTA';
 $pageDescription = $pageDescription ?? 'Regjistri publik i certifikimeve profesionale të Qendrës së Trajnimeve të Avancuara.';

@@ -176,7 +176,7 @@
     var controller = window.AbortController ? new window.AbortController() : null;
     pending = controller || true;
     setBusy(true);
-    window.fetch(form.action, {
+    window.qtaFetch.response(form.action, {
       method: 'POST',
       body: new window.FormData(form),
       headers: { 'Accept': 'application/json' },
@@ -202,7 +202,9 @@
     }).catch(function (error) {
       if (error && error.name === 'AbortError') return;
       if (pending !== (controller || true)) return;
-      stop(MSG_OFFLINE);
+      stop(error.message || MSG_OFFLINE);
+    }).finally(function () {
+      if (pending === (controller || true)) { pending = null; setBusy(false); }
     });
   }
 

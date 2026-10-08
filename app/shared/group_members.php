@@ -24,6 +24,7 @@ if (!function_exists('qta_amze_parse')) {
   /** "3400-3403, 3409" → [3400, 3401, 3402, 3403, 3409] (të renditur, pa përsëritje). */
   function qta_amze_parse(string $spec): array
   {
+    if (strlen($spec) > 8192) throw new QtaUserError('Lista e numrave të amzës është shumë e gjatë.');
     $out = [];
     $bad = [];
     foreach (preg_split('/\s*[,;\n]\s*/', trim($spec)) ?: [] as $tok) {
@@ -42,6 +43,9 @@ if (!function_exists('qta_amze_parse')) {
       } else {
         $bad[] = $tok;
       }
+      if (count($out) > QTA_AMZE_MAX_PER_REQUEST) {
+        throw new QtaUserError('Shkruaj deri në ' . QTA_AMZE_MAX_PER_REQUEST . ' numra amze njëherësh.');
+      }
     }
     if ($bad) {
       throw new QtaUserError('Nuk e kuptova: "' . implode('", "', array_slice($bad, 0, 3)) . '". Shkruaj numra amze të ndarë me presje ose intervale me vizë, p.sh. 3400-3403, 3409.');
@@ -57,23 +61,46 @@ if (!function_exists('qta_amze_parse')) {
   /** Kursanti me këtë numër amze; nëse mungon, krijohet bosh (person + llogari + regjistrim). */
   function qta_amze_ensure_student(PDO $pdo, int $amze): int
   {
-    $q = $pdo->prepare('SELECT id FROM students WHERE CAST(nr_amze AS UNSIGNED) = ? LIMIT 1');
-    $q->execute([$amze]);
-    $sid = $q->fetchColumn();
-    if ($sid) return (int)$sid;
+    return qta_tx($pdo, static function () use ($pdo, $amze): int {
+      return qta_amze_ensure_batch($pdo, [$amze])[$amze];
+    });
+  }
+
+  /** One numeric lookup preserves legacy leading-zero semantics without N full scans.
+   * The caller owns the transaction, including all validations and membership writes.
+   * @return array<int,int> numeric AMZË => student ID
+   */
+  function qta_amze_ensure_batch(PDO $pdo, array $numbers): array
+  {
+    if (!$pdo->inTransaction()) throw new LogicException('AMZË creation requires a transaction.');
+    if (count($numbers) > QTA_AMZE_MAX_PER_REQUEST) throw new QtaUserError('Shkruaj deri në ' . QTA_AMZE_MAX_PER_REQUEST . ' numra amze njëherësh.');
+    if (!$numbers) return [];
+    $numbers = array_values(array_unique(array_map('intval', $numbers)));
+    sort($numbers, SORT_NUMERIC);
+    $ph = implode(',', array_fill(0, count($numbers), '?'));
+    $q = $pdo->prepare("SELECT id, CAST(nr_amze AS UNSIGNED) AS amze FROM students WHERE CAST(nr_amze AS UNSIGNED) IN ($ph) ORDER BY id");
+    $q->execute($numbers);
+    $map = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) $map[(int)$row['amze']] ??= (int)$row['id'];
+    $missing = array_diff($numbers, array_keys($map));
+    if (!$missing) return array_replace(array_fill_keys($numbers, 0), $map);
 
     $roleId = (int)$pdo->query("SELECT id FROM roles WHERE name = 'student'")->fetchColumn();
     $genderId = (int)($pdo->query("SELECT id FROM genders WHERE code IN ('M','m') OR LOWER(label) IN ('mashkull','male','m') LIMIT 1")->fetchColumn() ?: 0);
     if (!$roleId || !$genderId) {
       throw new QtaUserError('Kursanti i ri nuk u krijua: mungon roli "kursant" ose gjinia bazë. Njofto administratorin.');
     }
-    $pdo->prepare('INSERT INTO persons (first_name, father_name, last_name, birth_date, birth_place, personal_number, phone, gender_id) VALUES (NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)')
+    foreach ($missing as $amze) {
+      $pdo->prepare('INSERT INTO persons (first_name, father_name, last_name, birth_date, birth_place, personal_number, phone, gender_id) VALUES (NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)')
         ->execute([$genderId]);
-    $pid = (int)$pdo->lastInsertId();
-    $pdo->prepare('INSERT INTO users (role_id, person_id, full_name, email) VALUES (?, ?, NULL, NULL)')->execute([$roleId, $pid]);
-    $uid = (int)$pdo->lastInsertId();
-    $pdo->prepare('INSERT INTO students (user_id, person_id, nr_amze, education_level_id) VALUES (?, ?, ?, NULL)')->execute([$uid, $pid, (string)$amze]);
-    return (int)$pdo->lastInsertId();
+      $pid = (int)$pdo->lastInsertId();
+      $pdo->prepare('INSERT INTO users (role_id, person_id, full_name, email) VALUES (?, ?, NULL, NULL)')->execute([$roleId, $pid]);
+      $uid = (int)$pdo->lastInsertId();
+      $pdo->prepare('INSERT INTO students (user_id, person_id, nr_amze, education_level_id) VALUES (?, ?, ?, NULL)')->execute([$uid, $pid, (string)$amze]);
+      $map[$amze] = (int)$pdo->lastInsertId();
+    }
+    ksort($map, SORT_NUMERIC);
+    return $map;
   }
 
   /**

@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* -------------------------------------------------
    Toggle: Edit Mode (ruhet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+    qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
     // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
     $qs = $_GET; unset($qs['edit']);
     $redir = 'editors.php' . ($qs ? ('?' . http_build_query($qs)) : '');
@@ -44,10 +45,10 @@ if (!$currentUser || strtolower((string)$currentUser['role_name']) !== 'administ
 ------------------------------- */
 function flash(string $key, ?string $msg=null) {
   if ($msg === null) {
-    if (!empty($_SESSION['flash'][$key])) { $m = $_SESSION['flash'][$key]; unset($_SESSION['flash'][$key]); return $m; }
+    if (!empty($_SESSION['flash'][$key])) { return qta_session_take(['flash', $key]); }
     return null;
   }
-  $_SESSION['flash'][$key] = $msg;
+  qta_session_put(['flash', $key], $msg);
 }
 function require_csrf(): void {
   if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -57,7 +58,7 @@ function require_csrf(): void {
     }
   }
 }
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
@@ -189,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   } catch (Throwable $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    flash('err', $e->getMessage());
+    flash('err', qta_error_message($e));
   }
 
   header('Location: editors.php'); exit;

@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* -------------------------------------------------
    Guard: admin/editor/agjencia (jo studentë)
@@ -30,7 +31,7 @@ $CAN_EDIT = in_array($ROLE, ['administrator','editor'], true);
    EDIT MODE toggle (persistohet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+  qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
   $qs = $_GET; unset($qs['edit']);
   $url = 'student_card.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
   header("Location: $url"); exit;
@@ -40,12 +41,12 @@ $EDIT_MODE = $CAN_EDIT ? (bool)($_SESSION['edit_mode'] ?? false) : false;
 /* -------------------------------------------------
    CSRF & flash
 -------------------------------------------------- */
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 function flash(string $k, ?string $m=null){
-  if ($m===null){ if(!empty($_SESSION['flash'][$k])){ $x=$_SESSION['flash'][$k]; unset($_SESSION['flash'][$k]); return $x; } return null; }
-  $_SESSION['flash'][$k]=$m;
+  if ($m===null){ if(!empty($_SESSION['flash'][$k])){ return qta_session_take(['flash', $k]); } return null; }
+  qta_session_put(['flash', $k], $m);
 }
 require_once __DIR__ . '/../shared/themeli.php';
 
@@ -75,10 +76,10 @@ $stats = $groups = $planned = $upcoming = $series = [];
 /* Edu levels & genders për dropdown */
 try {
   $eduLevels = $pdo->query("SELECT id, code, label FROM education_levels ORDER BY COALESCE(code, label) ASC")->fetchAll(PDO::FETCH_ASSOC);
-} catch(Throwable $e){ $eduLevels = []; }
+} catch(Throwable $e){ qta_request_exception($e); $eduLevels = []; }
 try {
   $genders = $pdo->query("SELECT id, code, label FROM genders ORDER BY FIELD(code,'M','F') DESC, label ASC")->fetchAll(PDO::FETCH_ASSOC);
-} catch(Throwable $e){ $genders = []; }
+} catch(Throwable $e){ qta_request_exception($e); $genders = []; }
 
 /* Merr pid nga sid nëse s'është dhënë */
 if ($pid<=0 && $sid>0) {
@@ -707,7 +708,7 @@ function clean(s){ const v = (s||'').replace(/\s+/g,' ').trim(); return v === '�
 function notify(type, text, opts={}){ return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null; }
 
 async function postJSON(payload){
-  const r = await fetch(INLINE, {
+  const r = await window.qtaFetch.response(INLINE, {
     method: 'POST',
     headers: {'Content-Type':'application/json','Accept':'application/json'},
     body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
@@ -837,7 +838,8 @@ function showQr(url){
 
 document.getElementById('qrGenerate')?.addEventListener('click', async (ev)=>{
   const btn = ev.currentTarget;
-  btn.disabled = true; btn.classList.add('is-loading');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true');
   try{
     const res = await postJSON({action:'generate_qr_person', person_id: PERSON_ID});
     showQr(VERIFY_BASE + '?pid=' + PERSON_ID + '&t=' + encodeURIComponent(res.token));
@@ -845,7 +847,7 @@ document.getElementById('qrGenerate')?.addEventListener('click', async (ev)=>{
   }catch(e){
     notify('danger', e.message);
   }finally{
-    btn.disabled = false; btn.classList.remove('is-loading');
+    btn.disabled = false; btn.classList.remove('is-loading'); btn.removeAttribute('aria-busy');
   }
 });
 

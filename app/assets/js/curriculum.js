@@ -26,7 +26,7 @@
   }
 
   function send(payload) {
-    return fetch(CFG.endpoint, {
+    return window.qtaFetch.response(CFG.endpoint, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -314,6 +314,7 @@
         payload = { action: 'update_course', name: form.elements.name.value, code: form.elements.code.value, hours: form.elements.hours.value };
       }
       formError(form, '');
+      if (btn && btn.disabled) return;
       busy(btn, true);
       send(payload).then(function (json) {
         busy(btn, false);
@@ -326,7 +327,7 @@
         formError(form, err.message);
         var first = form.querySelector('input:not([type="hidden"])');
         if (first) first.focus();
-      });
+      }).finally(function () { busy(btn, false); });
       return;
     }
 
@@ -338,6 +339,7 @@
       if (!title) { toast('Shkruaj emrin e temës, p.sh. "Formatimi i tekstit".', 'warning'); form.elements.title.focus(); return; }
       if (!/^\d+$/.test(hours) || parseInt(hours, 10) < 1) { toast('Shkruaj orët e temës: një numër i plotë, të paktën 1.', 'warning'); form.elements.hours.focus(); return; }
       var addBtn = form.querySelector('button[type="submit"]');
+      if (addBtn && addBtn.disabled) return;
       busy(addBtn, true);
       send({ action: 'add_topic', module_id: mid, title: title, hours: hours }).then(function (json) {
         render(json, undefined, 'Tema u shtua.');
@@ -345,7 +347,7 @@
         busy(addBtn, false);
         if (hoursProblem(err, form.elements.hours, function () { resubmit(form); })) return;
         fail(err, form.elements.title);
-      });
+      }).finally(function () { busy(addBtn, false); });
     }
   });
 
@@ -369,10 +371,11 @@
       var kind = mover.getAttribute('data-cur-move');
       var id = parseInt(mover.getAttribute('data-id'), 10);
       var dir = parseInt(mover.getAttribute('data-dir'), 10);
+      if (mover && mover.disabled) return;
       busy(mover, true);
       send({ action: 'move', kind: kind, id: id, dir: dir }).then(function (json) {
         render(json);
-      }).catch(function (err) { busy(mover, false); fail(err, mover); });
+      }).catch(function (err) { busy(mover, false); fail(err, mover); }).finally(function () { busy(mover, false); });
       return;
     }
 
@@ -390,9 +393,10 @@
             confirm: 'Po, fshije temën' };
       window.qtaConfirm(Object.assign({ danger: true }, q)).then(function (ok) {
         if (!ok) return;
+        if (del && del.disabled) return;
         busy(del, true);
         var payload = dkind === 'module' ? { action: 'delete_module', module_id: del.getAttribute('data-id') } : { action: 'delete_topic', topic_id: del.getAttribute('data-id') };
-        send(payload).then(function (json) { render(json); }).catch(function (err) { busy(del, false); fail(err, del); });
+        send(payload).then(function (json) { render(json); }).catch(function (err) { busy(del, false); fail(err, del); }).finally(function () { busy(del, false); });
       });
       return;
     }
@@ -400,10 +404,11 @@
     var fix = t.closest('[data-cur-fix]');
     if (fix) {
       var action = fix.getAttribute('data-cur-fix');
+      if (fix && fix.disabled) return;
       busy(fix, true);
       send({ action: action, value: fix.getAttribute('data-value'), module_id: fix.getAttribute('data-module') })
         .then(function (json) { render(json); })
-        .catch(function (err) { busy(fix, false); if (!hoursProblem(err, null, null)) fail(err, fix); });
+        .catch(function (err) { busy(fix, false); if (!hoursProblem(err, null, null)) fail(err, fix); }).finally(function () { busy(fix, false); });
     }
   });
 

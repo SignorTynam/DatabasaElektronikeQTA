@@ -1,11 +1,13 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../shared/group_members.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* ------------------------------
    Guard: admin/editor i loguar
@@ -27,7 +29,7 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-  $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+  qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
   $qs = $_GET; unset($qs['edit']);
   $url = 'groups.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
   header("Location: $url"); exit;
@@ -54,7 +56,7 @@ function qta_assert_legacy_group(PDO $pdo, int $gid): void {
 /* ------------------------------
    CSRF
 ------------------------------- */
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
@@ -87,20 +89,7 @@ function dmy_to_iso(?string $s): ?string {
   return null;
 }
 function parseAmzeRanges(string $s): array {
-  $out = [];
-  foreach (preg_split('/\s*,\s*/', trim($s)) as $tok) {
-    if ($tok === '') continue;
-    if (preg_match('/^(\d+)\s*-\s*(\d+)$/', $tok, $m)) {
-      $a = (int)$m[1]; $b = (int)$m[2];
-      if ($a > $b) [$a,$b] = [$b,$a];
-      for ($i=$a; $i<=$b; $i++) $out[$i] = true;
-    } elseif (preg_match('/^\d+$/', $tok)) {
-      $out[(int)$tok] = true;
-    }
-  }
-  $nums = array_keys($out);
-  sort($nums, SORT_NUMERIC);
-  return $nums;
+  return qta_amze_parse($s);
 }
 /* Audit helper – thërret librarinë nëse ekziston */
 function qta_audit_event(string $type, array $payload): void {
@@ -109,32 +98,8 @@ function qta_audit_event(string $type, array $payload): void {
       qta_audit_log($GLOBALS['pdo'] ?? null, $type, $payload);
     }
   } catch (Throwable $e) {
-    // mos blloko rrjedhën nëse audit dështon
+    qta_request_exception($e); // Database triggers remain the primary audit trail.
   }
-}
-
-/** Siguron ekzistencën e një studenti me nr_amze = $amzeNum (krijon persons+users+students nëse mungon). */
-function ensureStudentByAmze(PDO $pdo, int $studentRoleId, int $maleGenderId, int $amzeNum): int {
-  $q = $pdo->prepare("SELECT id FROM students WHERE CAST(nr_amze AS UNSIGNED) = :n LIMIT 1");
-  $q->execute([':n'=>$amzeNum]);
-  $sid = $q->fetchColumn();
-  if ($sid) return (int)$sid;
-
-  $insP = $pdo->prepare("
-    INSERT INTO persons (first_name, father_name, last_name, birth_date, birth_place, personal_number, phone, gender_id)
-    VALUES (NULL, NULL, NULL, NULL, NULL, NULL, NULL, :g)
-  ");
-  $insP->execute([':g'=>$maleGenderId]);
-  $pid = (int)$pdo->lastInsertId();
-
-  $insU = $pdo->prepare("INSERT INTO users (role_id, person_id, full_name, email) VALUES (:r, :pid, NULL, NULL)");
-  $insU->execute([':r'=>$studentRoleId, ':pid'=>$pid]);
-  $uid = (int)$pdo->lastInsertId();
-
-  $insS = $pdo->prepare("INSERT INTO students (user_id, person_id, nr_amze, education_level_id) VALUES (:uid, :pid, :amz, NULL)");
-  $insS->execute([':uid'=>$uid, ':pid'=>$pid, ':amz'=>(string)$amzeNum]);
-
-  return (int)$pdo->lastInsertId();
 }
 
 /* =========================
@@ -150,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     header('Location: groups.php'); exit;
   }
   if (empty($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
-    http_response_code(400); $_SESSION['flash_err'] = 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.'; header('Location: groups.php'); exit;
+    http_response_code(400); qta_session_put(['flash_err'], 'Faqja ka qëndruar e hapur shumë gjatë. Rifreskoje dhe provo sërish.'); header('Location: groups.php'); exit;
   }
 
   /* ===== Krijo grup (me ndarje inteligjente >10) ===== */
@@ -158,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   /* ===== Krijo grup (me ndarje inteligjente >10) ===== */
   if ($action==='create_group') {
     try {
+      $pdo->beginTransaction();
       $course_id    = (int)($_POST['course_id'] ?? 0);
       $start_date   = dmy_to_iso((string)($_POST['start_date'] ?? ''));
       $end_date     = dmy_to_iso((string)($_POST['end_date'] ?? ''));
@@ -189,11 +155,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           throw new RuntimeException('Nuk gjeta asnjë numër amze. Shkruaji si 3400-3403, 3409.');
         }
 
-        $amzeToStudent = [];
-        foreach ($nums as $n) {
-          // siguro studentin për çdo AMZË
-          $amzeToStudent[$n] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n);
-        }
+        $amzeToStudent = qta_amze_ensure_batch($pdo, $nums);
 
         // garanto renditjen sipas numrit të AMZË-s (edhe nëse dicka ndryshon më vonë te parseAmzeRanges)
         ksort($amzeToStudent, SORT_NUMERIC);
@@ -233,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
       // Nëse s’ka studentë fare => krijo vetëm grup bosh
       if (!$studentIds) {
-        $pdo->beginTransaction();
+
         $st = $pdo->prepare("
           INSERT INTO course_groups (course_id, start_date, end_date, is_completed)
           VALUES (:c,:s,:e,:ic)
@@ -256,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
 
-        $_SESSION['flash_ok'] = 'Grupi u krijua pa kursantë. Shtoji kur të jenë gati.';
+        qta_session_put(['flash_ok'], 'Grupi u krijua pa kursantë. Shtoji kur të jenë gati.');
         header('Location: groups.php');
         exit;
       }
@@ -348,7 +310,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         ];
       }
 
-      $pdo->beginTransaction();
+
 
       $created = []; // [[group_id=>.., count=>.., amze_min=>.., amze_max=>..], ...]
       foreach ($chunks as $chunkInfo) {
@@ -406,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $range = ($c['amze_min'] !== null)
           ? ' (AMZË ' . $c['amze_min'] . ($c['amze_max'] && $c['amze_max'] !== $c['amze_min'] ? '–' . $c['amze_max'] : '') . ')'
           : '';
-        $_SESSION['flash_ok'] = 'Grupi u krijua me ' . $c['count'] . ' kursantë' . $range . '.';
+        qta_session_put(['flash_ok'], 'Grupi u krijua me ' . $c['count'] . ' kursantë' . $range . '.');
       } else {
         $parts = array_map(function ($r) {
           $range = ($r['amze_min'] !== null)
@@ -414,14 +376,14 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             : '';
           return '#' . $r['group_id'] . ' (' . $r['count'] . ')' . $range;
         }, $created);
-        $_SESSION['flash_ok'] = 'U krijuan ' . count($created) . ' grupe: ' . implode(', ', $parts);
+        qta_session_put(['flash_ok'], 'U krijuan ' . count($created) . ' grupe: ' . implode(', ', $parts));
       }
 
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) {
         $pdo->rollBack();
       }
-      $_SESSION['flash_err'] = $e->getMessage();
+      qta_session_put(['flash_err'], qta_error_message($e));
     }
 
     header('Location: groups.php');
@@ -504,9 +466,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         'actor_user_id'=>$_SESSION['user_id'] ?? null
       ]);
 
-      $_SESSION['flash_ok'] = 'Kursi i grupit u ndryshua.';
+      qta_session_put(['flash_ok'], 'Kursi i grupit u ndryshua.');
     } catch (Throwable $e) {
-      $_SESSION['flash_err'] = $e->getMessage();
+      qta_session_put(['flash_err'], qta_error_message($e));
     }
     header('Location: groups.php'); exit;
   }
@@ -518,6 +480,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $force             = (int)($_POST['force'] ?? 0);
 
     try {
+      $pdo->beginTransaction();
       if ($group_id <= 0) {
         throw new RuntimeException('Grupi nuk u gjet.');
       }
@@ -527,7 +490,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $gRow = $pdo->prepare("
         SELECT is_completed, course_id, start_date, end_date
         FROM course_groups
-        WHERE id = :g
+        WHERE id = :g FOR UPDATE
       ");
       $gRow->execute([':g' => $group_id]);
       $gRowData     = $gRow->fetch(PDO::FETCH_ASSOC);
@@ -573,10 +536,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       // Target AMZË nga input-i
       $targetNums = ($amze_spec_members === '') ? [] : parseAmzeRanges($amze_spec_members);
 
-      $targetMap = [];
-      foreach ($targetNums as $n) {
-        $targetMap[$n] = ensureStudentByAmze($pdo, $studentRoleId, $maleGenderId, $n);
-      }
+      $targetMap = qta_amze_ensure_batch($pdo, $targetNums);
 
       // Llogarisim cilët hiqen dhe cilët shtohen (por nuk veprojmë ende)
       $toRemove = [];
@@ -597,7 +557,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
       // Nëse nuk ka fare target -> thjesht boshatis grupin (por pa krijuar të rinj)
       if ($totalTarget === 0) {
-        $pdo->beginTransaction();
+
 
         // Fshijmë të gjithë anëtarët aktualë të grupit
         $pdo->prepare("
@@ -614,12 +574,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
 
-        $_SESSION['flash_ok'] = 'Të gjithë kursantët u hoqën nga grupi.';
+        qta_session_put(['flash_ok'], 'Të gjithë kursantët u hoqën nga grupi.');
         header('Location: groups.php');
         exit;
       }
 
-      $pdo->beginTransaction();
+
 
       if ($toAdd) {
         // ---------------------------------------------------
@@ -743,7 +703,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           'actor_user_id' => $_SESSION['user_id'] ?? null
         ]);
 
-        $_SESSION['flash_ok'] = 'Kursantët e grupit u ruajtën.';
+        qta_session_put(['flash_ok'], 'Kursantët e grupit u ruajtën.');
       } else {
           // === >10 studentë -> ndahet automatikisht në grupe të balancuara (diff max 1) ===
 
@@ -892,29 +852,29 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           ]);
 
           // === Multi-toasts (një toast për çdo veprim) ===
-          $_SESSION['flash_ok_list'] = $_SESSION['flash_ok_list'] ?? [];
 
-          $_SESSION['flash_ok_list'][] = 'Grupi #' . $group_id . ' u nda në ' . count($created) . ' grupe të barabarta.';
+
+          qta_session_push(['flash_ok_list'], 'Grupi #' . $group_id . ' u nda në ' . count($created) . ' grupe të barabarta.');
 
           foreach ($created as $r) {
             $range = ($r['amze_min'] !== null)
               ? ' [AMZË ' . $r['amze_min'] . ($r['amze_max'] && $r['amze_max'] !== $r['amze_min'] ? '–' . $r['amze_max'] : '') . ']'
               : '';
-            $_SESSION['flash_ok_list'][] = 'Grupi #' . $r['group_id'] . ' ka tani ' . $r['count'] . ' kursantë' . $range . '.';
+            qta_session_push(['flash_ok_list'], 'Grupi #' . $r['group_id'] . ' ka tani ' . $r['count'] . ' kursantë' . $range . '.');
           }
 
           if ($toAdd) {
-            $_SESSION['flash_ok_list'][] = 'U shtuan ' . count($toAdd) . ' kursantë të rinj.';
+            qta_session_push(['flash_ok_list'], 'U shtuan ' . count($toAdd) . ' kursantë të rinj.');
           }
           if ($toRemove) {
-            $_SESSION['flash_ok_list'][] = 'U hoqën ' . count($toRemove) . ' kursantë nga grupi.';
+            qta_session_push(['flash_ok_list'], 'U hoqën ' . count($toRemove) . ' kursantë nga grupi.');
           }
         }
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) {
         $pdo->rollBack();
       }
-      $_SESSION['flash_err'] = $e->getMessage();
+      qta_session_put(['flash_err'], qta_error_message($e));
     }
 
     header('Location: groups.php');
@@ -950,10 +910,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         'actor_user_id'=>$_SESSION['user_id'] ?? null
       ]);
 
-      $_SESSION['flash_ok'] = 'Grupi u fshi. Kursantët e tij janë tani pa grup, te "Kursantët".';
+      qta_session_put(['flash_ok'], 'Grupi u fshi. Kursantët e tij janë tani pa grup, te "Kursantët".');
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
-      $_SESSION['flash_err'] = $e->getMessage();
+      qta_session_put(['flash_err'], qta_error_message($e));
     }
     header('Location: groups.php'); exit;
   }
@@ -1019,12 +979,11 @@ $groupInfo = $pdo->query("
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 /* Flash mesazhe */
-$flash_ok_list  = $_SESSION['flash_ok_list']  ?? [];
-$flash_err_list = $_SESSION['flash_err_list'] ?? [];
-unset($_SESSION['flash_ok_list'], $_SESSION['flash_err_list']);
+$flash_ok_list = qta_session_take(['flash_ok_list'], []);
+$flash_err_list = qta_session_take(['flash_err_list'], []);
 
-$flash_ok  = $_SESSION['flash_ok']  ?? null; unset($_SESSION['flash_ok']);
-$flash_err = $_SESSION['flash_err'] ?? null; unset($_SESSION['flash_err']);
+$flash_ok = qta_session_take(['flash_ok'], null);
+$flash_err = qta_session_take(['flash_err'], null);
 
 $flash_js = [
   'ok'       => $flash_ok,
@@ -1622,7 +1581,7 @@ function getGroupEndIso(gid){
 }
 
 async function postJSON(payload){
-  const res = await fetch(ENDPOINT, {
+  const res = await window.qtaFetch.response(ENDPOINT, {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'Accept':'application/json'},
     body: JSON.stringify(payload)
@@ -1774,7 +1733,9 @@ async function saveEditable(editable){
   if (!guard.ok){ editable.textContent = prev || '—'; return; }
 
   const cell = editable.closest('.cell') || editable;
+  if (cell.classList.contains('cell-saving')) return;
   try{
+    cell.setAttribute('aria-busy', 'true');
     cell.classList.add('cell-saving');
     const json = await postJSON({
       csrf: CSRF, action: 'update_cell',
@@ -1796,7 +1757,7 @@ async function saveEditable(editable){
     flashCell(cell, 'cell-err');
     editable.textContent = prev || '—';
     notify('danger', err.message || 'Ndryshimi nuk u ruajt.');
-  }
+  } finally { cell.classList.remove('cell-saving'); cell.removeAttribute('aria-busy'); }
 }
 
 /* Enter ruan, Esc anulon vetëm redaktimin (nuk mbyll dritaren e grupit). Me delegim:
@@ -1881,19 +1842,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 /* ===== Parashikimi i ndarjes dhe konfirmimet e formularëve ===== */
 function parseAmzeRangesClient(s){
+  const limit = <?= QTA_AMZE_MAX_PER_REQUEST ?>;
+  if (String(s || '').length > 8192) return []; // Server returns the validation error.
   const out = new Set();
   (s || '').split(',').forEach(raw => {
     const tok = raw.trim();
     if (!tok) return;
-    const r = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+    const r = tok.match(/^(\d{1,9})\s*[-–]\s*(\d{1,9})$/);
     if (r) {
       let a = parseInt(r[1],10), b = parseInt(r[2],10);
       if (a > b){ const t=a; a=b; b=t; }
+      if (b - a >= limit) return;
       for (let i=a; i<=b; i++) out.add(i);
       return;
     }
-    if (/^\d+$/.test(tok)) out.add(parseInt(tok,10));
+    if (/^\d{1,9}$/.test(tok)) out.add(parseInt(tok,10));
   });
+  if (out.size > limit) return [];
   return Array.from(out).sort((a,b)=>a-b);
 }
 function buildSplitParts(nums){
@@ -1960,9 +1925,7 @@ document.getElementById('splitPreviewOkBtn')?.addEventListener('click', ()=>{
 
 function submitNow(form){
   form.dataset.ready = '1';
-  const btn = form.querySelector('button[type="submit"]');
-  if (btn) btn.classList.add('is-loading');
-  if (typeof form.requestSubmit === 'function') form.requestSubmit(); else form.submit();
+  window.qtaNativeSubmit(form);
 }
 
 /* Krijimi i grupit */
@@ -1990,6 +1953,9 @@ document.addEventListener('submit', async (e)=>{
     if (!EDIT_MODE) return;
     if (form.dataset.ready === '1') { form.dataset.ready = '0'; return; }
     e.preventDefault();
+    if (form.dataset.confirming === '1') return;
+    form.dataset.confirming = '1';
+    try {
     const gid = parseInt(form.querySelector('input[name="group_id"]')?.value || '0', 10);
     const forceInput = form.querySelector('input[name="force"]');
     if (forceInput) forceInput.value = '0';
@@ -2018,6 +1984,7 @@ document.addEventListener('submit', async (e)=>{
       }
     }
     submitNow(form);
+    } finally { delete form.dataset.confirming; }
 }, true);
 </script>
 </body>

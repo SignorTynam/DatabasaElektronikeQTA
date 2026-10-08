@@ -19,14 +19,15 @@ declare(strict_types=1);
  * mbyllur, fshirje), përgjigja kërkon konfirmim dhe ndërfaqja e dërgon me force.
  */
 
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/staff_guard.php';
 require_once __DIR__ . '/../shared/lesson_groups.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
   qta_json_out(['ok' => false, 'error' => 'Kjo adresë pranon vetëm ruajtje nga faqja e grupit.'], 405);
@@ -140,7 +141,7 @@ try {
     case 'delete': {
       qta_json_require_edit_mode();
       $r = qta_lg_delete($pdo, $groupId, ['force' => $force]);
-      $_SESSION['flash_ok'] = 'Grupi #' . $groupId . ' u fshi.' . ($r['members'] ? ' Kursantët e tij janë tani pa grup, te "Kursantët".' : '');
+      qta_session_put(['flash_ok'], 'Grupi #' . $groupId . ' u fshi.' . ($r['members'] ? ' Kursantët e tij janë tani pa grup, te "Kursantët".' : ''));
       qta_json_out(['ok' => true, 'redirect' => 'lesson_groups.php']);
     }
 

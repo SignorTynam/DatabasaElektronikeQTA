@@ -1,12 +1,13 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/domain.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* ------------------------------
    Guard: admin OSE editor i loguar
@@ -34,7 +35,7 @@ if (!$currentUser || !in_array($role, ['administrator','editor'], true)) {
    EDIT MODE toggle (persistohet në session)
 ------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+    qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
     // Heq parametër 'edit' nga URL duke bërë redirect në të njëjtën faqe pa të
     $qs = $_GET; unset($qs['edit']);
     $url = 'students.php' . (empty($qs) ? '' : ('?' . http_build_query($qs)));
@@ -47,10 +48,10 @@ $EDIT_MODE = (bool)($_SESSION['edit_mode'] ?? false);
 ------------------------------- */
 function flash(string $key, ?string $msg=null) {
     if ($msg === null) {
-        if (!empty($_SESSION['flash'][$key])) { $m = $_SESSION['flash'][$key]; unset($_SESSION['flash'][$key]); return $m; }
+        if (!empty($_SESSION['flash'][$key])) { return qta_session_take(['flash', $key]); }
         return null;
     }
-    $_SESSION['flash'][$key] = $msg;
+    qta_session_put(['flash', $key], $msg);
 }
 function require_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -60,7 +61,7 @@ function require_csrf(): void {
         }
     }
 }
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
@@ -78,7 +79,7 @@ $maleId = null; foreach ($genders as $g) { if ($g['code']==='M') { $maleId = (in
 /* Kurset për zgjedhje */
 try {
     $courses = $pdo->query("SELECT id, name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
+} catch (Throwable $e) { qta_request_exception($e);
     $courses = [];
 }
 
@@ -124,7 +125,7 @@ function make_initial_password(string $first_name, ?string $birth_date): string 
    Veprime POST: Create & Delete
 ------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // lexo raw JSON nëse vjen nga fetch()
+    // Lexo JSON kur kërkesa vjen nga AJAX.
     $raw = file_get_contents('php://input');
     $asJson = false;
     $post = $_POST;
@@ -145,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $action = (string)($post['action'] ?? '');
+    qta_request_action($action);
 
     try {
         /* --------- CREATE STUDENT --------- */
@@ -409,10 +411,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
         if (isset($asJson) && $asJson) {
+            http_response_code(qta_error_status($e));
             header('Content-Type: application/json; charset=UTF-8');
-            echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
+            echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]); exit;
         }
-        flash('err', $e->getMessage());
+        flash('err', qta_error_message($e));
         header('Location: students.php'); exit;
     }
 }
@@ -493,7 +496,7 @@ if (!$hasFilters && $status === '') {
                 'missing' => $missing, 'missing_count' => $missingCount, 'truncated' => $missingCount > $SHOW_LIMIT,
             ];
         }
-    } catch (Throwable $e) {
+    } catch (Throwable $e) { qta_request_exception($e);
         /* pa njoftim — faqja vazhdon */
     }
 }

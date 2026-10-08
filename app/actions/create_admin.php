@@ -23,7 +23,7 @@ require __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, null); // CLI bootstrap has no signed-in actor.
 
 $adminEmail    = trim((string)($argv[1] ?? ''));
 $adminFullName = trim((string)($argv[2] ?? 'Administrator'));
@@ -67,6 +67,6 @@ try {
     fwrite(STDOUT, "Administratori u krijua: $adminEmail\n");
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    fwrite(STDERR, 'Gabim: ' . $e->getMessage() . "\n");
+    fwrite(STDERR, 'Gabim: ' . qta_error_message($e) . "\n");
     exit(1);
 }

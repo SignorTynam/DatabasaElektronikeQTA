@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
@@ -34,7 +35,7 @@ $AGENCY = $astmt->fetch(PDO::FETCH_ASSOC);
 if (!$AGENCY) { header('Location: selectProfile.php'); exit; }
 
 /* CSRF për eksportet */
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------

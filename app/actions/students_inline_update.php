@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/domain.php';
 
@@ -8,7 +9,7 @@ header('Content-Type: application/json; charset=UTF-8');
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* Guard: vetëm admin ose editor i loguar */
 if (!isset($_SESSION['user_id'])) {
@@ -44,6 +45,7 @@ if (!is_array($data)) $data = $_POST;
 
 $csrf       = $data['csrf'] ?? '';
 $action     = trim((string)($data['action'] ?? '')); // NEW
+qta_request_action($action);
 $student_id = (int)($data['student_id'] ?? 0);
 $field      = trim((string)($data['field'] ?? ''));
 $value      = $data['value'] ?? null;
@@ -108,41 +110,33 @@ if ($action === 'merge_students') {
         $chk->execute([':id'=>$target]);
         if (!$chk->fetchColumn()) throw new RuntimeException('Target student nuk ekziston.');
 
-        // student_course_plans (nëse ekziston)
-        try {
-            $pdo->prepare("
-              INSERT IGNORE INTO student_course_plans (student_id, course_id, status, selected_by)
-              SELECT :target, course_id, status, selected_by
-              FROM student_course_plans
-              WHERE student_id = :source
-            ")->execute([':target'=>$target, ':source'=>$source]);
-            $pdo->prepare("DELETE FROM student_course_plans WHERE student_id=:source")
-                ->execute([':source'=>$source]);
-        } catch (Throwable $e) { /* ignore */ }
+        // student_course_plans
+        $pdo->prepare("
+          INSERT IGNORE INTO student_course_plans (student_id, course_id, status, selected_by)
+          SELECT :target, course_id, status, selected_by
+          FROM student_course_plans
+          WHERE student_id = :source
+        ")->execute([':target'=>$target, ':source'=>$source]);
+        $pdo->prepare("DELETE FROM student_course_plans WHERE student_id=:source")
+            ->execute([':source'=>$source]);
 
-        // course_group_students (nëse ekziston)
-        try {
-            $pdo->prepare("
-              INSERT IGNORE INTO course_group_students (group_id, student_id)
-              SELECT group_id, :target
-              FROM course_group_students
-              WHERE student_id = :source
-            ")->execute([':target'=>$target, ':source'=>$source]);
-            $pdo->prepare("DELETE FROM course_group_students WHERE student_id=:source")
-                ->execute([':source'=>$source]);
-        } catch (Throwable $e) { /* ignore */ }
+        // course_group_students
+        $pdo->prepare("
+          INSERT IGNORE INTO course_group_students (group_id, student_id)
+          SELECT group_id, :target
+          FROM course_group_students
+          WHERE student_id = :source
+        ")->execute([':target'=>$target, ':source'=>$source]);
+        $pdo->prepare("DELETE FROM course_group_students WHERE student_id=:source")
+            ->execute([':source'=>$source]);
 
-        // agency_students (nëse ekziston)
-        try {
-            $pdo->prepare("UPDATE agency_students SET student_id=:target WHERE student_id=:source")
-                ->execute([':target'=>$target, ':source'=>$source]);
-        } catch (Throwable $e) { /* ignore */ }
+        // agency_students
+        $pdo->prepare("UPDATE agency_students SET student_id=:target WHERE student_id=:source")
+            ->execute([':target'=>$target, ':source'=>$source]);
 
-        // student_qr_tokens (nëse ekziston)
-        try {
-            $pdo->prepare("UPDATE student_qr_tokens SET student_id=:target WHERE student_id=:source")
-                ->execute([':target'=>$target, ':source'=>$source]);
-        } catch (Throwable $e) { /* ignore */ }
+        // student_qr_tokens
+        $pdo->prepare("UPDATE student_qr_tokens SET student_id=:target WHERE student_id=:source")
+            ->execute([':target'=>$target, ':source'=>$source]);
 
         // Në fund: fshi duplikatin (source)
         $pdo->prepare("DELETE FROM students WHERE id=:id")->execute([':id'=>$source]);
@@ -152,8 +146,8 @@ if ($action === 'merge_students') {
 
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        http_response_code(400);
-        echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
+        http_response_code(qta_error_status($e));
+        echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]); exit;
     }
 }
 
@@ -284,8 +278,8 @@ if ($action === 'link_person_by_pn') {
 
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        http_response_code(400);
-        echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
+        http_response_code(qta_error_status($e));
+        echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]); exit;
     }
 }
 
@@ -506,6 +500,6 @@ try {
     echo json_encode(['ok'=>true,'display'=>$dispValue]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+    http_response_code(qta_error_status($e));
+    echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]);
 }

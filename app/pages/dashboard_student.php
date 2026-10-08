@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
@@ -128,6 +129,7 @@ try {
     }
   }
 } catch (Throwable $e) {
+  qta_request_exception($e);
   $verifyUrl = null;
 }
 

@@ -188,7 +188,7 @@
 
   /* ----------------------------------------------------- Dërgimi te serveri */
   function post(payload) {
-    return fetch(CFG.endpoint, {
+    return window.qtaFetch.response(CFG.endpoint, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -208,7 +208,7 @@
 
   function busy(btn, on) {
     working = !!on;
-    if (btn) btn.classList.toggle('is-loading', !!on);
+    if (btn) { btn.classList.toggle('is-loading', !!on); btn.setAttribute('aria-busy', on ? 'true' : 'false'); }
     paint();
   }
 
@@ -248,7 +248,7 @@
     busy(el.save, true);
     save().then(function (json) {
       toast(json.message);
-    }).catch(fail).then(function () { busy(el.save, false); });
+    }).catch(fail).then(function () { busy(el.save, false); }).finally(function () { busy(el.save, false); });
   });
 
   if (el.undo) el.undo.addEventListener('click', function () {
@@ -266,7 +266,7 @@
       var warn = (json.sundays_added && json.sundays_added.length) || (json.manual_changed && json.manual_changed.length);
       toast(json.message, warn ? 'warning' : 'success', warn ? { autohide: false } : {});
       plan.announce(json.message);
-    }).catch(fail).then(function () { busy(el.rebalance, false); });
+    }).catch(fail).then(function () { busy(el.rebalance, false); }).finally(function () { busy(el.rebalance, false); });
   });
 
   if (el.reset) el.reset.addEventListener('click', function () {
@@ -282,7 +282,7 @@
         json.plan.forEach(function (it) { changes[it.d] = { h: it.h }; });
         plan.apply(changes, { origin: 'auto', source: 'reset' });
         toast(json.message, 'success');
-      }).catch(fail).then(function () { busy(el.reset, false); });
+      }).catch(fail).then(function () { busy(el.reset, false); }).finally(function () { busy(el.reset, false); });
     });
   });
 
@@ -295,7 +295,7 @@
     }).catch(function (err) {
       busy(refreshBtn, false);
       toast(err.message || 'Të dhënat nuk u rifreskuan.', 'danger', { autohide: false });
-    });
+    }).finally(function () { busy(refreshBtn, false); });
   });
 
   if (el.convert) el.convert.addEventListener('click', function () {
@@ -325,7 +325,7 @@
       }).catch(function (err) {
         busy(el.convert, false);
         fail(err);
-      });
+      }).finally(function () { busy(el.convert, false); });
     });
   });
 

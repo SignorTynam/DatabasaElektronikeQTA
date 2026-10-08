@@ -3,7 +3,8 @@
 // Dialogu i hyrjes (partials/login_dialog.php) e dërgon me fetch dhe pret JSON:
 // {ok: true, redirect} ose {ok: false, code, error, csrf}. Pa JavaScript formulari
 // dërgohet si zakonisht dhe përgjigjja është një ridrejtim, si më parë.
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require __DIR__ . '/database.php';
 
 $wantsJson = str_contains(strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json');
@@ -31,13 +32,10 @@ $backRole = in_array($role, $validRoles, true) ? $role : 'staff';
 $fail = static function (string $message, string $code) use ($backRole, $identifier, $wantsJson, $reply): void {
     if ($wantsJson) {
         /* Dialogu mbetet i hapur: me shenjën e seancës mund të provohet sërish pa rifreskuar faqen. */
-        if (empty($_SESSION['csrf_login'])) {
-            $_SESSION['csrf_login'] = bin2hex(random_bytes(24));
-        }
         $reply(['ok' => false, 'code' => $code, 'error' => $message, 'csrf' => $_SESSION['csrf_login']]);
     }
-    $_SESSION['login_error'] = $message;
-    $_SESSION['login_identifier'] = mb_substr($identifier, 0, 120);
+    qta_session_put(['login_error'], $message);
+    qta_session_put(['login_identifier'], mb_substr($identifier, 0, 120));
     header('Location: selectProfile.php?role=' . urlencode($backRole));
     exit;
 };
@@ -70,7 +68,7 @@ if ($role === 'agjencia' || $role === 'student') {
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 try {
     if ($role === 'staff' || $role === 'administrator' || $role === 'editor') {
@@ -115,11 +113,14 @@ try {
     }
 
     // Hyrja u krye
+    session_start();
     session_regenerate_id(true);
     unset($_SESSION['csrf_login'], $_SESSION['login_identifier'], $_SESSION['login_error']);
     $_SESSION['user_id']   = (int)$user['user_id'];
     $_SESSION['role']      = $user['role_name'];
     $_SESSION['full_name'] = $user['full_name'] ?? '';
+
+    session_write_close();
 
     $target = match ($user['role_name']) {
         'administrator' => 'dashboard_admin.php',
@@ -134,7 +135,8 @@ try {
     header('Location: ' . $target);
     exit;
 
-} catch (Exception $e) {
-    error_log('[QTA login] ' . $e->getMessage());
-    $fail('Hyrja nuk u krye për shkak të një problemi teknik. Provo sërish pas pak.', 'server');
+} catch (Throwable $e) {
+    $ref = qta_request_exception($e);
+    if ($wantsJson) http_response_code(500);
+    $fail('Hyrja nuk u krye për shkak të një problemi teknik. Provo sërish pas pak. Referenca: ' . $ref, 'server');
 }

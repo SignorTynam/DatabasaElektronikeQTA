@@ -72,7 +72,7 @@
     }
     var mine = ++seq;
     setPreview('', 'Po llogaris orarin…');
-    fetch(CFG.endpoint, {
+    window.qtaFetch.response(CFG.endpoint, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -120,20 +120,23 @@
 
   /* Numrat e amzës: "3400-3403, 3409" → lista e renditur (vetëm për parashikimin e ndarjes). */
   function parseAmze(s) {
+    if (String(s || '').length > 8192) return []; // Leave authoritative errors to PHP.
     var out = {};
     String(s || '').split(/[,;\n]/).forEach(function (raw) {
       var tok = raw.trim();
-      var m = tok.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+      var m = tok.match(/^(\d{1,9})\s*[-–]\s*(\d{1,9})$/);
       if (m) {
         var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
         if (a > b) { var t = a; a = b; b = t; }
-        if (b - a > 400) return;
+        if (b - a >= CFG.amze_max) return;
         for (var i = a; i <= b; i++) out[i] = true;
-      } else if (/^\d+$/.test(tok)) {
+      } else if (/^\d{1,9}$/.test(tok)) {
         out[parseInt(tok, 10)] = true;
       }
     });
-    return Object.keys(out).map(Number).sort(function (x, y) { return x - y; });
+    var numbers = Object.keys(out);
+    if (numbers.length > CFG.amze_max) return [];
+    return numbers.map(Number).sort(function (x, y) { return x - y; });
   }
 
   form.addEventListener('submit', function (ev) {
@@ -160,6 +163,8 @@
     var nums = parseAmze(form.elements.amze_spec.value);
     if (nums.length <= 10) return;
     ev.preventDefault();
+    if (form.dataset.confirming === '1') return;
+    form.dataset.confirming = '1';
     var groups = Math.ceil(nums.length / 10);
     var base = Math.floor(nums.length / groups), rem = nums.length % groups, cursor = 0, parts = [];
     for (var g = 0; g < groups; g++) {
@@ -177,9 +182,7 @@
     }).then(function (ok) {
       if (!ok) return;
       form.dataset.ready = '1';
-      var btn = form.querySelector('button[type="submit"]');
-      if (btn) btn.classList.add('is-loading');
-      if (form.requestSubmit) form.requestSubmit(); else form.submit();
-    });
+      window.qtaNativeSubmit(form);
+    }).finally(function () { delete form.dataset.confirming; });
   });
 })();

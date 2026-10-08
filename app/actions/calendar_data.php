@@ -13,7 +13,8 @@ declare(strict_types=1);
  * Rregullat janë te app/shared/group_calendar.php.
  */
 
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/staff_guard.php';
 require_once __DIR__ . '/../shared/group_calendar.php';
@@ -26,8 +27,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 $pdo = getPDO();
 qta_json_require_staff($pdo);
-/* Vetëm lexim: seanca lirohet, që kërkesat e njëpasnjëshme të faqes të mos presin njëra-tjetrën. */
-session_write_close();
+/* qta_session_boot() released the session before the connection and role query. */
 
 try {
   if (array_key_exists('group', $_GET)) {
@@ -41,7 +41,7 @@ try {
   qta_json_out(['ok' => true] + qta_calendar_events($pdo, $range['from'], $range['to'], ($_GET['legacy'] ?? '') === '1'));
 } catch (Throwable $e) {
   if ($e instanceof QtaUserError && ($e->data['code'] ?? '') === 'not_found') {
-    qta_json_out(['ok' => false, 'error' => $e->getMessage(), 'code' => 'not_found'], 404);
+    qta_json_out(['ok' => false, 'error' => qta_error_message($e), 'code' => 'not_found'], 404);
   }
   qta_json_fail($e, 'Kalendari nuk u ngarkua për shkak të një gabimi të papritur.');
 }

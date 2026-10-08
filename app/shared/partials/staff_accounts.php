@@ -261,9 +261,11 @@ require __DIR__ . '/../app_head.php';
         else if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) problem = 'Email-i nuk duket i saktë. Kontrolloje, p.sh. emri@qta.al.';
         else if (field === 'full_name' && val === '') problem = 'Emri nuk mund të mbetet bosh.';
         if (problem) { el.textContent = el.dataset.prev || ''; notify('warning', problem); return; }
-        cell.classList.add('cell-saving');
+        if (cell.classList.contains('cell-saving')) return;
+        cell.setAttribute('aria-busy', 'true');
+      cell.classList.add('cell-saving');
         try {
-          const res = await fetch(ENDPOINT, {
+          const res = await window.qtaFetch.response(ENDPOINT, {
             method: 'POST',
             headers: {'Content-Type':'application/json','Accept':'application/json'},
             body: JSON.stringify({csrf: CSRF, user_id: parseInt(cell.dataset.id, 10), field, value: val})
@@ -280,7 +282,7 @@ require __DIR__ . '/../app_head.php';
           cell.classList.remove('cell-saving');
           cell.classList.add('cell-err'); setTimeout(() => cell.classList.remove('cell-err'), 1200);
           notify('danger', e.message);
-        }
+        } finally { cell.classList.remove('cell-saving'); cell.removeAttribute('aria-busy'); }
     });
   });
 

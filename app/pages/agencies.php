@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* -------------------------------------------------
    Toggle: Edit Mode (ruhet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+    qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
     // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
     $qs = $_GET; unset($qs['edit']);
     $redir = 'agencies.php' . ($qs ? ('?' . http_build_query($qs)) : '');
@@ -39,16 +40,16 @@ if (!$currentUser || (!$isAdmin && !$isEditor)) {
 }
 
 /* CSRF */
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* Flash helpers */
 function flash(string $k, ?string $m=null){
   if($m===null){
-    if(!empty($_SESSION['flash'][$k])){ $x=$_SESSION['flash'][$k]; unset($_SESSION['flash'][$k]); return $x; }
+    if(!empty($_SESSION['flash'][$k])){ return qta_session_take(['flash', $k]); }
     return null;
   }
-  $_SESSION['flash'][$k]=$m;
+  qta_session_put(['flash', $k], $m);
 }
 
 /* Role agency id */
@@ -116,7 +117,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
   }catch(Throwable $e){
     if($pdo->inTransaction()) $pdo->rollBack();
-    flash('err',$e->getMessage());
+    flash('err',qta_error_message($e));
   }
   header('Location: agencies.php'); exit;
 }
@@ -391,7 +392,7 @@ function cleanText(s){ const v = (s||'').replace(/\s+/g,' ').trim(); return v ==
 function esc(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
 async function postJSON(url, payload){
-  const res = await fetch(url, {
+  const res = await window.qtaFetch.response(url, {
     method: 'POST',
     headers: {'Content-Type':'application/json','Accept':'application/json'},
     body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
@@ -411,6 +412,8 @@ if (EDIT_ENABLED) document.addEventListener('DOMContentLoaded', () => {
       const val = cleanText(el.textContent);
       el.textContent = val;
       if (val === (el.dataset.prev || '')) return;
+      if (cell.classList.contains('cell-saving')) return;
+      cell.setAttribute('aria-busy', 'true');
       cell.classList.add('cell-saving');
       try{
         const json = await postJSON(INLINE_ENDPOINT, {agency_id: parseInt(cell.dataset.id,10), field: cell.dataset.field, value: val});
@@ -424,7 +427,7 @@ if (EDIT_ENABLED) document.addEventListener('DOMContentLoaded', () => {
         cell.classList.remove('cell-saving');
         cell.classList.add('cell-err'); setTimeout(()=>cell.classList.remove('cell-err'), 1200);
         notify('danger', e.message);
-      }
+      } finally { cell.classList.remove('cell-saving'); cell.removeAttribute('aria-busy'); }
   });
 });
 
@@ -489,14 +492,15 @@ document.getElementById('msAddForm')?.addEventListener('submit', async (ev)=>{
   const spec = input.value.trim();
   if (!spec){ notify('warning', 'Shkruaj numrat e amzës, p.sh. 3400-3403, 3409.'); input.focus(); return; }
   const btn = document.getElementById('msAddBtn');
-  btn.disabled = true; btn.classList.add('is-loading');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true');
   try{
     const json = await postJSON(LINK_ENDPOINT, {action:'assign_by_amze', agency_id: msAgency, amze_spec: spec});
     notify('success', json.added ? (json.added === 1 ? '1 punonjës u shtua.' : json.added + ' punonjës u shtuan.') : (json.info || 'Asgjë e re për të shtuar.'));
     input.value = '';
     loadAgencyStudents();
   }catch(e){ notify('danger', e.message, {autohide:false}); }
-  finally { btn.disabled = false; btn.classList.remove('is-loading'); }
+  finally { btn.disabled = false; btn.classList.remove('is-loading'); btn.removeAttribute('aria-busy'); }
 });
 
 document.querySelector('#msTable tbody')?.addEventListener('click', async (ev)=>{

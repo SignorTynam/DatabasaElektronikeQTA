@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* ------------------------------
    Guard: admin OSE editor i loguar
@@ -25,14 +26,14 @@ if (!$currentUser || !in_array($roleName, ['administrator', 'editor'], true)) {
 
 /* Kyçi i ndryshimeve (i njëjtë për të gjitha faqet) */
 if (isset($_GET['edit'])) {
-    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+    qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
     $qs = $_GET; unset($qs['edit']);
     header('Location: course.php' . ($qs ? '?' . http_build_query($qs) : ''));
     exit;
 }
 $EDIT_MODE = !empty($_SESSION['edit_mode']);
 
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 require_once __DIR__ . '/../shared/themeli.php';
@@ -45,8 +46,7 @@ $modules = $course ? qta_course_modules($pdo, $courseId) : [];
 $check = $course ? qta_course_check($course, $modules) : null;
 $usage = $course ? qta_course_usage($pdo, $courseId) : ['scheduled' => 0, 'legacy' => 0];
 
-$flashOk = $_SESSION['flash']['ok'] ?? null;
-unset($_SESSION['flash']['ok']);
+$flashOk = qta_session_take(['flash', 'ok'], null);
 
 $NAV_ACTIVE = 'courses';
 $HELP_TOPIC = 'course';

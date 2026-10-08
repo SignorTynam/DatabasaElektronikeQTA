@@ -80,7 +80,7 @@
 
   /* ----------------------------------------------------- Dërgimi te serveri */
   function post(url, payload) {
-    return fetch(url, {
+    return window.qtaFetch.response(url, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -120,6 +120,7 @@
     if (!btn) return;
     btn.disabled = !!on;
     btn.classList.toggle('is-loading', !!on);
+    btn.setAttribute('aria-busy', on ? 'true' : 'false');
   }
   function modal(el) { return el && window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(el) : null; }
   function formError(form, message) {
@@ -223,13 +224,14 @@
       ev.preventDefault();
       var btn = sForm.querySelector('button[type="submit"]');
       formError(sForm, '');
+      if (btn && btn.disabled) return;
       busy(btn, true);
       run({ action: 'change', revision: CFG.revision, change: sChange() }).then(function (json) {
         reloadWith(json.message);
       }).catch(function (err) {
         busy(btn, false);
         if (!err.cancelled) formError(sForm, err.message);
-      });
+      }).finally(function () { busy(btn, false); });
     });
   }
 
@@ -271,13 +273,14 @@
       }
       var btn = fsForm.querySelector('button[type="submit"]');
       formError(fsForm, '');
+      if (btn && btn.disabled) return;
       busy(btn, true);
       run({ action: 'change', revision: CFG.revision, change: fsChange() }).then(function (json) {
         reloadWith(json.message);
       }).catch(function (err) {
         busy(btn, false);
         if (!err.cancelled) formError(fsForm, err.message);
-      });
+      }).finally(function () { busy(btn, false); });
     });
   }
 
@@ -355,13 +358,14 @@
       if (c.mode === 'hours' && !/^\d+$/.test(String(c.hours).trim())) { formError(dForm, 'Shkruaj sa orë mësim ka kjo ditë: një numër nga 1 deri në ' + hoursInput.max + '.'); hoursInput.focus(); return; }
       var btn = dForm.querySelector('button[type="submit"]');
       formError(dForm, '');
+      if (btn && btn.disabled) return;
       busy(btn, true);
       run({ action: 'change', revision: CFG.revision, change: c }).then(function (json) {
         reloadWith(json.message);
       }).catch(function (err) {
         busy(btn, false);
         if (!err.cancelled) formError(dForm, err.message);
-      });
+      }).finally(function () { busy(btn, false); });
     });
   }
 
@@ -375,10 +379,11 @@
       confirm: 'Po, hiqe', danger: false
     }).then(function (ok) {
       if (!ok) return;
+      if (rm && rm.disabled) return;
       busy(rm, true);
       run({ action: 'change', revision: CFG.revision, change: { type: 'rule', date: date, mode: 'remove' } })
         .then(function (json) { reloadWith(json.message); })
-        .catch(function (err) { busy(rm, false); if (!err.cancelled) toast(err.message, 'danger', { autohide: false }); });
+        .catch(function (err) { busy(rm, false); if (!err.cancelled) toast(err.message, 'danger', { autohide: false }); }).finally(function () { busy(rm, false); });
     });
   });
 
@@ -392,10 +397,11 @@
       confirm: 'Po, merri', danger: false
     }).then(function (ok) {
       if (!ok) return;
+      if (btn && btn.disabled) return;
       busy(btn, true);
       run({ action: 'change', revision: CFG.revision, change: { type: 'refresh' } })
         .then(function (json) { reloadWith(json.message); })
-        .catch(function (err) { busy(btn, false); if (!err.cancelled) toast(err.message, 'danger', { autohide: false }); });
+        .catch(function (err) { busy(btn, false); if (!err.cancelled) toast(err.message, 'danger', { autohide: false }); }).finally(function () { busy(btn, false); });
     });
   });
 
@@ -408,6 +414,7 @@
       ev.preventDefault();
       var btn = mForm.querySelector('button[type="submit"]');
       formError(mForm, '');
+      if (btn && btn.disabled) return;
       busy(btn, true);
       run({ action: 'members', amze_spec: mForm.elements.amze_spec.value }).then(function (json) {
         try { history.replaceState(history.state, '', '#kursantet'); } catch (e) { /* */ }
@@ -415,7 +422,7 @@
       }).catch(function (err) {
         busy(btn, false);
         if (!err.cancelled) formError(mForm, err.message);
-      });
+      }).finally(function () { busy(btn, false); });
     });
   }
 
@@ -423,13 +430,14 @@
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest ? ev.target.closest('[data-lg-delete]') : null;
     if (!btn) return;
-    busy(btn, true);
+    if (btn && btn.disabled) return;
+      busy(btn, true);
     run({ action: 'delete' }).then(function (json) {
       window.location.href = json.redirect || 'lesson_groups.php';
     }).catch(function (err) {
       busy(btn, false);
       if (!err.cancelled) toast(err.message, 'danger', { autohide: false });
-    });
+    }).finally(function () { busy(btn, false); });
   });
 
   /* ------------------------------------------------ Mbyllja e grupit */
@@ -442,11 +450,12 @@
       : { title: 'Të rihapet grupi?', message: 'Ky grup është i mbyllur dhe dokumentet mund të jenë lëshuar. E rihap vetëm për të korrigjuar një gabim.', confirm: 'Po, rihape', danger: true }
     ).then(function (ok) {
       if (!ok) return;
+      if (btn && btn.disabled) return;
       busy(btn, true);
       post(CFG.cellEndpoint, { action: 'set_group_completed', group_id: CFG.group, is_completed: want }).then(function (json) {
         if (!json.ok) throw new Error(json.error || 'Gjendja e grupit nuk u ndryshua.');
         reloadWith(want ? 'Grupi u mbyll.' : 'Grupi u rihap.');
-      }).catch(function (err) { busy(btn, false); toast(err.message, 'danger', { autohide: false }); });
+      }).catch(function (err) { busy(btn, false); toast(err.message, 'danger', { autohide: false }); }).finally(function () { busy(btn, false); });
     });
   });
 
@@ -522,6 +531,8 @@
       : Promise.resolve(true);
     ask.then(function (ok) {
       if (!ok) { ed.textContent = prev || '—'; return; }
+      if (cell.classList.contains('cell-saving')) return;
+      cell.setAttribute('aria-busy', 'true');
       cell.classList.add('cell-saving');
       post(CFG.cellEndpoint, {
         action: 'update_cell', group_id: CFG.group, student_id: parseInt(cell.getAttribute('data-student'), 10),
@@ -539,7 +550,7 @@
         ed.textContent = prev || '—';
         flashCell(cell, 'cell-err');
         toast(err.message || 'Ndryshimi nuk u ruajt.', 'danger');
-      });
+      }).finally(function () { cell.classList.remove('cell-saving'); cell.removeAttribute('aria-busy'); });
     });
   }
 
@@ -609,6 +620,7 @@
     });
     if (fxUndo) fxUndo.addEventListener('click', function () { fx.undo(); fxPaint(); });
     if (fxRebalance) fxRebalance.addEventListener('click', function () {
+      if (fxRebalance && fxRebalance.disabled) return;
       busy(fxRebalance, true);
       post(CFG.endpoint, { action: 'rebalance', group_id: CFG.group, plan: fx.serialize() }).then(function (json) {
         busy(fxRebalance, false);
@@ -619,10 +631,11 @@
         fx.apply(changes, { origin: 'auto', source: 'rebalance' });
         toast(json.message, (json.sundays_added && json.sundays_added.length) ? 'warning' : 'success');
         fxPaint();
-      }).catch(function (err) { busy(fxRebalance, false); toast(err.message, 'danger', { autohide: false }); });
+      }).catch(function (err) { busy(fxRebalance, false); toast(err.message, 'danger', { autohide: false }); }).finally(function () { busy(fxRebalance, false); });
     });
     fxSave.addEventListener('click', function () {
       var ch = fxChanges();
+      if (fxSave && fxSave.disabled) return;
       busy(fxSave, true);
       run({ action: 'change', revision: CFG.revision, change: { type: 'fixed_days', days: ch.days, notes: ch.notes } }).then(function (json) {
         fxDirty = false;
@@ -630,7 +643,7 @@
       }).catch(function (err) {
         busy(fxSave, false);
         if (!err.cancelled) toast(err.message, 'danger', { autohide: false });
-      });
+      }).finally(function () { busy(fxSave, false); });
     });
     fxPaint();
   }

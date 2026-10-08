@@ -13,13 +13,14 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 mb_internal_encoding('UTF-8');
 
 require_once __DIR__ . '/database.php';
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 function qta_download_status(string $status, string $message): void {
     setcookie('qta_file_ready', $status, [

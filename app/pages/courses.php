@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . '/../shared/session.php';
+qta_session_boot();
 require_once __DIR__ . '/database.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
-qta_audit_attach($pdo);
+qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
 
 /* -------------------------------------------------
    Toggle: Edit Mode (ruhet në session)
 -------------------------------------------------- */
 if (isset($_GET['edit'])) {
-    $_SESSION['edit_mode'] = filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN);
+    qta_session_put(['edit_mode'], filter_var($_GET['edit'], FILTER_VALIDATE_BOOLEAN));
     // redirect pa param 'edit' (ruaj pjesën tjetër të query-it)
     $qs = $_GET; unset($qs['edit']);
     $redir = 'courses.php' . ($qs ? ('?' . http_build_query($qs)) : '');
@@ -49,10 +50,10 @@ require_once __DIR__ . '/../shared/curriculum.php';
 ------------------------------- */
 function flash(string $key, ?string $msg=null) {
     if ($msg === null) {
-        if (!empty($_SESSION['flash'][$key])) { $m = $_SESSION['flash'][$key]; unset($_SESSION['flash'][$key]); return $m; }
+        if (!empty($_SESSION['flash'][$key])) { return qta_session_take(['flash', $key]); }
         return null;
     }
-    $_SESSION['flash'][$key] = $msg;
+    qta_session_put(['flash', $key], $msg);
 }
 function require_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -62,7 +63,7 @@ function require_csrf(): void {
         }
     }
 }
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(24)); }
+if (empty($_SESSION['csrf_token'])) { qta_session_put(['csrf_token'], bin2hex(random_bytes(24))); }
 $CSRF = $_SESSION['csrf_token'];
 
 /* ------------------------------
@@ -101,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('ok', 'Kursi "' . $name . '" u shtua. Tani ndaje në module dhe tema.');
             header('Location: course.php?id=' . $newId); exit;
         } catch (Throwable $e) {
-            flash('err', $e->getMessage());
+            flash('err', qta_error_message($e));
         }
         header('Location: courses.php'); exit;
     }
@@ -119,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $extra = $r['modules'] ? ' bashkë me ' . $r['modules'] . ($r['modules'] === 1 ? ' modul' : ' module') . ' dhe ' . $r['topics'] . ($r['topics'] === 1 ? ' temë' : ' tema') : '';
             flash('ok', 'Kursi "' . $r['course']['code'] . ' — ' . $r['course']['name'] . '" u fshi' . $extra . '.');
         } catch (Throwable $e) {
-            flash('err', $e->getMessage());
+            flash('err', qta_error_message($e));
         }
         header('Location: courses.php'); exit;
     }
@@ -554,7 +555,7 @@ function notify(type, text, opts={}){ return window.qtaToast ? window.qtaToast(t
 function cleanText(s){ return (s || '').replace(/\s+/g,' ').trim(); }
 
 async function post(payload){
-  const res = await fetch(ENDPOINT, {
+  const res = await window.qtaFetch.response(ENDPOINT, {
     method: 'POST',
     headers: {'Content-Type':'application/json','Accept':'application/json'},
     body: JSON.stringify(Object.assign({csrf: CSRF}, payload))
@@ -587,7 +588,10 @@ async function saveInline(el){
   else if (field === 'name' && value === '') problem = 'Emri nuk mund të mbetet bosh.';
   if (problem){ el.textContent = prev; flashCell(cell, 'cell-err'); notify('warning', problem); return; }
 
-  cell.classList.add('cell-saving');
+  if (cell.classList.contains('cell-saving')) return;
+
+  cell.setAttribute('aria-busy', 'true');
+      cell.classList.add('cell-saving');
   try{
     const json = await post({action:'update_field', course_id: cid, field, value});
     el.textContent = json.display ?? value;
@@ -612,7 +616,7 @@ async function saveInline(el){
       return;
     }
     notify('danger', e.message);
-  }
+  } finally { cell.classList.remove('cell-saving'); cell.removeAttribute('aria-busy'); }
 }
 
 /* Me delegim: rreshtat e rinj pas kërkimit ose faqosjes ndryshohen njësoj.
@@ -680,7 +684,8 @@ document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', 
       force = 1;
     }
     const btn = document.getElementById('mvSubmit');
-    btn.disabled = true; btn.classList.add('is-loading');
+    if (btn.disabled) return;
+  btn.disabled = true; btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true');
     try {
       await post({action:'move_group_course', group_id: groupId, new_course_id: target, force});
       const targetName = (sel.options[sel.selectedIndex]?.text || 'kursi i ri').replace(/\s*\([^)]*\)\s*$/, '');
@@ -689,9 +694,8 @@ document.getElementById('deleteCourseModal')?.addEventListener('show.bs.modal', 
       if (window.qtaReopenAfterReload) window.qtaReopenAfterReload(modal);
       location.reload();
     } catch (e) {
-      btn.disabled = false; btn.classList.remove('is-loading');
       notify('danger', e.message);
-    }
+    } finally { btn.disabled = false; btn.classList.remove('is-loading'); btn.removeAttribute('aria-busy'); }
   });
 })();
 
