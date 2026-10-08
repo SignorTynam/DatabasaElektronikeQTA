@@ -244,7 +244,7 @@ return [
     'steps' => [
       ['Lexo orarin', 'Te "Ditë pas dite" çdo datë tregon temat dhe orët. "ora 1 nga 2" do të thotë që tema vazhdon në ditën tjetër të mësimit.'],
       ['Ndrysho një ditë', 'Me ndryshimet e hapura shtyp "Ndrysho ditën": orë të tjera, pa mësim (p.sh. festë), ose mësim të dielën. Orari rillogaritet vetë dhe data e mbarimit përditësohet.'],
-      ['Ndrysho periudhën ose ritmin', 'Te "Përmbledhja e orarit" ndrysho fillimin dhe ritmin e një orari automatik, ose të dy kufijtë e një periudhe të përcaktuar. Para ruajtjes të tregohet ndikimi mbi gjithë orarin.'],
+      ['Ndrysho kursin ose orarin', 'Te "Përmbledhja e orarit" shtyp "Ndrysho kursin dhe periudhën" ose "Ndrysho kursin dhe orarin". Zgjidh kursin dhe datat ose orët në ditë. Kursi i ri sjell modulet dhe temat e veta; para ruajtjes shfaqet ndikimi dhe kërkohet konfirmim. Pastaj organizo orët brenda periudhës te "Plani i ditëve". Kursi nuk ndryshohet kur grupi ka pikë të regjistruara.'],
       ['Provimet', 'Te "Kursantët dhe provimet" kliko datën e provimit dhe zgjidhe në kalendar. Provimi nuk mund të jetë para mbarimit të mësimit: kalendari nuk i lejon ato ditë.'],
       ['Pikët sipas moduleve', 'Shtyp "Vendos pikët" (ose pikët e një kursanti): një tabelë me kursantët dhe modulet e grupit. Shkruaj pikët e çdo moduli (0–100, p.sh. 85 ose 85,5) dhe shtyp "Ruaj pikët". Rezultati është mesatarja e moduleve dhe del vetë kur çdo modul ka pikë; bosh nuk është 0. Enter kalon te kursanti tjetër, Ctrl+S ruan.'],
       ['Mbyll grupin', 'Kur provimet dhe pikët janë të plota, shtyp "Mbylle grupin". Pas kësaj çdo ndryshim kërkon konfirmim.'],
@@ -255,7 +255,7 @@ return [
       'Grupi ka kopjen e vet të temave. Nëse kursi ndryshon para se të nisë grupi, mund të marrësh temat e reja me "Merr temat e reja".',
       '"Printo orarin" printon orarin ditë pas dite.',
       'Pikët vendosen për modulet e kopjes së grupit, jo për kursin siç është sot. Pikët e shkruara më parë pa module mbeten ("pikë të vjetra") derisa kursanti të marrë pikë moduli.',
-      'Për një grup të konvertuar, periudha burimore ruhet e pandryshuar si prejardhje. Periudha operative mund të korrigjohet me "Ndrysho periudhën"; orari rindërtohet dhe ruhet i tëri vetëm kur shuma e orëve mbetet e plotë.',
+      'Për një grup të konvertuar, periudha burimore ruhet e pandryshuar si prejardhje. Kursi dhe periudha operative mund të korrigjohen me "Ndrysho kursin dhe periudhën"; orari rindërtohet dhe ruhet i tëri vetëm kur shuma e orëve është e plotë.',
       '"Regjistri i orëve të mësimit" (te "Dokumentet") ka për çdo modul një faqe për prezencën dhe një faqe me datat dhe temat. Çdo orë mësimi ka kolonën dhe rreshtin e vet: një ditë me 5 orë del 5 herë. Numrat 1, 2, 3… janë radha e kursantëve te "Lista emërore".',
     ],
   ],

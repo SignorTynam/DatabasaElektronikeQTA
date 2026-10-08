@@ -67,6 +67,8 @@ if ($g) {
   $started = (string)$g['start_date'] <= $today;
   $closed = (int)$g['is_completed'] === 1;
   $totalHours = array_sum(array_column($days, 'hours'));
+  $settingsCourses = $EDIT_MODE ? $pdo->query('SELECT id, name, hours FROM courses ORDER BY name')->fetchAll(PDO::FETCH_ASSOC) : [];
+  $settingsSummaries = $EDIT_MODE ? qta_course_summaries($pdo) : [];
 
   $ms = $pdo->prepare("
     SELECT s.id AS student_id, s.nr_amze, p.first_name, p.father_name, p.last_name, p.personal_number,
@@ -239,10 +241,10 @@ require __DIR__ . '/../shared/app_head.php';
               <span class="section-meta">Konvertuar më <?= h(qta_datetime((string)$g['converted_at'])) ?><?= !empty($g['converted_by_name']) ? ' nga ' . h((string)$g['converted_by_name']) : '' ?></span>
             <?php endif; ?>
             <?php if ($EDIT_MODE): ?>
-              <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-fixed-settings><i class="bi bi-calendar-range" aria-hidden="true"></i>Ndrysho periudhën</button>
+              <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-fixed-settings><i class="bi bi-calendar-range" aria-hidden="true"></i>Ndrysho kursin dhe periudhën</button>
             <?php endif; ?>
           <?php elseif ($EDIT_MODE): ?>
-            <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-settings><i class="bi bi-sliders" aria-hidden="true"></i>Ndrysho fillimin ose orët në ditë</button>
+            <button class="btn btn-secondary btn-sm no-print" type="button" data-lg-settings><i class="bi bi-sliders" aria-hidden="true"></i>Ndrysho kursin dhe orarin</button>
           <?php endif; ?>
         </div>
         <?php if ($fixedMode): ?>
@@ -312,7 +314,7 @@ require __DIR__ . '/../shared/app_head.php';
         </div>
         <p class="cv-intro">Fillimi dhe mbarimi përcaktojnë periudhën ku shpërndahen orët.
           <?= $EDIT_MODE
-            ? 'Për të ndryshuar kufijtë përdor “Ndrysho periudhën”; për orët kliko një datë ose shkruaji me shifra dhe ruaj kur plani ka sërish ' . h(qta_hours_label((int)$totalHours)) . '.'
+            ? 'Për të ndryshuar kursin ose kufijtë përdor “Ndrysho kursin dhe periudhën”; për orët kliko një datë ose shkruaji me shifra dhe ruaj kur plani ka sërish ' . h(qta_hours_label((int)$totalHours)) . '.'
             : 'Orët e çdo date brenda periudhës; ditët pa orë nuk kanë mësim.' ?></p>
         <?= qta_render_day_plan(qta_lg_fixed_hours($rules), (string)$g['start_date'], (string)$g['end_date'], [
           'id' => 'lgPlan', 'editable' => $EDIT_MODE, 'today' => $today,
@@ -520,13 +522,14 @@ require __DIR__ . '/../shared/app_head.php';
       <div class="modal-header">
         <div>
           <span class="eyebrow mb-0">Grupi #<?= $gid ?> · <?= h((string)$g['course_name']) ?></span>
-          <h2 class="modal-title" id="lgSettingsTitle"><i class="bi bi-sliders" aria-hidden="true"></i>Fillimi dhe orët në ditë</h2>
+          <h2 class="modal-title" id="lgSettingsTitle"><i class="bi bi-sliders" aria-hidden="true"></i>Kursi dhe orari</h2>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
         <div class="alert alert-danger py-2" data-form-error role="alert" hidden></div>
         <div class="row g-3">
+          <?php require __DIR__ . '/../shared/partials/lesson_group_course_field.php'; ?>
           <div class="col-sm-6">
             <label class="form-label" for="lgsStart">Data e fillimit <span class="req" aria-hidden="true">*</span></label>
             <input class="form-control" id="lgsStart" name="start_date" type="text" inputmode="numeric" autocomplete="off" data-dmy required value="<?= h(qta_date((string)$g['start_date'])) ?>" placeholder="dd.mm.vvvv">
@@ -616,13 +619,14 @@ require __DIR__ . '/../shared/app_head.php';
       <div class="modal-header">
         <div>
           <span class="eyebrow mb-0">Grupi #<?= $gid ?> · <?= h((string)$g['course_name']) ?></span>
-          <h2 class="modal-title" id="lgFixedSettingsTitle"><i class="bi bi-calendar-range" aria-hidden="true"></i>Periudha e orarit</h2>
+          <h2 class="modal-title" id="lgFixedSettingsTitle"><i class="bi bi-calendar-range" aria-hidden="true"></i>Kursi dhe periudha e orarit</h2>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
         <div class="alert alert-danger py-2" data-form-error role="alert" hidden></div>
         <div class="row g-3">
+          <?php require __DIR__ . '/../shared/partials/lesson_group_course_field.php'; ?>
           <div class="col-sm-6">
             <label class="form-label" for="lgfsStart">Data e fillimit <span class="req" aria-hidden="true">*</span></label>
             <input class="form-control" id="lgfsStart" name="start_date" type="text" inputmode="numeric" autocomplete="off"
@@ -636,7 +640,7 @@ require __DIR__ . '/../shared/app_head.php';
           <div class="col-12">
             <div class="plan-preview" data-lg-impact role="status" aria-live="polite">
               <i class="bi bi-calendar-range" aria-hidden="true"></i>
-              <span data-lg-impact-text>Ndrysho fillimin ose mbarimin për të parë si rindërtohet orari.</span>
+              <span data-lg-impact-text>Ndrysho kursin, fillimin ose mbarimin për të parë si rindërtohet orari.</span>
             </div>
           </div>
         </div>
@@ -697,7 +701,7 @@ require __DIR__ . '/../shared/app_head.php';
 <?php if ($g): ?>
 <script type="application/json" id="lgConfig"><?= json_encode([
   'csrf' => $CSRF, 'group' => $gid, 'revision' => (int)$g['revision'], 'edit' => $EDIT_MODE,
-  'mode' => $fixedMode ? 'fixed_range' : 'calculated', 'hours' => (int)$g['course_hours'],
+  'mode' => $fixedMode ? 'fixed_range' : 'calculated', 'hours' => (int)$g['course_hours'], 'course' => (int)$g['course_id'],
   'daily' => (int)$g['daily_hours'], 'end' => (string)$g['end_date'], 'start' => (string)$g['start_date'],
   'closed' => $closed, 'today' => $today,
   'endpoint' => 'lesson_group_update.php', 'cellEndpoint' => 'groups_inline_update.php',

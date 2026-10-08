@@ -152,9 +152,12 @@
   function impactText(impact) {
     var n = impact.new, o = impact.old;
     var parts = [];
+    if (impact.course_changed) parts.push('Kursi bëhet “' + impact.course_name + '”, me ' + n.total_hours + ' orë. Modulet dhe temat zëvendësohen.');
     if (impact.what === 'fixed_range_settings') {
-      parts.push('Periudha bëhet ' + toDmy(n.start_date) + ' – ' + toDmy(n.end_date)
-        + '; tani është ' + toDmy(o.start_date) + ' – ' + toDmy(o.end_date) + '.');
+      parts.push(n.start_date === o.start_date && n.end_date === o.end_date
+        ? 'Periudha mbetet ' + toDmy(n.start_date) + ' – ' + toDmy(n.end_date) + '.'
+        : 'Periudha bëhet ' + toDmy(n.start_date) + ' – ' + toDmy(n.end_date)
+          + '; tani është ' + toDmy(o.start_date) + ' – ' + toDmy(o.end_date) + '.');
       parts.push(n.days + ' ditë mësimi dhe ' + n.fixed.off_days + ' ditë pa mësim.');
       if (impact.changed_dates && impact.changed_dates.length) {
         parts.push('Rindërtohen ' + impact.changed_dates.length + ' data; e para është ' + toDmy(impact.first_changed) + '.');
@@ -200,23 +203,25 @@
   if (settingsModal) {
     var sForm = settingsModal.querySelector('form');
     var sChange = function () {
-      return { type: 'settings', start_date: sForm.elements.start_date.value, daily_hours: sForm.elements.daily_hours.value };
+      return { type: 'settings', course_id: sForm.elements.course_id.value, start_date: sForm.elements.start_date.value, daily_hours: sForm.elements.daily_hours.value };
     };
     var sPreview = debounce(function () {
-      if (toIso(sForm.elements.start_date.value) === CFG.start && String(sForm.elements.daily_hours.value) === String(CFG.daily)) {
-        setImpact(sForm, '', 'Ndrysho datën e fillimit ose orët në ditë: këtu del ndikimi në orar.');
+      if (String(sForm.elements.course_id.value) === String(CFG.course) && toIso(sForm.elements.start_date.value) === CFG.start && String(sForm.elements.daily_hours.value) === String(CFG.daily)) {
+        ++previewSeq;
+        setImpact(sForm, '', 'Ndrysho kursin, datën e fillimit ose orët në ditë: këtu del ndikimi në orar.');
         return;
       }
       if (!toIso(sForm.elements.start_date.value) || !sForm.elements.daily_hours.value) { setImpact(sForm, '', 'Plotëso datën (dd.mm.vvvv) dhe orët në ditë.'); return; }
       previewChange(sForm, sChange());
     }, 300);
     sForm.addEventListener('input', sPreview);
-    settingsModal.addEventListener('shown.bs.modal', function () { sForm.elements.start_date.focus(); });
+    settingsModal.addEventListener('shown.bs.modal', function () { sForm.elements.course_id.focus(); });
     document.addEventListener('click', function (ev) {
       if (ev.target.closest && ev.target.closest('[data-lg-settings]')) {
         sForm.reset();
         formError(sForm, '');
-        setImpact(sForm, '', 'Ndrysho datën e fillimit ose orët në ditë: këtu del ndikimi në orar.');
+        ++previewSeq;
+        setImpact(sForm, '', 'Ndrysho kursin, datën e fillimit ose orët në ditë: këtu del ndikimi në orar.');
         modal(settingsModal).show(ev.target.closest('[data-lg-settings]'));
       }
     });
@@ -240,13 +245,14 @@
   if (fixedSettingsModal) {
     var fsForm = fixedSettingsModal.querySelector('form');
     var fsChange = function () {
-      return { type: 'fixed_range_settings', start_date: fsForm.elements.start_date.value, end_date: fsForm.elements.end_date.value };
+      return { type: 'fixed_range_settings', course_id: fsForm.elements.course_id.value, start_date: fsForm.elements.start_date.value, end_date: fsForm.elements.end_date.value };
     };
     var fsPreview = debounce(function () {
       var start = toIso(fsForm.elements.start_date.value);
       var end = toIso(fsForm.elements.end_date.value);
-      if (start === CFG.start && end === CFG.end) {
-        setImpact(fsForm, '', 'Ndrysho fillimin ose mbarimin për të parë si rindërtohet orari.');
+      if (String(fsForm.elements.course_id.value) === String(CFG.course) && start === CFG.start && end === CFG.end) {
+        ++previewSeq;
+        setImpact(fsForm, '', 'Ndrysho kursin, fillimin ose mbarimin për të parë si rindërtohet orari.');
         return;
       }
       if (!start || !end) {
@@ -256,13 +262,14 @@
       previewChange(fsForm, fsChange());
     }, 300);
     fsForm.addEventListener('input', fsPreview);
-    fixedSettingsModal.addEventListener('shown.bs.modal', function () { fsForm.elements.start_date.focus(); });
+    fixedSettingsModal.addEventListener('shown.bs.modal', function () { fsForm.elements.course_id.focus(); });
     document.addEventListener('click', function (ev) {
       var opener = ev.target.closest ? ev.target.closest('[data-lg-fixed-settings]') : null;
       if (!opener) return;
       fsForm.reset();
       formError(fsForm, '');
-      setImpact(fsForm, '', 'Ndrysho fillimin ose mbarimin për të parë si rindërtohet orari.');
+      ++previewSeq;
+      setImpact(fsForm, '', 'Ndrysho kursin, fillimin ose mbarimin për të parë si rindërtohet orari.');
       modal(fixedSettingsModal).show(opener);
     });
     fsForm.addEventListener('submit', function (ev) {

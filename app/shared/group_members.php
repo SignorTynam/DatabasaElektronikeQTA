@@ -108,7 +108,7 @@ if (!function_exists('qta_amze_parse')) {
    * Hedh QtaUserError me listën e numrave të amzës që nuk lejohen.
    * @param int[] $studentIds
    */
-  function qta_members_assert_can_join(PDO $pdo, array $studentIds, int $courseId): void
+  function qta_members_assert_can_join(PDO $pdo, array $studentIds, int $courseId, int $excludeGroupId = 0): void
   {
     if (!$studentIds) return;
     $ph = implode(',', array_fill(0, count($studentIds), '?'));
@@ -119,10 +119,10 @@ if (!function_exists('qta_amze_parse')) {
       JOIN students s ON s.id = cgs.student_id
       JOIN course_groups cg ON cg.id = cgs.group_id
       JOIN courses c ON c.id = cg.course_id
-      WHERE cgs.student_id IN ($ph)
+      WHERE cgs.student_id IN ($ph) AND cgs.group_id <> ?
       ORDER BY CAST(s.nr_amze AS UNSIGNED)
     ");
-    $dup->execute($studentIds);
+    $dup->execute(array_merge($studentIds, [$excludeGroupId]));
     if ($rows = $dup->fetchAll(PDO::FETCH_ASSOC)) {
       $items = array_map(static fn($r) => $r['nr_amze'] . ' (Grupi #' . $r['group_id'] . ', ' . $r['course_name'] . ')', $rows);
       throw new QtaUserError('Këta numra amze janë tashmë në një grup: ' . implode(', ', $items) . '. Një regjistrim mund të jetë vetëm në një grup.');
@@ -140,9 +140,9 @@ if (!function_exists('qta_amze_parse')) {
         JOIN persons p ON p.id = s.person_id
         JOIN course_groups cg ON cg.id = cgs.group_id
         JOIN courses c ON c.id = cg.course_id
-        WHERE cg.course_id = ? AND p.personal_number IN ($ph2)
+        WHERE cg.course_id = ? AND p.personal_number IN ($ph2) AND cgs.group_id <> ?
       ");
-      $hit->execute(array_merge([$courseId], $numbers));
+      $hit->execute(array_merge([$courseId], $numbers, [$excludeGroupId]));
       if ($rows = $hit->fetchAll(PDO::FETCH_ASSOC)) {
         $items = array_map(static fn($r) => ($r['nr_amze'] ?: $r['personal_number']) . ' (Grupi #' . $r['group_id'] . ')', $rows);
         throw new QtaUserError('Disa persona e kanë ndjekur tashmë këtë kurs me një numër tjetër amze: ' . implode(', ', $items) . '. I njëjti person nuk e ndjek dy herë të njëjtin kurs.');

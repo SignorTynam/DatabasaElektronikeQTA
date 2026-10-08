@@ -472,10 +472,10 @@ t_case('Pranimi D — grupi i mëparshëm mbetet i paprekur dhe pa orar', functi
   t_throws(PDOException::class, fn() => $pdo->exec('DELETE FROM courses WHERE id = ' . $firstCourse), 'edhe baza e ndalon fshirjen zinxhir', 'foreign key');
 });
 
-t_case('Grupi me orar nuk kalon te një kurs tjetër', function () use ($pdo) {
+t_case('Kursi i grupit me orar nuk ndryshohet me SQL të drejtpërdrejtë', function () use ($pdo) {
   $gid = $GLOBALS['IT_GROUP_C'];
   $other = (int)$pdo->query('SELECT id FROM courses ORDER BY id LIMIT 1')->fetchColumn();
-  t_throws(PDOException::class, fn() => $pdo->exec('UPDATE course_groups SET course_id = ' . $other . ' WHERE id = ' . $gid), 'baza e ndalon', 'kurs tjetër');
+  t_throws(PDOException::class, fn() => $pdo->exec('UPDATE course_groups SET course_id = ' . $other . ' WHERE id = ' . $gid), 'baza kërkon shërbimin e rindërtimit', 'faqja e grupit');
 });
 
 t_case('Fshirja e grupit me orar dhe e kursit pa grupe', function () use ($pdo, $W, $tag) {

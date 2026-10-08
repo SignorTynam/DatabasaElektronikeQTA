@@ -481,11 +481,11 @@ if (!function_exists('qta_lg_change')) {
    * Ndryshon orarin e një grupi dhe e rillogarit të tërin.
    *
    * $change për orarin e llogaritur:
-   *   ['type' => 'settings', 'start_date' => …, 'daily_hours' => …]
+   *   ['type' => 'settings', 'course_id' => …, 'start_date' => …, 'daily_hours' => …]
    *   ['type' => 'rule', 'date' => …, 'mode' => 'default'|'hours'|'off'|'remove', 'hours' => …, 'note' => …]
    *   ['type' => 'refresh']   — merr temat e reja të kursit (vetëm para fillimit)
    * $change për orarin me periudhë të përcaktuar:
-   *   ['type' => 'fixed_range_settings', 'start_date' => …, 'end_date' => …]
+   *   ['type' => 'fixed_range_settings', 'course_id' => …, 'start_date' => …, 'end_date' => …]
    *   ['type' => 'fixed_days', 'days' => ['2026-10-03' => 0, …], 'notes' => ['2026-10-03' => 'Festë', …]]
    *   — ndryshon periudhën ose korrigjon orët e disa datave brenda saj.
    * $opts: revision (?int), force (bool), dry_run (bool), today ('Y-m-d')
@@ -510,6 +510,49 @@ if (!function_exists('qta_lg_change')) {
     }
   }
 
+  /** Validates a replacement without changing members, results or conversion provenance. */
+  function qta_lg_replacement_course(PDO $pdo, array $g, array $change): ?array
+  {
+    $cid = qta_parse_int_input($change['course_id'] ?? $g['course_id'], 1, PHP_INT_MAX);
+    if ($cid === null) throw new QtaUserError('Zgjidh kursin e grupit.');
+    if ($cid === (int)$g['course_id']) return null;
+    $course = qta_curriculum_lock_course($pdo, $cid);
+    $modules = qta_course_modules($pdo, $cid);
+    qta_lg_assert_course_ready($course, $modules);
+    $members = $pdo->prepare('SELECT student_id, final_score, legacy_final_score FROM course_group_students WHERE group_id = ? ORDER BY student_id FOR UPDATE');
+    $members->execute([(int)$g['id']]);
+    $rows = $members->fetchAll(PDO::FETCH_ASSOC);
+    if (qta_results_scored_students($pdo, (int)$g['id']) || array_filter($rows,
+        static fn($r) => $r['final_score'] !== null || $r['legacy_final_score'] !== null)) {
+      throw new QtaUserError('Grupi ka pikë të regjistruara për kursin aktual. Kursi nuk mund të ndryshohet pa zgjidhur më parë këto rezultate.', ['code' => 'has_scores']);
+    }
+    qta_members_assert_can_join($pdo, array_map('intval', array_column($rows, 'student_id')), $cid, (int)$g['id']);
+    return $course + ['topics' => qta_course_schedule_topics($modules)];
+  }
+
+  /** The database permits this update only inside the dedicated rebuild path. */
+  function qta_lg_write_course(PDO $pdo, int $groupId, int $courseId): void
+  {
+    $pdo->prepare('SET @qta_course_change_group = ?')->execute([$groupId]);
+    try {
+      $pdo->prepare('UPDATE course_groups SET course_id = ? WHERE id = ?')->execute([$courseId, $groupId]);
+    } finally {
+      $pdo->exec('SET @qta_course_change_group = NULL');
+    }
+  }
+
+  function qta_lg_course_confirm(?array $confirm, array $g, ?array $course): ?array
+  {
+    if ($course === null) return $confirm;
+    return [
+      'title' => 'Ndryshon kursin e grupit',
+      'message' => 'Kursi “' . $g['course_name'] . '” zëvendësohet me “' . $course['name']
+        . '”. Modulet, temat dhe orari rindërtohen për kursin e ri. Kursantët dhe datat e provimit ruhen.'
+        . ($confirm ? ' ' . $confirm['message'] : ''),
+      'confirm' => 'Po, ndrysho kursin dhe orarin',
+    ];
+  }
+
   function qta_lg_change_in_tx(PDO $pdo, int $groupId, array $change, array $opts): array
   {
     $today = (string)($opts['today'] ?? date('Y-m-d'));
@@ -532,14 +575,17 @@ if (!function_exists('qta_lg_change')) {
     $newTopics = $topics;
     $ruleOp = null;          // ['upsert', date, hours, note] | ['delete', date]
     $what = '';
+    $replacement = null;
 
     $type = (string)($change['type'] ?? '');
     if ($type === 'settings') {
+      $replacement = qta_lg_replacement_course($pdo, $g, $change);
+      if ($replacement) $newTopics = $replacement['topics'];
       $s = qta_parse_date_input($change['start_date'] ?? '');
       if ($s === null) throw new QtaUserError('Shkruaj datën e fillimit si dd.mm.vvvv, p.sh. 01.10.2026.');
       $h = qta_parse_int_input($change['daily_hours'] ?? '', 1, QTA_DAY_MAX_HOURS);
       if ($h === null) throw new QtaUserError('Orët në ditë duhet të jenë një numër i plotë nga 1 deri në ' . QTA_DAY_MAX_HOURS . '.');
-      if ($s === $start && $h === $daily) throw new QtaUserError('Nuk ndryshove asgjë: data e fillimit dhe orët në ditë janë të njëjta.');
+      if (!$replacement && $s === $start && $h === $daily) throw new QtaUserError('Nuk ndryshove asgjë: kursi, data e fillimit dhe orët në ditë janë të njëjta.');
       $start = $s;
       $daily = $h;
       $what = 'settings';
@@ -610,7 +656,10 @@ if (!function_exists('qta_lg_change')) {
     qta_lg_verify_or_fail($newTopics, $plan, $daily, $ruleMap);
 
     /* Ndikimi */
-    $changed = $what === 'refresh' ? array_column($plan['days'], 'date') : qta_sched_diff($oldDays, $plan['days']);
+    $changed = ($what === 'refresh' || $replacement)
+      ? array_values(array_unique(array_merge(array_column($oldDays, 'date'), array_column($plan['days'], 'date'))))
+      : qta_sched_diff($oldDays, $plan['days']);
+    sort($changed);
     $past = array_values(array_filter($changed, static fn($d) => $d < $today));
     $oldEnd = (string)$g['end_date'];
     $summary = qta_lg_plan_summary($plan);
@@ -624,10 +673,12 @@ if (!function_exists('qta_lg_change')) {
         . 'Provimi nuk mund të jetë para mbarimit. Ndrysho së pari datat e provimit te "Kursantët".', ['code' => 'exam_conflict']);
     }
 
-    $confirm = qta_lg_change_confirm((int)$g['is_completed'] === 1, $past);
+    $confirm = qta_lg_course_confirm(qta_lg_change_confirm((int)$g['is_completed'] === 1, $past), $g, $replacement);
 
     $result = [
       'what' => $what,
+      'course_changed' => $replacement !== null,
+      'course_name' => $replacement['name'] ?? $g['course_name'],
       'old' => ['start_date' => (string)$g['start_date'], 'end_date' => $oldEnd, 'days' => count($oldDays), 'daily_hours' => (int)$g['daily_hours']],
       'new' => $summary + ['daily_hours' => $daily],
       'changed_dates' => $changed,
@@ -652,7 +703,8 @@ if (!function_exists('qta_lg_change')) {
             ->execute([$groupId, $ruleOp[1], $ruleOp[2], $ruleOp[3] === '' ? null : $ruleOp[3]]);
       }
     }
-    if ($what === 'refresh') {
+    if ($replacement) qta_lg_write_course($pdo, $groupId, (int)$replacement['id']);
+    if ($what === 'refresh' || $replacement) {
       qta_lg_write_topics($pdo, $groupId, $newTopics);
     }
     qta_lg_write_plan($pdo, $groupId, $plan);
@@ -661,7 +713,7 @@ if (!function_exists('qta_lg_change')) {
     }
     $sets = 'daily_hours = ?, teaching_days = ?, revision = revision + 1, generated_at = NOW()';
     $vals = [$daily, count($plan['days'])];
-    if ($what === 'refresh') {
+    if ($what === 'refresh' || $replacement) {
       $sets .= ', course_hours = ?, curriculum_taken_at = NOW()';
       $vals[] = (int)$plan['total_hours'];
     }
@@ -745,14 +797,20 @@ if (!function_exists('qta_lg_change')) {
     $oldDays = qta_lg_days($pdo, $groupId);
     $courseHours = array_sum(array_map(static fn($t) => (int)$t['hours'], $topics));
     $rangeChanged = false;
+    $replacement = null;
 
     if ($type === 'settings' || $type === 'fixed_range_settings') {
+      $replacement = qta_lg_replacement_course($pdo, $g, $change);
+      if ($replacement) {
+        $topics = $replacement['topics'];
+        $courseHours = (int)$replacement['hours'];
+      }
       $start = qta_parse_date_input($change['start_date'] ?? '') ?? '';
       $end = qta_parse_date_input($change['end_date'] ?? '') ?? '';
       if ($start === '') throw new QtaUserError('Shkruaj datën e fillimit si dd.mm.vvvv, p.sh. 01.10.2026.');
       if ($end === '') throw new QtaUserError('Shkruaj datën e mbarimit si dd.mm.vvvv, p.sh. 31.10.2026.');
       if ($end < $start) throw new QtaUserError('Data e mbarimit nuk mund të jetë para datës së fillimit.');
-      if ($start === $oldStart && $end === $oldEnd) {
+      if (!$replacement && $start === $oldStart && $end === $oldEnd) {
         throw new QtaUserError('Nuk ndryshove asgjë: fillimi dhe mbarimi janë të njëjtat.');
       }
       $feasible = qta_sched_fixed_feasibility($courseHours, $start, $end);
@@ -801,6 +859,7 @@ if (!function_exists('qta_lg_change')) {
     qta_lg_verify_fixed_or_fail($topics, $plan, $start, $end, $newHours);
 
     $changed = array_values(array_unique(array_merge(qta_sched_diff($oldDays, $plan['days']), $touched)));
+    if ($replacement) $changed = array_values(array_unique(array_merge($changed, array_column($oldDays, 'date'), array_column($plan['days'], 'date'))));
     sort($changed);
     $past = array_values(array_filter($changed, static fn($d) => $d < $today));
 
@@ -813,10 +872,12 @@ if (!function_exists('qta_lg_change')) {
         . 'Provimi nuk mund të jetë para mbarimit. Ndrysho së pari datat e provimit te "Kursantët".', ['code' => 'exam_conflict']);
     }
 
-    $confirm = qta_lg_change_confirm((int)$g['is_completed'] === 1, $past);
+    $confirm = qta_lg_course_confirm(qta_lg_change_confirm((int)$g['is_completed'] === 1, $past), $g, $replacement);
     $summary = qta_lg_plan_summary($plan);
     $result = [
       'what' => $rangeChanged ? 'fixed_range_settings' : 'fixed_days',
+      'course_changed' => $replacement !== null,
+      'course_name' => $replacement['name'] ?? $g['course_name'],
       'old' => ['start_date' => $oldStart, 'end_date' => $oldEnd, 'days' => count($oldDays), 'daily_hours' => null],
       'new' => $summary + ['daily_hours' => null, 'fixed' => qta_sched_fixed_summary($newHours, $courseHours, $start, $end)],
       'edited_dates' => $touched,
@@ -833,6 +894,10 @@ if (!function_exists('qta_lg_change')) {
       throw new QtaConfirmNeeded($confirm['title'], $confirm['message'], $confirm['confirm'], ['impact' => $result]);
     }
 
+    if ($replacement) {
+      qta_lg_write_course($pdo, $groupId, (int)$replacement['id']);
+      qta_lg_write_topics($pdo, $groupId, $topics);
+    }
     if ($rangeChanged) {
       $pdo->prepare('UPDATE course_groups SET start_date = ?, end_date = ? WHERE id = ?')->execute([$start, $end, $groupId]);
       $pdo->prepare('DELETE FROM group_fixed_days WHERE group_id = ?')->execute([$groupId]);
@@ -844,8 +909,14 @@ if (!function_exists('qta_lg_change')) {
       }
     }
     qta_lg_write_plan($pdo, $groupId, $plan);
-    $pdo->prepare('UPDATE group_schedules SET teaching_days = ?, revision = revision + 1, generated_at = NOW() WHERE group_id = ?')
-        ->execute([count($plan['days']), $groupId]);
+    $sets = 'teaching_days = ?, revision = revision + 1, generated_at = NOW()';
+    $values = [count($plan['days'])];
+    if ($replacement) {
+      $sets .= ', course_hours = ?, curriculum_taken_at = NOW()';
+      $values[] = $courseHours;
+    }
+    $values[] = $groupId;
+    $pdo->prepare('UPDATE group_schedules SET ' . $sets . ' WHERE group_id = ?')->execute($values);
     qta_lg_assert_stored_fixed($pdo, $groupId, $topics, $start, $end);
 
     $result['revision'] = (int)$g['revision'] + 1;

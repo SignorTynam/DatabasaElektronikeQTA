@@ -9,8 +9,22 @@ datën; ekzekutohen sipas radhës së datës.
 | `2026-09-28-konvertimi-i-grupeve.sql` | Kufiri **8 orë në ditë** (ishte 12) te çdo CHECK i orarit; `group_schedules.schedule_mode` (`calculated` / `fixed_range`) dhe `daily_hours` NULL për oraret me data historike; tabelat `group_fixed_days` (plani i ditëve), `legacy_conversion_drafts` (drafti), `group_conversions` (shënimi i konvertimit); rregullat e bazës për konvertimin (`legacy` → `scheduled` vetëm brenda konvertimit) dhe historiku i tyre. Nuk konverton asnjë grup. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §14. |
 | `2026-09-28-piket-sipas-moduleve.sql` | **Pikët sipas moduleve**: tabela `enrollment_module_scores` (një rresht për kursant në grup × modul, 0–100), kolona `course_group_students.legacy_final_score` (bosh; mbushet vetëm kur pikët e vjetra zëvendësohen nga modulet), rregullat e bazës (rezultati përfundimtar nuk shkruhet më me dorë; moduli duhet t'i përkasë grupit; data e provimit mbetet kur ka pikë; kursi i grupit dhe moduli me pikë të regjistrit të vjetër nuk ndryshojnë) dhe historiku i pikëve. Nuk ndryshon asnjë rresht ekzistues. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §15. |
 | `2026-10-07-orari-me-periudhe-te-percaktuar.sql` | E bën `fixed_range` një mënyrë të përgjithshme për grupet e reja dhe të konvertuara; lejon korrigjimin e datave operative, por lë të pandryshueshme datat burimore te `group_conversions`. Përditëson auditimin e versionit/rindërtimit dhe të rreshtave të planit. Nuk ndryshon asnjë rresht ekzistues. |
+| `2026-10-08-ndryshimi-i-kursit-te-grupit.sql` | Lejon ndërrimin e kursit vetëm përmes rindërtimit atomik të orarit dhe vetëm pa rezultate të regjistruara. Ruhet mbrojtja e modelit dhe prejardhjes së konvertimit. Nuk ndryshon rreshta ekzistues. |
 
 ## Radha
+
+Migrimi më i ri: `2026-10-08-ndryshimi-i-kursit-te-grupit.sql`, pas `2026-10-07`.
+Lejon ndërrimin e kursit të një grupi me orar vetëm nga shërbimi që rindërton
+kopjen e moduleve/temave dhe planin në një transaksion. Refuzon ndryshimin kur
+ka pikë moduli, rezultat përfundimtar ose pikë të vjetra. Nuk ndryshon të dhëna
+ekzistuese, modelin e grupit apo prejardhjen e konvertimit; mund të ekzekutohet sërish.
+
+```bash
+mysql -u root -p qta_db < db/migrations/2026-10-08-ndryshimi-i-kursit-te-grupit.sql
+```
+
+Mos riekzekuto migrime më të vjetra pas këtij pa riekzekutuar edhe këtë: ato
+rikrijojnë rregullin e mëparshëm që bllokonte çdo ndryshim kursi.
 
 - **Instalim i ri:** `db/tables.sql` → `db/create_audit.sql` → çdo skedar këtu.
 - **Databaza e punës:** vetëm skedarët që nuk janë ekzekutuar ende, sipas radhës (renditja e

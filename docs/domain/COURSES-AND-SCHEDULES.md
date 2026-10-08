@@ -99,7 +99,7 @@ Guarantees, from the inside out:
 
 | Layer | Guard |
 |---|---|
-| Database | `trg_cg_model_guard_bu`: `model` changes only `legacy` → `scheduled`, and only for a group with a conversion in progress (§14.8); `scheduled` → `legacy` never. A scheduled group's `course_id` can never change. `trg_gs_requires_scheduled_bi`: a schedule row can only exist for a `scheduled` group. |
+| Database | `trg_cg_model_guard_bu`: `model` changes only `legacy` → `scheduled`, and only for a group with a conversion in progress (§14.8); `scheduled` → `legacy` never. A scheduled group's `course_id` changes only through the atomic rebuild service, without recorded results (§14.11). `trg_gs_requires_scheduled_bi`: a schedule row can only exist for a `scheduled` group. |
 | Services | `qta_lg_require()` refuses legacy groups (`code = legacy_group`); `qta_assert_legacy_group()` makes the legacy actions in `groups.php` refuse scheduled groups. |
 | Endpoints | `groups_inline_update.php` refuses start/end date edits on scheduled groups (their dates come from the schedule); `register_inline_update.php`, which did the same, was removed with "Regjistri i plotë". `courses_inline_update.php` refuses moving a scheduled group to another course. |
 | Pages | `groups.php` lists only legacy groups and redirects `?group=N` of a scheduled group to `lesson_group.php?id=N`; `lesson_group.php` redirects a legacy id to `groups.php?group=N`. Search, the trainees list, the trainee card, the catalogue and the dashboards link each group to its own area. |
@@ -574,7 +574,7 @@ The `applying` state is never visible outside the transaction.
 
 | Trigger | Rule |
 |---|---|
-| `trg_cg_model_guard_bu` | `model` changes only legacy → scheduled with an `applying` conversion, and then course and dates stay; never scheduled → legacy; a scheduled group keeps its course. Operational dates may change after creation |
+| `trg_cg_model_guard_bu` | `model` changes only legacy → scheduled with an `applying` conversion, and then course and dates stay; never scheduled → legacy. After conversion, course corrections use the dedicated rebuild service (§14.11). Operational dates may change after creation |
 | `trg_gs_requires_scheduled_bi` | a schedule only for a scheduled group; either schedule kind can be created for it |
 | `trg_gs_group_fixed_bu` | a schedule never moves to another group and never changes kind |
 | `trg_gdr_requires_calculated_bi` | special days only for calculated schedules |
@@ -601,18 +601,37 @@ përcaktuar”; the original conversion dates are shown separately as immutable 
 A new `fixed_range` group has the same schedule UI without the converted badge.
 
 "Plani i ditëve" on `lesson_group.php` uses the same calendar editor. A day correction
-(`type = fixed_days`) changes hours/notes. “Ndrysho periudhën”
+(`type = fixed_days`) changes hours/notes. “Ndrysho kursin dhe periudhën”
 (`type = fixed_range_settings`) may change both S and E: intersecting day decisions and
 notes are retained whenever possible, the difference is rebalanced, and the complete
 `group_fixed_days`, derived days/slots, operational dates, revision and timestamp are
-rewritten in one transaction. The frozen curriculum and conversion-source dates do not
-change. An impossible period or exam conflict rolls the whole transaction back. Both paths
+rewritten in one transaction. A date-only correction preserves the frozen curriculum;
+conversion-source dates never change. Course replacement is described in §14.11.
+An impossible period or exam conflict rolls the whole transaction back. Both paths
 rebuild and independently verify the schedule. They ask for confirmation when a date before
 today changes or the group is closed (the same dialogs as §7), and the success message says
 how many days were edited and how many others received moved topics. "Rishpërndaj
 automatikisht" works there too and saves nothing until the correction is saved.
 
-### 14.11 Code map
+### 14.11 Course correction (2026-10-08)
+
+The settings dialog of both schedule modes accepts an optional `course_id`.
+Selecting another ready course replaces the frozen modules/topics and rebuilds
+the schedule atomically, with a revision check and explicit confirmation. Closed
+groups and past lessons remain supported corrections with the existing warnings.
+For `fixed_range`, the chosen operational period is retained, intersecting day
+hours/notes are preserved where possible and the difference in total course hours
+is rebalanced. The day-plan editor remains available after saving. For calculated
+schedules, the existing daily rhythm and exceptions determine the new end date.
+
+Members, exams, completion state and conversion provenance remain unchanged.
+Any module scores, final results or archived legacy results block a course change;
+duplicate enrollment in the target course and exams before the new end also block
+it. Direct SQL changes remain refused without the rebuild service's scoped session
+flag. Requires migration `2026-10-08-ndryshimi-i-kursit-te-grupit.sql` after `2026-10-07`.
+Regression coverage: `tests/integration/course_change_test.php`.
+
+### 14.12 Code map
 
 | Concern | Code |
 |---|---|

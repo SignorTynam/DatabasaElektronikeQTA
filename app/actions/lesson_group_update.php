@@ -77,6 +77,12 @@ try {
       if ($dry) {
         qta_json_out(['ok' => true, 'dry_run' => true, 'impact' => $r]);
       }
+      if (!empty($r['course_changed'])) {
+        qta_json_out(['ok' => true, 'revision' => $r['revision'], 'impact' => $r,
+          'message' => 'Kursi u ndryshua në “' . $r['course_name'] . '” dhe orari u rindërtua: '
+            . qta_sched_range_label($n['start_date'], $n['end_date']) . '. '
+            . (isset($n['fixed']) ? 'Mund të organizosh orët te plani i ditëve.' : 'Mund të rregullosh orët me “Ndrysho ditën”.')]);
+      }
       if ($r['what'] === 'fixed_days') {
         $edited = count($r['edited_dates']);
         $moved = count(array_diff($r['changed_dates'], $r['edited_dates']));
