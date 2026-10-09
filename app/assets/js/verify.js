@@ -30,9 +30,6 @@
     });
   }
   function toast(msg, variant) { if (window.qtaToast) window.qtaToast(msg, variant); }
-  function status(label, variant, icon) {
-    return '<span class="status status-' + variant + '"><i class="bi ' + icon + '" aria-hidden="true"></i>' + esc(label) + '</span>';
-  }
 
   /* ------------------------------------------------------------ Verdikti */
   var states = {
@@ -88,11 +85,9 @@
     if (!person && d.amze) idLine += ' · Nr. i amzës: <span class="code">' + esc(d.amze) + '</span>';
 
     var rows = (d.groups || []).map(function (g) {
-      var planned = g.row_kind === 'planned';
       return '<tr>' +
         '<td><span class="person-name">' + esc(g.course_name || '—') + '</span><span class="cell-sub">' + esc(g.course_code || '') + '</span></td>' +
         '<td><span class="id-code">' + esc(g.amze || d.amze || '—') + '</span></td>' +
-        '<td>' + (planned ? status('Pret grupin', 'neutral', 'bi-hourglass-split') : status('Në regjistër', 'success', 'bi-check-circle-fill')) + '</td>' +
       '</tr>';
     }).join('');
 
@@ -102,7 +97,7 @@
       '<p class="result-id">' + idLine + '</p>' +
       '<h3 class="section-title mb-2">Kurset në regjistër</h3>' +
       (rows
-        ? '<div class="table-responsive"><table class="table"><thead><tr><th scope="col">Kursi</th><th scope="col">Nr. i amzës</th><th scope="col">Gjendja</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        ? '<div class="table-responsive"><table class="table"><thead><tr><th scope="col">Kursi</th><th scope="col">Nr. i amzës</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
         : '<p class="text-muted">Nuk ka ende kurse të regjistruara.</p>') +
       actionsHtml(true);
   }
