@@ -34,6 +34,7 @@ require_once __DIR__ . '/schedule_fixed.php';
 require_once __DIR__ . '/curriculum.php';
 require_once __DIR__ . '/group_members.php';
 require_once __DIR__ . '/themeli.php';
+require_once __DIR__ . '/enrollments.php';
 
 /* ============================================================== Leximi */
 
@@ -426,7 +427,7 @@ if (!function_exists('qta_lg_preview_new')) {
                           $in['schedule_mode'] ?? 'calculated', $in['end_date'] ?? null);
     $spec = trim((string)($in['amze_spec'] ?? ''));
 
-    return qta_tx($pdo, function () use ($pdo, $p, $spec): array {
+    return qta_tx($pdo, function () use ($pdo, $p, $spec, $in): array {
       $course = qta_curriculum_lock_course($pdo, $p['course_id']);
       $modules = qta_course_modules($pdo, $course['id']);
       qta_lg_assert_course_ready($course, $modules);
@@ -449,14 +450,17 @@ if (!function_exists('qta_lg_preview_new')) {
         qta_members_assert_can_join($pdo, array_values($map), $course['id']);
         $ids = array_values($map);
         $ph = implode(',', array_fill(0, count($ids), '?'));
-        $pdo->prepare("DELETE FROM student_course_plans WHERE status = 'planned' AND student_id IN ($ph)")->execute($ids);
+        if (empty($in['exam_date'])) throw new QtaUserError('Cakto datën e provimit për kursantët fillestarë.', ['code'=>'exam_required']);
+        $target=['id'=>0,'course_id'=>(int)$course['id'],'start_date'=>$plan['start_date'],'end_date'=>$plan['end_date'],
+          'model'=>'scheduled','schedule_mode'=>$p['schedule_mode'],'daily_hours'=>$p['daily_hours'],'members'=>0];
+        foreach($ids as $sid) qta_enrollment_prepare_new_group($pdo,(int)$sid,$target,(array)($in['enrollment_resolutions']??[]));
         $chunks = qta_members_split($map);
       }
 
       $created = [];
       $insGroup = $pdo->prepare("INSERT INTO course_groups (course_id, start_date, end_date, is_completed, model) VALUES (?, ?, ?, 0, 'scheduled')");
       $insSchedule = $pdo->prepare("INSERT INTO group_schedules (group_id, schedule_mode, daily_hours, course_hours, curriculum_taken_at, teaching_days, revision, generated_at) VALUES (?, ?, ?, ?, NOW(), ?, 1, NOW())");
-      $insMember = $pdo->prepare('INSERT INTO course_group_students (group_id, student_id) VALUES (?, ?)');
+
       foreach ($chunks as $chunk) {
         $insGroup->execute([$course['id'], $plan['start_date'], $plan['end_date']]);
         $gid = (int)$pdo->lastInsertId();
@@ -464,7 +468,7 @@ if (!function_exists('qta_lg_preview_new')) {
         qta_lg_write_topics($pdo, $gid, $topics);
         if ($fixedDays !== null) qta_lg_write_fixed_days($pdo, $gid, $fixedDays);
         qta_lg_write_plan($pdo, $gid, $plan);
-        foreach ($chunk['ids'] as $sid) $insMember->execute([$gid, $sid]);
+        foreach ($chunk['ids'] as $sid) qta_enrollment_assign($pdo,(int)$sid,$gid,['exam_date'=>$in['enrollment_resolutions'][$sid]['exam_date'] ?? $in['exam_date'] ?? null]);
         if ($fixedDays !== null) qta_lg_assert_stored_fixed($pdo, $gid, $topics, $p['start_date'], $p['end_date']);
         else qta_lg_assert_stored($pdo, $gid, $topics, $p['daily_hours'], [], $p['start_date']);
         $created[] = ['group_id' => $gid, 'count' => count($chunk['ids']), 'amze_min' => $chunk['amze_min'], 'amze_max' => $chunk['amze_max']];
@@ -535,7 +539,9 @@ if (!function_exists('qta_lg_change')) {
   {
     $pdo->prepare('SET @qta_course_change_group = ?')->execute([$groupId]);
     try {
-      $pdo->prepare('UPDATE course_groups SET course_id = ? WHERE id = ?')->execute([$courseId, $groupId]);
+      qta_enrollment_replace_course($pdo,$groupId,$courseId,static function() use($pdo,$courseId,$groupId){
+        $pdo->prepare('UPDATE course_groups SET course_id = ? WHERE id = ?')->execute([$courseId, $groupId]);
+      });
     } finally {
       $pdo->exec('SET @qta_course_change_group = NULL');
     }
@@ -664,6 +670,8 @@ if (!function_exists('qta_lg_change')) {
     $oldEnd = (string)$g['end_date'];
     $summary = qta_lg_plan_summary($plan);
 
+    qta_enrollment_group_period($pdo,$groupId,$plan['start_date'],$plan['end_date'],array_replace($opts,['dry_run'=>true]));
+
     $exam = $pdo->prepare('SELECT COUNT(*) AS n, MIN(exam_date) AS first_exam FROM course_group_students WHERE group_id = ? AND exam_date IS NOT NULL AND exam_date < ?');
     $exam->execute([$groupId, $plan['end_date']]);
     $conflict = $exam->fetch(PDO::FETCH_ASSOC);
@@ -688,12 +696,14 @@ if (!function_exists('qta_lg_change')) {
       'revision' => (int)$g['revision'],
     ];
     if ($dry) {
+      qta_enrollment_group_period($pdo,$groupId,$plan['start_date'],$plan['end_date'],array_replace($opts,['dry_run'=>true]));
       return $result;
     }
     if ($confirm && !$force) {
       throw new QtaConfirmNeeded($confirm['title'], $confirm['message'], $confirm['confirm'], ['impact' => $result]);
     }
 
+    qta_enrollment_group_period($pdo,$groupId,$plan['start_date'],$plan['end_date'],$opts);
     /* Ruajtja */
     if ($ruleOp !== null) {
       if ($ruleOp[0] === 'delete') {
@@ -888,12 +898,14 @@ if (!function_exists('qta_lg_change')) {
       'revision' => (int)$g['revision'],
     ];
     if ($dry) {
+      qta_enrollment_group_period($pdo,$groupId,$plan['start_date'],$plan['end_date'],array_replace($opts,['dry_run'=>true]));
       return $result;
     }
     if ($confirm && !$force) {
       throw new QtaConfirmNeeded($confirm['title'], $confirm['message'], $confirm['confirm'], ['impact' => $result]);
     }
 
+    qta_enrollment_group_period($pdo,$groupId,$plan['start_date'],$plan['end_date'],$opts);
     if ($replacement) {
       qta_lg_write_course($pdo, $groupId, (int)$replacement['id']);
       qta_lg_write_topics($pdo, $groupId, $topics);
@@ -972,19 +984,18 @@ if (!function_exists('qta_lg_set_members')) {
       if ($withData && !$force) {
         $labels = array_map(static fn($sid) => (string)$existingRows[$sid]['nr_amze'], $withData);
         throw new QtaConfirmNeeded('Të hiqen kursantë me provim ose pikë?',
-          'Kursantët me numër amze ' . implode(', ', $labels) . ' kanë datë provimi ose pikë në këtë grup. Kur hiqen nga grupi, këto të dhëna fshihen.',
+          'Kursantët me numër amze ' . implode(', ', $labels) . ' kanë datë provimi ose pikë. Regjistrimi, datat dhe rezultatet ruhen edhe pasi dalin nga grupi.',
           'Po, hiqi');
       }
 
       if ($toAdd) {
         qta_members_assert_can_join($pdo, $toAdd, (int)$g['course_id']);
         $ph = implode(',', array_fill(0, count($toAdd), '?'));
-        $pdo->prepare("DELETE FROM student_course_plans WHERE status = 'planned' AND student_id IN ($ph)")->execute($toAdd);
       }
       $del = $pdo->prepare('DELETE FROM course_group_students WHERE group_id = ? AND student_id = ?');
       foreach ($toRemove as $sid) $del->execute([$groupId, $sid]);
-      $ins = $pdo->prepare('INSERT INTO course_group_students (group_id, student_id) VALUES (?, ?)');
-      foreach ($toAdd as $sid) $ins->execute([$groupId, $sid]);
+
+      foreach ($toAdd as $sid) qta_enrollment_assign($pdo,(int)$sid,$groupId,(array)($opts['enrollment_resolutions'][$sid]??[]));
 
       return ['added' => count($toAdd), 'removed' => count($toRemove), 'total' => count($target)];
     });
@@ -1001,8 +1012,7 @@ if (!function_exists('qta_lg_set_members')) {
       $members = (int)$mc->fetchColumn();
       if (!$force) {
         throw new QtaConfirmNeeded('Të fshihet Grupi #' . $groupId . '?',
-          'Fshihen orari dhe ditët e veçanta të grupit' . ($members ? ', si dhe datat e provimit dhe pikët e ' . qta_plural_word($members, 'kursantit', 'kursantëve') . ' në këtë grup' : '')
-          . '. Kursantët nuk fshihen — ata mbeten te "Kursantët", pa grup. Kjo nuk mund të kthehet mbrapsht.',
+          'Fshihen orari dhe ditët e veçanta të grupit. Kursantët mbeten pa grup; regjistrimi në kurs, datat individuale, provimi dhe pikët ruhen. Fshirja e orarit nuk mund të kthehet mbrapsht.',
           'Po, fshije grupin');
       }
       /* Fshirje e shprehur (jo zinxhir), që historiku të shohë çdo pjesë që hiqet. */

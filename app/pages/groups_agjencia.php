@@ -88,7 +88,7 @@ $st = $pdo->prepare("
     c.code AS course_code, c.name AS course_name, c.hours,
     s.id AS student_id, s.nr_amze,
     p.first_name, p.father_name, p.last_name, p.personal_number,
-    COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
+    cgs.exam_date AS exam_date,
     cgs.final_score
   $rowsFrom
   WHERE " . implode(' AND ', $wList) . "

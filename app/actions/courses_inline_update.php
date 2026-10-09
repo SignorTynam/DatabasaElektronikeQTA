@@ -185,7 +185,8 @@ try {
       }
 
       // bëje zhvendosjen
-      $pdo->prepare("UPDATE course_groups SET course_id=:c WHERE id=:g")->execute([':c'=>$new_course_id, ':g'=>$group_id]);
+      require_once __DIR__.'/../shared/enrollments.php';
+      qta_enrollment_replace_course($pdo,$group_id,$new_course_id);
 
       if (function_exists('qta_audit_log')) {
         qta_audit_log($pdo, 'group.move_course', [

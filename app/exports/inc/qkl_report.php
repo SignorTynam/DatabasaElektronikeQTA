@@ -111,8 +111,8 @@ function qkl_normalize_record(array $record): array
     $courseName = qkl_first_nonempty($record, ['group_course_name']) ?? '';
     $startDate = qkl_first_nonempty($record, ['group_start_date']);
     $endDate = qkl_first_nonempty($record, ['group_end_date']);
-    // cgs.exam_date is the individual date; cg.exam_date is the legacy/default fallback.
-    $examDate = qkl_first_nonempty($record, ['group_member_exam_date', 'group_legacy_exam_date']);
+    // Migration backfills legacy exams once; membership is the only assigned exam authority.
+    $examDate = qkl_first_nonempty($record, ['group_member_exam_date']);
   } else {
     $courseName = qkl_first_nonempty($record, ['plan_course_name']) ?? '';
     $startDate = qkl_first_nonempty($record, ['plan_start_date']);
@@ -207,15 +207,16 @@ function qkl_dataset_sql(string $citizenshipSelect): string
           cgs.student_id,
           cg.id AS group_id,
           c.name AS course_name,
-          cg.start_date,
-          cg.end_date,
+          COALESCE(en.start_date,cg.start_date) AS start_date,
+          COALESCE(en.end_date,cg.end_date) AS end_date,
           cgs.exam_date AS member_exam_date,
-          cg.exam_date AS legacy_exam_date,
+          NULL AS legacy_exam_date,
           ROW_NUMBER() OVER (
             PARTITION BY cgs.student_id
             ORDER BY cg.start_date DESC, cg.id DESC
           ) AS rn
         FROM course_group_students cgs
+        LEFT JOIN student_course_plans en ON en.student_id=cgs.student_id AND en.group_id=cgs.group_id
         JOIN course_groups cg ON cg.id = cgs.group_id
         JOIN courses c ON c.id = cg.course_id
       ) ranked
@@ -231,9 +232,9 @@ function qkl_dataset_sql(string $citizenshipSelect): string
           scp.status,
           scp.group_id,
           COALESCE(group_course.name, plan_course.name) AS course_name,
-          plan_group.start_date,
-          plan_group.end_date,
-          plan_group.exam_date,
+          COALESCE(scp.start_date,plan_group.start_date) AS start_date,
+          COALESCE(scp.end_date,plan_group.end_date) AS end_date,
+          COALESCE(plan_member.exam_date,scp.exam_date) AS exam_date,
           ROW_NUMBER() OVER (
             PARTITION BY scp.student_id
             ORDER BY
@@ -250,6 +251,7 @@ function qkl_dataset_sql(string $citizenshipSelect): string
         FROM student_course_plans scp
         JOIN courses plan_course ON plan_course.id = scp.course_id
         LEFT JOIN course_groups plan_group ON plan_group.id = scp.group_id
+        LEFT JOIN course_group_students plan_member ON plan_member.group_id=scp.group_id AND plan_member.student_id=scp.student_id
         LEFT JOIN courses group_course ON group_course.id = plan_group.course_id
         WHERE scp.status IN ('planned', 'assigned', 'completed')
       ) ranked

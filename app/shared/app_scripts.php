@@ -36,7 +36,9 @@ $helpTopic   = $HELP_TOPIC ?? null;
 <script src="<?= h(qta_asset('app/assets/js/request.js')) ?>"></script>
 <script src="<?= h(qta_asset('app/assets/js/app.js')) ?>" defer></script>
 <script src="<?= h(qta_asset('app/assets/js/date-picker.js')) ?>" defer></script>
+<script src="<?= h(qta_asset('app/assets/js/enrollment-review.js')) ?>" defer></script>
 <?php require __DIR__ . '/partials/download_generation_toast.php'; ?>
+<script src="<?= h(qta_asset('app/assets/js/enrollments.js')) ?>" defer></script>
 <?php foreach ($pageScripts as $script): ?>
 <script src="<?= h((string)$script) ?>" defer></script>
 <?php endforeach; ?>

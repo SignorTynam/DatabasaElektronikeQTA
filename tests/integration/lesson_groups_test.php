@@ -207,7 +207,7 @@ t_case('Kursi jo gati nuk përdoret për grup me orar', function () use ($pdo, $
   $cid = it_course($pdo, 'BAD-' . $tag, 'Kurs i paplotë', 30, [['A', 10, $W], ['B', 10, [2, 2]]]);
   $groupsBefore = it_count($pdo, 'SELECT COUNT(*) FROM course_groups');
   $studentsBefore = it_count($pdo, 'SELECT COUNT(*) FROM students');
-  t_throws(QtaUserError::class, fn() => qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '01.10.2026', 'daily_hours' => 5, 'amze_spec' => '9901-9903']),
+  t_throws(QtaUserError::class, fn() => qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '01.10.2026', 'daily_hours' => 5, 'exam_date' => '2199-12-31', 'amze_spec' => '9901-9903']),
     'krijimi refuzohet', 'nuk është ende gati');
   t_eq($groupsBefore, it_count($pdo, 'SELECT COUNT(*) FROM course_groups'), 'asnjë grup nuk u krijua');
   t_eq($studentsBefore, it_count($pdo, 'SELECT COUNT(*) FROM students'), 'asnjë kursant bosh nuk mbeti');
@@ -259,7 +259,7 @@ t_case('Grup i ri me mbarim manual — krijim, ndarje, rindërtim dhe rollback',
     'serveri propozon orarin brenda periudhës');
 
   $res = qta_lg_create($pdo, ['course_id' => $cid, 'schedule_mode' => 'fixed_range',
-    'start_date' => '01.10.2026', 'end_date' => '06.10.2026', 'amze_spec' => '96501-96512']);
+    'start_date' => '01.10.2026', 'end_date' => '06.10.2026', 'exam_date' => '2199-12-31', 'amze_spec' => '96501-96512']);
   t_eq([2, 6, 6], [count($res['groups']), $res['groups'][0]['count'], $res['groups'][1]['count']], '12 kursantë ndahen 6 + 6');
   [$gid, $gid2] = array_column($res['groups'], 'group_id');
   $g = qta_lg_find($pdo, $gid);
@@ -270,14 +270,16 @@ t_case('Grup i ri me mbarim manual — krijim, ndarje, rindërtim dhe rollback',
 
   $before = it_signature($pdo, $gid);
   $fixedBefore = qta_lg_fixed_days($pdo, $gid);
-  $dry = qta_lg_change($pdo, $gid, ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '08.10.2026'],
-    ['revision' => 1, 'dry_run' => true, 'today' => '2026-09-20']);
+  $change=['type'=>'fixed_range_settings','start_date'=>'30.09.2026','end_date'=>'08.10.2026'];
+  $conflict=t_throws(QtaUserError::class,fn()=>qta_lg_change($pdo,$gid,$change,['revision'=>1,'dry_run'=>true,'today'=>'2026-09-20']),'preview raporton ndikimin te kursantët');
+  $dry=qta_lg_change($pdo,$gid,$change,['revision'=>1,'dry_run'=>true,'today'=>'2026-09-20','enrollment_resolution'=>'adopt_group_dates','enrollment_baseline'=>$conflict->data['details']['baseline']]);
   t_eq('fixed_range_settings', $dry['what'], 'dry-run raporton ndryshimin e periudhës');
   t_eq($before, it_signature($pdo, $gid), 'dry-run nuk ndryshon orarin');
   t_eq($fixedBefore, qta_lg_fixed_days($pdo, $gid), 'dry-run nuk ndryshon planin e ditëve');
 
-  $r = qta_lg_change($pdo, $gid, ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '08.10.2026'],
-    ['revision' => 1, 'today' => '2026-09-20']);
+  $change=['type'=>'fixed_range_settings','start_date'=>'30.09.2026','end_date'=>'08.10.2026'];
+  $conflict=t_throws(QtaUserError::class,fn()=>qta_lg_change($pdo,$gid,$change,['revision'=>1,'today'=>'2026-09-20']),'periudha individuale kërkon pajtim');
+  $r=qta_lg_change($pdo,$gid,$change,['revision'=>1,'today'=>'2026-09-20','enrollment_resolution'=>'adopt_group_dates','enrollment_baseline'=>$conflict->data['details']['baseline']]);
   $g = qta_lg_find($pdo, $gid);
   t_eq(['2026-09-30', '2026-10-08', 2], [$g['start_date'], $g['end_date'], (int)$g['revision']], 'të dy kufijtë dhe versioni ndryshojnë');
   $fixed = qta_lg_fixed_days($pdo, $gid);
@@ -300,7 +302,8 @@ t_case('Grup i ri me mbarim manual — krijim, ndarje, rindërtim dhe rollback',
   $pdo->prepare('UPDATE course_group_students SET exam_date = ? WHERE group_id = ? AND student_id = ?')->execute(['2026-10-08', $gid, $student]);
   t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid,
     ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '09.10.2026'],
-    ['revision' => $r['revision'], 'today' => '2026-09-20']), 'zgjatja pas provimit refuzohet', 'datës së provimit');
+    ['revision' => $r['revision'], 'today' => '2026-09-20']), 'provimi ndalon zgjatjen përpara pajtimit','Provimi');
+  t_eq($dates,[qta_lg_find($pdo,$gid)['start_date'],qta_lg_find($pdo,$gid)['end_date']],'provimi i pavlefshëm nuk ndryshon periudhën');
 });
 
 t_case('Pranimi E — rillogaritja 5 → 4 orë, pastaj kthim i saktë', function () use ($pdo) {
@@ -415,7 +418,7 @@ t_case('Ditët që kanë kaluar dhe grupi i mbyllur kërkojnë konfirmim', funct
 
 t_case('Provimi para mbarimit të ri e ndalon ndryshimin — asgjë gjysmake', function () use ($pdo, $W, $tag) {
   $cid = it_course($pdo, 'EXAM-' . $tag, 'Kurs me provim', 10, [['A', 10, $W]]);
-  $res = qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '01.10.2026', 'daily_hours' => 5, 'amze_spec' => '98001-98003']);
+  $res = qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '01.10.2026', 'daily_hours' => 5, 'exam_date' => '2199-12-31', 'amze_spec' => '98001-98003']);
   $gid = $res['groups'][0]['group_id'];
   t_eq(3, $res['groups'][0]['count'], '3 kursantë');
   $end = qta_lg_find($pdo, $gid)['end_date'];
@@ -423,8 +426,10 @@ t_case('Provimi para mbarimit të ri e ndalon ndryshimin — asgjë gjysmake', f
   $pdo->prepare('UPDATE course_group_students SET exam_date = ? WHERE group_id = ?')->execute([$end, $gid]);
   $sig = it_signature($pdo, $gid);
   $rev = (int)qta_lg_find($pdo, $gid)['revision'];
-  t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid, ['type' => 'rule', 'date' => '02.10.2026', 'mode' => 'off'], ['revision' => $rev, 'today' => '2026-09-26']),
-    'mbarimi pas provimit refuzohet', 'datës së provimit');
+  $conflict=t_throws(QtaUserError::class, fn() => qta_lg_change($pdo, $gid, ['type' => 'rule', 'date' => '02.10.2026', 'mode' => 'off'], ['revision' => $rev, 'today' => '2026-09-26']),
+    'mbarimi i ri kërkon pajtim');
+  t_throws(QtaUserError::class,fn()=>qta_lg_change($pdo,$gid,['type'=>'rule','date'=>'02.10.2026','mode'=>'off'],
+    ['revision'=>$rev,'today'=>'2026-09-26','enrollment_resolution'=>'adopt_group_dates','enrollment_baseline'=>$conflict->data['details']['baseline']]),'mbarimi pas provimit refuzohet','Provimi');
   t_eq($sig, it_signature($pdo, $gid), 'orari mbeti i paprekur');
   t_eq(0, it_count($pdo, 'SELECT COUNT(*) FROM group_day_rules WHERE group_id = ?', [$gid]), 'rregulli nuk u ruajt');
   t_eq('2026-10-02', qta_lg_find($pdo, $gid)['end_date'], 'data e mbarimit mbeti');
@@ -432,7 +437,7 @@ t_case('Provimi para mbarimit të ri e ndalon ndryshimin — asgjë gjysmake', f
 
 t_case('Kursantët: ndarja mbi 10, dyfishimi, kufiri 10, heqja me pikë', function () use ($pdo, $W, $tag) {
   $cid = it_course($pdo, 'MEM-' . $tag, 'Kurs për kursantët', 10, [['A', 10, $W]]);
-  $res = qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '05.10.2026', 'daily_hours' => 5, 'amze_spec' => '97001-97012']);
+  $res = qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '05.10.2026', 'daily_hours' => 5, 'exam_date' => '2199-12-31', 'amze_spec' => '97001-97012']);
   t_eq(2, count($res['groups']), '12 kursantë → 2 grupe');
   t_eq([6, 6], array_column($res['groups'], 'count'), 'grupe të barabarta 6 + 6');
   t_eq([97001, 97006, 97007, 97012], [$res['groups'][0]['amze_min'], $res['groups'][0]['amze_max'], $res['groups'][1]['amze_min'], $res['groups'][1]['amze_max']], 'radha e amzës ruhet');
@@ -480,7 +485,7 @@ t_case('Kursi i grupit me orar nuk ndryshohet me SQL të drejtpërdrejtë', func
 
 t_case('Fshirja e grupit me orar dhe e kursit pa grupe', function () use ($pdo, $W, $tag) {
   $g2 = $GLOBALS['IT_MEMBERS_G2'];
-  t_throws(QtaConfirmNeeded::class, fn() => qta_lg_delete($pdo, $g2), 'fshirja pa konfirmim pyet', 'nuk fshihen');
+  t_throws(QtaConfirmNeeded::class, fn() => qta_lg_delete($pdo, $g2), 'fshirja pa konfirmim pyet', 'ruhen');
   $students = it_count($pdo, 'SELECT COUNT(*) FROM students');
   $r = qta_lg_delete($pdo, $g2, ['force' => true]);
   t_eq(6, $r['members'], '6 kursantë dolën nga grupi');

@@ -507,7 +507,7 @@ require __DIR__ . '/../shared/app_head.php';
     <section class="section lg-danger no-print" aria-labelledby="lgDangerTitle">
       <h2 class="section-title visually-hidden" id="lgDangerTitle">Fshirja e grupit</h2>
       <button class="btn btn-ghost btn-ghost-danger" type="button" data-lg-delete><i class="bi bi-trash" aria-hidden="true"></i>Fshi grupin</button>
-      <span class="text-muted small">Fshihen orari, ditët e veçanta, datat e provimeve dhe pikët e këtij grupi. Kursantët mbeten në regjistër.</span>
+      <span class="text-muted small">Fshihen orari dhe ditët e veçanta. Regjistrimet në kurs, datat individuale, provimet dhe pikët ruhen pa grup.</span>
     </section>
   <?php endif; ?>
 <?php endif; ?>

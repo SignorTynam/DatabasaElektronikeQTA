@@ -103,6 +103,10 @@ if ($action === 'merge_students') {
     try {
         $pdo->beginTransaction();
 
+        // Serialize identity merging with enrollment/assignment writes.
+        $locks=$pdo->prepare('SELECT id FROM students WHERE id IN (?,?) ORDER BY id FOR UPDATE');
+        $locks->execute([$source,$target]);$locks->fetchAll(PDO::FETCH_COLUMN);
+
         // Siguro që ekzistojnë
         $chk = $pdo->prepare("SELECT 1 FROM students WHERE id=:id");
         $chk->execute([':id'=>$source]);
@@ -110,6 +114,9 @@ if ($action === 'merge_students') {
         $chk->execute([':id'=>$target]);
         if (!$chk->fetchColumn()) throw new RuntimeException('Target student nuk ekziston.');
 
+        $history=$pdo->prepare('SELECT COUNT(*) FROM student_course_plans WHERE student_id IN (?,?)');
+        $history->execute([$source,$target]);
+        if ((int)$history->fetchColumn()>0) throw new QtaUserError('Bashkimi automatik nuk lejohet kur ka regjistrime kursi. Ruaj të dy regjistrimet që të mos humbasë historiku.', ['code'=>'enrollment_merge_conflict']);
         // student_course_plans
         $pdo->prepare("
           INSERT IGNORE INTO student_course_plans (student_id, course_id, status, selected_by)
@@ -464,11 +471,8 @@ try {
                 $ok = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
                 $ok->execute([':id'=>$plannedCourseId]);
                 if ($ok->fetchColumn()) {
-                    $pdo->prepare("
-                    INSERT INTO student_course_plans (student_id, course_id, status, selected_by)
-                    VALUES (:sid, :cid, 'planned', :uid)
-                    ON DUPLICATE KEY UPDATE status='planned', selected_by=VALUES(selected_by)
-                    ")->execute([':sid'=>$student_id, ':cid'=>$plannedCourseId, ':uid'=>$_SESSION['user_id'] ?? null]);
+                    require_once __DIR__.'/../shared/enrollments.php';
+                    qta_enrollment_save($pdo,$student_id,$plannedCourseId,$data);
                 }
             }
         }

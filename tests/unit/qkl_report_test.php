@@ -87,7 +87,7 @@ t_case('QKL: plani me group_id përdor datat reale të atij grupi', function ():
   t_eq('2026-04-12', $row['exam_date'], 'provimi legacy/default i grupit të planit');
 });
 
-t_case('QKL: provimi individual fiton dhe data legacy është fallback', function (): void {
+t_case('QKL: provimi individual është burimi i vetëm pas backfill-it', function (): void {
   $individual = qkl_normalize_record(qkl_test_record([
     'group_id' => 30,
     'group_member_exam_date' => '2026-06-07',
@@ -100,7 +100,7 @@ t_case('QKL: provimi individual fiton dhe data legacy është fallback', functio
     'group_member_exam_date' => null,
     'group_legacy_exam_date' => '2026-06-08',
   ]));
-  t_eq('2026-06-08', $legacy['exam_date'], 'data e grupit mbulon të dhënat legacy');
+  t_eq(null, $legacy['exam_date'], 'një provim individual i hequr nuk rikthehet nga kolona historike');
 });
 
 t_case('QKL: arsimi i panjohur por i vlefshëm nuk humbet', function (): void {

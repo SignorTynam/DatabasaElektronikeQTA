@@ -9,7 +9,7 @@ declare(strict_types=1);
  *   - një numër amze që nuk ekziston krijon një kursant të ri pa të dhëna;
  *   - një regjistrim (nr. i amzës) mund të jetë vetëm në një grup;
  *   - i njëjti person (sipas numrit personal) nuk e ndjek dy herë të njëjtin kurs;
- *   - kur kursanti hyn në grup, zgjedhjet "pret grup" të tij hiqen;
+ *   - regjistrimi persistent kalon nga "pret grup" në "në grup", pa humbur historikun;
  *   - një grup mban deri në 10 kursantë; mbi 10, grupet e reja ndahen në mënyrë të barabartë.
  * Ndryshe nga groups.php, gjithçka ndodh brenda transaksionit të thirrësit: kur
  * diçka nuk shkon, nuk mbetet asnjë kursant bosh i krijuar më kot.

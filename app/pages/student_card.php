@@ -178,7 +178,7 @@ if ($pid > 0) {
           FROM course_group_students cgs
           JOIN course_groups cg ON cg.id = cgs.group_id
           WHERE cgs.student_id IN ($ph) AND cgs.final_score IS NOT NULL
-          ORDER BY COALESCE(cgs.exam_date, cg.end_date) DESC, cgs.group_id DESC
+          ORDER BY COALESCE(cgs.exam_date, (SELECT e.end_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1), cg.end_date) DESC, cgs.group_id DESC
           LIMIT 1
         ");
         $q3->execute($ids);
@@ -193,8 +193,8 @@ if ($pid > 0) {
             cg.model AS group_model,
             c.code,
             c.name,
-            cg.start_date,
-            cg.end_date,
+            COALESCE((SELECT e.start_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1),cg.start_date) AS start_date,
+            COALESCE((SELECT e.end_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1),cg.end_date) AS end_date,
             cgs.exam_date,
             cgs.final_score
           FROM course_group_students cgs
@@ -202,7 +202,7 @@ if ($pid > 0) {
           JOIN course_groups cg ON cg.id = cgs.group_id
           JOIN courses c ON c.id = cg.course_id
           WHERE cgs.student_id IN ($ph)
-          ORDER BY cg.start_date DESC, cg.id DESC
+          ORDER BY start_date DESC, cg.id DESC
         ");
         $q4->execute($ids);
         $groups = $q4->fetchAll(PDO::FETCH_ASSOC);
@@ -210,7 +210,11 @@ if ($pid > 0) {
         // Kurset e planifikuara (pa grup)
         $q5 = $pdo->prepare("
           SELECT
-            scp.id AS scp_id,
+            scp.id AS scp_id,scp.start_date,scp.end_date,scp.exam_date,scp.result_source,
+            CASE WHEN scp.result_source='manual' THEN scp.manual_final_score
+                 WHEN COALESCE(points.scored,0)>0 AND points.scored=modules.required THEN ROUND(points.total/modules.required,2)
+                 WHEN COALESCE(points.scored,0)=0 THEN scp.legacy_result END AS final_score,
+            COALESCE(points.scored,0) AS scored,COALESCE(modules.required,0) AS required,
             scp.student_id,
             s.nr_amze,
             c.id AS course_id,
@@ -219,6 +223,8 @@ if ($pid > 0) {
           FROM student_course_plans scp
           JOIN students s ON s.id = scp.student_id
           JOIN courses  c ON c.id = scp.course_id
+          LEFT JOIN (SELECT enrollment_id,COUNT(*) AS scored,SUM(score) AS total FROM enrollment_module_scores GROUP BY enrollment_id) points ON points.enrollment_id=scp.id
+          LEFT JOIN (SELECT enrollment_id,COUNT(*) AS required FROM enrollment_result_modules GROUP BY enrollment_id) modules ON modules.enrollment_id=scp.id
           WHERE scp.student_id IN ($ph)
             AND scp.status = 'planned'
             AND scp.group_id IS NULL
@@ -244,11 +250,12 @@ if ($pid > 0) {
 
         // Seri për grafik
         $q7 = $pdo->prepare("
-          SELECT DATE_FORMAT(COALESCE(cgs.exam_date, cg.end_date), '%Y-%m-%d') AS d, cgs.final_score AS s
+          SELECT DATE_FORMAT(COALESCE(cgs.exam_date, e.end_date, cg.end_date), '%Y-%m-%d') AS d, cgs.final_score AS s
           FROM course_group_students cgs
           JOIN course_groups cg ON cg.id = cgs.group_id
+          LEFT JOIN student_course_plans e ON e.student_id=cgs.student_id AND e.group_id=cgs.group_id
           WHERE cgs.student_id IN ($ph) AND cgs.final_score IS NOT NULL
-          ORDER BY COALESCE(cgs.exam_date, cg.end_date) ASC, cgs.group_id ASC
+          ORDER BY COALESCE(cgs.exam_date, e.end_date, cg.end_date) ASC, cgs.group_id ASC
           LIMIT 80
         ");
         $q7->execute($ids);
@@ -493,7 +500,7 @@ $flashErr  = flash('err');
                 <tr>
                   <th scope="col" class="col-wide">Kursi</th>
                   <th scope="col" class="nowrap">Nr. i amzës</th>
-                  <th scope="col" class="nowrap">Datat e grupit</th>
+                  <th scope="col" class="nowrap">Periudha individuale</th>
                   <th scope="col" class="nowrap">Provimi</th>
                   <th scope="col">Gjendja</th>
                 </tr>
@@ -523,10 +530,11 @@ $flashErr  = flash('err');
                       <span class="cell-sub">Kursi është zgjedhur<?php if (!empty($pl['code'])): ?> · <span class="code"><?= h((string)$pl['code']) ?></span><?php endif; ?></span>
                     </td>
                     <td class="nowrap"><span class="id-code"><?= h((string)$pl['nr_amze']) ?></span></td>
-                    <td class="nowrap text-muted">—</td>
-                    <td class="nowrap text-muted">—</td>
+                    <td class="nowrap"><?= h(qta_date($pl['start_date'])) ?> – <?= h(qta_date($pl['end_date'])) ?></td>
+                    <td class="nowrap"><?= h(qta_date($pl['exam_date'])) ?></td>
                     <td>
                       <?= qta_status('Pret grup', 'warning', 'bi-hourglass-split') ?>
+                      <span class="cell-sub"><?= $pl['final_score']!==null ? h('Rezultati: '.rtrim(rtrim(number_format((float)$pl['final_score'],2,',',''),'0'),',').' · '.($pl['result_source']==='manual'?'manual':'nga modulet')) : h($pl['scored'].' nga '.$pl['required'].' module') ?></span>
                       <?php if ($CAN_EDIT): ?>
                         <a class="small ms-1" href="students.php?status=no_group&amp;q=<?= rawurlencode((string)$pl['nr_amze']) ?>">Cakto në grup</a>
                       <?php endif; ?>

@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../themeli.php';
 require_once __DIR__ . '/../results.php';
+require_once __DIR__ . '/enrollment_dialog.php';
 
 if (!function_exists('qta_results_open_button')) {
   /** "Vendos pikët" (ndryshimet të hapura) ose "Shiko pikët". $label = "Grupi #12 · Microsoft Office". */
@@ -88,6 +89,7 @@ if (!function_exists('qta_results_open_button')) {
   </div>
 </div>
     <?php
+    qta_enrollment_dialogs($csrf,$edit);
     return (string)ob_get_clean();
   }
 }

@@ -98,14 +98,15 @@ return [
     'steps' => [
       ['Kërko', 'Shkruaj në fushën e kërkimit: lista ndryshon ndërsa shkruan, në gjithë regjistrin. Gjen emrin e plotë ("Arben Agim Hoxha"), numrin e amzës, numrin personal, telefonin, vendlindjen, arsimin ose kursin — edhe disa njëherësh, p.sh. "1001 Tirane". Esc e pastron.'],
       ['Zgjidh një çip', '"Pa grup", "Gati për grup" (me kurs të zgjedhur), "Pa kurs", "Në grup" ose "Me të dhëna që mungojnë". Numri te çipi tregon sa kursantë janë aty. "Filtra" zgjedh arsimin ose kursin.'],
-      ['Cakto në grup', 'Zgjidh "Pa grup". Për kursantët "Pa kurs" zgjidh kursin dhe shtyp "Ruaj"; pastaj zgjidh grupin — lista tregon datat dhe vendet e zëna, p.sh. 6/10 — dhe shtyp "Cakto".'],
-      ['Disa njëherësh', 'Te "Pa grup", shëno kutitë majtas; poshtë shfaqet një shirit. Zgjidh grupin dhe shtyp "Cakto të zgjedhurit".'],
-      ['Shto një kursant', 'Shtyp "Shto kursant", plotëso fushat dhe ruaj. Numri i amzës duhet të jetë unik.'],
+      ['Cakto në grup', 'Zgjidh "Pa grup". Zgjidh kursin dhe plotëso datat individuale, provimin dhe pikët. Pastaj zgjidh grupin — lista tregon datat dhe vendet e zëna, p.sh. 6/10. Nëse datat ndryshojnë, zgjidh datat e grupit, një grup me datat e kursantit ose grupet e sugjeruara.'],
+      ['Disa njëherësh', 'Te "Pa grup", shëno kutitë majtas dhe zgjidh grupin. Para ruajtjes kontrollohen të gjithë: përputhjet, konfliktet dhe vendet e lira. Nëse ka pengesë, asnjë caktim nuk ruhet.'],
+      ['Shto një kursant', 'Shtyp "Shto kursant". Nëse zgjedh kursin, vazhdo te datat, provimi dhe rezultati; kontrollo përmbledhjen dhe ruaj gjithçka së bashku. Numri i amzës duhet të jetë unik.'],
       ['Ndrysho të dhënat', 'Shtyp "Lejo ndryshimet". Pastaj kliko mbi vlerën në tabelë, shkruaj dhe shtyp Enter. Ndryshimi ruhet vetë; Esc e kthen vlerën.'],
     ],
     'tips' => [
       'Një grup mban deri në 10 kursantë. Ata që nuk nxënë mbeten pa grup — caktoji në një grup tjetër.',
-      'Nëse një kurs nuk ka grup, krijoje te "Regjistri i kurseve profesionale" me "Krijo grup".',
+      'Kursi i gatshëm kërkon pikët sipas moduleve; mesatarja del vetëm pasi plotësohen të gjitha. Për strukturë të papërfunduar përdoren pikët përfundimtare manuale. Pikët kërkojnë datën e provimit.',
+      'Kur krijon grup nga kursanti, datat individuale përdoren vetë dhe orari shfaqet para ruajtjes. Një grup i vlefshëm me të njëjtat data përdoret përsëri.',
       'Kutia ngjyrë jeshile pas ruajtjes do të thotë që ndryshimi u ruajt. E kuqja do të thotë që nuk u ruajt — lexo mesazhin.',
       'Kliko datëlindjen: kalendari nis nga viti, pastaj muaji dhe dita. Mund ta shkruash edhe si dd.mm.vvvv, p.sh. 05.03.1990.',
       '"Shkarko" merr në Excel, PDF ose Word pikërisht listën që sheh, me kërkimin dhe çipin e zgjedhur.',
@@ -227,7 +228,7 @@ return [
     'steps' => [
       ['Gjej një grup', 'Shkruaj kursin, numrin e grupit, emrin ose numrin e amzës së një kursanti, ose një datë: lista ndryshon ndërsa shkruan. Çipat tregojnë grupet "Në mësim", "Nisin së shpejti", "Presin mbylljen" dhe "Të mbyllura"; "Filtra" zgjedh kursin.'],
       ['Krijo grup', 'Shtyp "Krijo grup", zgjidh kursin (vetëm kurset "Gati"), datën e fillimit dhe orët e mësimit në ditë. Poshtë del menjëherë kur mbaron mësimi.'],
-      ['Shto kursantët', 'Shkruaj numrat e amzës, p.sh. 3400-3403, 3409. Mbi 10 kursantë krijohen disa grupe të barabarta me të njëjtin orar.'],
+      ['Shto kursantët', 'Shkruaj numrat e amzës, p.sh. 3400-3403, 3409, dhe datën e provimit që u caktohet secilit. Mbi 10 kursantë krijohen disa grupe të barabarta. Për grup bosh provimi caktohet kur shtohet kursanti.'],
       ['Hap një grup', 'Kliko emrin e kursit: hapet orari ditë pas dite, kursantët me provimet dhe pikët, dhe dokumentet.'],
     ],
     'tips' => [
@@ -252,6 +253,8 @@ return [
     'tips' => [
       'Dita e fundit ka vetëm orët që mbeten — nuk mbushet deri në orarin e plotë.',
       'Një ndryshim që prek ditë që kanë kaluar kërkon konfirmim, sepse ato ditë janë zhvilluar tashmë.',
+      'Ndryshimi i periudhës kërkon kontrollin dhe pajtimin e datave individuale të kursantëve. Provimet nuk zhvendosen automatikisht.',
+      'Heqja e kursantit ose fshirja e grupit ruan regjistrimin në kurs, datat individuale, provimin dhe pikët. Kursanti kthehet pa grup.',
       'Grupi ka kopjen e vet të temave. Nëse kursi ndryshon para se të nisë grupi, mund të marrësh temat e reja me "Merr temat e reja".',
       '"Printo orarin" printon orarin ditë pas dite.',
       'Pikët vendosen për modulet e kopjes së grupit, jo për kursin siç është sot. Pikët e shkruara më parë pa module mbeten ("pikë të vjetra") derisa kursanti të marrë pikë moduli.',

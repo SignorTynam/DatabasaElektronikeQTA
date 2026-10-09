@@ -4130,3 +4130,9 @@ body:has(.cv-bar:not([hidden])) .back-top { display: none; }
   .calg-module > summary,
   .calg-topics > li { padding-inline: var(--sp-3); }
 }
+/* Enrollment reconciliation uses the shared control and state tokens. */
+.enrollment-choices { display: grid; gap: var(--sp-3); }
+.enrollment-choices > .btn { display: grid; justify-content: stretch; justify-items: start; gap: var(--sp-2); text-align: left; white-space: normal; padding: var(--sp-4); }
+.enrollment-choices > .btn span { font-weight: var(--fw-regular); }
+[data-enrollment-results] input { min-width: var(--control-h-lg); max-width: 12ch; }
+[data-enrollment-error], [data-conflict-error] { overflow-wrap: anywhere; }

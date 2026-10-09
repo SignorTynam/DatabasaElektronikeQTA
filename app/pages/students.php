@@ -4,6 +4,7 @@ require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/domain.php';
+require_once __DIR__ . '/../shared/enrollments.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
@@ -308,20 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                // Nëse nuk ka conflict, vazhdo si më parë
-                $chk = $pdo->prepare("SELECT 1 FROM courses WHERE id=:id");
-                $chk->execute([':id'=>$planned_course_id]);
-                if ($chk->fetchColumn()) {
-                    $pdo->prepare("
-                        INSERT INTO student_course_plans (student_id, course_id, status, selected_by)
-                        VALUES (:sid, :cid, 'planned', :uid)
-                        ON DUPLICATE KEY UPDATE status=VALUES(status), selected_by=VALUES(selected_by)
-                    ")->execute([
-                        ':sid'=>$newStudentId,
-                        ':cid'=>$planned_course_id,
-                        ':uid'=>$_SESSION['user_id'] ?? null
-                    ]);
-                }
+                qta_enrollment_save($pdo,$newStudentId,$planned_course_id,$post);
             }
 
             $pdo->commit();
@@ -411,6 +399,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
         if (isset($asJson) && $asJson) {
+            if ($e instanceof QtaUserError || $e instanceof QtaConfirmNeeded) {
+                require_once __DIR__ . '/../shared/staff_guard.php';
+                qta_json_fail($e);
+            }
             http_response_code(qta_error_status($e));
             header('Content-Type: application/json; charset=UTF-8');
             echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]); exit;
@@ -449,7 +441,7 @@ $listStmt = $pdo->prepare("
         p.personal_number, p.phone, p.gender_id,
         g.code AS gender_code, g.label AS gender_label,
         el.code AS edu_code, el.label AS edu_label,
-        lg.group_id, cg.model AS group_model, cg.start_date AS group_start_date, cg.end_date AS group_end_date,
+        lg.group_id, cg.model AS group_model, COALESCE(se.start_date,cg.start_date) AS group_start_date, COALESCE(se.end_date,cg.end_date) AS group_end_date,
         gc.name AS group_course_name,
         pp.course_id AS plan_course_id, pc.name AS plan_course_name
     " . qta_students_from_sql() . "
@@ -706,6 +698,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
                     <?php if ($pcid > 0): ?>
                       <span class="d-inline-flex align-items-center gap-1">
                         <span><?= h((string)$s['plan_course_name']) ?></span>
+                        <button class="btn btn-secondary btn-sm" type="button" data-enrollment-open data-student="<?= $sid ?>" data-course="<?= $pcid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>Të dhënat e kursit</button>
                         <?php if ($EDIT_MODE): ?>
                           <button class="btn btn-ghost btn-sm btn-icon" type="button" data-plan-remove
                                   data-student="<?= $sid ?>" data-course="<?= $pcid ?>" data-name="<?= h($who) ?>"
@@ -729,7 +722,7 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
                   <td class="nowrap">
                     <?php if ($rowGroups === []): ?>
                       <span class="text-muted small">Nuk ka grup për këtë kurs.</span>
-                      <a class="small" href="<?= h($createHref . '&course_id=' . $pcid) ?>">Krijo një</a>
+                      <button class="btn btn-secondary btn-sm" type="button" data-enrollment-create-group data-student="<?= $sid ?>" data-course="<?= $pcid ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>Krijo grup të ri</button>
                     <?php else: ?>
                       <div class="inline-action">
                         <select class="form-select form-select-sm" data-group-select aria-label="Zgjidh grupin për <?= h($who) ?>" <?= $EDIT_MODE ? '' : 'disabled' ?>>
@@ -869,10 +862,11 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
   </section>
 </main>
 
+<?php require_once __DIR__ . '/../shared/partials/enrollment_dialog.php'; ?>
 <!-- Dialog: Shto kursant -->
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-labelledby="addStudentTitle" aria-hidden="true"<?= $openAdd ? ' data-open-on-load="add"' : '' ?>>
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <form class="modal-content" method="post" data-loading>
+    <form class="modal-content" method="post" data-student-wizard>
       <input type="hidden" name="csrf" value="<?= h($CSRF) ?>">
       <input type="hidden" name="action" value="create_student">
       <div class="modal-header">
@@ -880,6 +874,9 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Mbyll"></button>
       </div>
       <div class="modal-body">
+        <p class="modal-meta" data-wizard-step role="status">1. Të dhënat e kursantit</p>
+        <div class="alert alert-danger" data-enrollment-error role="alert" hidden></div>
+        <div data-wizard-basic>
         <p class="text-muted">Mjafton numri i amzës; të tjerat mund t'i plotësosh edhe më vonë. Nëse shkruan numrin personal të dikujt që ekziston, të dhënat plotësohen vetë.</p>
         <div class="row g-3">
           <div class="col-md-6">
@@ -947,16 +944,23 @@ elseif ($role === 'editor')    require __DIR__ . '/inc/navbar4.php';
           <i class="bi bi-key" aria-hidden="true"></i>
           <span>Kursanti merr vetë një llogari. Fjalëkalimi i parë është <b>Emri.VitiILindjes</b>, p.sh. <span class="code">Ardit.1998</span> — jepjani kursantit.</span>
         </div>
+        </div>
+        <div data-wizard-course hidden><?php qta_enrollment_fields('enNew'); ?></div>
+        <section data-wizard-review hidden tabindex="-1"><h3 class="modal-section-title">Kontrollo regjistrimin</h3><dl class="kv" data-wizard-summary></dl></section>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
-        <button class="btn btn-primary" type="submit" <?= $EDIT_MODE ? '' : 'disabled' ?>>
+        <button class="btn btn-secondary" type="button" data-wizard-back hidden>Kthehu</button>
+        <button class="btn btn-primary" type="button" data-wizard-next <?= $EDIT_MODE ? '' : 'disabled' ?>>Vazhdo</button>
+        <button class="btn btn-primary" type="submit" data-wizard-save hidden <?= $EDIT_MODE ? '' : 'disabled' ?>>
           <i class="bi bi-check-lg" aria-hidden="true"></i>Ruaj kursantin
         </button>
       </div>
     </form>
   </div>
 </div>
+
+<?php qta_enrollment_dialogs(); ?>
 
 <!-- Dialog: kursi pas ndryshimit të numrit të amzës -->
 <div class="modal fade" id="pickCourseModal" tabindex="-1" aria-labelledby="pickCourseTitle" aria-hidden="true">

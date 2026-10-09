@@ -28,6 +28,8 @@
   var fixedFields = form.querySelector('[data-lg-fixed-fields]');
   var dailyInput = form.elements.daily_hours;
   var endInput = form.elements.end_date;
+  function syncExam(){if(form.elements.exam_date){var has=!!form.elements.amze_spec.value.trim();form.elements.exam_date.required=has;form.elements.exam_date.disabled=!has;}}
+  form.elements.amze_spec.addEventListener('input',syncExam); syncExam();
 
   function mode() {
     return form.querySelector('input[name="schedule_mode"]:checked').value;
@@ -139,8 +141,25 @@
     return numbers.map(Number).sort(function (x, y) { return x - y; });
   }
 
+  async function create(payload) {
+    var response=await window.qtaFetch.response(CFG.endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(payload)});
+    var json=await response.json();
+    if(json.ok) return json;
+    var reviewed=await window.qtaReviewEnrollment(json,payload,create);
+    if(reviewed) return reviewed;
+    throw new Error(json.error || 'Grupi nuk u ruajt.');
+  }
+  async function save() {
+    var button=form.querySelector('[type="submit"]');if(button.disabled) return;
+    button.disabled=true;
+    try {
+      var payload=Object.assign(Object.fromEntries(new FormData(form)),{action:'create'});
+      var json=await create(payload);location.assign(json.redirect);
+    } catch(err) {if(!err.cancelled) toast(err.message,'danger',{autohide:false});}
+    finally {button.disabled=false;}
+  }
   form.addEventListener('submit', function (ev) {
-    if (form.dataset.ready === '1') return;
+    ev.preventDefault();
     var missing = [];
     if (!form.elements.course_id.value) missing.push('kursin');
     if (!form.elements.start_date.value.trim()) missing.push('datën e fillimit');
@@ -161,7 +180,7 @@
       return;
     }
     var nums = parseAmze(form.elements.amze_spec.value);
-    if (nums.length <= 10) return;
+    if (nums.length <= 10) {save();return;}
     ev.preventDefault();
     if (form.dataset.confirming === '1') return;
     form.dataset.confirming = '1';
@@ -181,8 +200,7 @@
       danger: false
     }).then(function (ok) {
       if (!ok) return;
-      form.dataset.ready = '1';
-      window.qtaNativeSubmit(form);
+      save();
     }).finally(function () { delete form.dataset.confirming; });
   });
 })();

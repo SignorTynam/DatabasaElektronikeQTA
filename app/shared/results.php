@@ -264,9 +264,12 @@ if (!function_exists('qta_results_groups')) {
 
     $ms = $pdo->prepare('
       SELECT cgs.student_id, s.nr_amze, p.first_name, p.father_name, p.last_name,
-             cgs.exam_date, cgs.final_score, cgs.legacy_final_score
+             cgs.exam_date, cgs.final_score, cgs.legacy_final_score,
+             e.id AS enrollment_id, e.start_date AS student_start_date, e.end_date AS student_end_date,
+             e.manual_final_score, e.result_source
       FROM course_group_students cgs
       JOIN students s ON s.id = cgs.student_id
+      LEFT JOIN student_course_plans e ON e.student_id=cgs.student_id AND e.group_id=cgs.group_id
       LEFT JOIN persons p ON p.id = s.person_id
       WHERE cgs.group_id = ?
       ORDER BY CAST(s.nr_amze AS UNSIGNED), s.nr_amze
@@ -287,9 +290,15 @@ if (!function_exists('qta_results_groups')) {
       $own = $scores[$sid] ?? [];
       $stored = qta_score_from_db($r['final_score']);
       /* Pa asnjë pikë moduli, rezultati i ruajtur është i shkruar me dorë (i vjetër). */
-      $legacy = qta_score_from_db($r['legacy_final_score']) ?? ($own ? null : $stored);
+      $legacy = qta_score_from_db($r['legacy_final_score']) ?? ($own || $r['result_source']==='manual' ? null : $stored);
+      $result = qta_results_compute($moduleIds, $own, $legacy);
+      if ($r['result_source']==='manual') $result=array_replace($result,['mode'=>'manual','final'=>qta_score_from_db($r['manual_final_score']),'complete'=>true]);
       $members[] = [
         'student_id' => $sid,
+        'enrollment_id' => (int)$r['enrollment_id'],
+        'start_date' => $r['student_start_date'] ?? $g['start_date'],
+        'end_date' => $r['student_end_date'] ?? $g['end_date'],
+        'manual' => qta_score_from_db($r['manual_final_score']),
         'amze' => (string)$r['nr_amze'],
         'name' => qta_full_name($r['first_name'] ?? '', $r['father_name'] ?? '', $r['last_name'] ?? ''),
         'exam_date' => $r['exam_date'] === null ? null : (string)$r['exam_date'],
@@ -297,7 +306,7 @@ if (!function_exists('qta_results_groups')) {
         'legacy' => $legacy,
         'legacy_stored' => $r['legacy_final_score'] !== null,
         'stored_final' => $stored,
-        'result' => qta_results_compute($moduleIds, $own, $legacy),
+        'result' => $result,
       ];
     }
 
@@ -348,6 +357,7 @@ if (!function_exists('qta_results_groups')) {
         'student' => ['id' => $studentId, 'amze' => $m['amze'], 'name' => $m['name']],
         'course' => ['id' => $g['course_id'], 'code' => (string)$g['course_code'], 'name' => (string)$g['course_name']],
         'group' => ['id' => $g['id'], 'start_date' => (string)$g['start_date'], 'end_date' => (string)$g['end_date'], 'exam_date' => $m['exam_date']],
+        'enrollment' => ['id'=>$m['enrollment_id'],'start_date'=>$m['start_date'],'end_date'=>$m['end_date'],'exam_date'=>$m['exam_date']],
         'modules' => array_map(static fn($mod) => [
           'id' => $mod['id'], 'seq' => $mod['seq'], 'title' => $mod['title'], 'hours' => $mod['hours'],
           'score' => isset($m['scores'][$mod['id']]) ? qta_score_db($m['scores'][$mod['id']]) : null,
@@ -359,6 +369,7 @@ if (!function_exists('qta_results_groups')) {
           'required' => $res['required'],
           'final' => $res['final'] === null ? null : qta_score_db($res['final']),
           'legacy_final' => $res['legacy'] === null ? null : qta_score_db($res['legacy']),
+          'manual_final' => $m['manual'] === null ? null : qta_score_db($m['manual']),
         ],
       ];
     }
@@ -520,7 +531,7 @@ if (!function_exists('qta_results_save')) {
           continue;
         }
         if ($current === $r['to']) continue;
-        if ($r['to'] !== null && $m['exam_date'] === null) {
+        if ($r['to'] !== null && ($m['exam_date'] === null || $m['exam_date'] < max($m['end_date'],$sheet['group']['end_date']))) {
           $errors[] = $cell + ['message' => qta_results_who($m) . ' nuk ka datë provimi. Cakto së pari datën e provimit, pastaj pikët.'];
           continue;
         }
@@ -558,7 +569,7 @@ if (!function_exists('qta_results_save')) {
         $res = qta_results_compute($moduleIds, $scores, $m['legacy']);
         /* Pikët e vjetra zëvendësohen nga modulet: ruhen, të pandryshuara, para se të ikin. */
         $keepLegacy = $m['result']['mode'] === 'legacy' && $res['mode'] === 'modules' && !$m['legacy_stored'] ? $m['legacy'] : null;
-        if ($keepLegacy !== null) $replacing[] = $m;
+        if ($keepLegacy !== null || $m['result']['mode']==='manual') $replacing[] = $m;
         if ($res['final'] !== $m['stored_final'] || $keepLegacy !== null) {
           $writes[$sid] = ['final' => $res['final'], 'legacy' => $keepLegacy];
         }
@@ -571,10 +582,10 @@ if (!function_exists('qta_results_save')) {
           $parts[] = 'Grupi është i mbyllur dhe dokumentet e tij mund të jenë lëshuar tashmë.';
         }
         if ($replacing) {
-          $names = array_map(static fn($m) => qta_results_who($m) . ' (' . qta_score_label($m['legacy']) . ')', $replacing);
+          $names = array_map(static fn($m) => qta_results_who($m) . ' (' . qta_score_label($m['manual'] ?? $m['legacy']) . ')', $replacing);
           $parts[] = (count($replacing) === 1 ? '1 kursant ka' : count($replacing) . ' kursantë kanë') . ' pikë të vjetra: '
             . implode(', ', array_slice($names, 0, 4)) . (count($names) > 4 ? ' …' : '') . '. '
-            . 'Me pikët e moduleve, rezultati i tyre llogaritet nga modulet dhe mbetet i paplotë derisa çdo modul të ketë pikë. Pikët e vjetra nuk fshihen.';
+            . 'Me pikët e moduleve, rezultati llogaritet nga modulet dhe mbetet i paplotë derisa çdo modul të ketë pikë. Rezultati i mëparshëm ruhet si prejardhje.';
         }
         throw new QtaConfirmNeeded(
           $replacing ? 'Rezultati do të llogaritet nga modulet' : 'Ky grup është i mbyllur',
@@ -585,6 +596,11 @@ if (!function_exists('qta_results_save')) {
       $ins = $pdo->prepare('INSERT INTO enrollment_module_scores (group_id, student_id, module_id, score) VALUES (?, ?, ?, ?)');
       $upd = $pdo->prepare('UPDATE enrollment_module_scores SET score = ? WHERE group_id = ? AND student_id = ? AND module_id = ?');
       $del = $pdo->prepare('DELETE FROM enrollment_module_scores WHERE group_id = ? AND student_id = ? AND module_id = ?');
+      $freeze = $pdo->prepare('INSERT IGNORE INTO enrollment_result_modules(enrollment_id,module_id,seq,title,hours) VALUES(?,?,?,?,?)');
+      foreach ($after as $sid => $scores) {
+        foreach ($sheet['modules'] as $mod) $freeze->execute([$members[$sid]['enrollment_id'],$mod['id'],$mod['seq'],$mod['title'],$mod['hours']]);
+        $pdo->prepare("UPDATE student_course_plans SET result_source='modules' WHERE id=?")->execute([$members[$sid]['enrollment_id']]);
+      }
       foreach ($changes as $ch) {
         if ($ch['to'] === null) {
           $del->execute([$groupId, $ch['sid'], $ch['mid']]);
@@ -646,6 +662,8 @@ if (!function_exists('qta_results_payload')) {
           'exam' => $m['exam_date'], 'exam_label' => $m['exam_date'] ? qta_date($m['exam_date']) : '',
           'scores' => (object)$scores,
           'legacy' => $m['legacy'] === null ? null : qta_score_db($m['legacy']),
+          'manual' => $m['manual'] === null ? null : qta_score_db($m['manual']),
+          'result_source' => $m['result']['mode'],
           'final' => $m['stored_final'] === null ? null : qta_score_db($m['stored_final']),
         ];
       }, $sheet['members']),

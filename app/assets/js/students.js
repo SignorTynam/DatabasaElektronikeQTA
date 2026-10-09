@@ -235,7 +235,10 @@
     var sel = document.getElementById('pickCourseSelect');
     var cid = sel && sel.value ? parseInt(sel.value, 10) : 0;
     p.el.dataset.prev = p.oldAmze;
-    saveInline(p.sid, p.field, p.newVal, p.cell, p.el, cid > 0 ? { planned_course_id: cid } : {});
+    if(cid>0) {
+      document.getElementById('pickCourseModal').addEventListener('hidden.bs.modal',function(){window.QtaEnrollment.open(p.sid,cid,p.el,{url:CFG.inline,payload:{action:'update_cell',student_id:p.sid,field:p.field,value:p.newVal}});},{once:true});
+      p.el.textContent=p.oldAmze;
+    } else saveInline(p.sid, p.field, p.newVal, p.cell, p.el);
     pendingAmzeChange = null;
     modal('pickCourseModal').hide();
   });
@@ -369,12 +372,7 @@
       if (!gid) { notify('warning', 'Zgjidh grupin së pari.'); if (sel) sel.focus(); return; }
       if (assign && assign.disabled) return;
       busy(assign, true);
-      postJSON(CFG.assign, { action: 'assign_to_group', student_id: parseInt(assign.dataset.student, 10), group_id: gid })
-        .then(function (json) {
-          busy(assign, false);
-          if (!json.ok) { notify('danger', json.error || 'Kursanti nuk u caktua.'); return; }
-          afterChange(json.message || 'Kursanti u caktua në grup.');
-        })
+      window.QtaEnrollment.assign(parseInt(assign.dataset.student,10),gid,{},assign)
         .catch(function (err) { notify('danger', err.message, { autohide: false }); }).finally(function () { busy(assign, false); });
       return;
     }
@@ -480,7 +478,7 @@
     var label = (gSel.options[gSel.selectedIndex] && gSel.options[gSel.selectedIndex].textContent.trim()) || 'grupin e zgjedhur';
     window.qtaConfirm({
       title: 'Të caktohen ' + ids.length + ' kursantë?',
-      message: 'Do të caktohen te ' + label + '. Një grup mban deri në 10 kursantë — ata që nuk nxënë mbeten pa grup.',
+      message: 'Do të kontrollohen të gjithë te ' + label + '. Caktimi ruhet vetëm nëse çdo kursant përputhet dhe ka vend për të gjithë.',
       confirm: 'Po, caktoji',
       danger: false
     }).then(function (ok) {
@@ -490,18 +488,20 @@
       var done = 0, failed = [];
       async function assignAll() {
         try {
-          for (var i = 0; i < ids.length; i++) {
-            if (prog) prog.textContent = 'Po caktoj ' + (i + 1) + ' nga ' + ids.length + '…';
-            try {
-              var json = await postJSON(CFG.assign, { action: 'assign_to_group', student_id: ids[i], group_id: gid });
-              if (json.ok) done++; else failed.push(json.error || 'nuk u pranua');
-            } catch (err) {
-              failed.push(err.message);
-              // A transport error has an unknown outcome: do not continue the batch.
-              break;
-            }
+          if (prog) prog.textContent = 'Po kontrolloj të gjithë kursantët…';
+          var preflight = await postJSON(CFG.assign,{action:'batch_preflight',student_ids:ids,group_id:gid});
+          if (!preflight.ok) throw new Error(preflight.error);
+          var summary=preflight.result;
+          if (summary.blocked) {
+            notify('warning',summary.matched+' përputhen · '+summary.conflicts+' kanë konflikt datash · '+(summary.blocked-summary.conflicts)+' nuk mund të caktohen. Asnjë ndryshim nuk u ruajt. '+summary.errors.map(function(e){return e.message;}).join(' '),{autohide:false});
+            return;
           }
+          var reviewed=await window.qtaConfirm({title:'Të ruhen '+ids.length+' caktime?',message:summary.matched+' kursantë përputhen. Të gjitha caktimet ruhen në një transaksion.',confirm:'Ruaj caktimet',danger:false});
+          if(!reviewed) return;
+          var json=await postJSON(CFG.assign,{action:'batch_assign',student_ids:ids,group_id:gid});
+          if(json.ok) done=ids.length; else failed.push(json.error || 'Caktimet nuk u ruajtën.');
           finish();
+        } catch(err) {notify('danger',err.message,{autohide:false});
         } finally { busy(btn, false); if (prog) prog.textContent = ''; }
       }
       function finish() {

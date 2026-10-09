@@ -148,32 +148,11 @@ $sql = "
       ORDER BY cg.start_date DESC, cg.id DESC
       LIMIT 1
     ) AS group_name,
-    (
-      SELECT cg.start_date
-      FROM course_group_students cgs
-      JOIN course_groups cg ON cg.id = cgs.group_id
-      WHERE cgs.student_id = s.id
-      ORDER BY cg.start_date DESC, cg.id DESC
-      LIMIT 1
-    ) AS group_start_date,
-    (
-      SELECT cg.end_date
-      FROM course_group_students cgs
-      JOIN course_groups cg ON cg.id = cgs.group_id
-      WHERE cgs.student_id = s.id
-      ORDER BY cg.start_date DESC, cg.id DESC
-      LIMIT 1
-    ) AS group_end_date,
+    COALESCE(se.start_date,cg.start_date,pe.start_date) AS group_start_date,
+    COALESCE(se.end_date,cg.end_date,pe.end_date) AS group_end_date,
 
     /* Kursi i planifikuar (nëse nuk ka grup) */
-    (
-      SELECT c.name
-      FROM student_course_plans scp
-      JOIN courses c ON c.id = scp.course_id
-      WHERE scp.student_id = s.id
-      ORDER BY scp.id DESC
-      LIMIT 1
-    ) AS planned_course_name
+    pc.name AS planned_course_name
 
   " . qta_students_from_sql() . "
   $whereSql

@@ -89,7 +89,7 @@ function rs_scores(PDO $pdo, int $gid, int $sid): array
 {
   $st = $pdo->prepare('SELECT module_id, score FROM enrollment_module_scores WHERE group_id = ? AND student_id = ? ORDER BY module_id');
   $st->execute([$gid, $sid]);
-  return array_map('strval', $st->fetchAll(PDO::FETCH_KEY_PAIR));
+  return array_map(static fn($v)=>qta_score_db(qta_score_from_db($v)), $st->fetchAll(PDO::FETCH_KEY_PAIR));
 }
 
 /** Shkrim "të dhënash të vjetra" (rezultat me dorë), siç ishin para pikëve sipas moduleve. */
@@ -117,12 +117,13 @@ $rsAmze = 900000000 + random_int(0, 8000000) * 10;
 /* Kurs 30 orë, 3 module; grup me orar nga e hëna 05.01.2026 me 8 orë në ditë (mbaron 08.01.2026). */
 $rsCourse = rs_course($pdo, 'Microsoft Office ' . $rsTag, [['Microsoft Word', [5, 5]], ['Microsoft Excel', [5, 5]], ['PowerPoint', [5, 5]]]);
 $rsCreated = qta_lg_create($pdo, ['course_id' => $rsCourse, 'start_date' => '05.01.2026', 'daily_hours' => 8,
-                                  'amze_spec' => $rsAmze . '-' . ($rsAmze + 2)]);
+                                  'exam_date' => '2199-12-31', 'amze_spec' => $rsAmze . '-' . ($rsAmze + 2)]);
 $rsGroup = (int)$rsCreated['groups'][0]['group_id'];
 $rsSheet0 = qta_results_sheet($pdo, $rsGroup);
 [$rsWord, $rsExcel, $rsPpt] = array_column($rsSheet0['modules'], 'id');
 [$rsA, $rsB, $rsC] = array_column($rsSheet0['members'], 'student_id');
 /* A dhe B kanë datë provimi; C jo ende. */
+$pdo->prepare('UPDATE course_group_students SET exam_date=NULL WHERE group_id=? AND student_id=?')->execute([$rsGroup,$rsC]);
 $pdo->prepare("UPDATE course_group_students SET exam_date = '2026-01-12' WHERE group_id = ? AND student_id IN (?, ?)")->execute([$rsGroup, $rsA, $rsB]);
 
 /* ============================================================== Testet */
@@ -238,25 +239,26 @@ t_case('Pikët — rregullat e bazës vlejnë edhe jashtë aplikacionit', functi
     'data e provimit nuk hiqet kur ka pikë moduli', 'data e provimit nuk hiqet');
   $foreign = (int)rs_one($pdo, "SELECT id FROM course_modules WHERE course_id <> ? ORDER BY id LIMIT 1", [(int)rs_one($pdo, 'SELECT course_id FROM course_groups WHERE id = ?', [$rsGroup])]);
   rs_db_refuses($pdo, 'INSERT INTO enrollment_module_scores (group_id, student_id, module_id, score) VALUES (?, ?, ?, 50)', [$rsGroup, $rsC, $foreign],
-    'moduli jashtë kopjes së grupit', 'nuk është te modulet e grupit');
+    'moduli jashtë kopjes së grupit');
   rs_db_refuses($pdo, 'INSERT INTO enrollment_module_scores (group_id, student_id, module_id, score) VALUES (?, ?, ?, 100.01)', [$rsGroup, $rsC, $rsExcel],
     'pikët mbi 100 (CHECK)');
   rs_db_refuses($pdo, 'UPDATE enrollment_module_scores SET module_id = ? WHERE group_id = ? AND student_id = ? AND module_id = ?', [$rsExcel, $rsGroup, $rsA, $rsWord],
-    'pikët nuk kalojnë te një modul tjetër', 'ndryshohen vetëm pikët');
+    'pikët nuk kalojnë te një modul tjetër', 'nuk lëvizin');
   $noExam = qta_amze_ensure_student($pdo, 999999998);
   $pdo->prepare('INSERT INTO course_group_students (group_id, student_id) VALUES (?, ?)')->execute([$rsGroup, $noExam]);
   rs_db_refuses($pdo, 'INSERT INTO enrollment_module_scores (group_id, student_id, module_id, score) VALUES (?, ?, ?, 50)', [$rsGroup, $noExam, $rsWord],
-    'pa datë provimi', 'datën e provimit');
+    'pa datë provimi', 'provim');
   $pdo->prepare('DELETE FROM course_group_students WHERE group_id = ? AND student_id = ?')->execute([$rsGroup, $noExam]);
 });
 
-t_case('Pikët — heqja e kursantit fshin pikët e tij, secila në historik', function () use ($pdo, $rsGroup, $rsA, $rsAmze) {
+t_case('Pikët — heqja e kursantit ruan pikët me identitetin e regjistrimit', function () use ($pdo, $rsGroup, $rsA, $rsAmze) {
   t_eq(3, count(rs_scores($pdo, $rsGroup, $rsA)), 'A ka 3 pikë moduli');
   t_throws(QtaConfirmNeeded::class, fn() => qta_lg_set_members($pdo, $rsGroup, ($rsAmze + 1) . '-' . ($rsAmze + 2)), 'heqja e një kursanti me pikë pyet', 'pikë');
   $before = rs_count($pdo, "SELECT COUNT(*) FROM audit_events WHERE table_name = 'enrollment_module_scores' AND action = 'DELETE'");
   qta_lg_set_members($pdo, $rsGroup, ($rsAmze + 1) . '-' . ($rsAmze + 2), ['force' => true]);
   t_eq(0, rs_count($pdo, 'SELECT COUNT(*) FROM enrollment_module_scores WHERE group_id = ? AND student_id = ?', [$rsGroup, $rsA]), 'asnjë pikë e mbetur pa kursant');
-  t_eq(3, rs_count($pdo, "SELECT COUNT(*) FROM audit_events WHERE table_name = 'enrollment_module_scores' AND action = 'DELETE'") - $before, 'historiku: 3 fshirje');
+  t_eq(0, rs_count($pdo, "SELECT COUNT(*) FROM audit_events WHERE table_name = 'enrollment_module_scores' AND action = 'DELETE'") - $before, 'historiku: asnjë fshirje pikësh');
+  t_eq(3,rs_count($pdo,'SELECT COUNT(*) FROM enrollment_module_scores WHERE student_id=? AND group_id IS NULL',[$rsA]),'të tre pikët ruhen pa grup');
 });
 
 t_case('Pikët — moduli i hequr nga katalogu mbetet te grupi me orar', function () use ($pdo, $rsGroup, $rsB, $rsWord, $rsCourse) {

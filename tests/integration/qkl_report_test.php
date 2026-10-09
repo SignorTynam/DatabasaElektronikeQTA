@@ -9,6 +9,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../app/shared/database.php';
 require_once __DIR__ . '/../../app/shared/group_members.php';
 require_once __DIR__ . '/../../app/exports/inc/qkl_report.php';
+require_once __DIR__ . '/../../app/shared/group_calendar.php';
 
 $qklPdo = getPDO();
 $qklDb = (string)$qklPdo->query('SELECT DATABASE()')->fetchColumn();
@@ -39,7 +40,7 @@ try {
   $qklCancelledStudent = qta_amze_ensure_student($qklPdo, $qklAmze + 2);
 
   // Trigger-i krijon planin assigned për kursin e grupit.
-  $qklPdo->prepare('INSERT INTO course_group_students (group_id, student_id, exam_date) VALUES (?, ?, NULL)')
+  $qklPdo->prepare("INSERT INTO course_group_students (group_id, student_id, exam_date) VALUES (?, ?, '2026-02-10')")
       ->execute([$qklGroup, $qklGroupStudent]);
   // Një plan tjetër aktiv nuk duhet ta mposhtë anëtarësinë reale.
   $qklPdo->prepare("INSERT INTO student_course_plans (student_id, course_id, status) VALUES (?, ?, 'planned')")
@@ -61,12 +62,12 @@ try {
     t_eq(3, count($qklByAmze), 'zero duplikime');
   });
 
-  t_case('QKL SQL — grupi fiton dhe provimi legacy plotëson mungesën individuale', function () use ($qklByAmze, $qklAmze, $qklTag): void {
+  t_case('QKL SQL — grupi fiton dhe provimi është individual', function () use ($qklByAmze, $qklAmze, $qklTag): void {
     $record = $qklByAmze[$qklAmze];
     t_eq('QKL grup ' . $qklTag, $record['course_name'], 'kursi i grupit');
     t_eq('2026-01-05', $record['start_date'], 'fillimi i grupit');
     t_eq('2026-02-06', $record['end_date'], 'mbarimi i grupit');
-    t_eq('2026-02-10', $record['exam_date'], 'fallback nga course_groups.exam_date');
+    t_eq('2026-02-10', $record['exam_date'], 'nga course_group_students.exam_date');
   });
 
   t_case('QKL SQL — plani pa grup jep kursin, jo data të fabrikuara', function () use ($qklByAmze, $qklAmze, $qklTag): void {
@@ -79,6 +80,22 @@ try {
     $record = $qklByAmze[$qklAmze + 2];
     t_eq('', $record['course_name'], 'kursi i anuluar nuk bëhet kurs aktual');
     t_eq(null, $record['interruption_date'], 'nuk ekziston timestamp canonik');
+  });
+  t_case('QKL SQL — individual dates, operational calendar and legacy fallback',function() use($qklPdo,$qklGroup,$qklGroupStudent,$qklAmze): void {
+    // Model a historical individual period under the same scoped flag used by
+    // reviewed reconciliation. Ordinary SQL/UI writes cannot create this mismatch.
+    $qklPdo->exec('SET @qta_enrollment_sync=1');
+    try {
+      $qklPdo->prepare("UPDATE student_course_plans SET start_date='2026-01-07',end_date='2026-02-05' WHERE student_id=? AND group_id=?")->execute([$qklGroupStudent,$qklGroup]);
+      $row=qkl_normalize_records(qkl_fetch_records($qklPdo,$qklAmze,$qklAmze,"'Shqiptare' AS citizenship_value"))[0];
+      t_eq(['2026-01-07','2026-02-05'],[$row['start_date'],$row['end_date']],'report uses individual boundaries');
+      $events=qta_calendar_events($qklPdo,'2026-01-01','2026-02-28',true)['events'];
+      $event=array_values(array_filter($events,fn($e)=>$e['id']===$qklGroup))[0];
+      t_eq(['2026-01-05','2026-02-06'],[$event['start'],$event['end']],'calendar retains operational period');
+      $qklPdo->prepare('UPDATE student_course_plans SET start_date=NULL,end_date=NULL WHERE student_id=? AND group_id=?')->execute([$qklGroupStudent,$qklGroup]);
+      $row=qkl_normalize_records(qkl_fetch_records($qklPdo,$qklAmze,$qklAmze,"'Shqiptare' AS citizenship_value"))[0];
+      t_eq(['2026-01-05','2026-02-06'],[$row['start_date'],$row['end_date']],'legacy missing dates fall back safely');
+    } finally {$qklPdo->exec('SET @qta_enrollment_sync=NULL');}
   });
 } finally {
   if ($qklPdo->inTransaction()) $qklPdo->rollBack();

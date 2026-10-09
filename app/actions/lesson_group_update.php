@@ -49,6 +49,11 @@ function lg_when(string $iso): string
 
 try {
   switch ($action) {
+    case 'create': {
+      qta_json_require_edit_mode();
+      $r=qta_lg_create($pdo,$data);
+      qta_json_out(['ok'=>true,'result'=>$r,'redirect'=>count($r['groups'])===1?'lesson_group.php?id='.$r['groups'][0]['group_id']:'lesson_groups.php']);
+    }
     case 'preview_new': {
       $p = qta_lg_preview_new($pdo, $data['course_id'] ?? null, $data['start_date'] ?? null,
         $data['daily_hours'] ?? null, $data['schedule_mode'] ?? 'calculated', $data['end_date'] ?? null);
@@ -71,6 +76,8 @@ try {
         'revision' => $data['revision'] ?? null,
         'force' => $force,
         'dry_run' => $dry,
+        'enrollment_resolution' => $data['enrollment_resolution'] ?? null,
+        'enrollment_baseline' => $data['enrollment_baseline'] ?? null,
       ]);
       $n = $r['new'];
       $o = $r['old'];
@@ -137,7 +144,7 @@ try {
 
     case 'members': {
       qta_json_require_edit_mode();
-      $r = qta_lg_set_members($pdo, $groupId, (string)($data['amze_spec'] ?? ''), ['force' => $force]);
+      $r = qta_lg_set_members($pdo, $groupId, (string)($data['amze_spec'] ?? ''), ['force' => $force,'enrollment_resolutions'=>$data['enrollment_resolutions']??[]]);
       $parts = [];
       if ($r['added']) $parts[] = 'u shtuan ' . $r['added'];
       if ($r['removed']) $parts[] = 'u hoqën ' . $r['removed'];

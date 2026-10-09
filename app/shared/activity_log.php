@@ -39,7 +39,7 @@ $tableLabels = [
   'group_day_rules'       => 'Ditë e veçantë',
   'group_fixed_days'      => 'Ditë e periudhës së orarit',
   'group_conversions'     => 'Konvertim nga regjistri i vjetër',
-  'student_course_plans'  => 'Kurs i zgjedhur',
+  'student_course_plans'  => 'Regjistrim në kurs',
   'education_levels'      => 'Nivel arsimi',
   'genders'               => 'Gjini',
   'agency_students'       => 'Punonjës agjencie',
@@ -61,7 +61,7 @@ $columnLabels = [
   'group_fixed_days' => ['group_id' => 'Grupi', 'lesson_date' => 'Data', 'hours' => 'Orë mësimi', 'note' => 'Shënim'],
   'group_conversions' => ['group_id' => 'Grupi', 'source_start_date' => 'Fillimi historik', 'source_end_date' => 'Mbarimi historik',
                           'course_hours' => 'Orët e kursit', 'teaching_days' => 'Ditë mësimi', 'algorithm_version' => 'Propozimi automatik'],
-  'student_course_plans'  => ['student_id' => 'Kursanti', 'course_id' => 'Kursi', 'status' => 'Gjendja', 'group_id' => 'Grupi', 'selected_by' => 'Zgjodhi'],
+  'student_course_plans'  => ['student_id' => 'Kursanti', 'course_id' => 'Kursi', 'status' => 'Gjendja', 'group_id' => 'Grupi', 'selected_by' => 'Zgjodhi', 'start_date'=>'Fillimi individual', 'end_date'=>'Mbarimi individual', 'exam_date'=>'Provimi individual', 'manual_final_score'=>'Rezultati manual', 'legacy_result'=>'Rezultati historik', 'result_source'=>'Burimi i rezultatit', 'note'=>'Shpjegimi i veprimit'],
 ];
 $tableIcons = [
   'users' => 'bi-person-badge', 'persons' => 'bi-person', 'students' => 'bi-mortarboard', 'agencies' => 'bi-building',
@@ -133,8 +133,9 @@ function qta_log_value(PDO $pdo, string $col, ?string $val, string $table = ''):
     case 'is_completed':
       return in_array(strtolower(trim($val)), ['1', 'true', 't', 'yes', 'y', 'on'], true) ? 'Po, i mbyllur' : 'Jo, i hapur';
     case 'hours':       return rtrim(rtrim($val, '0'), '.') . ' orë';
-    case 'final_score': case 'legacy_final_score': case 'score': return rtrim(rtrim($val, '0'), '.');
-    case 'status':      return ['planned' => 'Pret grup', 'assigned' => 'Në grup', 'completed' => 'Përfunduar'][$val] ?? $val;
+    case 'manual_final_score': case 'legacy_result': case 'final_score': case 'legacy_final_score': case 'score': return rtrim(rtrim($val, '0'), '.');
+    case 'result_source': return ['none'=>'Pa rezultat','modules'=>'Pikët e moduleve','manual'=>'Rezultat manual','legacy'=>'Rezultat historik'][$val] ?? $val;
+    case 'status':      return ['planned' => 'Pret grup', 'assigned' => 'Në grup', 'completed' => 'Përfunduar', 'cancelled'=>'Anuluar'][$val] ?? $val;
     case 'role_id':     return qta_log_lookup($pdo, 'role', $val) ?? ('Rol #' . (int)$val);
     case 'gender_id':   return qta_log_lookup($pdo, 'gender', $val) ?? ('Gjini #' . (int)$val);
     case 'education_level_id': return qta_log_lookup($pdo, 'edu', $val) ?? ('Nivel #' . (int)$val);
@@ -209,7 +210,7 @@ function qta_log_subject(PDO $pdo, string $table, array $pk, array $tableLabels,
     case 'enrollment_module_scores':
       $gid = (int)($pk['group_id'] ?? 0); $sid = (int)($pk['student_id'] ?? 0); $mid = (int)($pk['module_id'] ?? 0);
       $s = qta_log_lookup($pdo, 'student', $sid) ?? ('Kursant #' . $sid);
-      $g = qta_log_lookup($pdo, 'group', $gid) ?? ('Grup #' . $gid);
+      $g = $gid ? (qta_log_lookup($pdo, 'group', $gid) ?? ('Grup #' . $gid)) : (qta_log_lookup($pdo,'plan',$pk['enrollment_id']??null) ?? 'Regjistrim pa grup');
       $m = qta_log_lookup($pdo, 'module_copy', $mid) ?? qta_log_lookup($pdo, 'module', $mid) ?? ('Modul #' . $mid);
       return $label . ': ' . $m . ' · ' . $s . ' në ' . $g;
   }

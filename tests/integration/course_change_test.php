@@ -34,7 +34,7 @@ t_case('Ndryshimi i kursit: të dy mënyrat, konfirmimi, kopja, orët, versioni 
   $old = cc_course($pdo, 16);
   foreach (['fixed_range', 'calculated'] as $mode) {
     $gid = qta_lg_create($pdo, ['course_id' => $old, 'start_date' => '2090-02-01', 'end_date' => '2090-02-10',
-      'schedule_mode' => $mode, 'daily_hours' => 4, 'amze_spec' => ''])['groups'][0]['group_id'];
+      'schedule_mode' => $mode, 'daily_hours' => 4, 'exam_date' => '2199-12-31', 'amze_spec' => ''])['groups'][0]['group_id'];
     foreach ([24, 8, 8] as $hours) {
       $cid = cc_course($pdo, $hours);
       $g = qta_lg_require($pdo, $gid);
@@ -76,7 +76,7 @@ t_case('Ndryshimi i kursit: gabimet dhe dështimi i shkrimit rikthejnë të gjit
   $old = cc_course($pdo, 16);
   $new = cc_course($pdo, 24);
   $gid = qta_lg_create($pdo, ['course_id' => $old, 'start_date' => '2090-03-01', 'end_date' => '2090-03-03',
-    'schedule_mode' => 'fixed_range', 'amze_spec' => ''])['groups'][0]['group_id'];
+    'schedule_mode' => 'fixed_range', 'exam_date' => '2199-12-31', 'amze_spec' => ''])['groups'][0]['group_id'];
   $change = ['type' => 'fixed_range_settings', 'course_id' => $new, 'start_date' => '2090-03-01', 'end_date' => '2090-03-03'];
   $sid = qta_amze_ensure_student($pdo, random_int(82000000, 82999999));
   $pdo->prepare("INSERT INTO course_group_students(group_id,student_id,exam_date) VALUES(?,?,'2090-03-03')")->execute([$gid, $sid]);

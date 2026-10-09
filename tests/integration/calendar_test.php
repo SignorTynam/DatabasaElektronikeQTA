@@ -55,7 +55,8 @@ function cal_shift(string $iso, int $days): string
 /** Grupi me orar, i krijuar si nga "Krijo grup". */
 function cal_group(PDO $pdo, int $courseId, string $start, int $daily, string $amze = ''): array
 {
-  $r = qta_lg_create($pdo, ['course_id' => $courseId, 'start_date' => $start, 'daily_hours' => $daily, 'amze_spec' => $amze]);
+  $r = qta_lg_create($pdo, ['course_id' => $courseId, 'start_date' => $start, 'daily_hours' => $daily, 'exam_date' => '2199-12-31', 'amze_spec' => $amze]);
+  $pdo->prepare('UPDATE course_group_students SET exam_date=NULL WHERE group_id=?')->execute([$r['groups'][0]['group_id']]);
   return ['id' => (int)$r['groups'][0]['group_id'], 'start' => $r['summary']['start_date'], 'end' => $r['summary']['end_date']];
 }
 

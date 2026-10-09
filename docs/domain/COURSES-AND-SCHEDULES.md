@@ -271,7 +271,7 @@ is reused:
 | `course_groups` | as before, now including `model` (the conversion appears as `model` legacy → scheduled) |
 | `group_conversions` | insert (the conversion: who, when, historical dates, hours, lesson days) and delete (only when the converted group itself is deleted) |
 | `group_fixed_days` | every later correction of a converted group, date by date (hours, note) |
-| `enrollment_module_scores` | every module score: insert, update of the score, delete (also when a trainee leaves the group — deleted explicitly, not by cascade); the calculated result appears as `final_score` on `course_group_students` (§15) |
+| `enrollment_module_scores` | every module score: insert, update of the score, delete (only explicit score removal; leaving a group retains scores against enrollment identity); the calculated result appears as `final_score` on `course_group_students` (§15) |
 
 Days, slots and snapshot topics are derived data and are not logged row by row; they are
 fully determined by the logged inputs. The same holds for the day plan written at conversion:
@@ -300,7 +300,7 @@ migration test needs the right to create and drop databases (only `qta_migtest_*
 | `tests/integration/legacy_conversion_http_test.php` | §14 over HTTP (`php -S` on the test database): GET refused, no session, wrong role, missing or wrong CSRF token, edit mode off; the pages refuse non-staff; propose → save → convert through the endpoint; stale revision and changed data refused; a second conversion refused; the correction endpoint of a converted group follows the same rules |
 | `tests/integration/migration_conversion_test.php` | the 2026-09-28 migration on fresh databases (`qta_migtest_*`, created and dropped by the test): clean database, legacy groups only, with scheduled groups, run twice (identical schema and data), rows above 8 hours (stops, lists them, changes nothing; passes after correction), 2026-09-26 missing (stops, changes nothing), and 2026-09-26 re-run afterwards |
 | `tests/unit/results_test.php` | §15 without a database: reading points (comma or point, 0 and 100, empty ≠ 0, range, two decimals, formats), labels and database format, the average only when complete (the worked example 85/90/75/80/90 → 84; 80/90/70 → 80 and 80/100/70 → 83,33), half-up rounding in integers, earlier points and courses without modules |
-| `tests/integration/results_test.php` | §15 through the services, the database and HTTP: the sheet in 4 queries (no N+1), saving only changed cells with the result calculated by the server and logged, someone else's change (`stale`, nothing saved), one invalid cell stops everything, module of another course, trainee outside the group, no exam date, closed group and earlier points need confirmation, earlier points kept and restored, database rules outside the application (manual result, exam date, module outside the copy, CHECK, identity), removing a trainee deletes and logs the scores, a module deleted from the catalogue stays in a scheduled group, legacy groups follow the course (new module → incomplete, module with scores cannot be deleted, course cannot change, splitting a group moves the scores), certificate data, and the endpoint (POST, session, role, token, edit mode, 409, 400 `invalid` / `stale`) |
+| `tests/integration/results_test.php` | §15 through the services, the database and HTTP: the sheet in 4 queries (no N+1), saving only changed cells with the result calculated by the server and logged, someone else's change (`stale`, nothing saved), one invalid cell stops everything, module of another course, trainee outside the group, no exam date, closed group and earlier points need confirmation, earlier points kept and restored, database rules outside the application (manual result, exam date, module outside the copy, CHECK, identity), removing a trainee retains scores and logs the membership transition, a module deleted from the catalogue stays in a scheduled group, legacy groups follow the course (new module → incomplete, module with scores cannot be deleted, course cannot change, splitting a group moves the scores), certificate data, and the endpoint (POST, session, role, token, edit mode, 409, 400 `invalid` / `stale`) |
 | `tests/integration/migration_results_test.php` | the points migration on fresh databases: clean database, earlier groups with points (no row and no history event changes), run twice, the conversion migration missing (stops, changes nothing), the rules after migration |
 | `tests/unit/calendar_test.php` | §16 without a database: group states on their boundaries (starts today, ends today, one-day group, ended yesterday, closed wins) and their words, the month from the address (leap February, December, invalid values), the accepted interval (order, 62 days, ISO only, impossible dates, arrays), inclusive days across month, year, leap day and clock changes, a group as an event (stored dates, links per register, no personal fields) |
 | `tests/integration/calendar_test.php` | §16 on stored data: a group appears in every interval that touches one of its days and in no other, one-day groups, a group from December into January, states for a given day, PHP state = SQL state for every group of the database, calculated and fixed-range groups, trainee count without personal data, legacy groups counted and shown only on request, the frozen copy after the course is renamed, module dates from the stored schedule, the day note, a missing group, the nearest groups of an empty month, 2 queries for any interval and at most 5 for a group (no N+1) |
@@ -649,15 +649,15 @@ Regression coverage: `tests/integration/course_change_test.php`.
 
 ## 15. Points per module ("Pikët sipas moduleve")
 
-A trainee's result is no longer one number typed by hand. Points are entered **per module**
-and the final result is calculated from them. Both registers work the same way; they differ
-only in which modules a group has (§15.2).
+For a ready course, points are entered **per module** and the final result is calculated
+from them. Draft courses support a controlled manual fallback. The persistent enrollment,
+result modes and exam ownership introduced on 2026-10-09 are specified in §17.
 
 ### 15.1 Rules
 
 | Rule | Detail |
 |---|---|
-| Source of truth | `enrollment_module_scores`: one row per trainee in a group × module, `score DECIMAL(5,2)`, 0–100, at most two decimals (the precision `final_score` always had). No row = no points: **empty is not 0**, and 0 is a valid score |
+| Source of truth | `enrollment_module_scores`: one row per persistent enrollment × source module, 0–100, at most two meaningful decimals. Storage uses `DECIMAL(13,10)` with a precision CHECK so invalid extra decimals are rejected before two-place rounding. No row = no points: **empty is not 0**, and 0 is a valid score |
 | Final result | the average of the module scores **only when every module of the group has a score**; otherwise there is no result ("3 nga 5 module") — never an average of the entered modules and never a missing module counted as 0 |
 | Rounding | exact integer arithmetic on hundredths; the result is stored with two decimals, half up (`qta_results_round_avg`); the page shows it without trailing zeros ("84", "83,33", "80,1") |
 | Stored result | `course_group_students.final_score` keeps the official result, so every existing reader (lists, "me pikë" counters, trainee card, dashboards, agency pages, exports, procesverbal, public stats) needs no change. It is **derived data**: only the results service writes it, in the same transaction as the scores (`@qta_results_sync = 1`); the database refuses every other write (`trg_cgs_results_bu`), in both registers |
@@ -712,7 +712,7 @@ closes the window and puts the focus on that exam date.
 
 `qta_results_enrollment($pdo, $groupId, $studentId)` returns the trainee, the course, the group
 with the exam date, every module in order with its score (or `null`) and the result
-(`source` = `modules` | `legacy` | `none`, `complete`, `final`, `legacy_final`) — no extra
+(`source` = `modules` | `manual` | `legacy` | `none`, `complete`, `final`, `legacy_final`) — no extra
 queries in the caller. `qta_results_sheet()` gives the same for a whole group.
 
 ### 15.6 Code map
@@ -866,3 +866,99 @@ dialog; closing it replaces the address instead of leaving the page.
 | Menu and active item | `app/shared/app_ui.php` |
 | Help | `app/shared/help_topics.php` (`calendar`) |
 | Tests | `tests/unit/calendar_test.php`, `tests/integration/calendar_test.php`, `tests/integration/calendar_http_test.php` (§11) |
+
+## 17. Persistent course enrollment (2026-10-09)
+
+`student_course_plans` is the canonical enrollment, with an immutable student/course
+identity and the existing unique student/course key. Assignment keeps its ID. Removing
+a membership, including deleting a group, returns it to `planned` and keeps its period,
+exam, normalized scores and provenance. Cancellation changes status instead of deleting
+history. Course replacement retires the old enrollment as `cancelled` and creates a new
+identity; it is blocked by module, manual or legacy result provenance.
+
+### 17.1 Authority and lifecycle
+
+| Data | Authority |
+|---|---|
+| Individual course start/end | `student_course_plans.start_date/end_date`; historical period of this trainee in this course |
+| Operational group start/end | `course_groups.start_date/end_date`; schedule boundaries used by calendars, allocation and group documents |
+| Exam while assigned | `course_group_students.exam_date`, independent for each trainee |
+| Exam before assignment/after removal | `student_course_plans.exam_date`; moved atomically into/out of the membership, cleared on the enrollment while assigned |
+| Module scores | `enrollment_module_scores`, PK `(enrollment_id,module_id)`; nullable `group_id` is a compatibility projection |
+| Pregroup module identity | `enrollment_result_modules`: frozen source IDs, order, titles and hours, referenced by a composite FK from scores |
+| Official result while assigned | guarded `course_group_students.final_score` projection, written by the results service |
+| Capacity | membership rows; `group_enrollment_capacity` is a trigger-maintained atomic counter for the DB guard, never a separate enrollment authority |
+
+No active reader falls back to `course_groups.exam_date`. That column is legacy-only:
+the migration copies it into missing individual exam dates once. Re-execution cannot
+restore an exam deliberately cleared later. Existing individual exams, final results,
+legacy results, module scores, AMZË, QR tokens and group IDs are preserved.
+
+### 17.2 Results
+
+- `modules`: ready curriculum; exact integer hundredths, 0–100, maximum two meaningful
+  decimals, blank is missing, zero is valid. The official average exists only when every
+  required module has a score, rounded half up by the existing results engine.
+- `manual`: controlled fallback when `qta_course_check()` says the curriculum is draft
+  or incomplete. `manual_final_score` is distinct from pre-migration legacy results.
+- `legacy`: a result inherited from before module scoring; existing restoration rules
+  and `legacy_final_score` remain intact.
+- `none`: no official result. Partial modules have no official average.
+
+A manual result stays manual after curriculum completion or assignment. Explicit
+conversion asks for confirmation, retains `manual_final_score` as provenance and changes
+the official mode to modules even when all cells are blank. It never distributes a final
+score across modules. A scheduled group's frozen source IDs, order, titles and hours must
+match scored pregroup modules; mismatches are refused without title-based guessing.
+Legacy groups keep their existing current-course module policy.
+
+Any new manual/module score requires an individual exam on or after the individual end
+and effective group end. An invalid exam is never moved automatically. The exam in new
+group creation is a batch input for initial members; an empty group stores no exam.
+
+### 17.3 Reconciliation and concurrency
+
+`app/shared/enrollments.php` owns creation/editing, assignment, candidates, exact-date
+reuse/create, bulk preflight, group-period review and course replacement. Endpoints own
+staff authorization, edit mode and CSRF. Student creation and all course details save in
+one transaction after the wizard review. Inline course selection uses the same editor.
+
+An assignment mismatch returns `enrollment_dates_conflict` with the enrollment, target,
+capacity, baseline and valid candidates. Its three choices are:
+
+1. Adopt group dates, with the document/certificate warning, explicit acceptance and
+   exam revalidation. There is no reliable certificate-issued flag; a QR token is not
+   treated as evidence of issuance.
+2. Keep trainee dates: reuse the first deterministic valid same-course exact-period
+   nonfull group, otherwise create through `qta_lg_create` and the real fixed-range
+   engine (readiness, allocation, frozen curriculum and maximum 8 hours/day).
+3. Compare suggested same-course nonfull valid groups, ranked by exact boundaries,
+   containment, total boundary distance, operational state and ID. Selecting different
+   boundaries returns to explicit adoption.
+
+All writes re-read under locks. The course lock serializes exact-period creation; the
+group lock and current membership reads protect service capacity. DB triggers update
+the capacity counter conditionally and prevent 11 members even under a stale repeatable
+read snapshot. Stale conflict decisions are rejected. Bulk assignment preflights every
+trainee under savepoints, checks aggregate available capacity, and commits all or none.
+Every period-changing group path requires a reviewed enrollment-impact baseline; `force`
+alone never reconciles individual dates. Exams are checked before committing the change.
+
+### 17.4 Reports, audit and verification
+
+Student cards, trainee exports, agency registers, QKL reports and trainee dashboards read
+individual boundaries, falling back to operational boundaries only for legacy missing
+dates. Calendars and group schedule/attendance documents retain operational dates.
+`qta_enrollment_snapshot($pdo,$studentId,$courseId)` returns the complete enrollment,
+course, group, individual exam, module set, scores, result source and optimistic baseline
+for future certificates. `qta_results_enrollment()` also includes individual dates and
+manual provenance. No certificate generator or issuance state is introduced here.
+
+Audit fields include individual dates, exam, source, manual provenance, source module,
+assignment and split/removal projections. Reconciliation records the previous and new
+period with the target group in the enrollment note and field history.
+
+Regression coverage: `tests/unit/enrollment_test.php`,
+`tests/integration/enrollment_test.php`, `enrollment_concurrency_test.php`,
+`migration_enrollment_test.php`, plus adapted group, conversion, result, report and HTTP
+tests. Run integration tests only with `QTA_TEST_DB=1` and a disposable migrated schema.

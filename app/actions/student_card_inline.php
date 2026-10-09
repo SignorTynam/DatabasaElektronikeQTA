@@ -422,7 +422,7 @@ try {
         throw new RuntimeException('Plani nuk u gjet ose s’është më “planned”.');
       }
 
-      $del = $pdo->prepare("DELETE FROM student_course_plans WHERE id=:id LIMIT 1");
+      $del = $pdo->prepare("UPDATE student_course_plans SET status='cancelled' WHERE id=:id LIMIT 1");
       $del->execute([':id'=>$scp_id]);
 
       if (function_exists('qta_audit')) {

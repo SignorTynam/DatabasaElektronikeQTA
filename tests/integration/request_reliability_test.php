@@ -98,6 +98,9 @@ try {
     t_case('Reliability HTTP: validim pas auto-krijimit rikthen gjithë DB work', function () use ($rrPdo, $rrBase, $rrSid, $rrGroup, $rrCourse, $rrMap) {
         $rrPdo->prepare("INSERT INTO course_groups(course_id,start_date,end_date,is_completed) VALUES(?,'2095-02-01','2095-02-05',0)")->execute([$rrCourse]);
         $other = (int)$rrPdo->lastInsertId();
+        // Same-period group: this case tests occupied membership and rollback,
+        // independently of the explicit date-reconciliation policy.
+        $rrPdo->prepare("UPDATE course_groups SET start_date='2095-01-01',end_date='2095-01-05' WHERE id=?")->execute([$other]);
         $rrPdo->prepare('INSERT INTO course_group_students(group_id,student_id) VALUES(?,?)')->execute([$other, $rrMap[7982]]);
         $before = rr_counts($rrPdo);
         rr_http($rrBase . '/pages/groups.php', $rrSid, ['csrf' => 'rr-csrf', 'action' => 'edit_members', 'group_id' => $rrGroup, 'amze_spec_members' => '7977-7982,999999998']);

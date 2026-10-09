@@ -93,8 +93,8 @@ $sql = "
     p.birth_date, p.birth_place,
     TIMESTAMPDIFF(YEAR, p.birth_date, CURDATE()) AS age,
     el.code AS edu_code, el.label AS edu_label,
-    lastg.group_id, cg.start_date, cg.end_date,
-    COALESCE(cgs.exam_date, cg.exam_date) AS exam_date,
+    lastg.group_id, COALESCE((SELECT e.start_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1),cg.start_date) AS start_date, COALESCE((SELECT e.end_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1),cg.end_date) AS end_date,
+    cgs.exam_date AS exam_date,
     cgs.final_score
   FROM agency_students asg
   JOIN students s ON s.id = asg.student_id

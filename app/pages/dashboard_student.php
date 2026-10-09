@@ -80,7 +80,7 @@ $groups = [];
 if ($studentIds) {
   $ph = implode(',', array_fill(0, count($studentIds), '?'));
   $G = $pdo->prepare("
-    SELECT cg.id AS group_id, cg.start_date, cg.end_date,
+    SELECT cg.id AS group_id, COALESCE((SELECT e.start_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1),cg.start_date) AS start_date, COALESCE((SELECT e.end_date FROM student_course_plans e WHERE e.student_id=cgs.student_id AND e.group_id=cgs.group_id LIMIT 1),cg.end_date) AS end_date,
            c.code AS course_code, c.name AS course_name, c.hours,
            cgs.final_score, cgs.exam_date AS my_exam,
            cgs.student_id, s.nr_amze

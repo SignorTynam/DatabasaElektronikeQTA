@@ -116,7 +116,7 @@ qta_curriculum_add_topic($pdo, $mid, 'Tema e dytë', 8);
 $start = '2092-03-03';
 while (qta_sched_is_sunday($start)) $start = qta_sched_next_day($start);
 $calhGroup = (int)qta_lg_create($pdo, ['course_id' => $calhCourse, 'start_date' => $start, 'daily_hours' => 8,
-  'amze_spec' => $calhAmze . '-' . ($calhAmze + 1)])['groups'][0]['group_id'];
+  'exam_date' => '2199-12-31', 'amze_spec' => $calhAmze . '-' . ($calhAmze + 1)])['groups'][0]['group_id'];
 $pdo->prepare('UPDATE persons p JOIN students s ON s.person_id = p.id SET p.first_name = ?, p.last_name = ?, p.personal_number = ? WHERE CAST(s.nr_amze AS UNSIGNED) = ?')
     ->execute(['Arta', 'Kalendari', 'J' . substr((string)$calhAmze, 0, 8) . 'X', $calhAmze]);
 /* Grup i regjistrit të vjetër në të njëjtin muaj. */

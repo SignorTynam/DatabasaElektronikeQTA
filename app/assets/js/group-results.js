@@ -44,6 +44,7 @@
   var saving = false;
   var pendingFocus = null;
   var goTo = null;        // pas mbylljes: fokusi te një fushë e faqes (data e provimit)
+  var enrollmentSuspended = false, enrollmentRefresh = false, enrollmentOpener = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -120,6 +121,7 @@
       else if (c.h !== null) { scored++; sum += c.h; }
     });
     var legacy = fromDb(m.legacy);
+    if (!scored && m.result_source === 'manual') return {mode:'manual',required:req,scored:0,final:fromDb(m.manual),legacy:legacy};
     if (bad) return { mode: 'invalid', required: req, scored: scored, legacy: legacy };
     if (!scored) return { mode: legacy !== null ? 'legacy' : 'none', required: req, scored: 0, final: legacy, legacy: legacy };
     var complete = req > 0 && scored === req;
@@ -168,6 +170,7 @@
           + 'Kur u vendos pikë moduli, rezultati i tyre llogaritet nga modulet.'));
       }
     }
+    if(S.edit && S.members.length) html.push(notice('bi-person-vcard','Periudha, provimi dhe prejardhja e rezultatit ruhen për secilin kursant.',S.members.map(function(m){return '<button type="button" class="btn btn-secondary btn-sm" data-enrollment-open data-student="'+m.id+'" data-course="'+g.course_id+'">'+esc(who(m))+' · Të dhënat e kursit</button>';}).join(' ')));
     el.notices.innerHTML = html.join('');
     el.notices.hidden = !html.length;
   }
@@ -216,6 +219,8 @@
         title = 'Mesatarja e ' + plural(r.scored, 'modulit', 'moduleve') + ' me pikë: ' + label(r.partial) + '. Rezultati del kur çdo modul ka pikë.';
       }
       if (r.legacy !== null) subs.push('më parë ' + label(r.legacy));
+    } else if (r.mode === 'manual') {
+      cls='is-legacy'; main=label(r.final); subs.push('rezultat manual');
     } else if (r.mode === 'legacy') {
       cls = 'is-legacy'; main = label(r.final); subs.push('pikë të vjetra');
       title = 'Pikë të shkruara para pikëve sipas moduleve. Nuk ndahen nëpër module.';
@@ -272,7 +277,7 @@
       el.body.innerHTML = emptyHtml('bi-people', 'Grupi nuk ka ende kursantë', 'Shto kursantët e grupit, pastaj vendos pikët e tyre sipas moduleve.');
     } else if (!S.modules.length) {
       el.body.innerHTML = emptyHtml('bi-collection', 'Kursi nuk ka module',
-        'Pikët vendosen sipas moduleve të kursit "' + g.course + '", por ai nuk ka ende module. Shto modulet te katalogu i kurseve, pastaj kthehu te pikët.',
+        'Struktura e moduleve të këtij kursi nuk është përfunduar ende. Hap të dhënat individuale të kursantit për rezultatin manual dhe datën e provimit.',
         '<a class="btn btn-primary" href="course.php?id=' + encodeURIComponent(g.course_id) + '"><i class="bi bi-diagram-3" aria-hidden="true"></i>Hap kursin</a>');
     } else {
       el.body.innerHTML = tableHtml();
@@ -591,6 +596,11 @@
 
   /* ------------------------------------------------ Hapja dhe mbyllja */
   modalEl.addEventListener('show.bs.modal', function (ev) {
+    if(enrollmentSuspended) {
+      enrollmentSuspended=false;
+      if(enrollmentRefresh && S) start(S.gid,Number(enrollmentRefresh),el.eyebrow.textContent);
+      enrollmentRefresh=false; return;
+    }
     var t = ev.relatedTarget;
     var gid = t && t.getAttribute ? parseInt(t.getAttribute('data-results-group') || '0', 10) : 0;
     if (!gid) { ev.preventDefault(); return; }
@@ -602,6 +612,7 @@
     if (S) doFocus();
   });
   modalEl.addEventListener('hide.bs.modal', function (ev) {
+    if(enrollmentSuspended) return;
     if (closing || !S || saving) {
       if (saving) ev.preventDefault();
       return;
@@ -621,6 +632,7 @@
   });
   modalEl.addEventListener('hidden.bs.modal', function () {
     shown = false;
+    if(enrollmentSuspended) return;
     closing = false;
     S = null;
     seq++;
@@ -640,6 +652,19 @@
       }
     }
   });
+  window.QtaResultsEnrollment={
+    suspend:function(){
+      if(!S || saving || counts().dirty) {
+        window.qtaToast('Ruaj ose zhbëj ndryshimet e pikëve përpara hapjes së të dhënave individuale.','warning');return false;
+      }
+      enrollmentSuspended=true;enrollmentOpener=modalEl._qtaOpener;return true;
+    },
+    resume:function(trigger,changed){
+      enrollmentRefresh=changed && trigger?Number(trigger.dataset.student):false;
+      window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      modalEl._qtaOpener=enrollmentOpener;
+    }
+  };
   window.addEventListener('beforeunload', function (e) {
     if (S && shown && counts().dirty) { e.preventDefault(); e.returnValue = ''; }
   });

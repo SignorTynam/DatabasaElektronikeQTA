@@ -10,10 +10,18 @@ datën; ekzekutohen sipas radhës së datës.
 | `2026-09-28-piket-sipas-moduleve.sql` | **Pikët sipas moduleve**: tabela `enrollment_module_scores` (një rresht për kursant në grup × modul, 0–100), kolona `course_group_students.legacy_final_score` (bosh; mbushet vetëm kur pikët e vjetra zëvendësohen nga modulet), rregullat e bazës (rezultati përfundimtar nuk shkruhet më me dorë; moduli duhet t'i përkasë grupit; data e provimit mbetet kur ka pikë; kursi i grupit dhe moduli me pikë të regjistrit të vjetër nuk ndryshojnë) dhe historiku i pikëve. Nuk ndryshon asnjë rresht ekzistues. Përshkrimi: `docs/domain/COURSES-AND-SCHEDULES.md` §15. |
 | `2026-10-07-orari-me-periudhe-te-percaktuar.sql` | E bën `fixed_range` një mënyrë të përgjithshme për grupet e reja dhe të konvertuara; lejon korrigjimin e datave operative, por lë të pandryshueshme datat burimore te `group_conversions`. Përditëson auditimin e versionit/rindërtimit dhe të rreshtave të planit. Nuk ndryshon asnjë rresht ekzistues. |
 | `2026-10-08-ndryshimi-i-kursit-te-grupit.sql` | Lejon ndërrimin e kursit vetëm përmes rindërtimit atomik të orarit dhe vetëm pa rezultate të regjistruara. Ruhet mbrojtja e modelit dhe prejardhjes së konvertimit. Nuk ndryshon rreshta ekzistues. |
+| `2026-10-09-student-course-enrollment-details.sql` | E evoluon `student_course_plans` në regjistrim persistent: datat individuale, provimi para grupit, rezultat manual i dallueshëm nga legacy, identitet normal i pikëve para/pas grupit, kopja e moduleve, pajtimi i periudhave, ruajtja e rezultateve pas heqjes, kapaciteti atomik dhe historiku. Shih §17 të dokumentit të domain-it. |
 
 ## Radha
 
-Migrimi më i ri: `2026-10-08-ndryshimi-i-kursit-te-grupit.sql`, pas `2026-10-07`.
+Migrimi më i ri: `2026-10-09-student-course-enrollment-details.sql`, pas `2026-10-08`.
+Ekzekutoje gjatë mirëmbajtjes, bashkë me publikimin e kodit të regjistrimeve.
+DDL-ja e MariaDB/MySQL nuk është një transaksion i vetëm; kopja rezervë mbetet e nevojshme.
+Migrimi kontrollon paraprakisht migrimet e mëparshme, anëtarësitë e dyfishta,
+grupet mbi 10, provimet historike të pavlefshme dhe pikët pa modul burimor.
+Ndalimi kërkon verifikimin e të dhënave, jo fshirje ose shpërndarje automatike të pikëve.
+
+Migrimi i mëparshëm `2026-10-08`, pas `2026-10-07`,
 Lejon ndërrimin e kursit të një grupi me orar vetëm nga shërbimi që rindërton
 kopjen e moduleve/temave dhe planin në një transaksion. Refuzon ndryshimin kur
 ka pikë moduli, rezultat përfundimtar ose pikë të vjetra. Nuk ndryshon të dhëna
@@ -21,6 +29,7 @@ ekzistuese, modelin e grupit apo prejardhjen e konvertimit; mund të ekzekutohet
 
 ```bash
 mysql -u root -p qta_db < db/migrations/2026-10-08-ndryshimi-i-kursit-te-grupit.sql
+mysql -u root -p qta_db < db/migrations/2026-10-09-student-course-enrollment-details.sql
 ```
 
 Mos riekzekuto migrime më të vjetra pas këtij pa riekzekutuar edhe këtë: ato
@@ -47,6 +56,8 @@ rikrijojnë rregullin e mëparshëm që bllokonte çdo ndryshim kursi.
    mysql -u root -p qta_db < db/migrations/2026-09-28-konvertimi-i-grupeve.sql
    mysql -u root -p qta_db < db/migrations/2026-09-28-piket-sipas-moduleve.sql
    mysql -u root -p qta_db < db/migrations/2026-10-07-orari-me-periudhe-te-percaktuar.sql
+  mysql -u root -p qta_db < db/migrations/2026-10-08-ndryshimi-i-kursit-te-grupit.sql
+  mysql -u root -p qta_db < db/migrations/2026-10-09-student-course-enrollment-details.sql
    ```
 
    Në XAMPP: `C:\xampp\mysql\bin\mysql.exe`. Në phpMyAdmin: zgjidh databazën, skeda
@@ -130,14 +141,60 @@ rikrijojnë rregullin e mëparshëm që bllokonte çdo ndryshim kursi.
      AND TRIGGER_NAME IN ('trg_audit_gfd_ai','trg_audit_gfd_au','trg_audit_gfd_ad','trg_audit_gs_au');
    ```
 
+7. Kontrollo pas `2026-10-09-student-course-enrollment-details`:
+
+   ```sql
+   -- Çdo anëtarësi ka identitet persistent dhe periudhë individuale.
+   SELECT m.group_id,m.student_id FROM course_group_students m
+   JOIN course_groups g ON g.id=m.group_id
+   LEFT JOIN student_course_plans e ON e.student_id=m.student_id AND e.course_id=g.course_id
+   WHERE e.id IS NULL OR e.group_id<>g.id OR e.status<>'assigned'
+      OR e.start_date IS NULL OR e.end_date IS NULL; -- pritet: bosh
+
+   -- Projekcioni i kapacitetit duhet të jetë i barabartë me anëtarësitë reale.
+   SELECT g.id,c.members,COUNT(m.student_id) AS actual_members
+   FROM course_groups g JOIN group_enrollment_capacity c ON c.group_id=g.id
+   LEFT JOIN course_group_students m ON m.group_id=g.id
+   GROUP BY g.id HAVING c.members<>actual_members OR actual_members>10; -- bosh
+
+   -- Pikët kanë enrollment, kursant dhe modul burimor të vlefshëm.
+   SELECT s.enrollment_id,s.module_id FROM enrollment_module_scores s
+   LEFT JOIN student_course_plans e ON e.id=s.enrollment_id AND e.student_id=s.student_id
+   LEFT JOIN enrollment_result_modules r ON r.enrollment_id=s.enrollment_id AND r.module_id=s.module_id
+   WHERE e.id IS NULL OR r.module_id IS NULL; -- bosh
+   SHOW INDEX FROM course_groups WHERE Key_name='idx_cg_course_period';
+   SHOW CREATE TABLE enrollment_module_scores;
+   ```
+
+   Krahasoni kopjen rezervë me gjendjen pas migrimit për `final_score`,
+   `legacy_final_score`, pikët e moduleve, AMZË, group IDs dhe QR tokens.
+   Asnjëra nuk ndryshon. Datat individuale inicializohen nga periudha historike
+   e grupit vetëm kur mungojnë. Pikët marrin FK drejt enrollment-it dhe kopjes
+   së moduleve sipas ID-së burimore; nuk krijohen pikë të reja.
+
+   `course_groups.exam_date` ruhet vetëm për compatibility historike. Kopjimi te
+   anëtarësitë pa provim bëhet vetëm në kalimin e parë; provimet individuale
+   ekzistuese nuk mbishkruhen. Trigger-i `trg_cgs_enrollment_bi` shënon kalimin,
+   që riekzekutimi të mos ringjallë një provim të pastruar nga përdoruesi.
+   Pikët ruhen me saktësi teknike 10 shifra dhjetore dhe CHECK `score=ROUND(score,2)`:
+   kjo refuzon precision shtesë përpara rrumbullakimit në dy shifra; UI dhe
+   shërbimet vazhdojnë të përdorin dy shifra. Rezultati manual është i veçantë
+   nga legacy dhe mbetet si prejardhje pas kalimit të shprehur te modulet.
+
 ## Siguria e migrimit
 
 - Mund të ekzekutohen disa herë: çdo hap kontrollon nëse është bërë (`CREATE TABLE IF NOT
   EXISTS`, kolona/indeksi/FK/CHECK kontrollohen te `information_schema`, trigger-at
   rikrijohen). Një ekzekutim i dytë i `2026-09-28` lë të njëjtën skemë dhe të njëjtat të dhëna.
-- Nuk fshijnë, nuk rishkruajnë dhe nuk zhvendosin asnjë rresht ekzistues; nuk krijojnë orar
+- Migrimet para `2026-10-09` nuk fshijnë, nuk rishkruajnë dhe nuk zhvendosin asnjë rresht ekzistues; nuk krijojnë orar
   për grupet ekzistuese dhe nuk konvertojnë asnjë grup; nuk shtojnë asgjë në historik gjatë
   migrimit. `2026-09-28` i jep çdo orari ekzistues llojin `calculated`, pa i ndryshuar vlerat.
+- `2026-10-09` bën vetëm backfill-in e dokumentuar më sipër. Migrimi ruan
+  identitetet dhe rezultatet; ndalet për të dhëna të papajtueshme. Mos e ekzekuto
+  me trafik shkrimi aktiv: DDL, rindërtimi i numëruesit dhe zëvendësimi i
+  trigger-ave kërkojnë një dritare mirëmbajtjeje. Testohet nga
+  `tests/integration/migration_enrollment_test.php`, në bazë të pastër,
+  me të dhëna historike dhe në ekzekutimin e dytë.
 - `2026-10-07` rikrijon vetëm trigger-at përkatës. Është idempotent, nuk prek rreshtat
   ekzistues dhe nuk ndryshon `group_conversions.source_start_date/source_end_date`.
 - `2026-09-28` kontrollon **para çdo ndryshimi** dhe ndalet pa ndryshuar asgjë kur:

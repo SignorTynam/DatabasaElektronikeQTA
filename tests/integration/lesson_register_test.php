@@ -36,7 +36,7 @@ t_case('Integrimi: regjistri ndjek Listën emërore, orarin e ruajtur dhe kopjen
 
   /* AMZË ku radha si numër ndryshon nga radha si tekst ("100…" < "99…"). */
   $amze = [100000 + $lrBase, 99000 + $lrBase, 99500 + $lrBase];
-  $created = qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '29.09.2026', 'daily_hours' => 5, 'amze_spec' => implode(', ', $amze)]);
+  $created = qta_lg_create($pdo, ['course_id' => $cid, 'start_date' => '29.09.2026', 'daily_hours' => 5, 'exam_date' => '2199-12-31', 'amze_spec' => implode(', ', $amze)]);
   $gid = (int)$created['groups'][0]['group_id'];
 
   $model = qta_lesson_register_build($pdo, $gid, '2026-09-26');

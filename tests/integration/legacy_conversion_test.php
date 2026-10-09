@@ -305,9 +305,9 @@ t_case('Konvertimi — korrigjimet e mëvonshme dhe ndryshimi i periudhës opera
   /* Periudha operative ndryshon; faktet burimore të konvertimit jo. */
   $source = $pdo->query('SELECT source_start_date, source_end_date FROM group_conversions WHERE group_id = ' . $cvGroup)->fetch(PDO::FETCH_ASSOC);
   $currentRev = (int)qta_lg_find($pdo, $cvGroup)['revision'];
-  $range = qta_lg_change($pdo, $cvGroup,
-    ['type' => 'fixed_range_settings', 'start_date' => '30.09.2026', 'end_date' => '11.10.2026'],
-    ['revision' => $currentRev, 'today' => $today]);
+  $change=['type'=>'fixed_range_settings','start_date'=>'30.09.2026','end_date'=>'11.10.2026'];
+  $conflict=t_throws(QtaUserError::class,fn()=>qta_lg_change($pdo,$cvGroup,$change,['revision'=>$currentRev,'today'=>$today]),'individual periods require review');
+  $range=qta_lg_change($pdo,$cvGroup,$change,['revision'=>$currentRev,'today'=>$today,'enrollment_resolution'=>'adopt_group_dates','enrollment_baseline'=>$conflict->data['details']['baseline']]);
   $g = qta_lg_find($pdo, $cvGroup);
   t_eq(['2026-09-30', '2026-10-11'], [$g['start_date'], $g['end_date']], 'datat operative ndryshojnë');
   t_eq($source, $pdo->query('SELECT source_start_date, source_end_date FROM group_conversions WHERE group_id = ' . $cvGroup)->fetch(PDO::FETCH_ASSOC),
@@ -324,8 +324,7 @@ t_case('Konvertimi — rregullat e bazës: lloji dhe prejardhja historike', func
   t_throws(PDOException::class, fn() => $pdo->exec("UPDATE course_groups SET model = 'legacy' WHERE id = " . $cvGroup), 'scheduled → legacy refuzohet', 'nuk mund të ndryshohet');
   $pdo->beginTransaction();
   try {
-    $pdo->exec("UPDATE course_groups SET start_date = '2026-09-29', end_date = '2026-10-12' WHERE id = " . $cvGroup);
-    t_ok(true, 'baza lejon korrigjimin e datave operative të fixed_range');
+    t_throws(PDOException::class,fn()=>$pdo->exec("UPDATE course_groups SET start_date = '2026-09-29', end_date = '2026-10-12' WHERE id = " . $cvGroup), 'baza kërkon pajtimin e datave individuale');
   } finally {
     $pdo->rollBack();
   }
@@ -409,13 +408,12 @@ t_case('Konvertimi — pengesat: kursi, kapaciteti dhe kursantët', function () 
   $ga = cv_legacy_group($pdo, $cvCourse, '2026-12-01', '2026-12-12', [$cvAmze + 80, $cvAmze + 81]);
   $gb = cv_legacy_group($pdo, $cvCourse, '2026-12-01', '2026-12-12', [$cvAmze + 82]);
   $sid = (int)$pdo->query('SELECT id FROM students WHERE CAST(nr_amze AS UNSIGNED) = ' . ($cvAmze + 81))->fetchColumn();
-  $pdo->prepare('UPDATE course_group_students cgs JOIN students s ON s.id = cgs.student_id SET cgs.student_id = ? WHERE cgs.group_id = ? AND CAST(s.nr_amze AS UNSIGNED) = ?')->execute([$sid, $gb, $cvAmze + 82]);
+  $before=cv_group_print($pdo,$ga).cv_group_print($pdo,$gb);
+  t_throws(PDOException::class,fn()=>$pdo->prepare('UPDATE course_group_students cgs JOIN students s ON s.id=cgs.student_id SET cgs.student_id=? WHERE cgs.group_id=? AND CAST(s.nr_amze AS UNSIGNED)=?')->execute([$sid,$gb,$cvAmze+82]),'identiteti i anëtarësisë nuk ndryshon');
+  t_eq($before,cv_group_print($pdo,$ga).cv_group_print($pdo,$gb),'baza refuzon gjendjen e dëmtuar para konvertimit');
   $v = qta_conv_view($pdo, $ga);
-  t_eq(['problems', 'in_other_group'], [$v['status']['key'], $v['pre']['blockers'][0]['code']], 'kursant edhe në grup tjetër: Ka probleme');
-  t_ok(str_contains($v['pre']['blockers'][0]['text'], (string)($cvAmze + 81)) && str_contains($v['pre']['blockers'][0]['text'], 'Grupi #' . $gb), 'mesazhi thotë kush dhe ku');
-  qta_conv_save($pdo, $ga, qta_conv_plan_for_client($v['plan']), 0, $v['fingerprint'], $cvAdmin);
   $before = cv_group_print($pdo, $ga) . cv_group_print($pdo, $gb);
-  t_throws(QtaUserError::class, fn() => qta_conv_apply($pdo, $ga, 1, $v['fingerprint'], $cvAdmin), 'konvertimi refuzohet', 'vetëm në një grup');
+  t_throws(QtaUserError::class, fn() => qta_conv_apply($pdo, $ga, 999, $v['fingerprint'], $cvAdmin), 'versioni i panjohur i draftit refuzohet');
   t_eq($before, cv_group_print($pdo, $ga) . cv_group_print($pdo, $gb), 'asnjë kursant nuk u hoq, nuk u lëviz');
 
   /* I njëjti person me dy numra amze në të njëjtin kurs. */
@@ -430,19 +428,18 @@ t_case('Konvertimi — pengesat: kursi, kapaciteti dhe kursantët', function () 
 
   /* Provim para mbarimit (si te të dhënat e vjetra, i shkruar drejtpërdrejt) dhe 11 kursantë. */
   $ge = cv_legacy_group($pdo, $cvCourse, '2027-03-01', '2027-03-12', range($cvAmze + 100, $cvAmze + 108));
-  $pdo->prepare('INSERT INTO course_group_students (group_id, student_id, exam_date) VALUES (?, ?, ?)')
-      ->execute([$ge, qta_amze_ensure_student($pdo, $cvAmze + 109), '2027-03-05']);
+  $sid=qta_amze_ensure_student($pdo,$cvAmze+109);
+  t_throws(PDOException::class,fn()=>$pdo->prepare('INSERT INTO course_group_students (group_id, student_id, exam_date) VALUES (?, ?, ?)')->execute([$ge,$sid,'2027-03-05']),'provimi para mbarimit refuzohet në DB');
+  $pdo->prepare('INSERT INTO course_group_students(group_id,student_id,exam_date) VALUES(?,?,?)')->execute([$ge,$sid,'2027-03-12']);
   $gf = cv_legacy_group($pdo, $cvCourse, '2027-03-01', '2027-03-12', [$cvAmze + 110]);
-  $pdo->prepare('UPDATE course_group_students SET group_id = ? WHERE group_id = ?')->execute([$ge, $gf]);
-  $codes = array_column(qta_conv_view($pdo, $ge)['pre']['blockers'], 'code');
-  t_ok(in_array('exam_before_end', $codes, true), 'provim para mbarimit: pengesë');
-  t_ok(in_array('too_many', $codes, true), '11 kursantë: pengesë');
+  t_throws(PDOException::class,fn()=>$pdo->prepare('UPDATE course_group_students SET group_id = ? WHERE group_id = ?')->execute([$ge,$gf]),'anëtari i njëmbëdhjetë refuzohet në DB');
+  t_eq(10,cv_count($pdo,'SELECT COUNT(*) FROM course_group_students WHERE group_id=?',[$ge]),'grupi mbetet me dhjetë anëtarë');
 
   /* Lista: gjendjet dhe numrat e çipave. */
   $list = qta_conv_list($pdo, ['q' => $cvTag, 'course_id' => '', 'status' => '']);
   $byId = [];
   foreach ($list['rows'] as $r) $byId[(int)$r['id']] = $r['status']['key'];
-  t_eq(['problems', 'impossible', 'problems'], [$byId[$g1] ?? null, $byId[$g2] ?? null, $byId[$ga] ?? null], 'lista: të njëjtat gjendje si faqja');
+  t_eq(['problems', 'impossible', qta_conv_view($pdo,$ga)['status']['key']], [$byId[$g1] ?? null, $byId[$g2] ?? null, $byId[$ga] ?? null], 'lista: të njëjtat gjendje si faqja');
   t_eq(count($list['rows']), $list['counts'][''], 'numri i të gjithave');
   t_eq($list['counts']['impossible'], count(qta_conv_list($pdo, ['q' => $cvTag, 'course_id' => '', 'status' => ''], 'impossible')['rows']), 'çipi filtron sipas gjendjes');
 });

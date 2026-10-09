@@ -4,10 +4,17 @@ require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../shared/group_members.php';
+require_once __DIR__ . '/../shared/enrollments.php';
+require_once __DIR__ . '/../shared/staff_guard.php';
 
 $pdo = getPDO();
 require_once __DIR__ . '/inc/audit_bootstrap.php';
 qta_audit_attach($pdo, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null);
+$QTA_GROUP_JSON=$_SERVER['REQUEST_METHOD']==='POST' && str_contains($_SERVER['HTTP_ACCEPT']??'','application/json');
+if($QTA_GROUP_JSON) {
+  $_POST=qta_json_input();
+  qta_json_require_staff($pdo);qta_json_require_csrf($_POST);qta_json_require_edit_mode();
+}
 
 /* ------------------------------
    Guard: admin/editor i loguar
@@ -219,6 +226,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         ]);
 
         qta_session_put(['flash_ok'], 'Grupi u krijua pa kursantë. Shtoji kur të jenë gati.');
+        if($QTA_GROUP_JSON) qta_json_out(['ok'=>true,'redirect'=>'groups.php']);
         header('Location: groups.php');
         exit;
       }
@@ -271,11 +279,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       // ---------------------------------------------------
       // Fshi "planned" për këta studentë përpara regjistrimit në grupe
       // ---------------------------------------------------
-      $pdo->prepare("
-        DELETE FROM student_course_plans
-        WHERE status = 'planned'
-          AND student_id IN ($phIds)
-      ")->execute($studentIds);
+      /* Enrollment is retained during assignment. */
 
       // ---------------------------------------------------
       // Ndarja inteligjente në grupe (kapacitet 10, duke ruajtur rendin e AMZË-ve)
@@ -312,6 +316,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
 
 
+      $target=['id'=>0,'course_id'=>$course_id,'start_date'=>$start_date,'end_date'=>$end_date,'model'=>'legacy','members'=>0];
+      foreach($studentIds as $sid) qta_enrollment_prepare_new_group($pdo,(int)$sid,$target,(array)($_POST['enrollment_resolutions']??[]));
       $created = []; // [[group_id=>.., count=>.., amze_min=>.., amze_max=>..], ...]
       foreach ($chunks as $chunkInfo) {
         $chunk = $chunkInfo['ids'];
@@ -334,12 +340,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         ]);
         $gid = (int)$pdo->lastInsertId();
 
-        $ins = $pdo->prepare("
-          INSERT INTO course_group_students (group_id, student_id)
-          VALUES (:g,:s)
-        ");
         foreach ($chunk as $sid) {
-          $ins->execute([':g' => $gid, ':s' => $sid]);
+          qta_enrollment_assign($pdo,(int)$sid,$gid,['exam_date'=>$_POST['enrollment_resolutions'][$sid]['exam_date']??null]);
         }
 
         $created[] = [
@@ -383,9 +385,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if ($pdo->inTransaction()) {
         $pdo->rollBack();
       }
+      if($QTA_GROUP_JSON) qta_json_fail($e);
       qta_session_put(['flash_err'], qta_error_message($e));
     }
 
+    if($QTA_GROUP_JSON) qta_json_out(['ok'=>true,'redirect'=>'groups.php']);
     header('Location: groups.php');
     exit;
   }
@@ -456,8 +460,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         }
       }
 
-      $st = $pdo->prepare("UPDATE course_groups SET course_id=:c WHERE id=:g");
-      $st->execute([':c'=>$course_id, ':g'=>$group_id]);
+      qta_enrollment_replace_course($pdo,$group_id,$course_id);
 
       // AUDIT
       qta_audit_event('group.update_course', [
@@ -575,6 +578,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         ]);
 
         qta_session_put(['flash_ok'], 'Të gjithë kursantët u hoqën nga grupi.');
+        if($QTA_GROUP_JSON) qta_json_out(['ok'=>true,'redirect'=>'groups.php']);
         header('Location: groups.php');
         exit;
       }
@@ -659,11 +663,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         // ---------------------------------------------------
         // RREGULL: një AMZË s’mund të jetë njëkohësisht "me modul (plan)" dhe "në grup"
         // ---------------------------------------------------
-        $pdo->prepare("
-          DELETE FROM student_course_plans
-          WHERE status = 'planned'
-            AND student_id IN ($ph)
-        ")->execute($toAdd);
+        /* Enrollment is retained during assignment. */
       }
 
       // Tani kemi targetMap si lista përfundimtare e studentëve të grupit (mund të jenë > 10)
@@ -685,12 +685,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
         // Shto anëtarët e rinj
         if ($toAdd) {
-          $ins = $pdo->prepare("
-            INSERT INTO course_group_students (group_id, student_id)
-            VALUES (:g,:s)
-          ");
           foreach ($toAdd as $sid) {
-            $ins->execute([':g' => $group_id, ':s' => $sid]);
+            qta_enrollment_assign($pdo,(int)$sid,$group_id,(array)($_POST['enrollment_resolutions'][$sid]??[]));
           }
         }
 
@@ -706,6 +702,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         qta_session_put(['flash_ok'], 'Kursantët e grupit u ruajtën.');
       } else {
           // === >10 studentë -> ndahet automatikisht në grupe të balancuara (diff max 1) ===
+          qta_course_find($pdo,$gidCourseId,true);
+          $target=['id'=>0,'course_id'=>$gidCourseId,'start_date'=>$gRowData['start_date'],'end_date'=>$gRowData['end_date'],'model'=>'legacy','members'=>0];
+          foreach($toAdd as $sid) qta_enrollment_prepare_new_group($pdo,(int)$sid,$target,(array)($_POST['enrollment_resolutions']??[]));
 
           // Rendit sipas AMZË
           $amzeList = array_map('intval', array_keys($targetMap));
@@ -800,12 +799,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             ]);
           }
 
-          // Prepared statements: INSERT dhe UPDATE për “zhvendosje”
-          $insMember = $pdo->prepare("
-            INSERT INTO course_group_students (group_id, student_id)
-            VALUES (:g,:s)
-          ");
-
+          // Zhvendosja ruan identitetin e regjistrimit dhe rezultatet.
           $moveMember = $pdo->prepare("
             UPDATE course_group_students
             SET group_id = :newg
@@ -828,7 +822,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                 }
               } else {
                 // student i ri (nuk ishte në këtë grup)
-                $insMember->execute([':g' => $gidUse, ':s' => $sid]);
+                qta_enrollment_assign($pdo,$sid,$gidUse,['exam_date'=>$_POST['enrollment_resolutions'][$sid]['exam_date']??null]);
               }
             }
 
@@ -874,9 +868,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if ($pdo->inTransaction()) {
         $pdo->rollBack();
       }
+      if($QTA_GROUP_JSON) qta_json_fail($e);
       qta_session_put(['flash_err'], qta_error_message($e));
     }
 
+    if($QTA_GROUP_JSON) qta_json_out(['ok'=>true,'redirect'=>'groups.php']);
     header('Location: groups.php');
     exit;
   }
@@ -1433,7 +1429,7 @@ $LF = [
           <span class="confirm-icon is-danger"><i class="bi bi-trash" aria-hidden="true"></i></span>
           <h2 class="modal-title mb-2" id="dgTitle_<?= (int)$gid ?>">Të fshihet Grupi #<?= (int)$gid ?>?</h2>
           <p class="mb-2"><b><?= h((string)$h0['course_name']) ?></b> · <?= h(qta_date($h0['start_date'])) ?> – <?= h(qta_date($h0['end_date'])) ?></p>
-          <p class="text-muted mb-0">Kursantët <b>nuk fshihen</b> — ata mbeten te "Kursantët", pa grup. Fshihen vetëm datat e provimit dhe pikët e ruajtura në këtë grup. Kjo nuk mund të kthehet mbrapsht.</p>
+          <p class="text-muted mb-0">Kursantët mbeten pa grup. Regjistrimi në kurs, datat individuale, provimi dhe pikët ruhen. Fshirja e grupit nuk mund të kthehet mbrapsht.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulo</button>
@@ -1549,7 +1545,7 @@ function notify(type, text, opts={}){
   return window.qtaToast ? window.qtaToast(text, type, opts.title, opts) : null;
 }
 function showMsg(type, text){ notify(type, text); }
-function ask(opts){ return window.qtaConfirm ? window.qtaConfirm(opts) : Promise.resolve(window.confirm(opts.message || opts.title)); }
+function ask(opts){ return window.qtaConfirm(opts); }
 
 /* Mesazhet nga serveri pas ruajtjes (pas ringarkimit) */
 const FLASH = <?= json_encode($flash_js, JSON_UNESCAPED_UNICODE) ?>;
@@ -1588,6 +1584,7 @@ async function postJSON(payload){
   });
   let json = null;
   try{ json = await res.json(); }catch(_){ /* bosh */ }
+  if(json && !json.ok){ const reviewed=await window.qtaReviewEnrollment(json,payload,postJSON); if(reviewed) return reviewed; }
   if (!res.ok || !json || json.ok === false){
     throw new Error((json && json.error) ? json.error : 'Ndryshimi nuk u ruajt.');
   }
@@ -1924,6 +1921,9 @@ document.getElementById('splitPreviewOkBtn')?.addEventListener('click', ()=>{
 });
 
 function submitNow(form){
+  if (window.qtaSubmitEnrollmentGroupForm && ['edit_members','create_group'].includes(form.elements.action.value)) {
+    window.qtaSubmitEnrollmentGroupForm(form); return;
+  }
   form.dataset.ready = '1';
   window.qtaNativeSubmit(form);
 }
@@ -1933,7 +1933,7 @@ document.querySelector('[data-create-group-form]')?.addEventListener('submit', (
   const form = e.currentTarget;
   if (!EDIT_MODE || form.dataset.ready === '1') { form.dataset.ready = '0'; return; }
   const nums = parseAmzeRangesClient(form.querySelector('textarea[name="amze_spec"]')?.value);
-  if (nums.length <= 10) return;
+  if (nums.length <= 10) {e.preventDefault();submitNow(form);return;}
   e.preventDefault();
   const parts = buildSplitParts(nums);
   showSplitPreview({

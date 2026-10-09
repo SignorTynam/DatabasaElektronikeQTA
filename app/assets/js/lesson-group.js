@@ -98,18 +98,17 @@
    * pasojë, pyetet përdoruesi dhe veprimi dërgohet sërish me force = 1.
    */
   function run(payload) {
-    return post(CFG.endpoint, Object.assign({ group_id: CFG.group }, payload)).then(function (json) {
+    return post(CFG.endpoint, Object.assign({ group_id: CFG.group }, payload)).then(async function (json) {
       if (json.ok) return json;
+      var reviewed = await window.qtaReviewEnrollment(json, payload, run);
+      if (reviewed) return reviewed;
       if (json.confirm) {
         return window.qtaConfirm({
           title: json.confirm.title, message: json.confirm.message,
           confirm: json.confirm.confirm, danger: true
         }).then(function (ok) {
           if (!ok) { var c = new Error(''); c.cancelled = true; throw c; }
-          return post(CFG.endpoint, Object.assign({ group_id: CFG.group }, payload, { force: 1 })).then(function (again) {
-            if (!again.ok) throw new Error(again.error || 'Ndryshimi nuk u ruajt.');
-            return again;
-          });
+          return run(Object.assign({}, payload, { force: 1 }));
         });
       }
       throw new Error(json.error || 'Ndryshimi nuk u ruajt.');

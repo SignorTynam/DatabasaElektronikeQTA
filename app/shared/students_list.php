@@ -42,6 +42,7 @@ if (!function_exists('qta_students_from_sql')) {
       ) lg ON lg.student_id = s.id
       LEFT JOIN course_groups cg ON cg.id = lg.group_id
       LEFT JOIN courses gc ON gc.id = cg.course_id
+      LEFT JOIN student_course_plans se ON se.student_id=s.id AND se.group_id=lg.group_id
       LEFT JOIN course_group_students lgm ON lgm.group_id = lg.group_id AND lgm.student_id = s.id
       LEFT JOIN (
         SELECT x.student_id, x.course_id FROM (
@@ -52,6 +53,7 @@ if (!function_exists('qta_students_from_sql')) {
         ) x WHERE x.rn = 1
       ) pp ON pp.student_id = s.id
       LEFT JOIN courses pc ON pc.id = pp.course_id
+      LEFT JOIN student_course_plans pe ON pe.student_id=s.id AND pe.course_id=pp.course_id AND pe.status='planned'
     ";
   }
 }

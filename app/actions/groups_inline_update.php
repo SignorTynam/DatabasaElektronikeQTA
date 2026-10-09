@@ -3,6 +3,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../shared/session.php';
 qta_session_boot();
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../shared/staff_guard.php';
+require_once __DIR__ . '/../shared/enrollments.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -124,6 +126,19 @@ if ($completed && !$forced && $action !== 'set_group_completed') {
 }
 
 try {
+
+  if($dateField) {
+    $field=$action==='update_group_start'?'start_date':($action==='update_group_end'?'end_date':(string)$data['field']);
+    $value=qta_parse_date_input($data['value']??$data[$field]??null);
+    if(!$value) throw new QtaUserError('Data nuk mund të jetë bosh.', ['code'=>'enrollment_dates_required']);
+    qta_tx($pdo,function() use($pdo,$group_id,$field,$value,$data){
+      $q=$pdo->prepare('SELECT start_date,end_date FROM course_groups WHERE id=? FOR UPDATE');$q->execute([$group_id]);$g=$q->fetch(PDO::FETCH_ASSOC);
+      $g[$field]=$value; [$start,$end]=qta_enrollment_dates($g['start_date'],$g['end_date']);
+      qta_enrollment_group_period($pdo,$group_id,$start,$end,$data);
+      $pdo->prepare('UPDATE course_groups SET start_date=?,end_date=? WHERE id=?')->execute([$start,$end,$group_id]);
+    });
+    qta_json_out(['ok'=>true,'display'=>fmt_dMY($value)]);
+  }
 
   /* === Toggle/Set Completed === */
   if ($action === 'set_group_completed') {
@@ -274,6 +289,5 @@ try {
   echo json_encode(['ok'=>false,'error'=>'Veprim i panjohur.']);
 
 } catch (Throwable $e) {
-  http_response_code(qta_error_status($e));
-  echo json_encode(['ok'=>false,'error'=>qta_error_message($e)]);
+  qta_json_fail($e);
 }

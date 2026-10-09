@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     'end_date' => (string)($_POST['end_date'] ?? ''),
     'daily_hours' => (string)($_POST['daily_hours'] ?? ''),
     'amze_spec' => (string)($_POST['amze_spec'] ?? ''),
+    'exam_date' => (string)($_POST['exam_date'] ?? ''),
   ];
   try {
     if (empty($_POST['csrf']) || empty($_SESSION['csrf_token']) || !hash_equals((string)$_SESSION['csrf_token'], (string)$_POST['csrf'])) {
@@ -378,6 +379,7 @@ $LF = [
             <textarea class="form-control input-code" id="lgcAmze" name="amze_spec" rows="2" placeholder="p.sh. 3400-3403, 3409" aria-describedby="lgcAmzeHelp" <?= $EDIT_MODE ? '' : 'disabled' ?>><?= h((string)($createForm['amze_spec'] ?? '')) ?></textarea>
             <div class="form-text" id="lgcAmzeHelp">Numra të ndarë me presje ose intervale me vizë. Mbi 10 kursantë krijohen disa grupe të barabarta me të njëjtin orar — të tregohet si para se të ruhen.</div>
           </div>
+          <div class="col-sm-6"><label class="form-label" for="lgcExam">Data e provimit për kursantët fillestarë</label><input class="form-control" id="lgcExam" name="exam_date" data-dmy placeholder="dd.mm.vvvv" value="<?= h((string)($createForm['exam_date'] ?? '')) ?>" aria-describedby="lgcExamHelp"><p class="form-text" id="lgcExamHelp">Data ruhet veçmas për çdo kursant. Në grup bosh, data e provimit caktohet kur shtohet kursanti.</p></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -390,6 +392,7 @@ $LF = [
 
 <?php require __DIR__ . '/../shared/app_scripts.php'; ?>
 <?php require __DIR__ . '/../shared/partials/download_generation_toast.php'; ?>
+<?php require_once __DIR__.'/../shared/partials/enrollment_dialog.php'; qta_enrollment_dialogs($CSRF,$EDIT_MODE); ?>
 <script type="application/json" id="lgConfig"><?= json_encode([
   'csrf' => $CSRF, 'endpoint' => 'lesson_group_update.php', 'edit' => $EDIT_MODE, 'amze_max' => QTA_AMZE_MAX_PER_REQUEST,
   'flash_ok' => $flash_ok, 'flash_err' => $flash_err,
